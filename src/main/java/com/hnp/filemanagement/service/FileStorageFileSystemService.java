@@ -16,6 +16,7 @@ import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Comparator;
 
 @Service
 public class FileStorageFileSystemService implements FileStorageService {
@@ -141,8 +142,47 @@ public class FileStorageFileSystemService implements FileStorageService {
     }
 
     @Override
-    public void delete(String dir, String fileName, int version) {
-        // ...
+    public void delete(String address, String title, int version, String extension, boolean isFile) {
+
+        if(isFile) {
+            deleteFile(address, title, version, extension);
+        } else {
+            deleteDirectoryRecursive(address);
+        }
+    }
+
+    private void deleteDirectoryRecursive(String address) {
+
+
+
+        String completePath = baseDir + address;
+        Path pathDir = Paths.get(completePath);
+        if(Files.exists(pathDir)) {
+
+            try {
+                Files.walk(pathDir)
+                        .sorted(Comparator.reverseOrder())
+                        .forEach(path -> {
+                            try {
+                                logger.info("deleting: " + path);
+                                Files.delete(path);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
+            } catch (Exception e) {
+                logger.error("FileStorageFileSystemService.deleteDirectoryRecursive() -> IOException in FileStorageFileSystemService.deleteDirectoryRecursive(...) method: " + e.getMessage(), e);
+                throw new BusinessException("can not delete directory=" + completePath + ", please check logs");
+            }
+
+        } else {
+            throw new ResourceNotFoundException("directory not exists=" + completePath);
+        }
+
+    }
+
+    private void deleteFile(String address, String title, int version, String extension) {
+
     }
 
 
@@ -163,7 +203,7 @@ public class FileStorageFileSystemService implements FileStorageService {
                 Files.createDirectory(path);
             } catch (IOException e) {
                 logger.error("FileStorageFileSystemService.createDirectory() -> IOException in FileStorageFileSystemService.createDirectory(...) method: " + e.getMessage(), e);
-                throw new BusinessException("can not create directy=" + directoryPath + ", check logs");
+                throw new BusinessException("can not create directory=" + directoryPath + ", please check logs");
             }
         } else {
             throw new DuplicateResourceException("directory name '" + title + "' exists");

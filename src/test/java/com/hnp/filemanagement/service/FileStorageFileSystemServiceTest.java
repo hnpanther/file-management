@@ -239,6 +239,24 @@ class FileStorageFileSystemServiceTest {
         ).isInstanceOf(BusinessException.class);
     }
 
+
+    @Test
+    void deleteDirectoryTest() {
+        fileStorageFileSystemService.delete("hello", null, 0, null , false);
+        assertThat(Files.exists(Paths.get(baseDir + "hello"))).isFalse();
+    }
+
+    @Test
+    void deleteNotExistsDirectoryTest() {
+
+
+        assertThatThrownBy(
+                () -> fileStorageFileSystemService.delete("hello1", null, 0, null , false)
+        ).isInstanceOf(ResourceNotFoundException.class);
+        assertThat(Files.exists(Paths.get(baseDir + "hello"))).isTrue();
+        assertThat(Files.exists(Paths.get(baseDir + "hello1"))).isFalse();
+    }
+
     @Test
     void test() throws IOException {
 //        String newDirectory = "new directory";
