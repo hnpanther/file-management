@@ -8,6 +8,17 @@ GRANT ALL PRIVILEGES ON file_management.* TO 'file_management'@'localhost';
 
 USE file_management;
 
+# DELETE FROM file_details;
+# DELETE FROM file_info;
+# DELETE FROM main_tag_file;
+# DELETE FROM file_sub_category;
+# DELETE FROM file_category;
+# DELETE FROM permission_role;
+# DELETE FROM permission;
+# DELETE FROM user_role;
+# DELETE FROM role;
+# DELETE FROM user;
+
 DROP TABLE IF EXISTS flyway_schema_history;
 DROP TABLE IF EXISTS file_details;
 DROP TABLE IF EXISTS file_info;

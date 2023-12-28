@@ -1,6 +1,5 @@
 package com.hnp.filemanagement.service;
 
-import com.hnp.filemanagement.controller.FileController;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -18,11 +17,9 @@ import org.springframework.core.io.ResourceLoader;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
-import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -45,12 +42,12 @@ class FileStorageFileSystemServiceTest {
     @Autowired
     private ResourceLoader resourceLoader;
 
-    private FileStorageFileSystemService fileStorageFileSystemService;
+    private FileStorageFileSystemService underTest;
 
     @BeforeEach
     void setUp() throws IOException {
 
-        fileStorageFileSystemService = new FileStorageFileSystemService(baseDir);
+        underTest = new FileStorageFileSystemService(baseDir);
 
         // create base directory
         String directoryPath = baseDir;
@@ -97,7 +94,7 @@ class FileStorageFileSystemServiceTest {
     void createDirectoryTest() {
 
         String newDirectory = "new-directory";
-        fileStorageFileSystemService.createDirectory(newDirectory, false);
+        underTest.createDirectory(newDirectory, false);
 
         Path path = Paths.get(baseDir + newDirectory);
         assertThat(Files.exists(path)).isTrue();
@@ -106,7 +103,7 @@ class FileStorageFileSystemServiceTest {
     @Test
     void createNestedDirectoryTest() {
         String nestedDirectory = "hello/sub-dir";
-        fileStorageFileSystemService.createDirectory(nestedDirectory, true);
+        underTest.createDirectory(nestedDirectory, true);
         Path path = Paths.get(baseDir + nestedDirectory);
         assertThat(Files.exists(path)).isTrue();
     }
@@ -116,7 +113,7 @@ class FileStorageFileSystemServiceTest {
         String duplicateDir = "hello";
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.createDirectory(duplicateDir, false)
+                () -> underTest.createDirectory(duplicateDir, false)
         ).isInstanceOf(DuplicateResourceException.class);
 
     }
@@ -126,7 +123,7 @@ class FileStorageFileSystemServiceTest {
         String invalidDir = "hell.o.";
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.createDirectory(invalidDir, false)
+                () -> underTest.createDirectory(invalidDir, false)
         ).isInstanceOf(BusinessException.class);
     }
 
@@ -135,7 +132,7 @@ class FileStorageFileSystemServiceTest {
         String invalidDir = "hello world";
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.createDirectory(invalidDir, false)
+                () -> underTest.createDirectory(invalidDir, false)
         ).isInstanceOf(BusinessException.class);
     }
 
@@ -144,7 +141,7 @@ class FileStorageFileSystemServiceTest {
         String invalidDir = "hello/world";
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.createDirectory(invalidDir, false)
+                () -> underTest.createDirectory(invalidDir, false)
         ).isInstanceOf(BusinessException.class);
     }
 
@@ -155,7 +152,7 @@ class FileStorageFileSystemServiceTest {
     void saveFileTest() throws IOException {
         Resource testFile = resourceLoader.getResource("classpath:test2.txt");
         MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-        fileStorageFileSystemService.save("hello", multipartFile, 1, "txt");
+        underTest.save("hello", multipartFile, 1, "txt");
 
         assertThat(Files.exists(Path.of(baseDir + "hello/test2/v1/" + testFile.getFilename()))).isTrue();
     }
@@ -168,7 +165,7 @@ class FileStorageFileSystemServiceTest {
 
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.save("hello", multipartFile, 1, "txt")
+                () -> underTest.save("hello", multipartFile, 1, "txt")
         ).isInstanceOf(DuplicateResourceException.class);
 
     }
@@ -181,7 +178,7 @@ class FileStorageFileSystemServiceTest {
 
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.save("hello", multipartFile, 1, "txt")
+                () -> underTest.save("hello", multipartFile, 1, "txt")
         ).isInstanceOf(BusinessException.class);
 
     }
@@ -190,7 +187,7 @@ class FileStorageFileSystemServiceTest {
     void saveWithAnotherVersionTest() throws IOException {
         Resource testFile = resourceLoader.getResource("classpath:test.txt");
         MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-        fileStorageFileSystemService.save("hello", multipartFile, 2, "txt");
+        underTest.save("hello", multipartFile, 2, "txt");
         assertThat(Files.exists(Path.of(baseDir + "hello/test/v2/" + testFile.getFilename()))).isTrue();
 
     }
@@ -201,7 +198,7 @@ class FileStorageFileSystemServiceTest {
         MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.save("hello", multipartFile, 2, "abc")
+                () -> underTest.save("hello", multipartFile, 2, "abc")
         ).isInstanceOf(BusinessException.class);
     }
 
@@ -209,14 +206,14 @@ class FileStorageFileSystemServiceTest {
     void saveWithAnotherExtensionTest() throws IOException {
         Resource testFile = resourceLoader.getResource("classpath:test.abc");
         MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-        fileStorageFileSystemService.save("hello", multipartFile, 1, "abc");
+        underTest.save("hello", multipartFile, 1, "abc");
         assertThat(Files.exists(Path.of(baseDir + "hello/test/v1/" + testFile.getFilename()))).isTrue();
 
     }
 
     @Test
     void loadFileTest() throws IOException {
-        Resource resource = fileStorageFileSystemService.load("hello", "test.txt", 1, "txt");
+        Resource resource = underTest.load("hello", "test.txt", 1, "txt");
 
         assertThat(resource.contentLength() > 0).isTrue();
         assertThat(resource.getFilename()).isEqualTo("test.txt");
@@ -227,7 +224,7 @@ class FileStorageFileSystemServiceTest {
     void loadNotExistFileTest() {
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.load("hello", "test12.txt", 1, "txt")
+                () -> underTest.load("hello", "test12.txt", 1, "txt")
         ).isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -235,14 +232,14 @@ class FileStorageFileSystemServiceTest {
     void loadInvalidFileNameTest() {
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.load("hell/o", "t.est12.txt", 1, "txt")
+                () -> underTest.load("hell/o", "t.est12.txt", 1, "txt")
         ).isInstanceOf(BusinessException.class);
     }
 
 
     @Test
     void deleteDirectoryTest() {
-        fileStorageFileSystemService.delete("hello", null, 0, null , false);
+        underTest.delete("hello", null, 0, null , false);
         assertThat(Files.exists(Paths.get(baseDir + "hello"))).isFalse();
     }
 
@@ -251,7 +248,7 @@ class FileStorageFileSystemServiceTest {
 
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.delete("hello1", null, 0, null , false)
+                () -> underTest.delete("hello1", null, 0, null , false)
         ).isInstanceOf(ResourceNotFoundException.class);
         assertThat(Files.exists(Paths.get(baseDir + "hello"))).isTrue();
         assertThat(Files.exists(Paths.get(baseDir + "hello1"))).isFalse();
@@ -259,7 +256,7 @@ class FileStorageFileSystemServiceTest {
 
     @Test
     void deleteFileTest() {
-        fileStorageFileSystemService.delete("hello", "test.txt", 1, "txt", true);
+        underTest.delete("hello", "test.txt", 1, "txt", true);
         assertThat(Files.exists(Paths.get(baseDir + "hello/test/v1/test.txt"))).isFalse();
     }
 
@@ -267,7 +264,7 @@ class FileStorageFileSystemServiceTest {
     void deleteNotExistsFileTest() {
         assertThatThrownBy(
                 () -> {
-                    fileStorageFileSystemService.delete("hello", "test2.txt", 1, "txt", true);
+                    underTest.delete("hello", "test2.txt", 1, "txt", true);
                 }
         ).isInstanceOf(ResourceNotFoundException.class);
     }
