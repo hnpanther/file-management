@@ -1,6 +1,5 @@
 package com.hnp.filemanagement.entity;
 
-
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -9,20 +8,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "file_category")
+@Table(name = "file_sub_category")
 @Data
-public class FileCategory {
+public class FileSubCategory {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
     private Integer id;
 
-    @Column(name = "category_name", nullable = false, unique = true)
-    private String categoryName;
+    @Column(name = "sub_category_name")
+    private String subCategoryName;
 
-    @Column(name = "category_name_description", nullable = false)
-    private String categoryNameDescription;
+    @Column(name = "sub_category_name_description")
+    private String subCategoryNameDescription;
 
     @Column(name = "description")
     private String description;
@@ -50,11 +49,14 @@ public class FileCategory {
     @JoinColumn(name = "updated_by")
     private User updatedBy;
 
-    @OneToMany(fetch = FetchType.LAZY,
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "file_category_id")
+    private FileCategory fileCategory;
+
+    @OneToMany(
+            fetch = FetchType.LAZY,
             cascade={CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH},
-            mappedBy = "fileCategory"
+            mappedBy = "fileSubCategory"
     )
-    private List<FileSubCategory> fileSubCategories = new ArrayList<>();
-
-
+    private List<MainTagFile> mainTagFiles = new ArrayList<>();
 }
