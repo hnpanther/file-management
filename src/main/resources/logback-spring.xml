@@ -54,7 +54,7 @@
         <appender-ref ref="CONSOLE" />
     </root>
 
-    <logger name="com.pgsoc.portalservice" level="debug"/>
+    <logger name="com.hnp.filemanagement" level="debug"/>
 
 
 
