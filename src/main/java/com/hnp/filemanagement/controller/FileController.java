@@ -40,7 +40,7 @@ public class FileController {
 
         logger.info("post request to /files/categories :" + fileCategoryDTO);
 
-        fileStorageFileSystemService.createDirectory(fileCategoryDTO.getCategoryName());
+        fileStorageFileSystemService.createDirectory(fileCategoryDTO.getCategoryName(), false);
         return "file-management/create-category.html";
 
     }

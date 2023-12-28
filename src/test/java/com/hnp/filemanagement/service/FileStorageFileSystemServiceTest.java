@@ -3,6 +3,7 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.controller.FileController;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
+import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -96,7 +97,7 @@ class FileStorageFileSystemServiceTest {
     void createDirectoryTest() {
 
         String newDirectory = "new-directory";
-        fileStorageFileSystemService.createDirectory(newDirectory);
+        fileStorageFileSystemService.createDirectory(newDirectory, false);
 
         Path path = Paths.get(baseDir + newDirectory);
         assertThat(Files.exists(path)).isTrue();
@@ -105,7 +106,7 @@ class FileStorageFileSystemServiceTest {
     @Test
     void createNestedDirectoryTest() {
         String nestedDirectory = "hello/sub-dir";
-        fileStorageFileSystemService.createDirectory(nestedDirectory);
+        fileStorageFileSystemService.createDirectory(nestedDirectory, true);
         Path path = Paths.get(baseDir + nestedDirectory);
         assertThat(Files.exists(path)).isTrue();
     }
@@ -115,26 +116,35 @@ class FileStorageFileSystemServiceTest {
         String duplicateDir = "hello";
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.createDirectory(duplicateDir)
+                () -> fileStorageFileSystemService.createDirectory(duplicateDir, false)
         ).isInstanceOf(DuplicateResourceException.class);
 
     }
 
     @Test
     void createDirectoryWithInvalidName1Test() {
-        String duplicateDir = "hell.o.";
+        String invalidDir = "hell.o.";
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.createDirectory(duplicateDir)
+                () -> fileStorageFileSystemService.createDirectory(invalidDir, false)
         ).isInstanceOf(BusinessException.class);
     }
 
     @Test
     void createDirectoryWithInvalidName2Test() {
-        String duplicateDir = "hello world";
+        String invalidDir = "hello world";
 
         assertThatThrownBy(
-                () -> fileStorageFileSystemService.createDirectory(duplicateDir)
+                () -> fileStorageFileSystemService.createDirectory(invalidDir, false)
+        ).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void createDirectoryWithInvalidName3Test() {
+        String invalidDir = "hello/world";
+
+        assertThatThrownBy(
+                () -> fileStorageFileSystemService.createDirectory(invalidDir, false)
         ).isInstanceOf(BusinessException.class);
     }
 
@@ -164,7 +174,7 @@ class FileStorageFileSystemServiceTest {
     }
 
     @Test
-    void saveFileWithInvalidNameTest() throws IOException {
+    void saveFileWithInvalidName1Test() throws IOException {
 
         Resource testFile = resourceLoader.getResource("classpath:file space.1.txt");
         MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
@@ -204,7 +214,30 @@ class FileStorageFileSystemServiceTest {
 
     }
 
+    @Test
+    void loadFileTest() throws IOException {
+        Resource resource = fileStorageFileSystemService.load("hello", "test.txt", 1, "txt");
 
+        assertThat(resource.contentLength() > 0).isTrue();
+        assertThat(resource.getFilename()).isEqualTo("test.txt");
+    }
+
+
+    @Test
+    void loadNotExistFileTest() {
+
+        assertThatThrownBy(
+                () -> fileStorageFileSystemService.load("hello", "test12.txt", 1, "txt")
+        ).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void loadInvalidFileNameTest() {
+
+        assertThatThrownBy(
+                () -> fileStorageFileSystemService.load("hell/o", "t.est12.txt", 1, "txt")
+        ).isInstanceOf(BusinessException.class);
+    }
 
     @Test
     void test() throws IOException {
