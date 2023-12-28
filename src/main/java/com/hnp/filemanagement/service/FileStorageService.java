@@ -6,9 +6,10 @@ import org.springframework.web.multipart.MultipartFile;
 public interface FileStorageService {
 
 
-    public void save(MultipartFile file);
 
-    public Resource load(String dir, String fileName, int version);
+    void save(String address, MultipartFile file, int version, String extension);
+
+    public Resource load(String address, String fileName, int version);
 
     public void delete(String dir, String fileName, int version);
 }

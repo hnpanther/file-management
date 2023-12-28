@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.controller.FileController;
+import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,11 +14,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -59,9 +63,13 @@ class FileStorageFileSystemServiceTest {
         logger.info("creating: " + path2);
         Files.createDirectory(path2);
 
-        //
-        Resource classPathResource = resourceLoader.getResource("classpath:test.txt");
-        logger.info("read file from resource " + classPathResource.getFilename());
+        // save test.txt file
+        Resource testFile = resourceLoader.getResource("classpath:test.txt");
+        logger.info("read file from resource " + testFile.getFilename());
+        logger.info("saving file in " + directoryPath + " with name:" + testFile.getFilename());
+        Files.createDirectory(Paths.get(directoryPath + "/test"));
+        Files.createDirectory(Paths.get(directoryPath + "/test/v1"));
+        Files.copy(testFile.getInputStream(), Paths.get(directoryPath + "/test/v1/" + testFile.getFilename()));
 
     }
 
@@ -85,17 +93,17 @@ class FileStorageFileSystemServiceTest {
     }
 
     @Test
-    void createDirectory() {
+    void createDirectoryTest() {
 
         String newDirectory = "new-directory";
-        fileStorageFileSystemService.createDirectory("new-directory");
+        fileStorageFileSystemService.createDirectory(newDirectory);
 
         Path path = Paths.get(baseDir + newDirectory);
         assertThat(Files.exists(path)).isTrue();
     }
 
     @Test
-    void createNestedDirectory() {
+    void createNestedDirectoryTest() {
         String nestedDirectory = "hello/sub-dir";
         fileStorageFileSystemService.createDirectory(nestedDirectory);
         Path path = Paths.get(baseDir + nestedDirectory);
@@ -103,13 +111,108 @@ class FileStorageFileSystemServiceTest {
     }
 
     @Test
-    void createDuplicateDirectory() {
+    void createDuplicateDirectoryTest() {
         String duplicateDir = "hello";
 
         assertThatThrownBy(
                 () -> fileStorageFileSystemService.createDirectory(duplicateDir)
         ).isInstanceOf(DuplicateResourceException.class);
 
+    }
+
+    @Test
+    void createDirectoryWithInvalidName1Test() {
+        String duplicateDir = "hell.o.";
+
+        assertThatThrownBy(
+                () -> fileStorageFileSystemService.createDirectory(duplicateDir)
+        ).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void createDirectoryWithInvalidName2Test() {
+        String duplicateDir = "hello world";
+
+        assertThatThrownBy(
+                () -> fileStorageFileSystemService.createDirectory(duplicateDir)
+        ).isInstanceOf(BusinessException.class);
+    }
+
+
+
+
+    @Test
+    void saveFileTest() throws IOException {
+        Resource testFile = resourceLoader.getResource("classpath:test2.txt");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+        fileStorageFileSystemService.save("hello", multipartFile, 1, "txt");
+
+        assertThat(Files.exists(Path.of(baseDir + "hello/test2/v1/" + testFile.getFilename()))).isTrue();
+    }
+
+    @Test
+    void saveDuplicateFileTest() throws IOException {
+
+        Resource testFile = resourceLoader.getResource("classpath:test.txt");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+
+
+        assertThatThrownBy(
+                () -> fileStorageFileSystemService.save("hello", multipartFile, 1, "txt")
+        ).isInstanceOf(DuplicateResourceException.class);
+
+    }
+
+    @Test
+    void saveFileWithInvalidNameTest() throws IOException {
+
+        Resource testFile = resourceLoader.getResource("classpath:file space.1.txt");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+
+
+        assertThatThrownBy(
+                () -> fileStorageFileSystemService.save("hello", multipartFile, 1, "txt")
+        ).isInstanceOf(BusinessException.class);
+
+    }
+
+    @Test
+    void saveWithAnotherVersionTest() throws IOException {
+        Resource testFile = resourceLoader.getResource("classpath:test.txt");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+        fileStorageFileSystemService.save("hello", multipartFile, 2, "txt");
+        assertThat(Files.exists(Path.of(baseDir + "hello/test/v2/" + testFile.getFilename()))).isTrue();
+
+    }
+
+    @Test
+    void saveWithWrongExtensionTest() throws IOException {
+        Resource testFile = resourceLoader.getResource("classpath:test.txt");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+
+        assertThatThrownBy(
+                () -> fileStorageFileSystemService.save("hello", multipartFile, 2, "abc")
+        ).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void saveWithAnotherExtensionTest() throws IOException {
+        Resource testFile = resourceLoader.getResource("classpath:test.abc");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+        fileStorageFileSystemService.save("hello", multipartFile, 1, "abc");
+        assertThat(Files.exists(Path.of(baseDir + "hello/test/v1/" + testFile.getFilename()))).isTrue();
+
+    }
+
+
+
+    @Test
+    void test() throws IOException {
+//        String newDirectory = "new directory";
+//        fileStorageFileSystemService.createDirectory("سلام دنیای ازاد من کد -21");
+//
+//        Path path = Paths.get(baseDir + newDirectory);
+////        assertThat(Files.exists(path)).isTrue();
     }
 
 
