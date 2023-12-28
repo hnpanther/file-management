@@ -142,10 +142,10 @@ public class FileStorageFileSystemService implements FileStorageService {
     }
 
     @Override
-    public void delete(String address, String title, int version, String extension, boolean isFile) {
+    public void delete(String address, String fileName, int version, String extension, boolean isFile) {
 
         if(isFile) {
-            deleteFile(address, title, version, extension);
+            deleteFile(address, fileName, version, extension);
         } else {
             deleteDirectoryRecursive(address);
         }
@@ -181,7 +181,36 @@ public class FileStorageFileSystemService implements FileStorageService {
 
     }
 
-    private void deleteFile(String address, String title, int version, String extension) {
+    private void deleteFile(String address, String fileName, int version, String extension) {
+
+        if(version < 1) {
+            throw new BusinessException("version must be greater than 0");
+        }
+        int index = fileName.lastIndexOf(".");
+        if(!extension.equals(fileName.substring(index + 1))) {
+            throw new BusinessException("file extension and parameter extension is different: file name=" + fileName + ",extension=" + extension);
+        }
+        if(!checkCorrectFileName(fileName)) {
+            throw new BusinessException("file name should contain just one '.' and no space and no '/', your file name=" + fileName);
+        }
+
+        String fileNameWithoutExtension = fileName.replaceFirst("[.][^.]+$", "");
+        String completePath = baseDir + address + "/" + fileNameWithoutExtension + "/v" + version + "/" + fileName;
+
+
+        try {
+
+            Path path = Paths.get(completePath);
+            if(Files.exists(path)) {
+                Files.delete(path);
+            } else {
+                throw new ResourceNotFoundException("file not found, file=" + completePath);
+            }
+
+        } catch (IOException e) {
+            logger.error("FileStorageFileSystemService.deleteFile() -> IOException in FileStorageFileSystemService.deleteFile(...) method: " + e.getMessage(), e);
+            throw new BusinessException("can not delete file=" + completePath + ", please check logs");
+        }
 
     }
 

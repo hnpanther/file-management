@@ -258,6 +258,21 @@ class FileStorageFileSystemServiceTest {
     }
 
     @Test
+    void deleteFileTest() {
+        fileStorageFileSystemService.delete("hello", "test.txt", 1, "txt", true);
+        assertThat(Files.exists(Paths.get(baseDir + "hello/test/v1/test.txt"))).isFalse();
+    }
+
+    @Test
+    void deleteNotExistsFileTest() {
+        assertThatThrownBy(
+                () -> {
+                    fileStorageFileSystemService.delete("hello", "test2.txt", 1, "txt", true);
+                }
+        ).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
     void test() throws IOException {
 //        String newDirectory = "new directory";
 //        fileStorageFileSystemService.createDirectory("سلام دنیای ازاد من کد -21");

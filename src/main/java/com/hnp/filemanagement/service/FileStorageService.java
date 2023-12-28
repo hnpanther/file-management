@@ -11,5 +11,5 @@ public interface FileStorageService {
 
     public Resource load(String address, String fileName, int version, String extension);
 
-    public void delete(String address, String title, int version, String extension, boolean isFile);
+    public void delete(String address, String fileName, int version, String extension, boolean isFile);
 }
