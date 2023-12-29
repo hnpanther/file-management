@@ -5,7 +5,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>اسناد-ایجاد کابر جدید </title>
+    <title th:if="${#strings.equals(pageType, 'create')}">اسناد-ایجاد کابر جدید </title>
+    <title th:if="${#strings.equals(pageType, 'update')}">اسناد-ویرایش اطلاعات کاربر </title>
 
     <link rel="stylesheet"
           href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css" />
@@ -18,7 +19,7 @@
 
 <div class="container">
 
-    <form class="well form-horizontal" th:action="${pageType} == 'create' ? @{/users} : @{'/users/' + user.getId()}" method="post"  id="userForm" th:object="${user}">
+    <form class="well form-horizontal" th:action="@{ ${#strings.equals(pageType, 'create') ? '/users' : '/users/' + user.getId()}  }" method="post"  id="userForm" th:object="${user}">
         <fieldset>
 
             <!-- Form Name -->
@@ -27,12 +28,14 @@
 
             <!-- Text input-->
 
+            <input th:field="*{id}" type="hidden">
+
             <div class="form-group">
                 <label class="col-md-4 control-label">کد پرسنلی</label>
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{personelCode}" name="personelCode" placeholder="کد پرسنلی" class="form-control"  type="text" required>
+                        <input th:field="*{personelCode}" placeholder="کد پرسنلی" class="form-control"  type="text" required>
                     </div>
                 </div>
             </div>
@@ -42,7 +45,7 @@
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{username}" name="username" placeholder="نام کاربری" class="form-control"  type="text" required>
+                        <input th:field="*{username}" placeholder="نام کاربری" class="form-control"  type="text" required>
                     </div>
                 </div>
             </div>
@@ -56,7 +59,7 @@
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{firstName}"  name="firstName" placeholder="نام" class="form-control"  type="text" required>
+                        <input th:field="*{firstName}"  placeholder="نام" class="form-control"  type="text" required>
                     </div>
                 </div>
             </div>
@@ -68,7 +71,7 @@
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{lastName}" name="lastName" placeholder="نام خانوادگی" class="form-control"  type="text" required>
+                        <input th:field="*{lastName}" placeholder="نام خانوادگی" class="form-control"  type="text" required>
                     </div>
                 </div>
             </div>
@@ -81,7 +84,7 @@
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{nationalCode}" name="nationalCode" placeholder="کد ملی" class="form-control"  type="text" required>
+                        <input th:field="*{nationalCode}" placeholder="کد ملی" class="form-control"  type="text" required>
                     </div>
                 </div>
             </div>
@@ -94,7 +97,7 @@
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{password}" name="password" placeholder="رمز عبور" class="form-control"  type="password" required>
+                        <input th:field="*{password}" placeholder="رمز عبور" class="form-control"  type="password" required>
                     </div>
                 </div>
             </div>
@@ -106,7 +109,7 @@
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{phoneNumber}" name="phoneNumber" placeholder="شماره تلفن همراه" class="form-control"  type="text" required>
+                        <input th:field="*{phoneNumber}" placeholder="شماره تلفن همراه" class="form-control"  type="text" required>
                     </div>
                 </div>
             </div>

@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 public class UserService {
@@ -66,6 +67,68 @@ public class UserService {
         user.getRoles().add(role);
 
         userRepository.save(user);
+
+    }
+
+
+    @Transactional
+    public void updateUser(UserDTO userDTO) {
+
+        User user = getUserByIdOrUsername(userDTO.getId(), null);
+
+        String checkUsername = "";
+        String checkPhoneNumber = "";
+        int checkPersonelCode = 0;
+        String checkNationalCode = "";
+
+        // check username
+        if(!user.getUsername().equals(userDTO.getUsername())) {
+            checkUsername = userDTO.getUsername();
+        }
+
+        // check phone number
+        if(!user.getPhoneNumber().equals(userDTO.getPhoneNumber())) {
+            checkPhoneNumber = userDTO.getPhoneNumber();
+        }
+
+        // check personel code
+        if(!Objects.equals(user.getPersonelCode(), userDTO.getPersonelCode())) {
+            checkPersonelCode = userDTO.getPersonelCode();
+        }
+
+        // check nationalCode
+        if(!user.getNationalCode().equals(userDTO.getNationalCode())) {
+            checkNationalCode = userDTO.getNationalCode();
+        }
+
+        boolean duplicateCheck = userRepository.existsByUsernameOrPersonelCodeOrNationalCodeOrPhoneNumber(
+                checkUsername, checkPersonelCode, checkNationalCode, checkPhoneNumber
+        );
+        if(duplicateCheck) {
+            throw new DuplicateResourceException("duplicate user info=" + userDTO);
+        }
+
+        if(!checkUsername.equals("")) {
+            user.setUsername(checkUsername);
+        }
+        if(!checkNationalCode.equals("")) {
+            user.setNationalCode(checkNationalCode);
+        }
+        if(checkPersonelCode != 0) {
+            user.setPersonelCode(checkPersonelCode);
+        }
+        if(!checkPhoneNumber.equals("")) {
+            user.setPhoneNumber(checkPhoneNumber);
+        }
+
+        user.setFirstName(userDTO.getFirstName());
+        user.setLastName(userDTO.getLastName());
+        user.setEmail(userDTO.getEmail());
+        user.setPassword(userDTO.getPassword());
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
+
+
 
     }
 

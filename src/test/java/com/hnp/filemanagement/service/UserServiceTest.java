@@ -93,7 +93,19 @@ class UserServiceTest {
 
         user1.getRoles().add(role1);
 
-        userRepository.save(user1);
+        User user2 = new User();
+        user2.setUsername("admin2 username");
+        user2.setPassword("password");
+        user2.setFirstName("name");
+        user2.setLastName("family");
+        user2.setPhoneNumber("00129843435");
+        user2.setNationalCode("523452525");
+        user2.setPersonelCode(2222);
+        user2.setCreatedAt(LocalDateTime.now());
+        user2.setEnabled(1);
+        user2.setState(0);
+
+        userRepository.saveAll(List.of(user1, user2));
 
         user1Id = user1.getId();
 
@@ -120,7 +132,7 @@ class UserServiceTest {
         userDTO.setLastName("new family");
         userDTO.setNationalCode("4353525");
         userDTO.setPhoneNumber("79539573");
-        userDTO.setPersonelCode(2222);
+        userDTO.setPersonelCode(2221);
 
         underTest.createUser(userDTO);
 
@@ -181,5 +193,69 @@ class UserServiceTest {
 
         UserDTO user = underTest.getUserDtoByIdOrUsername(user1Id, null);
         assertThat(user.getRoleList().size()).isEqualTo(2);
+    }
+
+    @Test
+    @Commit
+    void updateUserTest() {
+        UserDTO userDTO = new UserDTO();
+        userDTO.setId(user1Id);
+        userDTO.setUsername("admin username");
+        userDTO.setPassword("password");
+        userDTO.setFirstName("updated name");
+        userDTO.setLastName("family12");
+        userDTO.setPhoneNumber("009843435");
+        userDTO.setNationalCode("5252525");
+        userDTO.setPersonelCode(1111);
+
+        underTest.updateUser(userDTO);
+
+        UserDTO updatedUserDto = underTest.getUserDtoByIdOrUsername(user1Id, null);
+        assertThat(updatedUserDto.getFirstName()).isEqualTo("updated name");
+        assertThat(updatedUserDto.getLastName()).isEqualTo("family12");
+
+    }
+
+    @Test
+    @Commit
+    void updateUserPersonelCodeTest() {
+        UserDTO userDTO = new UserDTO();
+        userDTO.setId(user1Id);
+        userDTO.setUsername("admin username");
+        userDTO.setPassword("password");
+        userDTO.setFirstName("updated name");
+        userDTO.setLastName("family12");
+        userDTO.setPhoneNumber("009843435");
+        userDTO.setNationalCode("5252525");
+        userDTO.setPersonelCode(1121);
+
+        underTest.updateUser(userDTO);
+
+        UserDTO updatedUserDto = underTest.getUserDtoByIdOrUsername(user1Id, null);
+        assertThat(updatedUserDto.getFirstName()).isEqualTo("updated name");
+        assertThat(updatedUserDto.getLastName()).isEqualTo("family12");
+        assertThat(updatedUserDto.getPersonelCode()).isEqualTo(1121);
+
+    }
+
+    @Test
+    @Commit
+    void updateUserDuplicatePersonelCodeTest() {
+        UserDTO userDTO = new UserDTO();
+        userDTO.setId(user1Id);
+        userDTO.setUsername("admin username");
+        userDTO.setPassword("password");
+        userDTO.setFirstName("updated name");
+        userDTO.setLastName("family12");
+        userDTO.setPhoneNumber("009843435");
+        userDTO.setNationalCode("5252525");
+        userDTO.setPersonelCode(2222);
+
+
+
+        assertThatThrownBy(
+                () -> underTest.updateUser(userDTO)
+        ).isInstanceOf(DuplicateResourceException.class);
+
     }
 }

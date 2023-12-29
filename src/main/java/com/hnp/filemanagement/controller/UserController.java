@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.controller;
 
 import com.hnp.filemanagement.dto.InsertValidation;
+import com.hnp.filemanagement.dto.UpdateValidation;
 import com.hnp.filemanagement.dto.UserDTO;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -49,7 +50,7 @@ public class UserController {
         model.addAttribute("pageType", "create");
 
 
-        return "user/create-user.html";
+        return "user/save-user.html";
     }
 
     @PostMapping
@@ -57,7 +58,7 @@ public class UserController {
                            Model model, HttpServletRequest request) {
         int principalId = 0;
         String principalUsername = "None";
-        String logMessage = "request create user page";
+        String logMessage = "request to save new user=" + userDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "UserController.class", logMessage);
@@ -68,6 +69,9 @@ public class UserController {
 
         if(bindingResult.hasErrors()) {
             message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "UserController.class",
+                    "ValidationError:" + bindingResult);
         } else {
             try {
                 userService.createUser(userDTO);
@@ -93,8 +97,9 @@ public class UserController {
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);
         model.addAttribute("message", message);
+        model.addAttribute("pageType", "create");
 
-        return "user/create-user.html";
+        return "user/save-user.html";
 
     }
 
@@ -116,12 +121,57 @@ public class UserController {
         model.addAttribute("pageType", "update");
 
 
-        return "user/create-user.html";
+        return "user/save-user.html";
     }
 
-//    @PostMapping("{userId}") {
-//
-//    }
+
+    @PostMapping("{userId}")
+    public String saveupdatedUser(@ModelAttribute @Validated(UpdateValidation.class) UserDTO userDTO, BindingResult bindingResult,
+                                  Model model, HttpServletRequest request) {
+        int principalId = 0;
+        String principalUsername = "None";
+        String logMessage = "request to save updated user=" + userDTO;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "UserController.class", logMessage);
+
+        boolean showMessage = true;
+        boolean valid = false;
+        String message = "";
+
+        if(bindingResult.hasErrors()) {
+            message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "UserController.class",
+                    "ValidationError:" + bindingResult);
+        } else {
+            try {
+                userService.updateUser(userDTO);
+                valid = true;
+                message = "اطلاعات با موفقیت ذخیره شد";
+            } catch (ResourceNotFoundException e) {
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "UserController.class",
+                        "ResourceNotFoundException(probably user id not correct):" + e.getMessage());
+                message = "مشکلی پیش آمده. مجددا تلاش کنید. در صورت تکرار این مشکل با مدیر سیستم تماس بگیرید";
+
+            } catch (DuplicateResourceException e) {
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "UserController.class",
+                        "DuplicateResourceException:" + e.getMessage());
+                message = "کاربری با این مشخصات در سیستم وجود دارد";
+            }
+        }
+
+
+        userDTO.setPassword("**********");
+        model.addAttribute("user", userDTO);
+        model.addAttribute("showMessage", showMessage);
+        model.addAttribute("valid", valid);
+        model.addAttribute("message", message);
+        model.addAttribute("pageType", "update");
+        return "user/save-user.html";
+    }
 
 
 

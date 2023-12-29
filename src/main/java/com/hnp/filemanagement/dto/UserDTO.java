@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
+import org.hibernate.validator.constraints.Length;
 
 import java.util.List;
 
@@ -15,39 +16,37 @@ public class UserDTO {
     @NotNull(groups = UpdateValidation.class)
     private Integer id;
 
-    @NotNull
-    @NotEmpty
+    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+    @NotEmpty(groups = {InsertValidation.class, UpdateValidation.class})
     private String username;
 
-    @NotNull
-    @NotEmpty
+    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+    @NotEmpty(groups = {InsertValidation.class, UpdateValidation.class})
     private String password;
 
-    @NotNull
-    @Min(value = 1111)
-    @Max(value = 9999)
+    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+    @Min(value = 1111, groups = {InsertValidation.class, UpdateValidation.class})
+    @Max(value = 9999, groups = {InsertValidation.class, UpdateValidation.class})
     private Integer personelCode;
 
-    @NotNull
-    @NotEmpty
-    @Min(10)
-    @Max(10)
+    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+    @NotEmpty(groups = {InsertValidation.class, UpdateValidation.class})
+    @Length(min = 10, max = 10, groups = {InsertValidation.class, UpdateValidation.class})
     private String nationalCode;
 
     private String email;
 
-    @NotNull
-    @NotEmpty
-    @Min(11)
-    @Max(11)
+    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+    @NotEmpty(groups = {InsertValidation.class, UpdateValidation.class})
+    @Length(min = 11, max = 11, groups = {InsertValidation.class, UpdateValidation.class})
     private String phoneNumber;
 
-    @NotNull
-    @NotEmpty
+    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+    @NotEmpty(groups = {InsertValidation.class, UpdateValidation.class})
     private String firstName;
 
-    @NotNull
-    @NotEmpty
+    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+    @NotEmpty(groups = {InsertValidation.class, UpdateValidation.class})
     private String lastName;
 
     private Integer enabled;
