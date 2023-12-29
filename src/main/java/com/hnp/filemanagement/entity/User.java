@@ -23,7 +23,7 @@ public class User {
     private String username;
 
     @Column(name = "personel_code", nullable = false, unique = true)
-    private int personelCode;
+    private Integer personelCode;
 
     @Column(name = "national_code", nullable = false, unique = true)
     private String nationalCode;

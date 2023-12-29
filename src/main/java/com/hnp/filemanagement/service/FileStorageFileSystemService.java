@@ -21,7 +21,7 @@ import java.util.Comparator;
 @Service
 public class FileStorageFileSystemService implements FileStorageService {
 
-    Logger logger = LoggerFactory.getLogger(FileStorageFileSystemService.class);
+    private final Logger logger = LoggerFactory.getLogger(FileStorageFileSystemService.class);
 
     private String baseDir;
 

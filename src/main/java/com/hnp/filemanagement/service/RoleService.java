@@ -21,7 +21,7 @@ import java.util.List;
 @Service
 public class RoleService {
 
-    Logger logger = LoggerFactory.getLogger(RoleService.class);
+    private final Logger logger = LoggerFactory.getLogger(RoleService.class);
 
 
     private final RoleRepository roleRepository;
@@ -86,6 +86,18 @@ public class RoleService {
 
         role.setPermissions(permissions);
         roleRepository.save(role);
+    }
+
+    @Transactional
+    public List<Role> getRoleByIds(List<Integer> roleIds) {
+        return this.roleRepository.findByIdIn(roleIds);
+    }
+
+    @Transactional
+    public Role getByIdOrRoleName(int id, String roleName) {
+        return this.roleRepository.findByIdOrRoleName(id, roleName).orElseThrow(
+                () -> new ResourceNotFoundException("role with id=" + id + " and roleName=" + roleName + " doesn't exists")
+        );
     }
 
 
