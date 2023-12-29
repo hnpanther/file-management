@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>اسناد-ایجاد کابر جدید </title>
+
+    <link rel="stylesheet"
+          href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css" />
+
+
+</head>
+<body>
+
+<div th:insert="~{navbar.html :: navbar}"></div>
+
+<div class="container">
+
+    <form class="well form-horizontal" th:action="${pageType} == 'create' ? @{/users} : @{'/users/' + user.getId()}" method="post"  id="userForm" th:object="${user}">
+        <fieldset>
+
+            <!-- Form Name -->
+            <legend th:if="${#strings.equals(pageType, 'create')}">ایجاد کاربر جدید</legend>
+            <legend th:if="${#strings.equals(pageType, 'update')}">ویرایش اطلاعات کاربر </legend>
+
+            <!-- Text input-->
+
+            <div class="form-group">
+                <label class="col-md-4 control-label">کد پرسنلی</label>
+                <div class="col-md-4 inputGroupContainer">
+                    <div class="input-group">
+                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
+                        <input th:field="*{personelCode}" name="personelCode" placeholder="کد پرسنلی" class="form-control"  type="text" required>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="col-md-4 control-label">نام کاربری</label>
+                <div class="col-md-4 inputGroupContainer">
+                    <div class="input-group">
+                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
+                        <input th:field="*{username}" name="username" placeholder="نام کاربری" class="form-control"  type="text" required>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- Text input-->
+
+
+            <div class="form-group">
+                <label class="col-md-4 control-label">نام</label>
+                <div class="col-md-4 inputGroupContainer">
+                    <div class="input-group">
+                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
+                        <input th:field="*{firstName}"  name="firstName" placeholder="نام" class="form-control"  type="text" required>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Text input-->
+
+            <div class="form-group">
+                <label class="col-md-4 control-label" >نام خانوادگی</label>
+                <div class="col-md-4 inputGroupContainer">
+                    <div class="input-group">
+                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
+                        <input th:field="*{lastName}" name="lastName" placeholder="نام خانوادگی" class="form-control"  type="text" required>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Text input-->
+
+
+            <div class="form-group">
+                <label class="col-md-4 control-label">کد ملی</label>
+                <div class="col-md-4 inputGroupContainer">
+                    <div class="input-group">
+                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
+                        <input th:field="*{nationalCode}" name="nationalCode" placeholder="کد ملی" class="form-control"  type="text" required>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Text input-->
+
+
+            <div class="form-group">
+                <label class="col-md-4 control-label">رمز عبور</label>
+                <div class="col-md-4 inputGroupContainer">
+                    <div class="input-group">
+                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
+                        <input th:field="*{password}" name="password" placeholder="رمز عبور" class="form-control"  type="password" required>
+                    </div>
+                </div>
+            </div>
+
+
+
+            <div class="form-group">
+                <label class="col-md-4 control-label">شماره تلفن همراه</label>
+                <div class="col-md-4 inputGroupContainer">
+                    <div class="input-group">
+                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
+                        <input th:field="*{phoneNumber}" name="phoneNumber" placeholder="شماره تلفن همراه" class="form-control"  type="text" required>
+                    </div>
+                </div>
+            </div>
+
+
+
+
+            <!-- Success message -->
+            <div th:if="${showMessage && valid}" class="alert alert-success" role="alert" id="success_message"> <i class="glyphicon glyphicon-thumbs-up"></i> اطلاعات با موفقیت ذخیره شد.</div>
+            <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert" id="warning_message" th:text="${message}"> <i class="glyphicon glyphicon-thumbs-up"></i> لطفا اطلاعات را بطور صحیح وارد نمایید.</div>
+
+            <!-- Button -->
+            <div class="form-group">
+                <label class="col-md-4 control-label"></label>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-warning" >ذخیره <span class="glyphicon glyphicon-send"></span></button>
+                </div>
+            </div>
+
+        </fieldset>
+    </form>
+    <a th:href="@{/users}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست کاربران</a>
+</div>
+</div>
+<script src="/webjars/jquery/3.7.1/jquery.min.js"></script>
+
+<script>
+    $('#userForm').on('submit', function() {
+
+
+        return true;
+    });
+
+    $(document).ready(function() {
+
+
+    });
+</script>
+
+
+</body>
+</html>

@@ -155,9 +155,9 @@ class UserServiceTest {
 
         underTest.updateUserRoles(user1Id, new ArrayList<>());
 
-        User user = underTest.getUserByIdOrUsername(0, "admin username");
+        UserDTO user = underTest.getUserDtoByIdOrUsername(0, "admin username");
 
-        assertThat(user.getRoles().size()).isEqualTo(0);
+        assertThat(user.getRoleList().size()).isEqualTo(0);
 
 
     }
@@ -179,7 +179,7 @@ class UserServiceTest {
 
         underTest.updateUserRoles(user1Id, roleDTOList);
 
-        User user = underTest.getUserByIdOrUsername(user1Id, null);
-        assertThat(user.getRoles().size()).isEqualTo(2);
+        UserDTO user = underTest.getUserDtoByIdOrUsername(user1Id, null);
+        assertThat(user.getRoleList().size()).isEqualTo(2);
     }
 }

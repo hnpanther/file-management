@@ -10,6 +10,7 @@ import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.PermissionRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
+import com.hnp.filemanagement.util.ModelConverterUtil;
 import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,9 +97,21 @@ public class UserService {
 
     }
 
-    public User getUserByIdOrUsername(int id, String username) {
+
+    private User getUserByIdOrUsername(int id, String username) {
         return userRepository.findByIdOrUsername(id, username).orElseThrow(
                 () -> new ResourceNotFoundException("user not found. id=" + id + " or username=" + username)
         );
     }
+
+    @Transactional
+    public UserDTO getUserDtoByIdOrUsername(int id, String username) {
+        User user = userRepository.findByIdOrUsername(id, username).orElseThrow(
+                () -> new ResourceNotFoundException("user not found. id=" + id + " or username=" + username)
+        );
+
+        return  ModelConverterUtil.convertUserToUserDTO(user);
+    }
+
+
 }

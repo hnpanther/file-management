@@ -3,6 +3,8 @@ package com.hnp.filemanagement.dto;
 
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class RoleDTO {
 
@@ -11,4 +13,6 @@ public class RoleDTO {
     private String roleName;
 
     private boolean selected;
+
+    List<PermissionDTO> permissionDTOS;
 }
