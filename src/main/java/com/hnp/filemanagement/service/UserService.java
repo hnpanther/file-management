@@ -194,5 +194,10 @@ public class UserService {
 
     }
 
+    @Transactional
+    public List<UserDTO> getAllUser() {
+        return userRepository.findAll().stream().map(ModelConverterUtil::convertUserToUserDTO).toList();
+    }
+
 
 }

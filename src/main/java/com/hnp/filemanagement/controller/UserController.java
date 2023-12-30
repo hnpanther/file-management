@@ -249,6 +249,24 @@ public class UserController {
     }
 
 
+    @GetMapping
+    public String viewAllUserPage(Model model, HttpServletRequest request) {
+        int principalId = 0;
+        String principalUsername = "None";
+        String logMessage = "request to get page of all user";
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "UserController.class", logMessage);
+
+
+        List<UserDTO> userDTOS = userService.getAllUser();
+
+        model.addAttribute("users", userDTOS);
+
+        return "user/users.html";
+    }
+
+
 
 
 

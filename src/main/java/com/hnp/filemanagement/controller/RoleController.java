@@ -179,4 +179,21 @@ public class RoleController {
         return "role/save-role.html";
     }
 
+
+    @GetMapping("/roles")
+    public String viewAllRoles(Model model, HttpServletRequest request) {
+        int principalId = 0;
+        String principalUsername = "None";
+        String logMessage = "request to get view all roles";
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "RoleController.class", logMessage);
+
+        List<RoleDTO> roleDTOList = roleService.getAllRoles();
+
+        model.addAttribute("roles", roleDTOList);
+
+        return "role/roles.html";
+    }
+
 }
