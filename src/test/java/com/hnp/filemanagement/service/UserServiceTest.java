@@ -177,7 +177,7 @@ class UserServiceTest {
     @Test
     @Commit
     void updateUserRolesTest() {
-        List<RoleDTO> roleDTOList = new ArrayList<>();
+        List<Integer> roleDTOList = new ArrayList<>();
 
         RoleDTO roleDTO1 = new RoleDTO();
         roleDTO1.setId(userRoleId);
@@ -187,7 +187,7 @@ class UserServiceTest {
         roleDTO2.setId(managerRoleId);
         roleDTO2.setSelected(true);
 
-        roleDTOList.addAll(List.of(roleDTO1, roleDTO2));
+        roleDTOList.addAll(List.of(roleDTO1.getId(), roleDTO2.getId()));
 
         underTest.updateUserRoles(user1Id, roleDTOList);
 
@@ -257,5 +257,16 @@ class UserServiceTest {
                 () -> underTest.updateUser(userDTO)
         ).isInstanceOf(DuplicateResourceException.class);
 
+    }
+
+
+    @Test
+    @Commit
+    void getAllRoleDtoOfUserWithSelectedTest() {
+        List<RoleDTO> allRoleDtoOfUserWithSelected = underTest.getAllRoleDtoOfUserWithSelected(user1Id);
+        List<RoleDTO> roleSelected = allRoleDtoOfUserWithSelected.stream().filter(roleDTO -> roleDTO.isSelected()).toList();
+
+        assertThat(allRoleDtoOfUserWithSelected.size()).isEqualTo(2);
+        assertThat(roleSelected.size()).isEqualTo(1);
     }
 }

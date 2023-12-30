@@ -134,22 +134,19 @@ public class UserService {
     }
 
     @Transactional
-    public void updateUserRoles(int userId, List<RoleDTO> roleDTOList) {
+    public void updateUserRoles(int userId, List<Integer> roleDTOIdList) {
 
-        if(roleDTOList == null) {
+        if(roleDTOIdList == null) {
             throw new InvalidDataException("role list can not be null");
         }
 
         User user = getUserByIdOrUsername(userId, null);
 
 
-        List<Integer> roleIdList = roleDTOList.stream()
-                .filter(RoleDTO::isSelected)
-                .map(RoleDTO::getId).toList();
 
-        List<Role> roles = this.roleService.getRoleByIds(roleIdList);
-        if(roles.size() != roleIdList.size()) {
-            throw new InvalidDataException("invalid role for add to user, roleList=" +roleDTOList);
+        List<Role> roles = this.roleService.getRoleByIds(roleDTOIdList);
+        if(roles.size() != roleDTOIdList.size()) {
+            throw new InvalidDataException("invalid role for add to user, roleList=" +roleDTOIdList);
         }
 
 
@@ -175,6 +172,26 @@ public class UserService {
         );
 
         return  ModelConverterUtil.convertUserToUserDTO(user);
+    }
+
+    @Transactional
+    public List<RoleDTO> getAllRoleDtoOfUserWithSelected(int userId) {
+        User user = getUserByIdOrUsername(userId, null);
+        List<RoleDTO> roleDTOList = roleService.getAllRoles();
+
+        for(RoleDTO roleDTO: roleDTOList) {
+            for(Role role: user.getRoles()) {
+                if(roleDTO.getId().equals(role.getId())) {
+                    roleDTO.setSelected(true);
+                    break;
+                }
+            }
+        }
+
+        return roleDTOList;
+
+
+
     }
 
 

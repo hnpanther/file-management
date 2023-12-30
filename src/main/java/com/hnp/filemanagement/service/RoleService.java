@@ -133,6 +133,12 @@ public class RoleService {
 
     }
 
+    @Transactional
+    public List<RoleDTO> getAllRoles() {
+        return roleRepository.findAll().stream().map(ModelConverterUtil::convertRoleToRoleDTO).toList();
+    }
+
+
 
 
     private boolean checkRoleExistsWithName(String roleName) {

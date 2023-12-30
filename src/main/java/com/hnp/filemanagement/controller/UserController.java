@@ -1,14 +1,14 @@
 package com.hnp.filemanagement.controller;
 
-import com.hnp.filemanagement.dto.InsertValidation;
-import com.hnp.filemanagement.dto.UpdateValidation;
-import com.hnp.filemanagement.dto.UserDTO;
+import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
+import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.RoleService;
 import com.hnp.filemanagement.service.UserService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
@@ -16,6 +16,8 @@ import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @Controller
 @RequestMapping("/users")
@@ -172,6 +174,82 @@ public class UserController {
         model.addAttribute("pageType", "update");
         return "user/save-user.html";
     }
+
+
+    @GetMapping("{userId}/roles")
+    public String viewRoleOfUsers(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
+
+        int principalId = 0;
+        String principalUsername = "None";
+        String logMessage = "request to get user role page with userId=" + userId;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "UserController.class", logMessage);
+
+
+        UserDTO userDTO = userService.getUserDtoByIdOrUsername(userId, null);
+
+        List<RoleDTO> roleDTOList = userService.getAllRoleDtoOfUserWithSelected(userId);
+        model.addAttribute("user", userDTO);
+        model.addAttribute("roles", roleDTOList);
+        model.addAttribute("showMessage", false);
+        model.addAttribute("valid", false);
+        model.addAttribute("message", "");
+
+        return "user/user-role.html";
+    }
+
+    @PostMapping("{userId}/roles")
+    public String saveUpdatedUserRoles(@PathVariable("userId") int userId, @ModelAttribute @Valid UserRoleDTO userRoleDTO, BindingResult bindingResult,
+                                       Model model, HttpServletRequest request) {
+
+        int principalId = 0;
+        String principalUsername = "None";
+        String logMessage = "request to save user roles for user with id=" + userId + " user roles=" + userRoleDTO;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "UserController.class", logMessage);
+
+        boolean showMessage = true;
+        boolean valid = false;
+        String message = "";
+
+        if(bindingResult.hasErrors()) {
+            message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "UserController.class",
+                    "ValidationError:" + bindingResult);
+        } else {
+            try {
+                userService.updateUserRoles(userId, userRoleDTO.getRolesIds());
+                valid = true;
+                message = "اطلاعات با موفقیت ذخیره شد";
+            } catch (ResourceNotFoundException e) {
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "UserController.class",
+                        "ResourceNotFoundException:" + e.getMessage());
+                message = "اطلاعات صحیح نمیباشد";
+            } catch (InvalidDataException e) {
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "UserController.class",
+                        "InvalidDataException:" + e.getMessage());
+                message = "اطلاعات صحیح نمیباشد";
+            }
+        }
+
+        List<RoleDTO> roleDTOList = userService.getAllRoleDtoOfUserWithSelected(userId);
+        model.addAttribute("user", userRoleDTO);
+        model.addAttribute("roles", roleDTOList);
+        model.addAttribute("showMessage", showMessage);
+        model.addAttribute("valid", valid);
+        model.addAttribute("message", message);
+
+        return "user/user-role.html";
+
+    }
+
+
+
 
 
 
