@@ -1,9 +1,11 @@
 package com.hnp.filemanagement.util;
 
 
+import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.PermissionDTO;
 import com.hnp.filemanagement.dto.RoleDTO;
 import com.hnp.filemanagement.dto.UserDTO;
+import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.Permission;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.User;
@@ -60,5 +62,16 @@ public class ModelConverterUtil {
 
         return permissionDTO;
 
+    }
+
+    public static FileCategoryDTO convertFileCategoryToFileCategoryDTO(FileCategory fileCategory) {
+
+        FileCategoryDTO fileCategoryDTO = new FileCategoryDTO();
+        fileCategoryDTO.setId(fileCategory.getId());
+        fileCategoryDTO.setCategoryName(fileCategory.getCategoryName());
+        fileCategoryDTO.setCategoryNameDescription(fileCategory.getCategoryNameDescription());
+        fileCategoryDTO.setDescription(fileCategory.getDescription());
+
+        return fileCategoryDTO;
     }
 }

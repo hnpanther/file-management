@@ -23,7 +23,7 @@ public class FileStorageFileSystemService implements FileStorageService {
 
     private final Logger logger = LoggerFactory.getLogger(FileStorageFileSystemService.class);
 
-    private String baseDir;
+    private final String baseDir;
 
 
     public FileStorageFileSystemService(@Value("${file.management.base-dir}") String baseDir) {
@@ -215,6 +215,7 @@ public class FileStorageFileSystemService implements FileStorageService {
     }
 
 
+    @Override
     public void createDirectory(String title, boolean isSubDirectory) {
 
         if(!isSubDirectory) {
@@ -224,7 +225,8 @@ public class FileStorageFileSystemService implements FileStorageService {
         }
 
 
-        String directoryPath = baseDir + "/" + title;
+//        String directoryPath = baseDir + "/" + title;
+        String directoryPath = baseDir +  title;
         logger.debug("FileStorageFileSystemService.createDirectory() -> creating new directory: " + directoryPath);
         Path path = Paths.get(directoryPath);
         if(Files.notExists(path)) {

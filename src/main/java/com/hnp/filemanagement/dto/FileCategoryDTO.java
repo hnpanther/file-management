@@ -7,14 +7,19 @@ import lombok.Data;
 @Data
 public class FileCategoryDTO {
 
+    @NotNull(groups = {UpdateValidation.class})
     private Integer id;
 
-    @NotNull
-    @NotBlank
+    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+    @NotBlank(groups = {InsertValidation.class, UpdateValidation.class})
     private String categoryName;
 
-    @NotNull
-    @NotBlank
+    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+    @NotBlank(groups = {InsertValidation.class, UpdateValidation.class})
+    private String categoryNameDescription;
+
+//    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+//    @NotBlank(groups = {InsertValidation.class, UpdateValidation.class})
     private String description;
 
 
