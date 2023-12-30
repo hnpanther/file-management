@@ -44,6 +44,7 @@ public class UserService {
 
         Role role = roleService.getByIdOrRoleName(0, "USER");
 
+
         boolean duplicateCheck = userRepository.existsByUsernameOrPersonelCodeOrNationalCodeOrPhoneNumber(
                 userDTO.getUsername(), userDTO.getPersonelCode(), userDTO.getNationalCode(), userDTO.getPhoneNumber()
         );

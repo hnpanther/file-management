@@ -38,7 +38,7 @@ public class ModelConverterUtil {
         RoleDTO roleDTO = new RoleDTO();
         roleDTO.setId(role.getId());
         roleDTO.setRoleName(role.getRoleName());
-        roleDTO.setSelected(true);
+        roleDTO.setSelected(false);
         roleDTO.setPermissionDTOS(
                 role.getPermissions().stream().map(
                         ModelConverterUtil::convertPermissionToPermissionDTO
@@ -55,7 +55,7 @@ public class ModelConverterUtil {
         PermissionDTO permissionDTO = new PermissionDTO();
         permissionDTO.setId(permission.getId());
         permissionDTO.setPermissionName(permission.getPermissionName());
-        permissionDTO.setSelected(true);
+        permissionDTO.setSelected(false);
         permissionDTO.setDescription(permission.getDescription());
 
         return permissionDTO;

@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.dto;
 
 
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.util.List;
@@ -8,11 +9,16 @@ import java.util.List;
 @Data
 public class RoleDTO {
 
+    @NotNull(groups = UpdateValidation.class)
     private Integer id;
 
+    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
     private String roleName;
 
     private boolean selected;
 
     List<PermissionDTO> permissionDTOS;
+
+    @NotNull(groups = UpdateValidation.class)
+    List<Integer> permissionDTOListId;
 }

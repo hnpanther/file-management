@@ -29,6 +29,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class RoleServiceTest {
 
 
+
+
     @Autowired
     private EntityManager entityManager;
 
@@ -39,6 +41,8 @@ class RoleServiceTest {
     private PermissionRepository permissionRepository;
 
     private RoleService underTest;
+
+    private int role1Id = 0;
 
     @BeforeEach
     void setUp() {
@@ -65,6 +69,8 @@ class RoleServiceTest {
         role1.setPermissions(List.of(p1));
 
         roleRepository.save(role1);
+
+        role1Id = role1.getId();
 
     }
 
@@ -128,10 +134,10 @@ class RoleServiceTest {
         permissionDTO.setSelected(true);
         permissionDTO.setId(permission.getId());
 
-        List<PermissionDTO> permissionDTOList = new ArrayList<>();
-        permissionDTOList.addAll(List.of(permissionDTO));
+//        List<PermissionDTO> permissionDTOList = new ArrayList<>();
+//        permissionDTOList.addAll(List.of(permissionDTO));
 
-        underTest.updatePermissionsOfRole(role.getId(), permissionDTOList);
+        underTest.updatePermissionsOfRole(role.getId(), List.of(permissionDTO.getId()));
 
         Role updatedRole = roleRepository.findByRoleName("USER").get();
         assertThat(updatedRole.getPermissions().size()).isEqualTo(1);
@@ -160,9 +166,22 @@ class RoleServiceTest {
         permissionDTO.setSelected(true);
 
         assertThatThrownBy(
-                () -> underTest.updatePermissionsOfRole(role.getId(), List.of(permissionDTO))
+                () -> underTest.updatePermissionsOfRole(role.getId(), List.of(permissionDTO.getId()))
         ).isInstanceOf(InvalidDataException.class);
 
+
+    }
+
+
+    @Test
+    @Commit
+    void getAllPermissionsOfRoleWithSelectedTest() {
+
+        List<PermissionDTO> allPermissionsOfRoleWithSelected = underTest.getAllPermissionsOfRoleWithSelected(role1Id);
+        List<PermissionDTO> permissionDtoSelected = allPermissionsOfRoleWithSelected.stream().filter(PermissionDTO::isSelected).toList();
+
+        assertThat(allPermissionsOfRoleWithSelected.size()).isEqualTo(3);
+        assertThat(permissionDtoSelected.size()).isEqualTo(1);
 
     }
 
