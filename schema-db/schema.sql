@@ -192,6 +192,7 @@ CREATE TABLE file_details
     file_info_id   INT           NOT NULL,
     file_name      VARCHAR(100)  NOT NULL,
     file_extension VARCHAR(10)   NOT NULL,
+    content_type   VARCHAR(100)  NOT NULL,
     version        INT           NOT NULL,
     version_name   VARCHAR(100)  NOT NULL,
     description    VARCHAR(1000) NOT NULL,

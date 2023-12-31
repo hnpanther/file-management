@@ -15,4 +15,8 @@ public interface FileSubCategoryRepository extends JpaRepository<FileSubCategory
 
 
     Optional<FileSubCategory> findByIdOrSubCategoryName(int id, String subCategoryName);
+
+
+    @Query("SELECT f FROM FileSubCategory f LEFT JOIN FETCH f.mainTagFiles WHERE f.id = (:id)")
+    Optional<FileSubCategory> findByIdAndFetchMainTag(int id);
 }

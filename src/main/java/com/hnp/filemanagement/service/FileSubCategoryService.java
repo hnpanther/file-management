@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
+import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.User;
@@ -125,6 +126,15 @@ public class FileSubCategoryService {
         );
 
         return ModelConverterUtil.convertFileSubCategoryToFileSubCategoryDTO(fileSubCategory);
+    }
+
+    public List<MainTagFileDTO> getMainTagsOfSubCategory(int id) {
+        FileSubCategory fileSubCategory = fileSubCategoryRepository.findByIdAndFetchMainTag(id).orElseThrow(
+                () -> new ResourceNotFoundException(("fileSubCategory with id=" + id + " not exists"))
+        );
+
+        return
+                fileSubCategory.getMainTagFiles().stream().map(ModelConverterUtil::convertMainTagFileToMainTagFileDTO).toList();
     }
 
 

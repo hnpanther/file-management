@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title th:if="${#strings.equals(pageType, 'create')}">ایجاد فایل</title>
+    <title th:if="${#strings.equals(pageType, 'update')}">ویرایش ویرایش</title>
+
+    <link rel="stylesheet"
+          href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="/webjars/select2/4.0.13/css/select2.min.css"/>
+
+    <style>
+        label {
+            float: right
+        }
+
+    </style>
+</head>
+<body>
+
+<div th:insert="~{navbar.html :: navbar}"></div>
+
+
+<h2></h2>
+<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl">ایجاد فایل </h2>
+<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl">ویرایش فایل</h2>
+<div class="container">
+    <form enctype="multipart/form-data" th:action="@{ ${#strings.equals(pageType, 'create') ? '/files' : '/files/' + file.getId()}  }" method="post" id="categoryForm" th:object="${file}">
+
+        <input th:field="*{id}" type="hidden">
+
+
+
+
+        <div class="form-row">
+
+            <div class="form-group col-md-6">
+                <label>توضیحات</label>
+                <input dir="rtl" type="text" class="form-control" th:field="*{description}" required>
+            </div>
+
+            <div class="form-group col-md-6">
+                <label>عنوان فایل</label>
+                <input dir="rtl" type="text" class="form-control" th:field="*{fileName}" readonly>
+            </div>
+
+
+            <div class="form-group col-md-6">
+                <label>انتخاب زیر دسته بندی </label>
+                <select class="form-control fileSubCategoryId" name="fileSubCategoryId" id="fileSubCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
+
+                </select>
+            </div>
+
+
+            <div class="form-group col-md-6">
+                <label>انتخاب دسته بندی اصلی</label>
+                <select class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
+                    <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getCategoryNameDescription()}" th:selected="${f.getId() == file.getFileCategoryId()}"></option>
+                </select>
+            </div>
+
+            <div class="form-group col-md-6">
+                <label for="fileUpload">انتخاب فایل</label>
+                <input type="file" class="form-control-file" name="multipartFile" id="fileUpload">
+            </div>
+
+            <div class="form-group col-md-6">
+                <label>انتخاب تگ </label>
+                <select class="form-control mainTagFileId" name="mainTagFileId" id="mainTagFileId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
+
+                </select>
+            </div>
+
+
+
+
+
+
+
+        </div>
+
+
+        <!-- Success message -->
+        <div th:if="${showMessage && valid}" class="alert alert-success" role="alert" id="success_message"><i
+                class="glyphicon glyphicon-thumbs-up" th:text="${message}"></i>
+        </div>
+        <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert" id="warning_message"
+             th:text="${message}"><i class="glyphicon glyphicon-thumbs-up"></i>
+        </div>
+
+        <button type="submit" class="btn btn-primary">ذخیره</button>
+    </form>
+    <hr>
+    <a th:href="@{/main-tags}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست فایل ها</a>
+</div>
+
+
+<script src="/webjars/jquery/3.7.1/jquery.min.js"></script>
+<script src="/webjars/select2/4.0.13/js/select2.min.js"></script>
+<script>
+
+    $(document).ready(function () {
+        $('.fileCategoryId').select2({
+            width: '100%'
+        });
+
+        $('.fileSubCategoryId').select2({
+            width: '100%',
+            ajax: {
+
+                url: function (params) {
+                    if (typeof params.term == 'undefined') {
+                        params.term = '';
+                    }
+
+                    let fileCategoryId = $('#fileCategoryId').val();
+                    if(fileCategoryId === null) {
+                        fileCategoryId = -1;
+                    }
+                    return '/resource/file-categories/' + fileCategoryId + '/sub-categories';
+                },
+                dataType: 'json'
+            }
+        });
+
+        $('.mainTagFileId').select2({
+            width: '100%',
+            ajax: {
+                url: function (params) {
+                    if (typeof params.term == 'undefined') {
+                        params.term = '';
+                    }
+
+                    let fileSubCategoryId = $('#fileSubCategoryId').val();
+                    if(fileSubCategoryId === null) {
+                        fileSubCategoryId = -1;
+                    }
+                    return '/resource/file-sub-categories/' + fileSubCategoryId + '/main-tags';
+                },
+                dataType: 'json'
+            }
+        });
+    })
+
+    $('#categoryForm').on('submit', function() {
+
+        return true;
+    });
+
+</script>
+
+
+</body>
+</html>

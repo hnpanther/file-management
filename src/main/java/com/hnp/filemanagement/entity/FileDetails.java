@@ -21,6 +21,9 @@ public class FileDetails {
     @Column(name = "file_extension", nullable = false)
     private String fileExtension;
 
+    @Column(name = "content_type", nullable = false)
+    private String contentType;
+
     @Column(name = "description")
     private String description;
 

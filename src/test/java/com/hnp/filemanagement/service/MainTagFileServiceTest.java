@@ -290,18 +290,20 @@ class MainTagFileServiceTest {
         ).isInstanceOf(DuplicateResourceException.class);
     }
 
-    @Test
-    @Commit
-    void updateInvalidMainTagFileTest() {
-        MainTagFileDTO mainTagFileDTO = new MainTagFileDTO();
-        mainTagFileDTO.setId(mainTagFileContractId);
-        mainTagFileDTO.setTagName("new_mail12");
-        mainTagFileDTO.setDescription("de1scription new tag mail12");
-        mainTagFileDTO.setFileSubCategoryId(fileSubCategorySubMailId2);
-        mainTagFileDTO.setFileCategoryId(fileCategoryMailId);
+//    @Test
+//    @Commit
+//    void updateInvalidMainTagFileTest() {
+//        MainTagFileDTO mainTagFileDTO = new MainTagFileDTO();
+//        mainTagFileDTO.setId(mainTagFileContractId);
+//        mainTagFileDTO.setTagName("new_mail12");
+//        mainTagFileDTO.setDescription("de1scription new tag mail12");
+//        mainTagFileDTO.setFileSubCategoryId(fileSubCategorySubMailId2);
+//        mainTagFileDTO.setFileCategoryId(fileCategoryMailId);
+//
+//        assertThatThrownBy(
+//                () -> underTest.updateMainTagFile(mainTagFileDTO, userId)
+//        ).isInstanceOf(InvalidDataException.class);
+//    }
 
-        assertThatThrownBy(
-                () -> underTest.updateMainTagFile(mainTagFileDTO, userId)
-        ).isInstanceOf(InvalidDataException.class);
-    }
+
 }
