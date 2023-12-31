@@ -27,7 +27,7 @@
 <h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl">ایجاد دسته بندی جدید</h2>
 <h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl">ویرایش دسته بندی</h2>
 <div class="container">
-    <form th:action="@{/file-categories}" method="post" id="categoryForm" th:object="${fileCategory}">
+    <form th:action="@{ ${#strings.equals(pageType, 'create') ? '/file-categories' : '/file-categories/' + fileCategory.getId()}  }" method="post" id="categoryForm" th:object="${fileCategory}">
 
         <input th:field="*{id}" type="hidden">
 

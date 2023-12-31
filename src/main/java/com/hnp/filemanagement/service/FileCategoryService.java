@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class FileCategoryService {
@@ -93,6 +94,11 @@ public class FileCategoryService {
         fileCategoryRepository.deleteById(id);
         fileStorageService.delete(fileCategory.getCategoryName(), null, 0, "", false);
 
+    }
+
+    @Transactional
+    public List<FileCategoryDTO> getAllFileCategories() {
+        return fileCategoryRepository.findAll().stream().map(ModelConverterUtil::convertFileCategoryToFileCategoryDTO).toList();
     }
 
 
