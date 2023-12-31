@@ -1,14 +1,8 @@
 package com.hnp.filemanagement.util;
 
 
-import com.hnp.filemanagement.dto.FileCategoryDTO;
-import com.hnp.filemanagement.dto.PermissionDTO;
-import com.hnp.filemanagement.dto.RoleDTO;
-import com.hnp.filemanagement.dto.UserDTO;
-import com.hnp.filemanagement.entity.FileCategory;
-import com.hnp.filemanagement.entity.Permission;
-import com.hnp.filemanagement.entity.Role;
-import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.dto.*;
+import com.hnp.filemanagement.entity.*;
 
 public class ModelConverterUtil {
 
@@ -73,5 +67,19 @@ public class ModelConverterUtil {
         fileCategoryDTO.setDescription(fileCategory.getDescription());
 
         return fileCategoryDTO;
+    }
+
+    public static FileSubCategoryDTO convertFileSubCategoryToFileSubCategoryDTO(FileSubCategory fileSubCategory) {
+
+        FileSubCategoryDTO fileSubCategoryDTO = new FileSubCategoryDTO();
+        fileSubCategoryDTO.setId(fileSubCategory.getId());
+        fileSubCategoryDTO.setSubCategoryName(fileSubCategory.getSubCategoryName());
+        fileSubCategoryDTO.setSubCategoryNameDescription(fileSubCategory.getSubCategoryNameDescription());
+        fileSubCategoryDTO.setFileCategoryId(fileSubCategory.getFileCategory().getId());
+        fileSubCategoryDTO.setFileCategoryName(fileSubCategory.getFileCategory().getCategoryName());
+        fileSubCategoryDTO.setFileCategoryNameDescription(fileSubCategory.getFileCategory().getCategoryNameDescription());
+        fileSubCategoryDTO.setDescription(fileSubCategory.getDescription());
+
+        return fileSubCategoryDTO;
     }
 }

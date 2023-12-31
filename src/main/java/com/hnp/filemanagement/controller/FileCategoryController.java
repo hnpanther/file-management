@@ -124,7 +124,7 @@ public class FileCategoryController {
     }
 
     @PostMapping({"{id}"})
-    public String saveUpdatedFileCategory(@PathVariable("id") int categoryId, @ModelAttribute @Validated(UpdateValidation.class) FileCategoryDTO fileCategoryDTO,
+    public String saveUpdatedFileCategory(@PathVariable("id") int categoryId, @ModelAttribute @Validated(InsertValidation.class) FileCategoryDTO fileCategoryDTO,
                                    BindingResult bindingResult, Model model, HttpServletRequest request) {
 
         int principalId = 1;
@@ -184,5 +184,7 @@ public class FileCategoryController {
         model.addAttribute("fileCategories", fileCategoryDTOList);
         return "file-management/category/categories.html";
     }
+
+
 
 }

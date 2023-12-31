@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title th:if="${#strings.equals(pageType, 'create')}">ساخت زیر دسته بندی</title>
+    <title th:if="${#strings.equals(pageType, 'update')}">ویرایش زیر دسته بندی</title>
+
+    <link rel="stylesheet"
+          href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="/webjars/select2/4.0.13/css/select2.min.css"/>
+
+    <style>
+        label {
+            float: right
+        }
+
+    </style>
+</head>
+<body>
+
+<div th:insert="~{navbar.html :: navbar}"></div>
+
+
+<h2></h2>
+<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl">ایجاد زیر دسته بندی جدید</h2>
+<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl">ویرایش زیر دسته بندی</h2>
+<div class="container">
+    <form th:action="@{ ${#strings.equals(pageType, 'create') ? '/file-sub-categories' : '/file-sub-categories/' + fileSubCategory.getId()}  }" method="post" id="categoryForm" th:object="${fileSubCategory}">
+
+        <input th:field="*{id}" type="hidden">
+
+
+
+
+        <div class="form-row">
+
+            <div class="form-group col-md-6">
+                <label>نام زیر دسته بندی(فارسی)</label>
+                <input dir="rtl" type="text" class="form-control" th:field="*{subCategoryNameDescription}" required>
+            </div>
+
+            <div class="form-group col-md-6">
+                <label>عنوان زیر دسته بندی(به انگلیسی بدون فاصله)</label>
+                <input dir="rtl" type="text" class="form-control" th:field="*{subCategoryName}" required th:readonly="${#strings.equals(pageType, 'update')}">
+            </div>
+
+            <div class="form-group col-md-6">
+                <label>انتخاب دسته بندی اصلی</label>
+                <select class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
+                    <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getCategoryNameDescription()}" th:selected="${f.getId() == fileSubCategory.fileCategoryId}"></option>
+                </select>
+            </div>
+
+
+
+        </div>
+
+
+        <!-- Success message -->
+        <div th:if="${showMessage && valid}" class="alert alert-success" role="alert" id="success_message"><i
+                class="glyphicon glyphicon-thumbs-up" th:text="${message}"></i>
+        </div>
+        <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert" id="warning_message"
+             th:text="${message}"><i class="glyphicon glyphicon-thumbs-up"></i>
+        </div>
+
+        <button type="submit" class="btn btn-primary">ذخیره</button>
+    </form>
+    <hr>
+    <a th:href="@{/file-sub-categories}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست زیر دسته بندی ها</a>
+</div>
+
+
+<script src="/webjars/jquery/3.7.1/jquery.min.js"></script>
+<script src="/webjars/select2/4.0.13/js/select2.min.js"></script>
+<script>
+
+    $(document).ready(function () {
+        $('.fileCategoryId').select2({
+            width: '100%'
+        });
+    })
+
+    $('#categoryForm').on('submit', function() {
+
+        return true;
+    });
+
+</script>
+
+
+</body>
+</html>

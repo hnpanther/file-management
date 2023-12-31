@@ -15,4 +15,7 @@ public interface FileCategoryRepository extends JpaRepository<FileCategory, Inte
 
     @Query("SELECT fc FROM FileCategory fc LEFT JOIN fc.fileSubCategories fsc WHERE fc.id = (:id)")
     Optional<FileCategory> findByIdAndFetchFileSubCategory(int id);
+
+
+
 }

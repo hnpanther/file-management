@@ -3,11 +3,13 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
+import com.hnp.filemanagement.util.ValidationUtil;
 import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +48,11 @@ public class FileCategoryService {
 
     @Transactional
     public void createCategory(FileCategoryDTO fileCategoryDTO, int principalId) {
+
+
+        if(!ValidationUtil.checkCorrectDirectoryName(fileCategoryDTO.getCategoryName())) {
+            throw new BusinessException("not correct file category name=" + fileCategoryDTO.getCategoryName());
+        }
 
         if(checkDuplicate(fileCategoryDTO.getCategoryName(), fileCategoryDTO.getCategoryNameDescription())) {
             throw new DuplicateResourceException("category with name=" + fileCategoryDTO.getCategoryName() + " exists");
@@ -106,7 +113,7 @@ public class FileCategoryService {
         return fileCategoryRepository.existsByCategoryNameOrCategoryNameDescription(categoryName, categoryNameDescription);
     }
 
-    private FileCategory getFileCategoryByIdOrCategoryName(int id, String categoryName) {
+    public FileCategory getFileCategoryByIdOrCategoryName(int id, String categoryName) {
         return fileCategoryRepository.findByIdOrCategoryName(id, categoryName).orElseThrow(
                 () -> new ResourceNotFoundException("file category with id=" + id + " and categoryName=" + categoryName + " not exists")
         );
