@@ -82,4 +82,20 @@ public class ModelConverterUtil {
 
         return fileSubCategoryDTO;
     }
+
+    public static MainTagFileDTO convertMainTagFileToMainTagFileDTO(MainTagFile mainTagFile) {
+
+        MainTagFileDTO mainTagFileDTO = new MainTagFileDTO();
+        mainTagFileDTO.setId(mainTagFile.getId());
+        mainTagFileDTO.setTagName(mainTagFile.getTagName());
+        mainTagFileDTO.setDescription(mainTagFile.getDescription());
+        mainTagFileDTO.setFileSubCategoryId(mainTagFile.getFileSubCategory().getId());
+        mainTagFileDTO.setFileSubCategoryName(mainTagFile.getFileSubCategory().getSubCategoryName());
+        mainTagFileDTO.setFileSubCategoryNameDescription(mainTagFile.getFileSubCategory().getSubCategoryNameDescription());
+        mainTagFileDTO.setFileCategoryId(mainTagFile.getFileSubCategory().getFileCategory().getId());
+        mainTagFileDTO.setFileCategoryName(mainTagFile.getFileSubCategory().getFileCategory().getCategoryName());
+        mainTagFileDTO.setFileCategoryNameDescription(mainTagFile.getFileSubCategory().getFileCategory().getCategoryNameDescription());
+
+        return mainTagFileDTO;
+    }
 }
