@@ -193,5 +193,25 @@ public class FileSubCategoryController {
     }
 
 
+    @GetMapping
+    public String viewAllSubCategory(Model model, HttpServletRequest request) {
+
+        int principalId = 1;
+        String principalUsername = "None";
+        String logMessage = "request get all file sub category=";
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileSubCategoryController.class", logMessage);
+
+        List<FileSubCategoryDTO> fileSubCategoryDTOS = fileSubCategoryService.getAll();
+
+        model.addAttribute("listSubCategory", fileSubCategoryDTOS);
+
+
+        return "file-management/sub-category/sub-categories.html";
+
+    }
+
+
 
 }

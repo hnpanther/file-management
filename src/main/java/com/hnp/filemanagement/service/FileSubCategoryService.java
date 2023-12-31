@@ -128,6 +128,11 @@ public class FileSubCategoryService {
     }
 
 
+    public List<FileSubCategoryDTO> getAll() {
+        return fileSubCategoryRepository.findAll().stream().map(ModelConverterUtil::convertFileSubCategoryToFileSubCategoryDTO).toList();
+    }
+
+
 
     private boolean checkDuplicate(int fileCategoryId, String subCategoryName, String subCategoryNameDescription) {
         List<FileSubCategory> fileSubCategories = fileSubCategoryRepository.checkDuplicate(fileCategoryId, subCategoryName, subCategoryNameDescription);
