@@ -52,6 +52,7 @@ public class FileSubCategoryController {
 
 
         FileSubCategoryDTO fileSubCategoryDTO = new FileSubCategoryDTO();
+        fileSubCategoryDTO.setFileCategoryId(0);
         model.addAttribute("fileSubCategory", fileSubCategoryDTO);
         model.addAttribute("listCategory", allFileCategories);
         model.addAttribute("pageType", "create");

@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FileCategoryDTO;
+import com.hnp.filemanagement.dto.FileSubCategoryDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.BusinessException;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -123,6 +125,17 @@ public class FileCategoryService {
         return fileCategoryRepository.findByIdAndFetchFileSubCategory(id).orElseThrow(
                 () -> new ResourceNotFoundException("file category with id=" + id + " not exists")
         );
+    }
+
+    public List<FileSubCategoryDTO> getFileSubCategoryOfCategory(int id) {
+        FileCategory fileCategory = fileCategoryRepository.findByIdAndFetchFileSubCategory(id).orElseThrow(
+                () -> new ResourceNotFoundException("file category with id=" + id + " not exists")
+        );
+        if(fileCategory.getFileSubCategories() == null || fileCategory.getFileSubCategories().isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        return fileCategory.getFileSubCategories().stream().map(ModelConverterUtil::convertFileSubCategoryToFileSubCategoryDTO).toList();
     }
 
     public FileCategoryDTO getFileCategoryDtoByIdOrCategoryName(int id, String categoryName) {

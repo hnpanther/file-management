@@ -123,7 +123,6 @@ CREATE TABLE main_tag_file
     updated_at           DATETIME DEFAULT NULL,
     created_by           INT          NOT NULL,
     updated_by           INT      DEFAULT NULL,
-    CONSTRAINT uq_main_tag_file_tag_name UNIQUE (tag_name),
     CONSTRAINT fk_main_tag_file_sub_category_id FOREIGN KEY (file_sub_category_id) REFERENCES file_sub_category (id),
     CONSTRAINT fk_main_tag_file_created_by_user FOREIGN KEY (created_by) REFERENCES user (id),
     CONSTRAINT fk_main_tag_file_updated_by_user FOREIGN KEY (updated_by) REFERENCES user (id)

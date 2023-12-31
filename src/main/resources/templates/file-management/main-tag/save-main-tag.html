@@ -5,8 +5,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title th:if="${#strings.equals(pageType, 'create')}">ساخت زیر دسته بندی</title>
-    <title th:if="${#strings.equals(pageType, 'update')}">ویرایش زیر دسته بندی</title>
+    <title th:if="${#strings.equals(pageType, 'create')}">ساخت تگ</title>
+    <title th:if="${#strings.equals(pageType, 'update')}">ویرایش تگ</title>
 
     <link rel="stylesheet"
           href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css"/>
@@ -25,10 +25,10 @@
 
 
 <h2></h2>
-<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl">ایجاد زیر دسته بندی جدید</h2>
-<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl">ویرایش زیر دسته بندی</h2>
+<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl">ایجاد تگ جدید</h2>
+<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl">ویرایش تگ</h2>
 <div class="container">
-    <form th:action="@{ ${#strings.equals(pageType, 'create') ? '/file-sub-categories' : '/file-sub-categories/' + fileSubCategory.getId()}  }" method="post" id="categoryForm" th:object="${fileSubCategory}">
+    <form th:action="@{ ${#strings.equals(pageType, 'create') ? '/main-tags' : '/main-tags/' + mainTag.getId()}  }" method="post" id="categoryForm" th:object="${mainTag}">
 
         <input th:field="*{id}" type="hidden">
 
@@ -38,21 +38,30 @@
         <div class="form-row">
 
             <div class="form-group col-md-6">
-                <label>نام زیر دسته بندی(فارسی)</label>
-                <input dir="rtl" type="text" class="form-control" th:field="*{subCategoryNameDescription}" required>
+                <label>نام تگ(فارسی)</label>
+                <input dir="rtl" type="text" class="form-control" th:field="*{description}" required>
             </div>
 
             <div class="form-group col-md-6">
-                <label>عنوان زیر دسته بندی(به انگلیسی بدون فاصله)</label>
-                <input dir="rtl" type="text" class="form-control" th:field="*{subCategoryName}" required th:readonly="${#strings.equals(pageType, 'update')}">
+                <label>نام تگ(به انگلیسی بدون فاصله)</label>
+                <input dir="rtl" type="text" class="form-control" th:field="*{tagName}" required th:readonly="${#strings.equals(pageType, 'update')}">
+            </div>
+
+            <div class="form-group col-md-6">
+                <label>انتخاب زیر دسته بندی </label>
+                <select class="form-control fileSubCategoryId" name="fileSubCategoryId" id="fileSubCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
+
+                </select>
             </div>
 
             <div class="form-group col-md-6">
                 <label>انتخاب دسته بندی اصلی</label>
                 <select class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
-                    <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getCategoryNameDescription()}" th:selected="${f.getId() == fileSubCategory.getFileCategoryId()}"></option>
+                    <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getCategoryNameDescription()}" th:selected="${f.getId() == mainTag.getFileCategoryId()}"></option>
                 </select>
             </div>
+
+
 
 
 
@@ -81,6 +90,25 @@
     $(document).ready(function () {
         $('.fileCategoryId').select2({
             width: '100%'
+        });
+
+        $('.fileSubCategoryId').select2({
+            width: '100%',
+            ajax: {
+
+                url: function (params) {
+                    if (typeof params.term == 'undefined') {
+                        params.term = '';
+                    }
+
+                    let fileCategoryId = $('#fileCategoryId').val();
+                    if(fileCategoryId === null) {
+                        fileCategoryId = -1;
+                    }
+                    return '/resource/file-categories/' + fileCategoryId + '/sub-categories';
+                },
+                dataType: 'json'
+            }
         });
     })
 

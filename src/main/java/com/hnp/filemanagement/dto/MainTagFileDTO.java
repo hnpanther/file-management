@@ -24,6 +24,7 @@ public class MainTagFileDTO {
     private String fileSubCategoryName;
     private String fileSubCategoryNameDescription;
 
+    @NotNull(groups = InsertValidation.class)
     private Integer fileCategoryId;
     private String fileCategoryName;
     private String fileCategoryNameDescription;
