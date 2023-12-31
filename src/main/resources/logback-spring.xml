@@ -6,7 +6,8 @@
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
     <!-- Setting up log path and log file name -->
-    <property name="LOG_PATH" value="./tmp/logs" />
+<!--    <property name="LOG_PATH" value="./tmp/logs" />-->
+    <property name="LOG_PATH" value="D:/files/logs" />
     <property name="LOG_FILE_NAME" value="app_log" />
 
     <!-- Setting up logging pattern for console logging -->
