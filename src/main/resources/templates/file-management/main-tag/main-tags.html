@@ -5,7 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>لیست زیر دسته بندی ها</title>
+    <title>لیست تگ ها</title>
 
     <link rel="stylesheet"
           href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css"/>
@@ -22,7 +22,7 @@
         <div class="col">
             <div class="e-tabs mb-3 px-3">
                 <ul class="nav nav-tabs">
-                    <li class="nav-item"><a class="nav-link active" href="#">زیر دسته بندی ها</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="#">تگ ها</a></li>
                 </ul>
             </div>
 
@@ -32,8 +32,8 @@
                     <div class="e-panel card">
                         <div class="card-body">
                             <div class="card-title">
-                                <a class="btn btn-success btn-block" type="button" style="width: 30%;" th:href="@{/file-sub-categories/create}">ایجاد
-                                    زیر دسته بندی جدید
+                                <a class="btn btn-success btn-block" type="button" style="width: 30%;" th:href="@{/main-tags/create}">ایجاد
+                                    تگ جدید
                                 </a>
                             </div>
                             <div class="e-table">
@@ -42,25 +42,29 @@
                                         <thead>
                                         <tr>
                                             <th class="max-width">شناسه</th>
-                                            <th class="max-width">عنوان زیر دسته بندی(انگلیسی)</th>
-                                            <th class="max-width">نام زیر دسته بندی(فارسی)</th>
+                                            <th class="max-width">عنوان تگ(انگلیسی)</th>
+                                            <th class="max-width">عنوان تگ(فارسی)</th>
                                             <th class="max-width">نام دسته بندی اصلی(فارسی)</th>
                                             <th class="max-width">نام دسته بندی اصلی(انگلیسی)</th>
+                                            <th class="max-width">نام زیر دسته بندی اصلی(فارسی)</th>
+                                            <th class="max-width">نام زیر دسته بندی اصلی(انگلیسی)</th>
                                             <th>عملیات</th>
                                         </tr>
                                         </thead>
                                         <tbody>
-                                        <tr th:each="f: ${listSubCategory}">
+                                        <tr th:each="tag: ${tags}">
 
-                                            <td class="text-nowrap align-middle" th:text="${f.getId()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${f.getSubCategoryName()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${f.getSubCategoryNameDescription()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${f.getFileCategoryNameDescription()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${f.getFileCategoryName()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${tag.getId()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${tag.getTagName()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${tag.getDescription()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${tag.getFileCategoryNameDescription()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${tag.getFileCategoryName()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${tag.getFileSubCategoryName()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${tag.getFileSubCategoryName()}"></td>
                                             <td class="text-center align-middle">
                                                 <div class="btn-group align-top">
                                                     <a class="btn btn-sm btn-outline-secondary badge" type="button"
-                                                       th:href="@{'/file-sub-categories/' + ${f.getId()}}">مشاهده
+                                                       th:href="@{'/main-tags/' + ${tag.getId()}}">مشاهده
                                                     </a>
                                                 </div>
                                             </td>

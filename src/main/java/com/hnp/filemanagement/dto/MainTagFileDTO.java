@@ -18,7 +18,7 @@ public class MainTagFileDTO {
     @NotEmpty(groups = {InsertValidation.class, UpdateValidation.class})
     private String description;
 
-    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+    @NotNull(groups = {InsertValidation.class})
     private Integer fileSubCategoryId;
 
     private String fileSubCategoryName;

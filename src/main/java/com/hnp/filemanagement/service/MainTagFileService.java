@@ -79,7 +79,7 @@ public class MainTagFileService {
         MainTagFile mainTagFile = getMainTagFileByIdOrTagName(mainTagFileDTO.getId(), null);
 
         if(!Objects.equals(mainTagFile.getFileSubCategory().getId(), mainTagFileDTO.getFileSubCategoryId())) {
-            throw new InvalidDataException("invalid subCategoryId=" + mainTagFileDTO);
+//            throw new InvalidDataException("invalid subCategoryId=" + mainTagFileDTO);
         }
 
         String newTagName = mainTagFile.getTagName();
