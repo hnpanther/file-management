@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>لیست فایل ها</title>
+
+    <link rel="stylesheet"
+          href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css"/>
+
+</head>
+<body>
+
+<div th:insert="~{navbar.html :: navbar}"></div>
+
+<div class="container-fluid">
+    <div class="row flex-lg-nowrap">
+
+
+        <div class="col">
+            <div class="e-tabs mb-3 px-3">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item"><a class="nav-link active" href="#">فایل ها</a></li>
+                </ul>
+            </div>
+
+            <div class="row flex-lg-nowrap">
+                <div class="col mb-3">
+
+                    <div class="e-panel card">
+                        <div class="card-body">
+                            <div class="card-title">
+<!--                                <a class="btn btn-success btn-block" type="button" style="width: 30%;" th:href="">ایجاد فایل جدید</a>-->
+                            </div>
+                            <div class="e-table">
+                                <div class="table-responsive table-lg mt-3">
+                                    <table class="table table-bordered">
+                                        <thead>
+                                        <tr>
+                                            <th class="max-width">عنوان فایل</th>
+                                            <th class="max-width">File</th>
+                                            <th class="max-width">دسته بندی اصلی</th>
+                                            <th class="max-width">دسته بندی فرعی</th>
+                                            <th class="max-width">تگ فایل</th>
+                                            <th class="max-width">حجم فایل(MB)</th>
+                                            <th class="max-width">نسخه</th>
+                                            <th>عملیات</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        <tr th:each="file: ${files}">
+
+                                            <td class="text-nowrap align-middle" th:text="${file.getFileInfoName()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${file.getFileName()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${file.getCategoryNameDescription()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${file.getSubCategoryNameDescription()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${file.getTagDescription()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${file.getSize() / (1024*1024)}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${file.getVersion()}"></td>
+                                            <td class="text-center align-middle">
+                                                <div class="btn-group align-top">
+                                                    <a class="btn btn-sm btn-outline-secondary badge" type="button"
+                                                       th:href="@{'/files/public-download/' + ${file.getId()}}">دانلود
+                                                    </a>
+                                                </div>
+                                            </td>
+                                        </tr>
+
+
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <!--                                <div class="d-flex justify-content-center">-->
+                                <!--                                    <ul class="pagination mt-3 mb-0">-->
+                                <!--                                        <li th:if="${pageNumber > 1}" class="page-item disabled"><a th:href="@{/sport/requests/manage(page-number=${pageNumber-1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}">قبلی</a></li>-->
+
+                                <!--                                        <li th:if="${pageNumber > 1}" class="page-item"><a th:text="${pageNumber-1}" th:href="@{/sport/requests/manage(page-number=${pageNumber-1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}" class="page-link"></a></li>-->
+
+                                <!--                                        <li class="page-item active"><a th:text="${pageNumber}" href="#" class="page-link"></a></li>-->
+
+                                <!--                                        <li th:if="${(pageSize * pageNumber) < totalRequestNumber}" class="page-item"><a th:text="${pageNumber+1}" th:href="@{/sport/requests/manage(page-number=${pageNumber+1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}" class="page-link"></a></li>-->
+                                <!--                                        <li th:if="${(pageSize * pageNumber) < totalRequestNumber}" class="page-item">...</a></li>-->
+                                <!--                                        <li th:if="${(pageSize * pageNumber) < totalRequestNumber}" class="page-item"><a th:href="@{/sport/requests/manage(page-number=${pageNumber+1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}">بعدی</a></li>-->
+
+                                <!--                                    </ul>-->
+                                <!--                                </div>-->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+
+    </div>
+</div>
+
+<script src="/webjars/jquery/3.7.1/jquery.min.js"></script>
+
+</body>

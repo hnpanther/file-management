@@ -1,6 +1,8 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.dto.FileDownloadDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
+import com.hnp.filemanagement.dto.PublicFileDetailsDTO;
 import com.hnp.filemanagement.entity.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
@@ -13,6 +15,10 @@ import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -124,6 +130,34 @@ public class FileService {
 
         fileInfoRepository.delete(fileInfo);
         fileStorageService.delete(address, "", 1, "", false);
+    }
+
+    public FileDownloadDTO downloadFile(int fileDetailsId) {
+        FileDetails fileDetails = fileDetailsRepository.findById(fileDetailsId)
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("fileDatails with id=" + fileDetailsId + " not exists")
+                );
+
+        String address = fileDetails.getFileInfo().getMainTagFile().getFileSubCategory().getFileCategory().getCategoryName() + "/"
+                + fileDetails.getFileInfo().getMainTagFile().getFileSubCategory().getSubCategoryName();
+        Resource resource = fileStorageService.load(address, fileDetails.getFileName(), fileDetails.getVersion(), fileDetails.getFileExtension());
+
+        FileDownloadDTO fileDownloadDTO = new FileDownloadDTO();
+        fileDownloadDTO.setResource(resource);
+        fileDownloadDTO.setContentType(fileDetails.getContentType());
+        fileDownloadDTO.setFileName(fileDetails.getFileName());
+
+        return fileDownloadDTO;
+
+    }
+
+    public List<PublicFileDetailsDTO> getAllPublicFileDetails(int pageSize, int pageNumber) {
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
+        List<FileDetails> fileDetails = fileDetailsRepository.getByState(0, pageable);
+
+        return fileDetails.stream().map(ModelConverterUtil::convertFileDetailsToPublicFileDetailsDTO).toList();
+
     }
 
 

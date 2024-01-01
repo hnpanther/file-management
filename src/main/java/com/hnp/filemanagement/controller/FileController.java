@@ -1,7 +1,13 @@
 package com.hnp.filemanagement.controller;
 
 import com.hnp.filemanagement.dto.FileCategoryDTO;
+import com.hnp.filemanagement.dto.FileDownloadDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
+import com.hnp.filemanagement.dto.PublicFileDetailsDTO;
+import com.hnp.filemanagement.exception.DuplicateResourceException;
+import com.hnp.filemanagement.exception.InvalidDataException;
+import com.hnp.filemanagement.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.service.FileCategoryService;
 import com.hnp.filemanagement.service.FileSubCategoryService;
@@ -10,6 +16,9 @@ import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -31,12 +40,15 @@ public class FileController {
     private final FileSubCategoryService fileSubCategoryService;
     private final MainTagFileService mainTagFileService;
 
+    private final FileService fileService;
 
-    public FileController(GlobalGeneralLogging globalGeneralLogging, FileCategoryService fileCategoryService, FileSubCategoryService fileSubCategoryService, MainTagFileService mainTagFileService) {
+
+    public FileController(GlobalGeneralLogging globalGeneralLogging, FileCategoryService fileCategoryService, FileSubCategoryService fileSubCategoryService, MainTagFileService mainTagFileService, FileService fileService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.fileCategoryService = fileCategoryService;
         this.fileSubCategoryService = fileSubCategoryService;
         this.mainTagFileService = mainTagFileService;
+        this.fileService = fileService;
     }
 
     @GetMapping("create")
@@ -97,8 +109,21 @@ public class FileController {
                     "ValidationError:" + bindingResult);
         } else {
 
-
-
+            try {
+                fileService.createNewFile(fileInfoDTO, principalId);
+                valid = true;
+                message = "اطلاعات با موفقیت ذخیره شد";
+            } catch (InvalidDataException e) {
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "FileController.class",
+                        "InvalidDataException:" + e.getMessage());
+                message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
+            } catch (DuplicateResourceException e) {
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "FileController.class",
+                        "DuplicateResourceException:" + e.getMessage());
+                message = "فایلی با اطلاعات مشابه در سیستم وجود دارد";
+            }
 
         }
 
@@ -112,6 +137,49 @@ public class FileController {
 
         return "file-management/files/save-file.html";
     }
+
+
+    @GetMapping("public-files")
+    public String getAllPublicFile(Model model, HttpServletRequest request) {
+
+
+        int principalId = 1;
+        String principalUsername = "None";
+        String logMessage = "request to get all public files";
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileController.class", logMessage);
+
+        List<PublicFileDetailsDTO> allPublicFileDetails = fileService.getAllPublicFileDetails(50, 0);
+
+
+        model.addAttribute("files", allPublicFileDetails);
+
+        return "file-management/files/files-public.html";
+    }
+
+    @GetMapping("public-download/{id}")
+    public ResponseEntity<?> downloadPublicFile(@PathVariable("id") int fileDetailsId, HttpServletRequest request) {
+
+        int principalId = 1;
+        String principalUsername = "None";
+        String logMessage = "request download fileDetails with id=" + fileDetailsId;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileController.class", logMessage);
+
+        FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId);
+        String contentType = fileDownloadDTO.getContentType();
+        String header = "attachment; filename=\"" + fileDownloadDTO.getFileName() + "\"";
+
+
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(HttpHeaders.CONTENT_DISPOSITION, header)
+                .body(fileDownloadDTO.getResource());
+    }
+
 
 
 

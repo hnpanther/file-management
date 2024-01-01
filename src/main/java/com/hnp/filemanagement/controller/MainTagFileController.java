@@ -100,17 +100,17 @@ public class MainTagFileController {
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (DuplicateResourceException e) {
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "FileSubCategoryController.class",
+                        request.getMethod() + " " + path, "MainTagFileController.class",
                         "DuplicateResourceException:" + e.getMessage());
                 message = "دسته بندی با این اطلاعات در سیستم موجود میباشد";
             } catch (BusinessException e) {
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "FileSubCategoryController.class",
+                        request.getMethod() + " " + path, "MainTagFileController.class",
                         "BusinessException:" + e.getMessage());
                 message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
             } catch (InvalidDataException e) {
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "InvalidDataException.class",
+                        request.getMethod() + " " + path, "MainTagFileController.class",
                         "BusinessException:" + e.getMessage());
                 message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
             }
@@ -182,12 +182,12 @@ public class MainTagFileController {
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (DuplicateResourceException e) {
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "FileSubCategoryController.class",
+                        request.getMethod() + " " + path, "MainTagFileController.class",
                         "DuplicateResourceException:" + e.getMessage());
                 message = "دسته بندی با این اطلاعات در سیستم موجود میباشد";
             } catch (InvalidDataException e) {
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "InvalidDataException.class",
+                        request.getMethod() + " " + path, "MainTagFileController.class",
                         "BusinessException:" + e.getMessage());
                 message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
             }

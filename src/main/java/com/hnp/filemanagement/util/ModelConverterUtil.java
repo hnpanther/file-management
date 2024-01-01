@@ -145,6 +145,23 @@ public class ModelConverterUtil {
         return fileInfoDTO;
     }
 
+    public static PublicFileDetailsDTO convertFileDetailsToPublicFileDetailsDTO(FileDetails fileDetails) {
+
+        PublicFileDetailsDTO publicFileDetailsDTO = new PublicFileDetailsDTO();
+        publicFileDetailsDTO.setId(fileDetails.getId());
+        publicFileDetailsDTO.setFileInfoId(fileDetails.getFileInfo().getId());
+        publicFileDetailsDTO.setFileName(fileDetails.getFileName());
+        publicFileDetailsDTO.setDescription(fileDetails.getDescription());
+        publicFileDetailsDTO.setCategoryNameDescription(fileDetails.getFileInfo().getMainTagFile().getFileSubCategory().getFileCategory().getCategoryNameDescription());
+        publicFileDetailsDTO.setSubCategoryNameDescription(fileDetails.getFileInfo().getMainTagFile().getFileSubCategory().getSubCategoryNameDescription());
+        publicFileDetailsDTO.setTagDescription(fileDetails.getFileInfo().getMainTagFile().getDescription());
+        publicFileDetailsDTO.setVersion(fileDetails.getVersionName());
+        publicFileDetailsDTO.setSize(fileDetails.getFileSize());
+        publicFileDetailsDTO.setFileInfoName(fileDetails.getFileInfo().getDescription());
+
+        return publicFileDetailsDTO;
+    }
+
 
 
 
