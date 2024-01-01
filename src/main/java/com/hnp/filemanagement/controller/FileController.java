@@ -158,6 +158,20 @@ public class FileController {
         return "file-management/files/files-public.html";
     }
 
+
+    @GetMapping("file-info/{id}")
+    public String getFileInfoPage(@PathVariable("id") int fileInfoId, Model model, HttpServletRequest request) {
+
+        int principalId = 1;
+        String principalUsername = "None";
+        String logMessage = "request to get fileInfo Page with id=" + fileInfoId;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileController.class", logMessage);
+
+        return "file-management/files/file-info-page.html";
+    }
+
     @GetMapping("public-download/{id}")
     public ResponseEntity<?> downloadPublicFile(@PathVariable("id") int fileDetailsId, HttpServletRequest request) {
 

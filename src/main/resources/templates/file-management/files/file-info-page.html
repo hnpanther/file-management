@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>اطلاعات فایل</title>
+
+    <link rel="stylesheet"
+          href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css"/>
+
+</head>
+<body>
+
+<!-- start navbar -->
+<div th:insert="~{navbar.html :: navbar}"></div>
+
+<!-- end navbar -->
+
+<div class="container">
+    <div class="row flex-lg-nowrap">
+        <div class="col-12 col-lg-auto mb-3" style="width: 200px;">
+            <div class="card p-3">
+                <div class="e-navlist e-navlist--active-bg">
+                    <ul class="nav">
+                        <li class="nav-item"><a class="nav-link px-1 active" th:href="11"><i
+                                class="fa fa-fw fa-th mr-1"></i><span style="font-size:15px">صفحه اصلی</span></a></li>
+                        <li class="nav-item"><a class="nav-link px-1" href="#"><i class="fa fa-fw fa-th mr-1"></i><span
+                                style="font-size:15px">فایل ها</span></a></li>
+
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="row">
+                <div class="col mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="e-profile">
+                                <div class="row">
+
+                                    <div class="col d-flex flex-column flex-sm-row justify-content-between mb-3">
+                                        <div class="text-center text-sm-left mb-2 mb-sm-0">
+                                            <h4 th:text="${11}"
+                                                class="pt-sm-2 pb-1 mb-0 text-nowrap"></h4>
+                                            <p th:text="${11}" class="mb-0"></p>
+
+                                        </div>
+                                        <div class="text-center text-sm-right">
+                                            <span th:if="${true}"
+                                                  class="badge badge-secondary">عمومی</span>
+                                            <span th:if="${false}" class="badge badge-secondary">غیرعمومی</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <ul class="nav nav-tabs">
+                                    <li class="nav-item"><a href="#" class="active nav-link">اطلاعات فایل</a></li>
+                                </ul>
+                                <div class="tab-content pt-3">
+                                    <div class="tab-pane active">
+                                        <form class="form" novalidate="">
+                                            <div class="row">
+                                                <div class="col">
+                                                    <div class="row">
+                                                        <div class="col">
+                                                            <div class="form-group">
+                                                                <label>عنوان فایل</label>
+                                                                <input th:value="${222 }"
+                                                                       class="form-control" type="text" name="fileName"
+                                                                       disabled>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col">
+                                                            <div class="form-group">
+                                                                <label>ایجاد کننده</label>
+                                                                <input th:value="${222 }"
+                                                                       class="form-control" type="text"
+                                                                       name="creator"
+                                                                       disabled>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="row">
+                                                        <div class="col">
+                                                            <div class="form-group">
+                                                                <label>تاریخ ثبت</label>
+                                                                <input th:value="${222}"
+                                                                       class="form-control change-date-input"
+                                                                       type="text" name="cerate-date"
+                                                                        disabled>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col">
+                                                            <div class="form-group">
+                                                                <label>حجم</label>
+                                                                <input th:value="${size}" class="form-control"
+                                                                       type="text" name="size" disabled>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="row">
+                                                        <div class="col">
+                                                            <div class="form-group">
+                                                                <label>فرمت</label>
+                                                                <input th:value="${333}"
+                                                                       class="form-control" type="text"
+                                                                       name="format"
+                                                                       disabled>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col">
+                                                            <div class="form-group">
+                                                                <label>ورژن</label>
+                                                                <input th:value="${444}"
+                                                                       class="form-control version" type="text"
+                                                                       disabled>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="row">
+
+                                                        <div class="col">
+                                                            <div class="form-group">
+                                                                <label>فرمت2</label>
+                                                                <input th:value="${666}"
+                                                                       class="form-control" type="text" name="format2"
+                                                                        disabled>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+
+                                                </div>
+                                            </div>
+
+
+                                        </form>
+
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-md-3 mb-3">
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <div class="px-xl-3">
+                                <button class="btn btn-block btn-secondary">
+                                    <i class="fa fa-sign-out"></i>
+                                    <span>خروج</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-body">
+                            <!-- <h6 class="card-title font-weight-bold">ویرایش  </h6> -->
+                            <!-- <p class="card-text">Get fast, free help from our friendly assistants.</p> -->
+                            <a th:href="@{7777}" type="button" class="btn btn-primary">ویرایش</a>
+
+                        </div>
+                        <div class="card-body">
+                            <!-- <h6 class="card-title font-weight-bold">ویرایش  </h6> -->
+                            <!-- <p class="card-text">Get fast, free help from our friendly assistants.</p> -->
+
+                            <button type="button" class="btn btn-primary">تغییر نام</button>
+                        </div>
+                        <div class="card-body">
+                            <!-- <h6 class="card-title font-weight-bold">ویرایش  </h6> -->
+                            <!-- <p class="card-text">Get fast, free help from our friendly assistants.</p> -->
+                            <a th:href="@{5555}" type="button"
+                               class="btn btn-primary">فایل های دیگر</a>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!--<ul class="list-group list-group-flush">-->
+<!--    <li th:each="fm: ${user.getFamilyMembers()}" th:text="${fm.getFirstName()}" class="list-group-item"></li>-->
+<!--</ul>-->
+
+<div class="container">
+    <div class="row flex-lg-nowrap">
+
+
+        <div class="col">
+            <div class="e-tabs mb-3 px-3">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item"><a class="nav-link active" href="#">ورژن ها و فرمتها</a></li>
+                </ul>
+            </div>
+
+            <div class="row flex-lg-nowrap">
+                <div class="col mb-3">
+                    <div class="e-panel card">
+                        <div class="card-body">
+                            <div class="card-title">
+                                <h6 class="mr-2"><span>ورژن و فرمت ها</span></h6>
+                            </div>
+                            <div class="e-table">
+                                <div class="table-responsive table-lg mt-3">
+                                    <table class="table table-bordered">
+                                        <thead>
+                                        <tr>
+
+                                            <th>نام فایل</th>
+                                            <th class="max-width">عنوان فایل</th>
+                                            <th class="sortable">فرمت</th>
+                                            <th class="sortable">تاریخ </th>
+                                            <th class="sortable">ایجاد کننده </th>
+                                            <th class="sortable">عملیات</th>
+                                            <!--                                            <th>عملیات</th>-->
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        <tr th:each="fm: ${111}">
+
+                                            <td th:text="${111}"
+                                                class="text-nowrap align-middle"></td>
+                                            <td th:text="${111}" class="text-nowrap align-middle"></td>
+                                            <td th:text="${11}"
+                                                class="text-nowrap align-middle relativeChange"></td>
+                                            <td th:text="${1111}"
+                                                class="text-nowrap align-middle change-date-td"></td>
+                                            <td th:text="${111}" class="text-nowrap align-middle"></td>
+
+                                            <td class="text-center align-middle">
+                                                <div class="btn-group align-top">
+                                                    <a th:href="@{2222 }"
+                                                       class="btn btn-sm btn-outline-secondary badge" type="button">ویرایش</a>
+                                                </div>
+                                            </td>
+                                        </tr>
+
+
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-lg-3 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="text-center px-xl-3">
+                                <a th:href="@{2222}"
+                                   class="btn btn-success btn-block" type="button">اضافه کردن</a>
+                            </div>
+                            <hr class="my-3">
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+        </div>
+    </div>
+</div>
+
+<script src="/webjars/jquery/3.7.1/jquery.min.js"></script>
+
+
+</body>
+</html>
