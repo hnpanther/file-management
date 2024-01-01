@@ -269,7 +269,7 @@ class FileServiceTest {
         underTest.createNewFile(fileInfoDTO, userId);
         String address = baseDir + "mail/subMail/test2/v1/test2.txt";
         assertThat(Files.exists(Paths.get(address))).isTrue();
-        FileInfoDTO test = underTest.getFileInfoWithFileDetails(fileSubCategorySubMailId, "test");
+        FileInfoDTO test = underTest.getFileInfoDtoWithFileDetails(fileSubCategorySubMailId, "test");
         assertThat(test.getId()).isNotNull();
         assertThat(!test.getFileDetailsDTOS().isEmpty()).isTrue();
 
@@ -349,7 +349,7 @@ class FileServiceTest {
     void updateFileInfoDescriptionTest() {
         underTest.updateFileInfoDescription(fileInfoId, "updated desc");
 
-        FileInfoDTO fileInfoWithFileDetails = underTest.getFileInfoWithFileDetails(fileInfoId);
+        FileInfoDTO fileInfoWithFileDetails = underTest.getFileInfoDtoWithFileDetails(fileInfoId);
         assertThat(fileInfoWithFileDetails.getDescription()).isEqualTo("updated desc");
     }
 
@@ -359,6 +359,21 @@ class FileServiceTest {
 
         assertThatThrownBy(
                 () -> underTest.updateFileInfoDescription(0, "updated desc")
+        ).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+
+    @Commit
+    @Test
+    void deleteCompleteFileByIdTest() {
+        FileInfoDTO f = underTest.getFileInfoDtoWithFileDetails(fileInfoId);
+        String address = f.getFilePath();
+        underTest.deleteCompleteFileById(fileInfoId);
+
+
+        assertThat(Files.exists(Paths.get(address))).isFalse();
+        assertThatThrownBy(
+                () -> underTest.getFileInfoWithFileDetails(fileInfoId)
         ).isInstanceOf(ResourceNotFoundException.class);
     }
 

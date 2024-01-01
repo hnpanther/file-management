@@ -5,7 +5,6 @@ import com.hnp.filemanagement.entity.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
@@ -116,6 +115,17 @@ public class FileService {
         fileInfoRepository.save(fileInfo);
     }
 
+    @Transactional
+    public void deleteCompleteFileById(int id) {
+
+        FileInfo fileInfo = getFileInfoWithFileDetails(id);
+        String address = fileInfo.getMainTagFile().getFileSubCategory().getFileCategory().getCategoryName() + "/" +
+                fileInfo.getMainTagFile().getFileSubCategory().getSubCategoryName() + "/" + fileInfo.getFileName();
+
+        fileInfoRepository.delete(fileInfo);
+        fileStorageService.delete(address, "", 1, "", false);
+    }
+
 
 
     public boolean isDuplicate(String fileName, int subCategoryId) {
@@ -123,7 +133,7 @@ public class FileService {
         return fileInfos != null && !fileInfos.isEmpty();
     }
 
-    public FileInfoDTO getFileInfoWithFileDetails(int id) {
+    public FileInfoDTO getFileInfoDtoWithFileDetails(int id) {
         FileInfo fileInfo = fileInfoRepository.findByIdAndFetchFileDetails(id).orElseThrow(
                 () -> new ResourceNotFoundException("file info not exists, id=" + id)
         );
@@ -131,7 +141,15 @@ public class FileService {
         return ModelConverterUtil.convertFileInfoToFileInfoDTO(fileInfo);
     }
 
-    public FileInfoDTO getFileInfoWithFileDetails(int subCategoryId, String fileName) {
+    public FileInfo getFileInfoWithFileDetails(int id) {
+        return fileInfoRepository.findByIdAndFetchFileDetails(id).orElseThrow(
+                () -> new ResourceNotFoundException("file info not exists, id=" + id)
+        );
+    }
+
+
+
+    public FileInfoDTO getFileInfoDtoWithFileDetails(int subCategoryId, String fileName) {
         FileInfo fileInfo = fileInfoRepository.findByNameAndSubCategoryId(subCategoryId, fileName).orElseThrow(
                 () -> new ResourceNotFoundException("file info not exists, subCategoryId=" + subCategoryId + ", fileName=" + fileName)
         );
