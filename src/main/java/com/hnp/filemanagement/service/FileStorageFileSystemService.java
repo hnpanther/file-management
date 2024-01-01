@@ -62,7 +62,11 @@ public class FileStorageFileSystemService implements FileStorageService {
         logger.debug("FileStorageFileSystemService.save() -> level1Dir=" + level1Dir);
         logger.debug("FileStorageFileSystemService.save() -> level2Dir=" + level2Dir);
 
-        if(!checkCorrectDirectoryName(address) || !checkCorrectDirectoryName(fileNameWithoutExtension)) {
+//        if(!checkCorrectDirectoryName(address) || !checkCorrectDirectoryName(fileNameWithoutExtension)) {
+//            throw new BusinessException("character '.' and '/' and space not allow in directory name");
+//        }
+
+        if(!checkCorrectDirectoryName(fileNameWithoutExtension)) {
             throw new BusinessException("character '.' and '/' and space not allow in directory name");
         }
 

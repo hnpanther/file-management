@@ -1,8 +1,7 @@
 package com.hnp.filemanagement.controller;
 
 import com.hnp.filemanagement.dto.FileCategoryDTO;
-import com.hnp.filemanagement.dto.InsertValidation;
-import com.hnp.filemanagement.dto.UpdateValidation;
+import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.service.FileCategoryService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;

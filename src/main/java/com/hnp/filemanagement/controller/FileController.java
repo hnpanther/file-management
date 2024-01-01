@@ -2,15 +2,12 @@ package com.hnp.filemanagement.controller;
 
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
-import com.hnp.filemanagement.dto.FileSubCategoryDTO;
-import com.hnp.filemanagement.dto.InsertValidation;
+import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.service.FileCategoryService;
-import com.hnp.filemanagement.service.FileStorageFileSystemService;
 import com.hnp.filemanagement.service.FileSubCategoryService;
 import com.hnp.filemanagement.service.MainTagFileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
@@ -19,7 +16,6 @@ import org.springframework.validation.BindingResult;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
 import java.util.List;
 
 @Controller
@@ -100,6 +96,10 @@ public class FileController {
                     request.getMethod() + " " + path, "FileController.class",
                     "ValidationError:" + bindingResult);
         } else {
+
+
+
+
         }
 
         List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories();

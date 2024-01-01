@@ -58,9 +58,14 @@ public class FileInfo {
     @JoinColumn(name = "main_tag_file_id")
     private MainTagFile mainTagFile;
 
+//    @OneToMany(
+//            fetch = FetchType.LAZY,
+//            cascade={CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH, CascadeType.PERSIST},
+//            mappedBy = "fileInfo"
+//    )
     @OneToMany(
             fetch = FetchType.LAZY,
-            cascade={CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH},
+            cascade={CascadeType.ALL},
             mappedBy = "fileInfo"
     )
     private List<FileDetails> fileDetailsList = new ArrayList<>();

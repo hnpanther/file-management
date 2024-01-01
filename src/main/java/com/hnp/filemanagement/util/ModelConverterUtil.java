@@ -98,4 +98,70 @@ public class ModelConverterUtil {
 
         return mainTagFileDTO;
     }
+
+    public static FileDetailsDTO covertFileDetailsToFileDetailsDTO(FileDetails fileDetails) {
+
+        FileDetailsDTO fileDetailsDTO = new FileDetailsDTO();
+        fileDetailsDTO.setId(fileDetails.getId());
+        fileDetailsDTO.setFileName(fileDetails.getFileName());
+        fileDetailsDTO.setFileExtension(fileDetails.getFileExtension());
+        fileDetailsDTO.setContentType(fileDetails.getContentType());
+        fileDetailsDTO.setDescription(fileDetails.getDescription());
+        fileDetailsDTO.setFilePath(fileDetails.getFilePath());
+        fileDetailsDTO.setFileLink(fileDetails.getFileLink());
+        fileDetailsDTO.setFileSize(fileDetails.getFileSize());
+        fileDetailsDTO.setVersion(fileDetails.getVersion());
+        fileDetailsDTO.setVersionName(fileDetails.getVersionName());
+        fileDetailsDTO.setEnabled(fileDetails.getEnabled());
+        fileDetailsDTO.setState(fileDetails.getState());
+        fileDetailsDTO.setCreatedById(fileDetails.getCreatedBy().getId());
+        fileDetailsDTO.setCreatedBy(fileDetails.getCreatedBy().getUsername());
+        fileDetailsDTO.setFileInfoId(fileDetails.getFileInfo().getId());
+
+        return fileDetailsDTO;
+    }
+
+    public static FileInfoDTO convertFileInfoToFileInfoDTO(FileInfo fileInfo) {
+
+        FileInfoDTO fileInfoDTO = new FileInfoDTO();
+        fileInfoDTO.setId(fileInfo.getId());
+        fileInfoDTO.setFileName(fileInfo.getFileName());
+        fileInfoDTO.setDescription(fileInfo.getDescription());
+        fileInfoDTO.setFilePath(fileInfo.getFilePath());
+        fileInfoDTO.setFileLink(fileInfo.getFileLink());
+        fileInfoDTO.setFileSubCategoryId(fileInfo.getFileSubCategory().getId());
+        fileInfoDTO.setFileSubCategoryName(fileInfo.getFileSubCategory().getSubCategoryName());
+        fileInfoDTO.setFileSubCategoryNameDescription(fileInfo.getFileSubCategory().getSubCategoryNameDescription());
+        fileInfoDTO.setFileCategoryId(fileInfo.getFileSubCategory().getFileCategory().getId());
+        fileInfoDTO.setFileCategoryName(fileInfo.getFileSubCategory().getFileCategory().getCategoryName());
+        fileInfoDTO.setFileCategoryNameDescription(fileInfo.getFileSubCategory().getFileCategory().getCategoryNameDescription());
+        fileInfoDTO.setMainTagFileId(fileInfo.getMainTagFile().getId());
+        fileInfoDTO.setTagName(fileInfo.getMainTagFile().getTagName());
+        fileInfoDTO.setTagDescription(fileInfo.getMainTagFile().getDescription());
+
+        fileInfoDTO.setFileDetailsDTOS(fileInfo.getFileDetailsList().stream().map(ModelConverterUtil::covertFileDetailsToFileDetailsDTO).toList());
+
+
+        return fileInfoDTO;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }

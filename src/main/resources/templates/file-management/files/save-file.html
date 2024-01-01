@@ -63,9 +63,9 @@
                 </select>
             </div>
 
-            <div class="form-group col-md-6">
-                <label for="multipartFile">انتخاب فایل</label>
-                <input type="file" class="form-control-file" name="multipartFile" id="multipartFile">
+            <div class="form-group col-md-6" style="text-align: right">
+                <label dir="rtl" for="multipartFile">انتخاب فایل(فرمت های مجاز: txt-pdf-jpg-xlsx-docx)-حداکثر حجم 20MB</label>
+                <input type="file" class="form-control-file" name="multipartFile" id="multipartFile" accept=".jpg,.xlsx,.docx,.pdf,.txt">
             </div>
 
             <div class="form-group col-md-6">
@@ -149,7 +149,7 @@
     $('#fileForm').on('submit', function() {
         let file_input = $(this).find('input[name="multipartFile"]')[0];
         let sizeFile = file_input.files[0].size;
-        if((sizeFile/(1024*1024)) > (3)) {
+        if((sizeFile/(1024*1024)) > (20)) {
             alert('حجم فایل بیش از حد مجاز میباشد');
             return false;
         } else {

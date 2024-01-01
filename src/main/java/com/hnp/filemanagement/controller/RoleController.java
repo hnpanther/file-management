@@ -1,9 +1,8 @@
 package com.hnp.filemanagement.controller;
 
-import com.hnp.filemanagement.dto.InsertValidation;
+import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.dto.PermissionDTO;
 import com.hnp.filemanagement.dto.RoleDTO;
-import com.hnp.filemanagement.dto.UserDTO;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;

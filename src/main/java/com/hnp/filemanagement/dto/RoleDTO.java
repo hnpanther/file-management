@@ -1,6 +1,8 @@
 package com.hnp.filemanagement.dto;
 
 
+import com.hnp.filemanagement.validation.InsertValidation;
+import com.hnp.filemanagement.validation.UpdateValidation;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
