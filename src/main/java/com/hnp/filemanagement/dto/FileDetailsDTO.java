@@ -2,6 +2,8 @@ package com.hnp.filemanagement.dto;
 
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 @Data
 public class FileDetailsDTO {
 
@@ -34,5 +36,7 @@ public class FileDetailsDTO {
     private String createdBy;
 
     private Integer fileInfoId;
+
+    private LocalDateTime createdAt;
 
 }

@@ -169,11 +169,55 @@ public class FileController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileController.class", logMessage);
 
+        FileInfoDTO fileInfoDTO = fileService.getFileInfoDtoWithFileDetails(fileInfoId);
+        model.addAttribute("file", fileInfoDTO);
         return "file-management/files/file-info-page.html";
     }
 
     @GetMapping("public-download/{id}")
     public ResponseEntity<?> downloadPublicFile(@PathVariable("id") int fileDetailsId, HttpServletRequest request) {
+
+        int principalId = 1;
+        String principalUsername = "None";
+        String logMessage = "request download public fileDetails with id=" + fileDetailsId;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileController.class", logMessage);
+
+        FileDownloadDTO fileDownloadDTO = fileService.downloadPublicFile(fileDetailsId);
+        String contentType = fileDownloadDTO.getContentType();
+        String header = "attachment; filename=\"" + fileDownloadDTO.getFileName() + "\"";
+
+
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(HttpHeaders.CONTENT_DISPOSITION, header)
+                .body(fileDownloadDTO.getResource());
+    }
+
+    @GetMapping("file-info")
+    public String getAllFileInfo(Model model, HttpServletRequest request) {
+
+        int principalId = 1;
+        String principalUsername = "None";
+        String logMessage = "request to get all file info";
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileController.class", logMessage);
+
+        int pageSize = 50;
+        int pageNumber = 0;
+        List<FileInfoDTO> fileInfoDTOS = fileService.getAllFileInfo(pageSize, pageNumber);
+
+        model.addAttribute("files", fileInfoDTOS);
+        return "file-management/files/file-info.html";
+    }
+
+    @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
+    public ResponseEntity<?> downloadPublicFile(@PathVariable("fileInfoId") int fileInfoId,
+                                                @PathVariable("fileDetailsId") int fileDetailsId,
+                                                HttpServletRequest request) {
 
         int principalId = 1;
         String principalUsername = "None";

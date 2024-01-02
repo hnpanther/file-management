@@ -117,6 +117,7 @@ public class ModelConverterUtil {
         fileDetailsDTO.setCreatedById(fileDetails.getCreatedBy().getId());
         fileDetailsDTO.setCreatedBy(fileDetails.getCreatedBy().getUsername());
         fileDetailsDTO.setFileInfoId(fileDetails.getFileInfo().getId());
+        fileDetailsDTO.setCreatedAt(fileDetails.getCreatedAt());
 
         return fileDetailsDTO;
     }
@@ -138,6 +139,10 @@ public class ModelConverterUtil {
         fileInfoDTO.setMainTagFileId(fileInfo.getMainTagFile().getId());
         fileInfoDTO.setTagName(fileInfo.getMainTagFile().getTagName());
         fileInfoDTO.setTagDescription(fileInfo.getMainTagFile().getDescription());
+        fileInfoDTO.setState(fileInfo.getState());
+        fileInfoDTO.setEnabled(fileInfo.getEnabled());
+        fileInfoDTO.setCreatedAt(fileInfo.getCreatedAt());
+        fileInfoDTO.setCreatedBy(fileInfo.getCreatedBy().getUsername());
 
         fileInfoDTO.setFileDetailsDTOS(fileInfo.getFileDetailsList().stream().map(ModelConverterUtil::covertFileDetailsToFileDetailsDTO).toList());
 

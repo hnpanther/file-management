@@ -8,9 +8,12 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+
+// file info state ===> 0 -> public, -1 -> private, 1 -> rule base
 @Data
 public class FileInfoDTO {
 
@@ -44,6 +47,11 @@ public class FileInfoDTO {
     @NotNull(groups = InsertValidation.class)
     @ValidFile(groups = InsertValidation.class)
     private MultipartFile multipartFile;
+
+    private Integer state;
+    private Integer enabled;
+    private LocalDateTime createdAt;
+    private String createdBy;
 
     private List<FileDetailsDTO> fileDetailsDTOS = new ArrayList<>();
 

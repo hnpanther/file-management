@@ -25,7 +25,7 @@
                     <ul class="nav">
                         <li class="nav-item"><a class="nav-link px-1 active" th:href="11"><i
                                 class="fa fa-fw fa-th mr-1"></i><span style="font-size:15px">صفحه اصلی</span></a></li>
-                        <li class="nav-item"><a class="nav-link px-1" href="#"><i class="fa fa-fw fa-th mr-1"></i><span
+                        <li class="nav-item"><a class="nav-link px-1" th:href="@{/files/file-info}"><i class="fa fa-fw fa-th mr-1"></i><span
                                 style="font-size:15px">فایل ها</span></a></li>
 
                     </ul>
@@ -43,15 +43,15 @@
 
                                     <div class="col d-flex flex-column flex-sm-row justify-content-between mb-3">
                                         <div class="text-center text-sm-left mb-2 mb-sm-0">
-                                            <h4 th:text="${11}"
+                                            <h4 th:text="${file.getDescription()}"
                                                 class="pt-sm-2 pb-1 mb-0 text-nowrap"></h4>
-                                            <p th:text="${11}" class="mb-0"></p>
+                                            <p th:text="${file.getFileName}" class="mb-0"></p>
 
                                         </div>
                                         <div class="text-center text-sm-right">
-                                            <span th:if="${true}"
+                                            <span th:if="${file.getState() == 0}"
                                                   class="badge badge-secondary">عمومی</span>
-                                            <span th:if="${false}" class="badge badge-secondary">غیرعمومی</span>
+                                            <span th:if="${file.getState() != 0}" class="badge badge-secondary">غیرعمومی</span>
                                         </div>
                                     </div>
                                 </div>
@@ -67,15 +67,15 @@
                                                         <div class="col">
                                                             <div class="form-group">
                                                                 <label>عنوان فایل</label>
-                                                                <input th:value="${222 }"
+                                                                <input th:value="${file.getFileName() }"
                                                                        class="form-control" type="text" name="fileName"
                                                                        disabled>
                                                             </div>
                                                         </div>
                                                         <div class="col">
                                                             <div class="form-group">
-                                                                <label>ایجاد کننده</label>
-                                                                <input th:value="${222 }"
+                                                                <label>توضیحات عنوان</label>
+                                                                <input th:value="${file.getDescription() }"
                                                                        class="form-control" type="text"
                                                                        name="creator"
                                                                        disabled>
@@ -86,8 +86,8 @@
                                                     <div class="row">
                                                         <div class="col">
                                                             <div class="form-group">
-                                                                <label>تاریخ ثبت</label>
-                                                                <input th:value="${222}"
+                                                                <label>تاریخ ایجاد</label>
+                                                                <input th:value="${file.getCreatedAt()}"
                                                                        class="form-control change-date-input"
                                                                        type="text" name="cerate-date"
                                                                         disabled>
@@ -95,8 +95,8 @@
                                                         </div>
                                                         <div class="col">
                                                             <div class="form-group">
-                                                                <label>حجم</label>
-                                                                <input th:value="${size}" class="form-control"
+                                                                <label>ایجاد کننده</label>
+                                                                <input th:value="${file.getCreatedBy()}" class="form-control"
                                                                        type="text" name="size" disabled>
                                                             </div>
                                                         </div>
@@ -105,8 +105,8 @@
                                                     <div class="row">
                                                         <div class="col">
                                                             <div class="form-group">
-                                                                <label>فرمت</label>
-                                                                <input th:value="${333}"
+                                                                <label>وضعیت</label>
+                                                                <input th:value="${file.getEnabled() == 1 ? 'فعال' : 'غیرفعال'}"
                                                                        class="form-control" type="text"
                                                                        name="format"
                                                                        disabled>
@@ -114,8 +114,8 @@
                                                         </div>
                                                         <div class="col">
                                                             <div class="form-group">
-                                                                <label>ورژن</label>
-                                                                <input th:value="${444}"
+                                                                <label>دسته بندی اصلی</label>
+                                                                <input th:value="${file.getFileCategoryNameDescription()}"
                                                                        class="form-control version" type="text"
                                                                        disabled>
                                                             </div>
@@ -123,13 +123,21 @@
                                                     </div>
 
                                                     <div class="row">
-
                                                         <div class="col">
                                                             <div class="form-group">
-                                                                <label>فرمت2</label>
-                                                                <input th:value="${666}"
-                                                                       class="form-control" type="text" name="format2"
-                                                                        disabled>
+                                                                <label>دسته بندی فرعی</label>
+                                                                <input th:value="${file.getFileSubCategoryNameDescription()}"
+                                                                       class="form-control" type="text"
+                                                                       name="format"
+                                                                       disabled>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col">
+                                                            <div class="form-group">
+                                                                <label>تگ</label>
+                                                                <input th:value="${file.getTagDescription()}"
+                                                                       class="form-control version" type="text"
+                                                                       disabled>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -153,31 +161,21 @@
                     <div class="card mb-3">
                         <div class="card-body">
                             <div class="px-xl-3">
-                                <button class="btn btn-block btn-secondary">
+                                <button class="btn btn-block btn-danger">
                                     <i class="fa fa-sign-out"></i>
-                                    <span>خروج</span>
+                                    <span>حذف کامل فایل</span>
                                 </button>
                             </div>
                         </div>
                     </div>
                     <div class="card">
                         <div class="card-body">
-                            <!-- <h6 class="card-title font-weight-bold">ویرایش  </h6> -->
-                            <!-- <p class="card-text">Get fast, free help from our friendly assistants.</p> -->
-                            <a th:href="@{7777}" type="button" class="btn btn-primary">ویرایش</a>
+                            <a th:href="@{7777}" type="button" class="btn btn-primary">ویرایش توضیحات</a>
 
                         </div>
                         <div class="card-body">
-                            <!-- <h6 class="card-title font-weight-bold">ویرایش  </h6> -->
-                            <!-- <p class="card-text">Get fast, free help from our friendly assistants.</p> -->
-
-                            <button type="button" class="btn btn-primary">تغییر نام</button>
-                        </div>
-                        <div class="card-body">
-                            <!-- <h6 class="card-title font-weight-bold">ویرایش  </h6> -->
-                            <!-- <p class="card-text">Get fast, free help from our friendly assistants.</p> -->
-                            <a th:href="@{5555}" type="button"
-                               class="btn btn-primary">فایل های دیگر</a>
+                            <a th:href="@{/files/create}" type="button"
+                               class="btn btn-primary">ایجاد فایل جدید</a>
 
                         </div>
                     </div>
@@ -188,9 +186,6 @@
     </div>
 </div>
 
-<!--<ul class="list-group list-group-flush">-->
-<!--    <li th:each="fm: ${user.getFamilyMembers()}" th:text="${fm.getFirstName()}" class="list-group-item"></li>-->
-<!--</ul>-->
 
 <div class="container">
     <div class="row flex-lg-nowrap">
@@ -216,31 +211,30 @@
                                         <thead>
                                         <tr>
 
-                                            <th>نام فایل</th>
-                                            <th class="max-width">عنوان فایل</th>
-                                            <th class="sortable">فرمت</th>
-                                            <th class="sortable">تاریخ </th>
-                                            <th class="sortable">ایجاد کننده </th>
-                                            <th class="sortable">عملیات</th>
-                                            <!--                                            <th>عملیات</th>-->
+                                            <th class="max-width">نام فایل</th>
+                                            <th class="max-width">ورژن</th>
+                                            <th class="max-width">حجم</th>
+<!--                                            <th class="max-width">وضعیت</th>-->
+                                            <th class="max-width">فرمت</th>
+                                            <th class="max-width">تاریخ ایجاد</th>
+                                            <th class="max-width">ایجاد کننده</th>
+                                            <th class="max-width">عملیات</th>
                                         </tr>
                                         </thead>
                                         <tbody>
-                                        <tr th:each="fm: ${111}">
+                                        <tr th:each="fd: ${file.getFileDetailsDTOS()}">
 
-                                            <td th:text="${111}"
-                                                class="text-nowrap align-middle"></td>
-                                            <td th:text="${111}" class="text-nowrap align-middle"></td>
-                                            <td th:text="${11}"
-                                                class="text-nowrap align-middle relativeChange"></td>
-                                            <td th:text="${1111}"
-                                                class="text-nowrap align-middle change-date-td"></td>
-                                            <td th:text="${111}" class="text-nowrap align-middle"></td>
+                                            <td th:text="${fd.getFileName()}" class="text-nowrap align-middle"></td>
+                                            <td th:text="${fd.getVersion}" class="text-nowrap align-middle"></td>
+                                            <td th:text="${(fd.getFileSize() / 1024)}" class="text-nowrap align-middle"></td>
+                                            <td th:text="${fd.getFileExtension}" class="text-nowrap align-middle"></td>
+                                            <td th:text="${fd.getCreatedAt()}" class="text-nowrap align-middle"></td>
+                                            <td th:text="${fd.getCreatedBy()}" class="text-nowrap align-middle"></td>
 
                                             <td class="text-center align-middle">
                                                 <div class="btn-group align-top">
-                                                    <a th:href="@{2222 }"
-                                                       class="btn btn-sm btn-outline-secondary badge" type="button">ویرایش</a>
+                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/' + ${fd.getId() + '/download'} }"
+                                                       class="btn btn-sm btn-outline-secondary badge" type="button">دانلود</a>
                                                 </div>
                                             </td>
                                         </tr>
@@ -254,18 +248,18 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-12 col-lg-3 mb-3">
-                    <div class="card">
-                        <div class="card-body">
-                            <div class="text-center px-xl-3">
-                                <a th:href="@{2222}"
-                                   class="btn btn-success btn-block" type="button">اضافه کردن</a>
-                            </div>
-                            <hr class="my-3">
+<!--                <div class="col-12 col-lg-3 mb-3">-->
+<!--                    <div class="card">-->
+<!--                        <div class="card-body">-->
+<!--                            <div class="text-center px-xl-3">-->
+<!--                                <a th:href="@{2222}"-->
+<!--                                   class="btn btn-success btn-block" type="button">اضافه کردن</a>-->
+<!--                            </div>-->
+<!--                            <hr class="my-3">-->
 
-                        </div>
-                    </div>
-                </div>
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                </div>-->
             </div>
 
 

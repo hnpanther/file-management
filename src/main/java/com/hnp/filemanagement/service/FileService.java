@@ -134,10 +134,29 @@ public class FileService {
         fileStorageService.delete(address, "", 1, "", false);
     }
 
+    public FileDownloadDTO downloadPublicFile(int fileDetailsId) {
+        FileDetails fileDetails = fileDetailsRepository.findByIdAndState(fileDetailsId, 0)
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("public fileDetails with id=" + fileDetailsId + " not exists")
+                );
+
+        String address = fileDetails.getFileInfo().getMainTagFile().getFileSubCategory().getFileCategory().getCategoryName() + "/"
+                + fileDetails.getFileInfo().getMainTagFile().getFileSubCategory().getSubCategoryName();
+        Resource resource = fileStorageService.load(address, fileDetails.getFileName(), fileDetails.getVersion(), fileDetails.getFileExtension());
+
+        FileDownloadDTO fileDownloadDTO = new FileDownloadDTO();
+        fileDownloadDTO.setResource(resource);
+        fileDownloadDTO.setContentType(fileDetails.getContentType());
+        fileDownloadDTO.setFileName(fileDetails.getFileName());
+
+        return fileDownloadDTO;
+
+    }
+
     public FileDownloadDTO downloadFile(int fileDetailsId) {
         FileDetails fileDetails = fileDetailsRepository.findById(fileDetailsId)
                 .orElseThrow(
-                        () -> new ResourceNotFoundException("fileDatails with id=" + fileDetailsId + " not exists")
+                        () -> new ResourceNotFoundException("fileDetails with id=" + fileDetailsId + " not exists")
                 );
 
         String address = fileDetails.getFileInfo().getMainTagFile().getFileSubCategory().getFileCategory().getCategoryName() + "/"
@@ -160,6 +179,12 @@ public class FileService {
 
         return fileDetails.stream().map(ModelConverterUtil::convertFileDetailsToPublicFileDetailsDTO).toList();
 
+    }
+
+    public List<FileInfoDTO> getAllFileInfo(int pageSize, int pageNumber) {
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
+        List<FileInfo> fileInfos = fileInfoRepository.findAll(pageable).toList();
+        return fileInfos.stream().map(ModelConverterUtil::convertFileInfoToFileInfoDTO).toList();
     }
 
 
