@@ -33,7 +33,7 @@ public class FileManagementApplication {
 
 		return  args -> {
 
-//            initialize(userRepository, roleRepository, permissionRepository);
+            initialize(userRepository, roleRepository, permissionRepository);
 
 		};
 	}

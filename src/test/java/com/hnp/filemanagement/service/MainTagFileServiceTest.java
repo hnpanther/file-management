@@ -108,6 +108,7 @@ class MainTagFileServiceTest {
         fileCategoryDocument.setEnabled(1);
         fileCategoryDocument.setState(0);
         fileCategoryDocument.setPath(baseDir + fileCategoryDocument.getCategoryName());
+        fileCategoryDocument.setRelativePath(fileCategoryDocument.getCategoryName());
         fileCategoryRepository.save(fileCategoryDocument);
         fileCategoryDocumentId = fileCategoryDocument.getId();
         fileStorageService.createDirectory(fileCategoryDocument.getCategoryName(), false);
@@ -121,6 +122,7 @@ class MainTagFileServiceTest {
         fileCategoryMail.setEnabled(1);
         fileCategoryMail.setState(0);
         fileCategoryMail.setPath(baseDir + fileCategoryMail.getCategoryName());
+        fileCategoryMail.setRelativePath(fileCategoryMail.getCategoryName());
         fileCategoryRepository.save(fileCategoryMail);
         fileStorageService.createDirectory(fileCategoryMail.getCategoryName(), false);
         fileCategoryMailId = fileCategoryMail.getId();
@@ -132,6 +134,7 @@ class MainTagFileServiceTest {
         fileSubCategorySubMail.setSubCategoryNameDescription("sub .. mail");
         fileSubCategorySubMail.setDescription("description sub");
         fileSubCategorySubMail.setPath(baseDir + fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail.getSubCategoryName());
+        fileSubCategorySubMail.setRelativePath(fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail.getSubCategoryName());
         fileSubCategorySubMail.setCreatedAt(LocalDateTime.now());
         fileSubCategorySubMail.setEnabled(1);
         fileSubCategorySubMail.setState(0);
@@ -146,6 +149,7 @@ class MainTagFileServiceTest {
         fileSubCategorySubMail2.setSubCategoryNameDescription("sub .. mail2");
         fileSubCategorySubMail2.setDescription("description sub");
         fileSubCategorySubMail2.setPath(baseDir + fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail2.getSubCategoryName());
+        fileSubCategorySubMail2.setRelativePath(fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail2.getSubCategoryName());
         fileSubCategorySubMail2.setCreatedAt(LocalDateTime.now());
         fileSubCategorySubMail2.setEnabled(1);
         fileSubCategorySubMail2.setState(0);

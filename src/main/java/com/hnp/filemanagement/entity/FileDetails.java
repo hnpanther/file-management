@@ -30,6 +30,9 @@ public class FileDetails {
     @Column(name = "file_path", nullable = false)
     private String filePath;
 
+    @Column(name = "relative_path", nullable = false)
+    private String relativePath;
+
     @Column(name = "file_link")
     private String fileLink;
 

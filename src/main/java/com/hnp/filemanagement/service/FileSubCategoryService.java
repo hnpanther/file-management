@@ -75,6 +75,7 @@ public class FileSubCategoryService {
         fileSubCategory.setSubCategoryNameDescription(fileSubCategoryDTO.getSubCategoryNameDescription());
         fileSubCategory.setDescription(fileSubCategoryDTO.getDescription());
         fileSubCategory.setPath(fileCategory.getPath() + "/" + fileSubCategory.getSubCategoryName());
+        fileSubCategory.setRelativePath(fileCategory.getRelativePath() + "/" + fileSubCategory.getSubCategoryName());
         fileSubCategory.setEnabled(1);
         fileSubCategory.setState(0);
         fileSubCategory.setCreatedAt(LocalDateTime.now());

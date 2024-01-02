@@ -82,6 +82,7 @@ public class FileService {
         fileInfo.setFileName(fileNameWithoutExtension);
         fileInfo.setDescription(fileInfoDTO.getDescription());
         fileInfo.setFilePath(mainTagFile.getFileSubCategory().getPath() + "/" + fileNameWithoutExtension);
+        fileInfo.setRelativePath(mainTagFile.getFileSubCategory().getRelativePath() + "/" + fileNameWithoutExtension);
         fileInfo.setEnabled(1);
         fileInfo.setState(0);
         fileInfo.setCreatedAt(LocalDateTime.now());
@@ -95,6 +96,7 @@ public class FileService {
         fileDetails.setContentType(fileInfoDTO.getMultipartFile().getContentType());
         fileDetails.setDescription(fileInfoDTO.getDescription());
         fileDetails.setFilePath(mainTagFile.getFileSubCategory().getPath() + "/" + fileNameWithoutExtension + "/v1/" + fileInfoDTO.getMultipartFile().getOriginalFilename());
+        fileDetails.setRelativePath(mainTagFile.getFileSubCategory().getRelativePath() + "/" + fileNameWithoutExtension + "/v1/" + fileInfoDTO.getMultipartFile().getOriginalFilename());
         fileDetails.setFileSize((int) fileInfoDTO.getMultipartFile().getSize());
         fileDetails.setVersion(1);
         fileDetails.setVersionName("V1");

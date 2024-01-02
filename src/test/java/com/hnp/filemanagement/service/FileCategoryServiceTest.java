@@ -107,6 +107,7 @@ class FileCategoryServiceTest {
         fileCategory.setEnabled(1);
         fileCategory.setState(0);
         fileCategory.setPath(baseDir + fileCategory.getCategoryName());
+        fileCategory.setRelativePath(fileCategory.getCategoryName());
 
         fileCategoryRepository.save(fileCategory);
         fileStorageService.createDirectory(fileCategory.getCategoryName(), false);
@@ -120,6 +121,7 @@ class FileCategoryServiceTest {
         fileCategory2.setEnabled(1);
         fileCategory2.setState(0);
         fileCategory2.setPath(baseDir + fileCategory2.getCategoryName());
+        fileCategory2.setRelativePath(fileCategory2.getCategoryName());
 
         fileCategoryRepository.save(fileCategory2);
         fileStorageService.createDirectory(fileCategory2.getCategoryName(), false);
@@ -136,6 +138,7 @@ class FileCategoryServiceTest {
         fileSubCategory.setSubCategoryNameDescription("sub .. mail");
         fileSubCategory.setDescription("description sub");
         fileSubCategory.setPath(baseDir + fileCategory2.getCategoryName() + "/" + fileSubCategory.getSubCategoryName());
+        fileSubCategory.setRelativePath(fileCategory2.getCategoryName() + "/" + fileSubCategory.getSubCategoryName());
         fileSubCategory.setCreatedAt(LocalDateTime.now());
         fileSubCategory.setEnabled(1);
         fileSubCategory.setState(0);

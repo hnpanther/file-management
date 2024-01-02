@@ -30,6 +30,9 @@ public class FileCategory {
     @Column(name = "path", nullable = false)
     private String path;
 
+    @Column(name = "relative_path", nullable = false)
+    private String relativePath;
+
     @Column(name = "enabled", nullable = false)
     private Integer enabled;
 

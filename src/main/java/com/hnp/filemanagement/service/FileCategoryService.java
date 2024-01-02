@@ -69,6 +69,7 @@ public class FileCategoryService {
         fileCategory.setState(0);
         fileCategory.setCreatedBy(entityManager.getReference(User.class, principalId));
         fileCategory.setPath(baseDir + fileCategory.getCategoryName());
+        fileCategory.setRelativePath(fileCategory.getCategoryName());
         fileCategoryRepository.save(fileCategory);
 
 

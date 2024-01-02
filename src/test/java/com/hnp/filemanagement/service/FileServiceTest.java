@@ -117,6 +117,7 @@ class FileServiceTest {
         fileCategoryDocument.setEnabled(1);
         fileCategoryDocument.setState(0);
         fileCategoryDocument.setPath(baseDir + fileCategoryDocument.getCategoryName());
+        fileCategoryDocument.setRelativePath(fileCategoryDocument.getCategoryName());
         fileCategoryRepository.save(fileCategoryDocument);
         fileCategoryDocumentId = fileCategoryDocument.getId();
         fileStorageService.createDirectory(fileCategoryDocument.getCategoryName(), false);
@@ -130,6 +131,7 @@ class FileServiceTest {
         fileCategoryMail.setEnabled(1);
         fileCategoryMail.setState(0);
         fileCategoryMail.setPath(baseDir + fileCategoryMail.getCategoryName());
+        fileCategoryMail.setRelativePath(fileCategoryMail.getCategoryName());
         fileCategoryRepository.save(fileCategoryMail);
         fileStorageService.createDirectory(fileCategoryMail.getCategoryName(), false);
         fileCategoryMailId = fileCategoryMail.getId();
@@ -141,6 +143,7 @@ class FileServiceTest {
         fileSubCategorySubMail.setSubCategoryNameDescription("sub .. mail");
         fileSubCategorySubMail.setDescription("description sub");
         fileSubCategorySubMail.setPath(baseDir + fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail.getSubCategoryName());
+        fileSubCategorySubMail.setRelativePath(fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail.getSubCategoryName());
         fileSubCategorySubMail.setCreatedAt(LocalDateTime.now());
         fileSubCategorySubMail.setEnabled(1);
         fileSubCategorySubMail.setState(0);
@@ -155,6 +158,7 @@ class FileServiceTest {
         fileSubCategorySubMail2.setSubCategoryNameDescription("sub .. mail2");
         fileSubCategorySubMail2.setDescription("description sub");
         fileSubCategorySubMail2.setPath(baseDir + fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail2.getSubCategoryName());
+        fileSubCategorySubMail2.setRelativePath(fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail2.getSubCategoryName());
         fileSubCategorySubMail2.setCreatedAt(LocalDateTime.now());
         fileSubCategorySubMail2.setEnabled(1);
         fileSubCategorySubMail2.setState(0);
@@ -192,6 +196,7 @@ class FileServiceTest {
         fileInfo.setFileName("test");
         fileInfo.setDescription("a test file");
         fileInfo.setFilePath(mainTagFilePreview.getFileSubCategory().getPath() + "/" + "test");
+        fileInfo.setRelativePath(mainTagFilePreview.getFileSubCategory().getRelativePath() + "/" + "test");
         fileInfo.setEnabled(1);
         fileInfo.setState(0);
         fileInfo.setCreatedAt(LocalDateTime.now());
@@ -205,6 +210,7 @@ class FileServiceTest {
         fileDetails.setContentType(multipartFile.getContentType());
         fileDetails.setDescription("....");
         fileDetails.setFilePath(mainTagFilePreview.getFileSubCategory().getPath() + "/test/v1/" + multipartFile.getOriginalFilename());
+        fileDetails.setRelativePath(mainTagFilePreview.getFileSubCategory().getRelativePath() + "/test/v1/" + multipartFile.getOriginalFilename());
         fileDetails.setFileSize((int) multipartFile.getSize());
         fileDetails.setVersion(1);
         fileDetails.setVersionName("V1");
