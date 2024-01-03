@@ -131,6 +131,8 @@
 
         </fieldset>
     </form>
+    <hr>
+    <a th:if="${#strings.equals(pageType, 'update')}" th:href="@{'/users/' + ${user.getId()} + '/roles' }" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>نقش های کاربر</a>
     <a th:href="@{/users}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست کاربران</a>
 </div>
 </div>
