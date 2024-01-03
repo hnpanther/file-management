@@ -33,6 +33,8 @@
             </div>
         </div>
 
+        <input type="hidden" th:value="${file.getId()}" class="idInput" id="idInput" name="idInput">
+
         <div class="col">
             <div class="row">
                 <div class="col mb-3">
@@ -161,7 +163,7 @@
                     <div class="card mb-3">
                         <div class="card-body">
                             <div class="px-xl-3">
-                                <button class="btn btn-block btn-danger">
+                                <button class="btn btn-block btn-danger" onclick="deleteFileInfo()">
                                     <i class="fa fa-sign-out"></i>
                                     <span>حذف کامل فایل</span>
                                 </button>
@@ -268,6 +270,32 @@
 </div>
 
 <script src="/webjars/jquery/3.7.1/jquery.min.js"></script>
+
+<script>
+
+    function deleteFileInfo() {
+        if(confirm("آیا از حذف کامل این فایل اطمینان دارید؟ با حذف این فایل تمام فرمت ها و ورژن های مرتبط با فایل نیز حذف خواهد شد")) {
+            $.ajax({
+                url: "/resource/files/file-info/" + $(".idInput").val(),
+                type: "DELETE",
+                dataType: "json",
+                contentType: "application/json; charset=utf-8",
+                data: JSON.stringify({ name: 'value1', email: 'value2' }),
+                complete: function (xhr, status) {
+                    if(xhr.status === 200) {
+                        alert("حذف با موفقیت انجام شد.");
+                        let currentLocation = window.location;
+                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + "/files/file-info";
+                        window.location.replace(newUrl);
+                    } else {
+                        alert(xhr.responseText);
+                    }
+                }
+            });
+        }
+    }
+
+</script>
 
 
 </body>
