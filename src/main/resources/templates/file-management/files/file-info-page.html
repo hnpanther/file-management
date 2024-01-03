@@ -78,9 +78,8 @@
                                                             <div class="form-group">
                                                                 <label>توضیحات عنوان</label>
                                                                 <input th:value="${file.getDescription() }"
-                                                                       class="form-control" type="text"
-                                                                       name="creator"
-                                                                       disabled>
+                                                                       class="form-control description" type="text"
+                                                                       name="description" id="description">
                                                             </div>
                                                         </div>
                                                     </div>
@@ -172,7 +171,7 @@
                     </div>
                     <div class="card">
                         <div class="card-body">
-                            <a th:href="@{7777}" type="button" class="btn btn-primary">ویرایش توضیحات</a>
+                            <a onclick="updateFileInfoDescription()" type="button" class="btn btn-primary">ویرایش توضیحات</a>
 
                         </div>
                         <div class="card-body">
@@ -293,6 +292,34 @@
                 }
             });
         }
+    }
+
+    function updateFileInfoDescription() {
+        let updatedDesc = $(".description").val();
+
+        if(updatedDesc === null || updatedDesc === undefined || updatedDesc === '') {
+            alert("توضیحات وارد نشده است")
+        } else {
+            if(confirm("آیا از بروزرسانی توضیحات اطمینان دارید؟")) {
+                $.ajax({
+                    url: "/resource/files/file-info/" + $(".idInput").val(),
+                    type: "PUT",
+                    dataType: "json",
+                    contentType: "application/json; charset=utf-8",
+                    data: JSON.stringify({ description: updatedDesc, email: 'value2' }),
+                    complete: function (xhr, status) {
+                        if(xhr.status === 200) {
+                            alert("بروزرسانی با موفقیت انجام شد");
+
+                        } else {
+                            alert(xhr.responseText);
+                        }
+                    }
+                });
+            }
+        }
+
+
     }
 
 </script>

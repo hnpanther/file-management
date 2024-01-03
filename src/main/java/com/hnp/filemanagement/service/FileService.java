@@ -116,6 +116,11 @@ public class FileService {
     }
 
     public void updateFileInfoDescription(int id, String description) {
+
+        if(description == null || description.isEmpty()) {
+            throw new InvalidDataException("description of file info can not be empty");
+        }
+
         FileInfo fileInfo = fileInfoRepository.findById(id).orElseThrow(
                 () -> new ResourceNotFoundException("file info with id=" + id + " not exists")
         );
