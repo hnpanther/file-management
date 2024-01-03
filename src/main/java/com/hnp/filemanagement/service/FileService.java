@@ -19,6 +19,8 @@ import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -128,6 +130,20 @@ public class FileService {
         fileInfoRepository.save(fileInfo);
     }
 
+    public void changeFileInfoState(int fileInfoId, int newState) {
+
+        if(newState != 0 && newState != -1) {
+            throw new InvalidDataException("newState not correct");
+        }
+
+        FileInfo fileInfo = fileInfoRepository.findById(fileInfoId).orElseThrow(
+                () -> new ResourceNotFoundException("file info with id=" + fileInfoId + " not exists")
+        );
+
+        fileInfo.setState(newState);
+        fileInfoRepository.save(fileInfo);
+    }
+
     @Transactional
     public void deleteCompleteFileById(int id) {
 
@@ -180,7 +196,7 @@ public class FileService {
     public List<PublicFileDetailsDTO> getAllPublicFileDetails(int pageSize, int pageNumber) {
 
         Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
-        List<FileDetails> fileDetails = fileDetailsRepository.getByState(0, pageable);
+        List<FileDetails> fileDetails = fileDetailsRepository.getAllPublicFileDetails(0, pageable);
 
         return fileDetails.stream().map(ModelConverterUtil::convertFileDetailsToPublicFileDetailsDTO).toList();
 

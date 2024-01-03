@@ -54,6 +54,14 @@
                                             <span th:if="${file.getState() == 0}"
                                                   class="badge badge-secondary">عمومی</span>
                                             <span th:if="${file.getState() != 0}" class="badge badge-secondary">غیرعمومی</span>
+
+
+                                            <div class="btn-group">
+                                                <button onclick="changeState(0)" th:if="${file.getState() == -1}" type="button" class="btn btn-secondary btn-sm" aria-haspopup="true" aria-expanded="false">تغییر به عمومی</button>
+                                                <button onclick="changeState(-1)" th:if="${file.getState() == 0}" type="button" class="btn btn-secondary btn-sm" aria-haspopup="true" aria-expanded="false">تغییر به غیر عمومی</button>
+                                            </div>
+
+
                                         </div>
                                     </div>
                                 </div>
@@ -320,6 +328,28 @@
         }
 
 
+    }
+
+    function changeState(i) {
+        if(confirm("آیا از تغییر وضعیت اطمینان دارید؟")) {
+            $.ajax({
+                url: "/resource/files/file-info/" + $(".idInput").val() + "/change-state",
+                type: "PUT",
+                dataType: "json",
+                contentType: "application/json; charset=utf-8",
+                data: JSON.stringify({ newState: i}),
+                complete: function (xhr, status) {
+                    if(xhr.status === 200) {
+                        alert("تغییر وضعیت با موفقیت انجام شد");
+                        let currentLocation = window.location;
+                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + "/files/file-info/" + $(".idInput").val();
+                        window.location.replace(newUrl);
+                    } else {
+                        alert(xhr.responseText);
+                    }
+                }
+            });
+        }
     }
 
 </script>

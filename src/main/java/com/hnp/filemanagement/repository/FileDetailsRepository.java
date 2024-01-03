@@ -13,8 +13,8 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
 
 
 
-//    @Query("SELECT f FROM FileDetails f WHERE f.state = 0")
-//    List<FileDetails> getAllPublicFileDetails(Pageable pageable);
+    @Query("SELECT f FROM FileDetails f WHERE f.state = (:state) AND f.fileInfo.state = (:state)")
+    List<FileDetails> getAllPublicFileDetails(int state, Pageable pageable);
 
     List<FileDetails> getByState(int state, Pageable pageable);
 

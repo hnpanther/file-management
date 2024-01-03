@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.resource;
 
+import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,7 +35,7 @@ public class FileResource {
         String logMessage = "rest request to delete file-info with id=" + fileInfoId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileCategoryResource.class", logMessage);
+                request.getMethod() + " " + path, "FileResource.class", logMessage);
 
 
         fileService.deleteCompleteFileById(fileInfoId);
@@ -51,7 +52,7 @@ public class FileResource {
         String logMessage = "rest request to update file-info with id=" + fileInfoId + " and description=" + description;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileCategoryResource.class", logMessage);
+                request.getMethod() + " " + path, "FileResource.class", logMessage);
 
         JsonParser springParser = JsonParserFactory.getJsonParser();
         Map<String, Object> map = springParser.parseMap(description);
@@ -59,5 +60,36 @@ public class FileResource {
         fileService.updateFileInfoDescription(fileInfoId, updatedDesc);
 
         return new ResponseEntity<>("file info description updated", HttpStatus.OK);
+    }
+
+    @PutMapping("file-info/{fileInfoId}/change-state")
+    public ResponseEntity<String> changeFileInfoState(@PathVariable("fileInfoId") int fileInfoId, @RequestBody() String body, HttpServletRequest request) {
+        int principalId = 1;
+        String principalUsername = "None";
+        String logMessage = "rest request to change state file-info state with id=" + fileInfoId;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileResource.class", logMessage);
+
+        JsonParser springParser = JsonParserFactory.getJsonParser();
+        Map<String, Object> map = springParser.parseMap(body);
+
+        try {
+
+            int newState = Integer.parseInt(map.get("newState").toString());
+
+            if(newState != 0 && newState != -1) {
+                return new ResponseEntity<>("invalid data", HttpStatus.BAD_REQUEST);
+            }
+            fileService.changeFileInfoState(fileInfoId, newState);
+        } catch (NumberFormatException | InvalidDataException e) {
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "FileResource.class",
+                    "NumberFormatException | InvalidDataException:" + e.getMessage());
+            return new ResponseEntity<>("invalid data", HttpStatus.BAD_REQUEST);
+        }
+
+
+        return new ResponseEntity<>("file info state changed", HttpStatus.OK);
     }
 }
