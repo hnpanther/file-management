@@ -6,6 +6,7 @@ import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Primary;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
@@ -18,7 +19,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
 
-@Service
+@Service("fileSystem")
+@Primary
 public class FileStorageFileSystemService implements FileStorageService {
 
     private final Logger logger = LoggerFactory.getLogger(FileStorageFileSystemService.class);

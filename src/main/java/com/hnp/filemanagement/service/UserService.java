@@ -14,6 +14,9 @@ import com.hnp.filemanagement.util.ModelConverterUtil;
 import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -197,6 +200,47 @@ public class UserService {
     @Transactional
     public List<UserDTO> getAllUser() {
         return userRepository.findAll().stream().map(ModelConverterUtil::convertUserToUserDTO).toList();
+    }
+
+    public List<UserDTO> getAllUserWithSearchPage(String search, int pageSize, int pageNumber) {
+
+
+
+        Integer searchNumber = null;
+        try {
+            if(search != null) {
+                if(search.isEmpty() || search.isBlank()) {
+                    search = null;
+                } else {
+                    searchNumber = Integer.parseInt(search);
+                    search = null;
+                }
+
+            }
+
+        } catch (NumberFormatException e) {
+//            searchNumber = null;
+        }
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
+        return userRepository.findByAllParameterAndPagination(searchNumber, search, pageable).stream()
+                .map(ModelConverterUtil::convertUserToUserDTO).toList();
+    }
+
+    public int countAllUserWithSearchPage(String search) {
+
+        Integer searchNumber = null;
+        try {
+            if(search != null) {
+                searchNumber = Integer.parseInt(search);
+                search = null;
+            }
+
+        } catch (NumberFormatException e) {
+//            searchNumber = null;
+        }
+
+        return userRepository.countByAllParameterAndPagination(searchNumber, search);
     }
 
 

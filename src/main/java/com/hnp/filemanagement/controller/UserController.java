@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -28,6 +29,9 @@ public class UserController {
 
     private final GlobalGeneralLogging globalGeneralLogging;
     private final UserService userService;
+
+    @Value("${filemanagement.default.page-size:20}")
+    private int defaultPageSize;
 
     public UserController(GlobalGeneralLogging globalGeneralLogging, UserService userService) {
         this.globalGeneralLogging = globalGeneralLogging;
@@ -251,18 +255,35 @@ public class UserController {
 
 
     @GetMapping
-    public String viewAllUserPage(Model model, HttpServletRequest request) {
+    public String viewAllUserPage(Model model, HttpServletRequest request,
+                                  @RequestParam(name = "search", required = false) String search,
+                                  @RequestParam(name = "page-size", required = false) Integer pageSize,
+                                  @RequestParam(name = "page-number", required = false) Integer pageNumber) {
         int principalId = 0;
         String principalUsername = "None";
-        String logMessage = "request to get page of all user";
+        String logMessage = "request to get page of all user, search=" + search + ",pageSize=" + pageSize + ",pageNumber=" + pageNumber;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "UserController.class", logMessage);
 
 
-        List<UserDTO> userDTOS = userService.getAllUser();
+        if(pageSize == null) {
+            pageSize = defaultPageSize;
+        }
+        if(pageNumber == null) {
+            pageNumber = 0;
+        }
+
+
+        List<UserDTO> userDTOS = userService.getAllUserWithSearchPage(search, pageSize, pageNumber);
+        int count = userService.countAllUserWithSearchPage(search);
 
         model.addAttribute("users", userDTOS);
+        model.addAttribute("pageSize", pageSize);
+        model.addAttribute("currentPageSize", userDTOS.size());
+        model.addAttribute("pageNumber", pageNumber + 1);
+        model.addAttribute("search", search);
+        model.addAttribute("totalNumber", count);
 
         return "user/users.html";
     }

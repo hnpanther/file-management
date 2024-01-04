@@ -269,4 +269,17 @@ class UserServiceTest {
         assertThat(allRoleDtoOfUserWithSelected.size()).isEqualTo(2);
         assertThat(roleSelected.size()).isEqualTo(1);
     }
+
+    @Test
+    @Commit
+    void getAllUserWithSearchPageTest() {
+        List<UserDTO> allUserWithSearchPage = underTest.getAllUserWithSearchPage(null,
+                10, 0);
+        List<UserDTO> allUserWithSearchPage2 = underTest.getAllUserWithSearchPage( "admin2",
+                10, 0);
+
+        assertThat(allUserWithSearchPage.size()).isEqualTo(2);
+        assertThat(allUserWithSearchPage2.size()).isEqualTo(1);
+
+    }
 }
