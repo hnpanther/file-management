@@ -12,6 +12,7 @@ import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -32,6 +33,9 @@ public class FileSubCategoryController {
 
     private final FileCategoryService fileCategoryService;
 
+    @Value("${filemanagement.default.element-size:50}")
+    private int defaultElementSize;
+
     public FileSubCategoryController(GlobalGeneralLogging globalGeneralLogging, FileSubCategoryService fileSubCategoryService, FileCategoryService fileCategoryService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.fileSubCategoryService = fileSubCategoryService;
@@ -48,7 +52,7 @@ public class FileSubCategoryController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileSubCategoryController.class", logMessage);
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories();
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
 
 
         FileSubCategoryDTO fileSubCategoryDTO = new FileSubCategoryDTO();
@@ -106,7 +110,7 @@ public class FileSubCategoryController {
         }
 
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories();
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
         model.addAttribute("fileSubCategory", fileSubCategoryDTO);
         model.addAttribute("listCategory", allFileCategories);
         model.addAttribute("pageType", "create");
@@ -127,7 +131,7 @@ public class FileSubCategoryController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileSubCategoryController.class", logMessage);
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories();
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
 
 
         FileSubCategoryDTO fileSubCategoryDTO = fileSubCategoryService.getFileSubCategoryDtoByIdOrSubCategoryName(id, null);
@@ -182,7 +186,7 @@ public class FileSubCategoryController {
         }
 
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories();
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
         model.addAttribute("fileSubCategory", fileSubCategoryDTO);
         model.addAttribute("listCategory", allFileCategories);
         model.addAttribute("pageType", "create");

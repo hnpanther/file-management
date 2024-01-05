@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FileCategoryDTO;
+import com.hnp.filemanagement.dto.FileCategoryPageDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.User;
@@ -184,6 +185,8 @@ class FileCategoryServiceTest {
         fileCategory.setCategoryName("preview");
         fileCategory.setDescription("preview description");
         fileCategory.setCategoryNameDescription("preview name");
+        fileCategory.setEnabled(1);
+        fileCategory.setState(0);
 
 
         underTest.createCategory(ModelConverterUtil.convertFileCategoryToFileCategoryDTO(fileCategory), userId);
@@ -203,6 +206,8 @@ class FileCategoryServiceTest {
         fileCategory.setCategoryName("documents");
         fileCategory.setDescription("preview description");
         fileCategory.setCategoryNameDescription("preview name");
+        fileCategory.setEnabled(1);
+        fileCategory.setState(0);
 
         assertThatThrownBy(
                 () -> underTest.createCategory(ModelConverterUtil.convertFileCategoryToFileCategoryDTO(fileCategory), userId)
@@ -216,6 +221,8 @@ class FileCategoryServiceTest {
         fileCategory.setCategoryName("docume/nts");
         fileCategory.setDescription("preview description");
         fileCategory.setCategoryNameDescription("preview name");
+        fileCategory.setEnabled(1);
+        fileCategory.setState(0);
         assertThatThrownBy(
                 () -> underTest.createCategory(ModelConverterUtil.convertFileCategoryToFileCategoryDTO(fileCategory), userId)
         ).isInstanceOf(BusinessException.class);
@@ -270,4 +277,29 @@ class FileCategoryServiceTest {
                 () -> underTest.deleteFileCategory(fileCategoryId2)
         ).isInstanceOf(DependencyResourceException.class);
     }
+
+    @Test
+    @Commit
+    void getPageFileCategoriesTest() {
+        String search = "mai";
+        int pageSize = 1;
+        int pageNumber = 0;
+
+        FileCategoryPageDTO pageFileCategories = underTest.getPageFileCategories(pageSize, pageNumber, "");
+        FileCategoryPageDTO pageFileCategories1 = underTest.getPageFileCategories(pageSize, pageNumber, "mai");
+
+        assertThat(pageFileCategories.getNumberOfElement()).isEqualTo(1);
+        assertThat(pageFileCategories.getTotalPages()).isEqualTo(2);
+        assertThat(pageFileCategories1.getTotalPages()).isEqualTo(1);
+        assertThat(pageFileCategories1.getNumberOfElement()).isEqualTo(1);
+
+    }
+
+
+
+
+
+
+
+
 }

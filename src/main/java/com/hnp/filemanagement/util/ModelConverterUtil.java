@@ -65,6 +65,8 @@ public class ModelConverterUtil {
         fileCategoryDTO.setCategoryName(fileCategory.getCategoryName());
         fileCategoryDTO.setCategoryNameDescription(fileCategory.getCategoryNameDescription());
         fileCategoryDTO.setDescription(fileCategory.getDescription());
+        fileCategoryDTO.setEnabled(fileCategory.getEnabled());
+        fileCategoryDTO.setState(fileCategory.getState());
 
         return fileCategoryDTO;
     }

@@ -30,8 +30,10 @@ public class UserController {
     private final GlobalGeneralLogging globalGeneralLogging;
     private final UserService userService;
 
-    @Value("${filemanagement.default.page-size:20}")
+    @Value("${filemanagement.default.page-size:50}")
     private int defaultPageSize;
+    @Value("${filemanagement.default.element-size:50}")
+    private int defaultElementSize;
 
     public UserController(GlobalGeneralLogging globalGeneralLogging, UserService userService) {
         this.globalGeneralLogging = globalGeneralLogging;

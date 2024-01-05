@@ -12,6 +12,7 @@ import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -30,6 +31,11 @@ public class RoleController {
     private final RoleService roleService;
 
     private final UserService userService;
+
+    @Value("${filemanagement.default.page-size:50}")
+    private int defaultPageSize;
+    @Value("${filemanagement.default.element-size:50}")
+    private int defaultElementSize;
 
     public RoleController(GlobalGeneralLogging globalGeneralLogging, RoleService roleService, UserService userService) {
         this.globalGeneralLogging = globalGeneralLogging;

@@ -24,5 +24,9 @@ public class FileCategoryDTO {
 //    @NotBlank(groups = {InsertValidation.class, UpdateValidation.class})
     private String description;
 
+    private int enabled;
+
+    private int state;
+
 
 }

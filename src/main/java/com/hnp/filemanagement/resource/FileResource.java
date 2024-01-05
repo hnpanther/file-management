@@ -4,6 +4,7 @@ import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.json.JsonParser;
 import org.springframework.boot.json.JsonParserFactory;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,9 @@ public class FileResource {
     private final GlobalGeneralLogging globalGeneralLogging;
 
     private final FileService fileService;
+
+    @Value("${filemanagement.default.element-size:50}")
+    private int defaultElementSize;
 
     public FileResource(GlobalGeneralLogging globalGeneralLogging, FileService fileService) {
         this.globalGeneralLogging = globalGeneralLogging;

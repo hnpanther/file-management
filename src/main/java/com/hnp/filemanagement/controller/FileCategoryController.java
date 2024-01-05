@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.controller;
 
 import com.hnp.filemanagement.dto.FileCategoryDTO;
+import com.hnp.filemanagement.dto.FileCategoryPageDTO;
 import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.service.FileCategoryService;
@@ -8,6 +9,7 @@ import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -25,6 +27,12 @@ public class FileCategoryController {
     private final GlobalGeneralLogging globalGeneralLogging;
 
     private final FileCategoryService fileCategoryService;
+
+    @Value("${filemanagement.default.page-size:50}")
+    private int defaultPageSize;
+
+    @Value("${filemanagement.default.element-size:50}")
+    private int defaultElementSize;
 
 
     public FileCategoryController(GlobalGeneralLogging globalGeneralLogging, FileCategoryService fileCategoryService) {
@@ -169,18 +177,34 @@ public class FileCategoryController {
 
 
     @GetMapping
-    public String getAllFileCategories(Model model, HttpServletRequest request) {
+    public String getAllFileCategories(Model model, HttpServletRequest request,
+                                       @RequestParam(name = "page-size", required = false) Integer pageSize,
+                                       @RequestParam(name = "page-number", required = false) Integer pageNumber,
+                                       @RequestParam(name = "search", required = false) String search) {
 
         int principalId = 1;
         String principalUsername = "None";
-        String logMessage = "request to get all categories";
+        String logMessage = "request to get all categories. pageSize=" + pageSize + ",pageNumber=" + pageNumber;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileCategoryController.class", logMessage);
 
-        List<FileCategoryDTO> fileCategoryDTOList = fileCategoryService.getAllFileCategories();
+        if(pageSize == null) {
+            pageSize = defaultPageSize;
+        }
+        if(pageNumber == null) {
+            pageNumber = 0;
+        }
 
-        model.addAttribute("fileCategories", fileCategoryDTOList);
+        FileCategoryPageDTO pageFileCategories = fileCategoryService.getPageFileCategories(pageSize, pageNumber, search);
+
+
+
+        model.addAttribute("fileCategories", pageFileCategories.getFileCategoryDTOList());
+        model.addAttribute("pageSize", pageSize);
+        model.addAttribute("pageNumber", pageNumber + 1);
+        model.addAttribute("totalPages", pageFileCategories.getTotalPages());
+        model.addAttribute("search", search);
         return "file-management/category/categories.html";
     }
 

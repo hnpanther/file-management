@@ -5,6 +5,7 @@ import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.service.FileSubCategoryService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +21,9 @@ public class FileSubCategoryResource {
     private final GlobalGeneralLogging globalGeneralLogging;
 
     private final FileSubCategoryService fileSubCategoryService;
+
+    @Value("${filemanagement.default.element-size:50}")
+    private int defaultElementSize;
 
     public FileSubCategoryResource(GlobalGeneralLogging globalGeneralLogging, FileSubCategoryService fileSubCategoryService) {
         this.globalGeneralLogging = globalGeneralLogging;

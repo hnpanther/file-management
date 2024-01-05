@@ -16,6 +16,7 @@ import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -42,6 +43,9 @@ public class FileController {
 
     private final FileService fileService;
 
+    @Value("${filemanagement.default.element-size:50}")
+    private int defaultElementSize;
+
 
     public FileController(GlobalGeneralLogging globalGeneralLogging, FileCategoryService fileCategoryService, FileSubCategoryService fileSubCategoryService, MainTagFileService mainTagFileService, FileService fileService) {
         this.globalGeneralLogging = globalGeneralLogging;
@@ -61,7 +65,7 @@ public class FileController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileController.class", logMessage);
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories();
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
 
         FileInfoDTO fileInfoDTO = new FileInfoDTO();
 
@@ -127,7 +131,7 @@ public class FileController {
 
         }
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories();
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
         model.addAttribute("file", fileInfoDTO);
         model.addAttribute("listCategory", allFileCategories);
         model.addAttribute("pageType", "create");
@@ -150,7 +154,7 @@ public class FileController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileController.class", logMessage);
 
-        List<PublicFileDetailsDTO> allPublicFileDetails = fileService.getAllPublicFileDetails(50, 0);
+        List<PublicFileDetailsDTO> allPublicFileDetails = fileService.getAllPublicFileDetails(defaultElementSize, 0);
 
 
         model.addAttribute("files", allPublicFileDetails);
@@ -206,7 +210,7 @@ public class FileController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileController.class", logMessage);
 
-        int pageSize = 50;
+        int pageSize = defaultElementSize;
         int pageNumber = 0;
         List<FileInfoDTO> fileInfoDTOS = fileService.getAllFileInfo(pageSize, pageNumber);
 

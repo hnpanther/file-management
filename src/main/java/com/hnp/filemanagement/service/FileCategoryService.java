@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FileCategoryDTO;
+import com.hnp.filemanagement.dto.FileCategoryPageDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.User;
@@ -15,6 +16,10 @@ import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -107,8 +112,37 @@ public class FileCategoryService {
     }
 
     @Transactional
-    public List<FileCategoryDTO> getAllFileCategories() {
-        return fileCategoryRepository.findAll().stream().map(ModelConverterUtil::convertFileCategoryToFileCategoryDTO).toList();
+    public List<FileCategoryDTO> getAllFileCategories(int pageSize, int pageNumber) {
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
+
+        return fileCategoryRepository.findAll(pageable).stream().map(ModelConverterUtil::convertFileCategoryToFileCategoryDTO).toList();
+    }
+
+    @Transactional
+    public FileCategoryPageDTO getPageFileCategories(int pageSize, int pageNumber, String search) {
+
+        if(search != null) {
+            if(search.isEmpty() || search.isBlank()) {
+                search = null;
+            }
+        }
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
+
+        Page<FileCategory> page = fileCategoryRepository.findByParameterPagination(search, pageable);
+        FileCategoryPageDTO fileCategoryPageDTO = new FileCategoryPageDTO();
+        fileCategoryPageDTO.setFileCategoryDTOList(page.getContent().stream()
+                .map(ModelConverterUtil::convertFileCategoryToFileCategoryDTO).toList());
+        fileCategoryPageDTO.setTotalPages(page.getTotalPages());
+        fileCategoryPageDTO.setPageSize(page.getSize());
+        fileCategoryPageDTO.setNumberOfElement(page.getNumberOfElements());
+
+        return fileCategoryPageDTO;
+    }
+
+    public int countAllFileCategory() {
+        return (int) fileCategoryRepository.count();
     }
 
 

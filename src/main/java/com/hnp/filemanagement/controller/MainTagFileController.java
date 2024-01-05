@@ -13,6 +13,7 @@ import com.hnp.filemanagement.validation.UpdateValidation;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -35,6 +36,9 @@ public class MainTagFileController {
 
     private final MainTagFileService mainTagFileService;
 
+    @Value("${filemanagement.default.element-size:50}")
+    private int defaultElementSize;
+
     public MainTagFileController(GlobalGeneralLogging globalGeneralLogging, FileSubCategoryService fileSubCategoryService, FileCategoryService fileCategoryService, MainTagFileService mainTagFileService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.fileSubCategoryService = fileSubCategoryService;
@@ -54,7 +58,7 @@ public class MainTagFileController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "MainTagFileController.class", logMessage);
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories();
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
 
         MainTagFileDTO mainTagFileDTO = new MainTagFileDTO();
         mainTagFileDTO.setFileCategoryId(0);
@@ -117,7 +121,7 @@ public class MainTagFileController {
         }
 
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories();
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
         model.addAttribute("mainTag", mainTagFileDTO);
         model.addAttribute("listCategory", allFileCategories);
         model.addAttribute("pageType", "create");
@@ -139,7 +143,7 @@ public class MainTagFileController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "MainTagFileController.class", logMessage);
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories();
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
 
         MainTagFileDTO mainTagFileDTO = mainTagFileService.getMainTagFileDtoByIdOrTagName(id, null);
 
@@ -194,7 +198,7 @@ public class MainTagFileController {
         }
 
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories();
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
         model.addAttribute("mainTag", mainTagFileDTO);
         model.addAttribute("listCategory", allFileCategories);
         model.addAttribute("pageType", "update");
