@@ -49,7 +49,7 @@
 
             <div class="form-group col-md-6">
                 <label>انتخاب زیر دسته بندی </label>
-                <select class="form-control fileSubCategoryId" name="fileSubCategoryId" id="fileSubCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
+                <select onchange="changeSubCategory()" class="form-control fileSubCategoryId" name="fileSubCategoryId" id="fileSubCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
 
                 </select>
             </div>
@@ -57,7 +57,7 @@
 
             <div class="form-group col-md-6">
                 <label>انتخاب دسته بندی اصلی</label>
-                <select class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
+                <select onchange="changeMainCategory()" class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
                     <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getCategoryNameDescription()}" th:selected="${f.getId() == file.getFileCategoryId()}"></option>
                 </select>
             </div>
@@ -102,47 +102,60 @@
 <script src="/webjars/select2/4.0.13/js/select2.min.js"></script>
 <script>
 
+    let check1 = 0;
+    let check2 = 0;
+
     $(document).ready(function () {
         $('.fileCategoryId').select2({
             width: '100%'
         });
 
         $('.fileSubCategoryId').select2({
-            width: '100%',
-            ajax: {
-
-                url: function (params) {
-                    if (typeof params.term == 'undefined') {
-                        params.term = '';
-                    }
-
-                    let fileCategoryId = $('#fileCategoryId').val();
-                    if(fileCategoryId === null) {
-                        fileCategoryId = -1;
-                    }
-                    return '/resource/file-categories/' + fileCategoryId + '/sub-categories';
-                },
-                dataType: 'json'
-            }
+            width: '100%'
         });
 
         $('.mainTagFileId').select2({
-            width: '100%',
-            ajax: {
-                url: function (params) {
-                    if (typeof params.term == 'undefined') {
-                        params.term = '';
-                    }
-
-                    let fileSubCategoryId = $('#fileSubCategoryId').val();
-                    if(fileSubCategoryId === null) {
-                        fileSubCategoryId = -1;
-                    }
-                    return '/resource/file-sub-categories/' + fileSubCategoryId + '/main-tags';
-                },
-                dataType: 'json'
-            }
+            width: '100%'
         });
+
+        $('.fileCategoryId').val(null).trigger('change');
+
+        // $('.fileSubCategoryId').select2({
+        //     width: '100%',
+        //     ajax: {
+        //
+        //         url: function (params) {
+        //             if (typeof params.term == 'undefined') {
+        //                 params.term = '';
+        //             }
+        //
+        //             let fileCategoryId = $('#fileCategoryId').val();
+        //             if(fileCategoryId === null) {
+        //                 fileCategoryId = -1;
+        //             }
+        //             return '/resource/file-categories/' + fileCategoryId + '/sub-categories';
+        //         },
+        //         dataType: 'json'
+        //     }
+        // });
+
+        // $('.mainTagFileId').select2({
+        //     width: '100%',
+        //     ajax: {
+        //         url: function (params) {
+        //             if (typeof params.term == 'undefined') {
+        //                 params.term = '';
+        //             }
+        //
+        //             let fileSubCategoryId = $('#fileSubCategoryId').val();
+        //             if(fileSubCategoryId === null) {
+        //                 fileSubCategoryId = -1;
+        //             }
+        //             return '/resource/file-sub-categories/' + fileSubCategoryId + '/main-tags';
+        //         },
+        //         dataType: 'json'
+        //     }
+        // });
     })
 
     $('#fileForm').on('submit', function() {
@@ -155,6 +168,53 @@
             return true;
         }
     });
+
+    function changeMainCategory() {
+        check2 = 0;
+        $('.fileSubCategoryId').val(null).trigger('change');
+        $('.mainTagFileId').val(null).trigger('change');
+        if(check1 !== 0) {
+            var select = $('.fileSubCategoryId');
+            let fileCategoryId = $('#fileCategoryId').val();
+            if(fileCategoryId === null) {
+                fileCategoryId = -1;
+            }
+            $.ajax({
+                type: 'GET',
+                url: '/resource/file-categories/' + fileCategoryId + '/sub-categories'
+            }).then(function (data) {
+                select.empty().select2({
+                    data: data.results
+                });
+            });
+        }
+
+
+        check1 = 1;
+    }
+
+    function changeSubCategory() {
+        $('.mainTagFileId').val(null).trigger('change');
+        if(check2 !== 0) {
+            var select = $('.mainTagFileId');
+            let fileSubCategoryId = $('#fileSubCategoryId').val();
+            if(fileSubCategoryId === null) {
+                fileSubCategoryId = -1;
+            }
+            $.ajax({
+                type: 'GET',
+                url: '/resource/file-sub-categories/' + fileSubCategoryId + '/main-tags'
+            }).then(function (data) {
+                select.empty().select2({
+                    data: data.results
+                });
+            });
+        }
+
+
+        check2 = 1;
+
+    }
 
 </script>
 

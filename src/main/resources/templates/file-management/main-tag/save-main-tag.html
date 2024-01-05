@@ -86,36 +86,58 @@
 <script src="/webjars/select2/4.0.13/js/select2.min.js"></script>
 <script>
 
-    let historyFileCategoryId = 0;
-
+    let check = 0;
     $(document).ready(function () {
         $('.fileCategoryId').select2({
             width: '100%'
         });
 
+        $('.fileCategoryId').val(null).trigger('change');
+
+
         $('.fileSubCategoryId').select2({
-            width: '100%',
-            ajax: {
-
-                url: function (params) {
-                    if (typeof params.term == 'undefined') {
-                        params.term = '';
-                    }
-
-                    let fileCategoryId = $('#fileCategoryId').val();
-                    if(fileCategoryId === null) {
-                        fileCategoryId = -1;
-                    }
-                    return '/resource/file-categories/' + fileCategoryId + '/sub-categories';
-
-                },
-                dataType: 'json'
-            }
+            width: '100%'
         });
+        // $('.fileSubCategoryId').select2({
+        //     width: '100%',
+        //     ajax: {
+        //
+        //         url: function (params) {
+        //             if (typeof params.term == 'undefined') {
+        //                 params.term = '';
+        //             }
+        //
+        //             let fileCategoryId = $('#fileCategoryId').val();
+        //             if(fileCategoryId === null) {
+        //                 fileCategoryId = -1;
+        //             }
+        //             return '/resource/file-categories/' + fileCategoryId + '/sub-categories';
+        //
+        //         },
+        //         dataType: 'json'
+        //     }
+        // });
     })
 
     function changeCategory() {
-        historyFileCategoryId = $('#fileCategoryId').val();
+        if(check !== 0) {
+            var select = $('.fileSubCategoryId');
+            let fileCategoryId = $('#fileCategoryId').val();
+            if(fileCategoryId === null) {
+                fileCategoryId = -1;
+            }
+            $.ajax({
+                type: 'GET',
+                url: '/resource/file-categories/' + fileCategoryId + '/sub-categories'
+            }).then(function (data) {
+                select.empty().select2({
+                    data: data.results
+                });
+            });
+        }
+
+
+        check = 1;
     }
 
 
