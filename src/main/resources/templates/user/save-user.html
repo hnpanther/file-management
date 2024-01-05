@@ -136,7 +136,7 @@
     <a th:href="@{/users}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست کاربران</a>
 </div>
 </div>
-<script src="/webjars/jquery/3.7.1/jquery.min.js"></script>
+<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
 
 <script>
     $('#userForm').on('submit', function() {

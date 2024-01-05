@@ -8,8 +8,7 @@
     <title th:if="${#strings.equals(pageType, 'create')}">ساخت تگ</title>
     <title th:if="${#strings.equals(pageType, 'update')}">ویرایش تگ</title>
 
-    <link rel="stylesheet"
-          href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css"/>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
     <link rel="stylesheet" href="/webjars/select2/4.0.13/css/select2.min.css"/>
 
     <style>
@@ -83,7 +82,7 @@
 </div>
 
 
-<script src="/webjars/jquery/3.7.1/jquery.min.js"></script>
+<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
 <script src="/webjars/select2/4.0.13/js/select2.min.js"></script>
 <script>
 

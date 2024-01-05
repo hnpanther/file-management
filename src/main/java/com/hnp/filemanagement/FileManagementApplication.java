@@ -10,6 +10,8 @@ import com.hnp.filemanagement.repository.UserRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,12 +20,17 @@ import java.util.List;
 import java.util.Optional;
 
 @SpringBootApplication
-public class FileManagementApplication {
+public class FileManagementApplication extends SpringBootServletInitializer {
 
 	public static void main(String[] args) {
 		SpringApplication.run(FileManagementApplication.class, args);
 	}
 
+
+	@Override
+	protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {
+		return builder.sources(FileManagementApplication.class);
+	}
 
 	@Bean
 	public CommandLineRunner runner(

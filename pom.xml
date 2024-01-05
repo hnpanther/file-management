@@ -13,6 +13,8 @@
 	<version>0.0.1-SNAPSHOT</version>
 	<name>file-management</name>
 	<description>file-management</description>
+	<packaging>war</packaging>
+
 	<properties>
 		<java.version>21</java.version>
 	</properties>
@@ -78,6 +80,7 @@
 	</dependencies>
 
 	<build>
+		<finalName>${project.artifactId}</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>

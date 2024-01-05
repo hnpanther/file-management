@@ -8,8 +8,7 @@
     <title th:if="${#strings.equals(pageType, 'create')}">ساخت دسته بندی جدید</title>
     <title th:if="${#strings.equals(pageType, 'update')}">ویرایش دسته بندی</title>
 
-    <link rel="stylesheet"
-          href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css"/>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
 
     <style>
         label {
@@ -66,7 +65,7 @@
 </div>
 
 
-<script src="/webjars/jquery/3.7.1/jquery.min.js"></script>
+<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
 
 <script>
 

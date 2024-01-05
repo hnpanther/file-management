@@ -8,8 +8,7 @@
     <title th:if="${#strings.equals(pageType, 'create')}">اسناد-ایجاد نقش </title>
     <title th:if="${#strings.equals(pageType, 'update')}">اسناد-ویرایش نقش </title>
 
-    <link rel="stylesheet"
-          href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css"/>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
 
 
 </head>
