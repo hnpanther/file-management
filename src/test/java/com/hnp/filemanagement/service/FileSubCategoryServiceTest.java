@@ -2,6 +2,7 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
+import com.hnp.filemanagement.dto.FileSubCategoryPageDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.MainTagFile;
@@ -279,6 +280,20 @@ class FileSubCategoryServiceTest {
 
         assertThat(fileSubCategoryDTO.getSubCategoryNameDescription()).isEqualTo("sub .. mail34");
 
+    }
+
+    @Test
+    @Commit
+    void getPageFileSubCategoriesTest() {
+        FileSubCategoryPageDTO pageFileSubCategories = underTest.getPageFileSubCategories(1, 0, "");
+        FileSubCategoryPageDTO pageFileSubCategories2 = underTest.getPageFileSubCategories(1, 0, "Mail2");
+
+
+        assertThat(pageFileSubCategories.getTotalPages()).isEqualTo(2);
+        assertThat(pageFileSubCategories.getFileSubCategoryDTOList().size()).isEqualTo(1);
+
+        assertThat(pageFileSubCategories2.getTotalPages()).isEqualTo(1);
+        assertThat(pageFileSubCategories2.getNumberOfElement()).isEqualTo(1);
     }
 
 

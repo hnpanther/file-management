@@ -1,28 +1,27 @@
 package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
+import com.hnp.filemanagement.dto.FileSubCategoryPageDTO;
 import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
-import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileSubCategoryRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
-import com.hnp.filemanagement.util.ValidationUtil;
+import com.hnp.filemanagement.validation.ValidationUtil;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityManagerFactory;
-import jakarta.persistence.EntityTransaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.interceptor.TransactionInterceptor;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -141,6 +140,25 @@ public class FileSubCategoryService {
 
     public List<FileSubCategoryDTO> getAll() {
         return fileSubCategoryRepository.findAll().stream().map(ModelConverterUtil::convertFileSubCategoryToFileSubCategoryDTO).toList();
+    }
+
+    @Transactional
+    public FileSubCategoryPageDTO getPageFileSubCategories(int pageSize, int pageNumber, String search) {
+        if(search != null) {
+            if(search.isEmpty() || search.isBlank()) {
+                search = null;
+            }
+        }
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
+        Page<FileSubCategory> page = fileSubCategoryRepository.findByParameterAndPagination(search, pageable);
+        FileSubCategoryPageDTO fileSubCategoryPageDTO = new FileSubCategoryPageDTO();
+        fileSubCategoryPageDTO.setFileSubCategoryDTOList(page.getContent()
+                .stream().map(ModelConverterUtil::convertFileSubCategoryToFileSubCategoryDTO).toList());
+        fileSubCategoryPageDTO.setTotalPages(page.getTotalPages());
+        fileSubCategoryPageDTO.setPageSize(page.getSize());
+        fileSubCategoryPageDTO.setNumberOfElement(page.getNumberOfElements());
+        return fileSubCategoryPageDTO;
     }
 
 

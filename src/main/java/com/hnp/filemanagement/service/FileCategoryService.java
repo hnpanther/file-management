@@ -11,7 +11,7 @@ import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
-import com.hnp.filemanagement.util.ValidationUtil;
+import com.hnp.filemanagement.validation.ValidationUtil;
 import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -30,4 +30,7 @@ public class FileSubCategoryDTO {
 
     private String description;
 
+    private int enabled;
+    private int state;
+
 }

@@ -2,6 +2,7 @@ package com.hnp.filemanagement.controller;
 
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
+import com.hnp.filemanagement.dto.FileSubCategoryPageDTO;
 import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.validation.UpdateValidation;
 import com.hnp.filemanagement.exception.BusinessException;
@@ -32,6 +33,9 @@ public class FileSubCategoryController {
     private final FileSubCategoryService fileSubCategoryService;
 
     private final FileCategoryService fileCategoryService;
+
+    @Value("${filemanagement.default.page-size:50}")
+    private int defaultPageSize;
 
     @Value("${filemanagement.default.element-size:50}")
     private int defaultElementSize;
@@ -199,18 +203,32 @@ public class FileSubCategoryController {
 
 
     @GetMapping
-    public String viewAllSubCategory(Model model, HttpServletRequest request) {
+    public String viewAllSubCategory(Model model, HttpServletRequest request,
+                                     @RequestParam(name = "page-number", required = false) Integer pageNumber,
+                                     @RequestParam(name = "page-size",required = false) Integer pageSize,
+                                     @RequestParam(name = "search", required = false) String search) {
 
         int principalId = 1;
         String principalUsername = "None";
-        String logMessage = "request get all file sub category=";
+        String logMessage = "request get all file sub category,pageNumber=" + pageNumber + ",pageSize=" + pageSize + ",search=" + search;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileSubCategoryController.class", logMessage);
 
-        List<FileSubCategoryDTO> fileSubCategoryDTOS = fileSubCategoryService.getAll();
+        if(pageSize == null) {
+            pageSize = defaultPageSize;
+        }
+        if(pageNumber == null) {
+            pageNumber = 0;
+        }
 
-        model.addAttribute("listSubCategory", fileSubCategoryDTOS);
+        FileSubCategoryPageDTO fileSubCategoryPageDTO = fileSubCategoryService.getPageFileSubCategories(pageSize, pageNumber, search);
+
+        model.addAttribute("listSubCategory", fileSubCategoryPageDTO.getFileSubCategoryDTOList());
+        model.addAttribute("pageSize", pageSize);
+        model.addAttribute("pageNumber", pageNumber + 1);
+        model.addAttribute("totalPages", fileSubCategoryPageDTO.getTotalPages());
+        model.addAttribute("search", search);
 
 
         return "file-management/sub-category/sub-categories.html";

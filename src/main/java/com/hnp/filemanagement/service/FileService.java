@@ -10,7 +10,7 @@ import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
-import com.hnp.filemanagement.util.ValidationUtil;
+import com.hnp.filemanagement.validation.ValidationUtil;
 import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,8 +19,6 @@ import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

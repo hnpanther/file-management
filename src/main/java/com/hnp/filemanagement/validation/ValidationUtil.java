@@ -1,4 +1,4 @@
-package com.hnp.filemanagement.util;
+package com.hnp.filemanagement.validation;
 
 public class ValidationUtil {
 
