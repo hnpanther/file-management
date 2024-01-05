@@ -1,8 +1,6 @@
 package com.hnp.filemanagement.service;
 
-import com.hnp.filemanagement.dto.FileDownloadDTO;
-import com.hnp.filemanagement.dto.FileInfoDTO;
-import com.hnp.filemanagement.dto.PublicFileDetailsDTO;
+import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.entity.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
@@ -16,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -204,6 +203,48 @@ public class FileService {
         Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
         List<FileInfo> fileInfos = fileInfoRepository.findAll(pageable).toList();
         return fileInfos.stream().map(ModelConverterUtil::convertFileInfoToFileInfoDTO).toList();
+    }
+
+    @Transactional
+    public FileInfoPageDTO getPageFileInfo(int pageSize, int pageNumber, String search) {
+        if(search != null) {
+            if(search.isEmpty() || search.isBlank()) {
+                search = null;
+            }
+        }
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
+        Page<FileInfo> page = fileInfoRepository.findByParameterAndPagination(search, pageable);
+        FileInfoPageDTO fileInfoPageDTO = new FileInfoPageDTO();
+        fileInfoPageDTO.setFileInfoDTOList(page.getContent().stream()
+                .map(ModelConverterUtil::convertFileInfoToFileInfoDTO).toList());
+        fileInfoPageDTO.setTotalPages(page.getTotalPages());
+        fileInfoPageDTO.setPageSize(page.getSize());
+        fileInfoPageDTO.setNumberOfElement(page.getNumberOfElements());
+
+        return fileInfoPageDTO;
+    }
+
+    @Transactional
+    public PublicFileDetailsPageDTO getPagePublicFiles(int pageSize, int pageNumber, String search) {
+        if(search != null) {
+            if(search.isEmpty() || search.isBlank()) {
+                search = null;
+            }
+        }
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
+        Page<FileDetails> page = fileDetailsRepository.getAllPublicFileDetailsPage(search, pageable);
+
+        PublicFileDetailsPageDTO publicFileDetailsPageDTO = new PublicFileDetailsPageDTO();
+        publicFileDetailsPageDTO.setPublicFileDetailsDTOList(page.getContent().stream()
+                .map(ModelConverterUtil::convertFileDetailsToPublicFileDetailsDTO).toList());
+        publicFileDetailsPageDTO.setTotalPages(page.getTotalPages());
+        publicFileDetailsPageDTO.setPageSize(page.getSize());
+        publicFileDetailsPageDTO.setNumberOfElement(page.getNumberOfElements());
+
+        return publicFileDetailsPageDTO;
+
     }
 
 

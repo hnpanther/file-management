@@ -1,9 +1,6 @@
 package com.hnp.filemanagement.controller;
 
-import com.hnp.filemanagement.dto.FileCategoryDTO;
-import com.hnp.filemanagement.dto.FileDownloadDTO;
-import com.hnp.filemanagement.dto.FileInfoDTO;
-import com.hnp.filemanagement.dto.PublicFileDetailsDTO;
+import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -42,6 +39,9 @@ public class FileController {
     private final MainTagFileService mainTagFileService;
 
     private final FileService fileService;
+
+    @Value("${filemanagement.default.page-size:50}")
+    private int defaultPageSize;
 
     @Value("${filemanagement.default.element-size:50}")
     private int defaultElementSize;
@@ -144,20 +144,34 @@ public class FileController {
 
 
     @GetMapping("public-files")
-    public String getAllPublicFile(Model model, HttpServletRequest request) {
+    public String getAllPublicFile(Model model, HttpServletRequest request,
+                                   @RequestParam(name = "page-size", required = false) Integer pageSize,
+                                   @RequestParam(name = "page-number", required = false) Integer pageNumber,
+                                   @RequestParam(name = "search", required = false) String search) {
 
 
         int principalId = 1;
         String principalUsername = "None";
-        String logMessage = "request to get all public files";
+        String logMessage = "request to get all public files, pageSize=" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileController.class", logMessage);
 
-        List<PublicFileDetailsDTO> allPublicFileDetails = fileService.getAllPublicFileDetails(defaultElementSize, 0);
+        if(pageSize == null) {
+            pageSize = defaultPageSize;
+        }
+        if(pageNumber == null) {
+            pageNumber = 0;
+        }
+
+        PublicFileDetailsPageDTO publicFileDetailsPageDTO = fileService.getPagePublicFiles(pageSize, pageNumber, search);
 
 
-        model.addAttribute("files", allPublicFileDetails);
+        model.addAttribute("files", publicFileDetailsPageDTO.getPublicFileDetailsDTOList());
+        model.addAttribute("pageSize", pageSize);
+        model.addAttribute("pageNumber", pageNumber + 1);
+        model.addAttribute("totalPages", publicFileDetailsPageDTO.getTotalPages());
+        model.addAttribute("search", search);
 
         return "file-management/files/files-public.html";
     }
@@ -201,20 +215,32 @@ public class FileController {
     }
 
     @GetMapping("file-info")
-    public String getAllFileInfo(Model model, HttpServletRequest request) {
+    public String getAllFileInfo(Model model, HttpServletRequest request,
+                                 @RequestParam(name = "page-size", required = false) Integer pageSize,
+                                 @RequestParam(name = "page-number", required = false) Integer pageNumber,
+                                 @RequestParam(name = "search", required = false) String search) {
 
         int principalId = 1;
         String principalUsername = "None";
-        String logMessage = "request to get all file info";
+        String logMessage = "request to get all file info, pageSize=" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileController.class", logMessage);
 
-        int pageSize = defaultElementSize;
-        int pageNumber = 0;
-        List<FileInfoDTO> fileInfoDTOS = fileService.getAllFileInfo(pageSize, pageNumber);
+        if(pageSize == null) {
+            pageSize = defaultPageSize;
+        }
+        if(pageNumber == null) {
+            pageNumber = 0;
+        }
 
-        model.addAttribute("files", fileInfoDTOS);
+        FileInfoPageDTO fileInfoPageDTO = fileService.getPageFileInfo(pageSize, pageNumber, search);
+
+        model.addAttribute("files", fileInfoPageDTO.getFileInfoDTOList());
+        model.addAttribute("pageSize", pageSize);
+        model.addAttribute("pageNumber", pageNumber + 1);
+        model.addAttribute("totalPages", fileInfoPageDTO.getTotalPages());
+        model.addAttribute("search", search);
         return "file-management/files/file-info.html";
     }
 
