@@ -1,6 +1,8 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.dto.FileSubCategoryPageDTO;
 import com.hnp.filemanagement.dto.MainTagFileDTO;
+import com.hnp.filemanagement.dto.MainTagFilePageDTO;
 import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.User;
@@ -15,6 +17,10 @@ import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -128,6 +134,25 @@ public class MainTagFileService {
 
     public List<MainTagFileDTO> getAllMainTagFile() {
         return mainTagFileRepository.findAll().stream().map(ModelConverterUtil::convertMainTagFileToMainTagFileDTO).toList();
+    }
+
+    public MainTagFilePageDTO getMainTagFilePage(int pageSize, int pageNumber, String search) {
+        if(search != null) {
+            if(search.isEmpty() || search.isBlank()) {
+                search = null;
+            }
+        }
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
+        Page<MainTagFile> page = mainTagFileRepository.findByParameterAndPagination(search, pageable);
+        MainTagFilePageDTO mainTagFilePageDTO = new MainTagFilePageDTO();
+        mainTagFilePageDTO.setMainTagFileDTOList(page.getContent()
+                .stream().map(ModelConverterUtil::convertMainTagFileToMainTagFileDTO).toList());
+        mainTagFilePageDTO.setTotalPages(page.getTotalPages());
+        mainTagFilePageDTO.setPageSize(page.getSize());
+        mainTagFilePageDTO.setNumberOfElement(page.getNumberOfElements());
+        return mainTagFilePageDTO;
+
     }
 
     private boolean checkDuplicate(String tagName, String description, int subCategoryId) {

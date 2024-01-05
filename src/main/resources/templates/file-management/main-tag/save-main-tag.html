@@ -55,7 +55,7 @@
 
             <div class="form-group col-md-6">
                 <label>انتخاب دسته بندی اصلی</label>
-                <select class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
+                <select onchange="changeCategory()" class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
                     <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getCategoryNameDescription()}" th:selected="${f.getId() == mainTag.getFileCategoryId()}"></option>
                 </select>
             </div>
@@ -86,6 +86,8 @@
 <script src="/webjars/select2/4.0.13/js/select2.min.js"></script>
 <script>
 
+    let historyFileCategoryId = 0;
+
     $(document).ready(function () {
         $('.fileCategoryId').select2({
             width: '100%'
@@ -105,11 +107,18 @@
                         fileCategoryId = -1;
                     }
                     return '/resource/file-categories/' + fileCategoryId + '/sub-categories';
+
                 },
                 dataType: 'json'
             }
         });
     })
+
+    function changeCategory() {
+        historyFileCategoryId = $('#fileCategoryId').val();
+    }
+
+
 
     $('#categoryForm').on('submit', function() {
 

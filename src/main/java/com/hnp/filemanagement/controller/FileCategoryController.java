@@ -184,7 +184,7 @@ public class FileCategoryController {
 
         int principalId = 1;
         String principalUsername = "None";
-        String logMessage = "request to get all categories. pageSize=" + pageSize + ",pageNumber=" + pageNumber;
+        String logMessage = "request to get all categories. pageSize=" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileCategoryController.class", logMessage);

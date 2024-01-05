@@ -99,6 +99,8 @@ public class ModelConverterUtil {
         mainTagFileDTO.setFileCategoryId(mainTagFile.getFileSubCategory().getFileCategory().getId());
         mainTagFileDTO.setFileCategoryName(mainTagFile.getFileSubCategory().getFileCategory().getCategoryName());
         mainTagFileDTO.setFileCategoryNameDescription(mainTagFile.getFileSubCategory().getFileCategory().getCategoryNameDescription());
+        mainTagFileDTO.setEnabled(mainTagFile.getEnabled());
+        mainTagFileDTO.setState(mainTagFile.getState());
 
         return mainTagFileDTO;
     }

@@ -36,6 +36,9 @@ public class MainTagFileController {
 
     private final MainTagFileService mainTagFileService;
 
+    @Value("${filemanagement.default.page-size:50}")
+    private int defaultPageSize;
+
     @Value("${filemanagement.default.element-size:50}")
     private int defaultElementSize;
 
@@ -212,17 +215,34 @@ public class MainTagFileController {
 
 
     @GetMapping
-    public String getAllTags(Model model, HttpServletRequest request) {
+    public String getAllTags(Model model, HttpServletRequest request,
+                             @RequestParam(name = "page-size", required = false) Integer pageSize,
+                             @RequestParam(name = "page-number", required = false) Integer pageNumber,
+                             @RequestParam(name = "search", required = false) String search) {
 
         int principalId = 1;
         String principalUsername = "None";
-        String logMessage = "request to get all tags";
+        String logMessage = "request to get all tags, pageSize" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search;;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "MainTagFileController.class", logMessage);
 
-        List<MainTagFileDTO> allMainTagFile = mainTagFileService.getAllMainTagFile();
-        model.addAttribute("tags", allMainTagFile);
+
+        if(pageSize == null) {
+            pageSize = defaultPageSize;
+        }
+        if(pageNumber == null) {
+            pageNumber = 0;
+        }
+
+        MainTagFilePageDTO mainTagFilePageDTO = mainTagFileService.getMainTagFilePage(pageSize, pageNumber, search);
+
+
+        model.addAttribute("tags", mainTagFilePageDTO.getMainTagFileDTOList());
+        model.addAttribute("pageSize", pageSize);
+        model.addAttribute("pageNumber", pageNumber + 1);
+        model.addAttribute("totalPages", mainTagFilePageDTO.getTotalPages());
+        model.addAttribute("search", search);
         return "file-management/main-tag/main-tags.html";
     }
 

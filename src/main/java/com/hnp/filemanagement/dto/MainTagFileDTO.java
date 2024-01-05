@@ -30,4 +30,8 @@ public class MainTagFileDTO {
     private Integer fileCategoryId;
     private String fileCategoryName;
     private String fileCategoryNameDescription;
+
+    private int enabled;
+
+    private int state;
 }

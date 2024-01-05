@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.MainTagFileDTO;
+import com.hnp.filemanagement.dto.MainTagFilePageDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.MainTagFile;
@@ -308,6 +309,22 @@ class MainTagFileServiceTest {
 //                () -> underTest.updateMainTagFile(mainTagFileDTO, userId)
 //        ).isInstanceOf(InvalidDataException.class);
 //    }
+
+
+    @Test
+    @Commit
+    void getMainTagFilePageTest() {
+
+
+        MainTagFilePageDTO mainTagFilePage = underTest.getMainTagFilePage(1, 0, "");
+        MainTagFilePageDTO mainTagFilePage1 = underTest.getMainTagFilePage(1, 0, "pre");
+
+        assertThat(mainTagFilePage.getTotalPages()).isEqualTo(2);
+        assertThat(mainTagFilePage1.getTotalPages()).isEqualTo(1);
+        assertThat(mainTagFilePage1.getPageSize()).isEqualTo(1);
+
+
+    }
 
 
 }
