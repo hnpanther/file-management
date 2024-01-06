@@ -91,15 +91,15 @@
             <!-- Text input-->
 
 
-<!--            <div class="form-group">-->
-<!--                <label class="col-md-4 control-label">رمز عبور</label>-->
-<!--                <div class="col-md-4 inputGroupContainer">-->
-<!--                    <div class="input-group">-->
-<!--                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>-->
-<!--                        <input th:field="*{password}" placeholder="رمز عبور" class="form-control"  type="password" required>-->
-<!--                    </div>-->
-<!--                </div>-->
-<!--            </div>-->
+            <div th:if="${#strings.equals(pageType, 'create')}" class="form-group">
+                <label class="col-md-4 control-label">رمز عبور</label>
+                <div class="col-md-4 inputGroupContainer">
+                    <div class="input-group">
+                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
+                        <input th:field="*{password}" placeholder="رمز عبور" class="form-control"  type="password" required>
+                    </div>
+                </div>
+            </div>
 
 
 
@@ -131,7 +131,9 @@
         </fieldset>
     </form>
     <hr>
-    <a th:href="@{'/users/' + ${user.getId()}}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به پروفایل</a>
+    <a th:if="${#strings.equals(pageType, 'update')}" th:href="@{'/users/' + ${user.getId()}}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به پروفایل</a>
+    <a th:if="${#strings.equals(pageType, 'create')}" th:href="@{'/users'}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست کاربران</a>
+
 </div>
 </div>
 <script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
