@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.dto;
 
 import com.hnp.filemanagement.validation.InsertValidation;
+import com.hnp.filemanagement.validation.UpdatePasswordValidation;
 import com.hnp.filemanagement.validation.UpdateValidation;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -14,15 +15,15 @@ import java.util.List;
 @Data
 public class UserDTO {
 
-    @NotNull(groups = UpdateValidation.class)
+    @NotNull(groups = {UpdateValidation.class, UpdatePasswordValidation.class})
     private Integer id;
 
     @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
     @NotEmpty(groups = {InsertValidation.class, UpdateValidation.class})
     private String username;
 
-    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
-    @NotEmpty(groups = {InsertValidation.class, UpdateValidation.class})
+    @NotNull(groups = {InsertValidation.class, UpdatePasswordValidation.class})
+    @NotEmpty(groups = {InsertValidation.class, UpdatePasswordValidation.class})
     private String password;
 
     @NotNull(groups = {InsertValidation.class, UpdateValidation.class})

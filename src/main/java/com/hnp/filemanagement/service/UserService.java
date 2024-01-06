@@ -128,7 +128,7 @@ public class UserService {
         user.setFirstName(userDTO.getFirstName());
         user.setLastName(userDTO.getLastName());
         user.setEmail(userDTO.getEmail());
-        user.setPassword(userDTO.getPassword());
+//        user.setPassword(userDTO.getPassword());
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
 
@@ -159,6 +159,25 @@ public class UserService {
 
 
 
+    }
+
+    @Transactional
+    public void changePassword(UserDTO userDTO) {
+
+        User user = getUserByIdOrUsername(userDTO.getId(), null);
+        user.setPassword(userDTO.getPassword());
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void changeEnabled(int userId, int enabled) {
+
+        if(enabled != 0 && enabled != 1) {
+            throw new InvalidDataException("enabled is invalid, enabled=" + enabled);
+        }
+        User user = getUserByIdOrUsername(userId, null);
+        user.setEnabled(enabled);
+        userRepository.save(user);
     }
 
 

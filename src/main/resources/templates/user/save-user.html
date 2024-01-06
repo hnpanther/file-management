@@ -8,8 +8,7 @@
     <title th:if="${#strings.equals(pageType, 'create')}">اسناد-ایجاد کابر جدید </title>
     <title th:if="${#strings.equals(pageType, 'update')}">اسناد-ویرایش اطلاعات کاربر </title>
 
-    <link rel="stylesheet"
-          href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css" />
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
 
 
 </head>
@@ -92,15 +91,15 @@
             <!-- Text input-->
 
 
-            <div class="form-group">
-                <label class="col-md-4 control-label">رمز عبور</label>
-                <div class="col-md-4 inputGroupContainer">
-                    <div class="input-group">
-                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{password}" placeholder="رمز عبور" class="form-control"  type="password" required>
-                    </div>
-                </div>
-            </div>
+<!--            <div class="form-group">-->
+<!--                <label class="col-md-4 control-label">رمز عبور</label>-->
+<!--                <div class="col-md-4 inputGroupContainer">-->
+<!--                    <div class="input-group">-->
+<!--                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>-->
+<!--                        <input th:field="*{password}" placeholder="رمز عبور" class="form-control"  type="password" required>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--            </div>-->
 
 
 
@@ -132,8 +131,7 @@
         </fieldset>
     </form>
     <hr>
-    <a th:if="${#strings.equals(pageType, 'update')}" th:href="@{'/users/' + ${user.getId()} + '/roles' }" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>نقش های کاربر</a>
-    <a th:href="@{/users}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست کاربران</a>
+    <a th:href="@{'/users/' + ${user.getId()}}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به پروفایل</a>
 </div>
 </div>
 <script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+
+<head>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>پروفایل</title>
+
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
+
+    <style>
+        body{
+            margin-top:20px;
+            color: #1a202c;
+            text-align: left;
+            background-color: #e2e8f0;
+        }
+        .main-body {
+            padding: 15px;
+        }
+        .card {
+            box-shadow: 0 1px 3px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.06);
+        }
+
+        .card {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            word-wrap: break-word;
+            background-color: #fff;
+            background-clip: border-box;
+            border: 0 solid rgba(0,0,0,.125);
+            border-radius: .25rem;
+        }
+
+        .card-body {
+            flex: 1 1 auto;
+            min-height: 1px;
+            padding: 1rem;
+        }
+
+        .gutters-sm {
+            margin-right: -8px;
+            margin-left: -8px;
+        }
+
+        .gutters-sm>.col, .gutters-sm>[class*=col-] {
+            padding-right: 8px;
+            padding-left: 8px;
+        }
+        .mb-3, .my-3 {
+            margin-bottom: 1rem!important;
+        }
+
+        .bg-gray-300 {
+            background-color: #e2e8f0;
+        }
+        .h-100 {
+            height: 100%!important;
+        }
+        .shadow-none {
+            box-shadow: none!important;
+        }
+    </style>
+
+
+</head>
+
+
+<body>
+<div th:insert="~{navbar.html :: navbar}"></div>
+
+<div class="container">
+    <div class="main-body">
+
+        <!-- Breadcrumb -->
+        <nav aria-label="breadcrumb" class="main-breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item active" aria-current="page">پروفایل کاربری</li>
+            </ol>
+        </nav>
+        <!-- /Breadcrumb -->
+        <input class="userId" type="hidden" th:value="${user.getId()}">
+        <input class="enabled" type="hidden" th:value="${user.getEnabled()}">
+
+        <div class="row gutters-sm">
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex flex-column align-items-center text-center">
+
+                            <div class="mt-3">
+                                <h4 th:text="${user.getUsername()}"></h4>
+                                <p class="text-secondary mb-1" th:text="${user.getEnabled() == 1 ? 'وضعیت: فعال' : 'وضعیت: غیرفعال'}"></p>
+<!--                                <p class="text-muted font-size-sm">state</p>-->
+                                <button onclick="changeState()" class="btn btn-primary" th:text="${user.getEnabled() == 1 ? 'غیرفعال کردن' : 'فعال کردن'}"></button>
+                                <button class="btn btn-outline-primary">خروج</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card mt-3">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap">
+                            <h6>نقش ها</h6>
+                            <span class="text-secondary"><a th:href="@{'/users/' + ${user.getId()} + '/roles' }" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>نقش های کاربر</a></span>
+                        </li>
+
+                    </ul>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-sm-3">
+                                <h6 class="mb-0">کد پرسنلی</h6>
+                            </div>
+                            <div class="col-sm-9 text-secondary" th:text="${user.getPersonelCode()}"></div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-3">
+                                <h6 class="mb-0">نام کاربری</h6>
+                            </div>
+                            <div class="col-sm-9 text-secondary" th:text="${user.getUsername()}"></div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-3">
+                                <h6 class="mb-0">نام و نام خانوادگی</h6>
+                            </div>
+                            <div class="col-sm-9 text-secondary" th:text="${user.getFirstName() + ' ' + user.getLastName()}"></div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-3">
+                                <h6 class="mb-0">شماره تلفن همره</h6>
+                            </div>
+                            <div class="col-sm-9 text-secondary" th:text="${user.getPhoneNumber()}"></div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-3">
+                                <h6 class="mb-0">سایر اطلاعات</h6>
+                            </div>
+                            <div class="col-sm-9 text-secondary">
+
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-12">
+                                <a class="btn btn-info " th:href="@{'/users/' + ${user.getId()} + '/edit'}">ویرایش</a>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-12">
+                                <a class="btn btn-info " th:href="@{'/users/' + ${user.getId()} + '/change-password'}">تغییر رمز عبور</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
+<script>
+    function changeState() {
+        let newVal = $(".enabled").val();
+        if(newVal == 1) {
+            newVal = 0;
+        } else {
+            newVal = 1;
+        }
+        if(confirm("آیا از تغییر وضعیت اطمینان دارید؟")) {
+            $.ajax({
+                url: "/resource/users/" + $(".userId").val() + "/change-enabled",
+                type: "PUT",
+                dataType: "json",
+                contentType: "application/json; charset=utf-8",
+                data: JSON.stringify({ enabled: newVal}),
+                complete: function (xhr, status) {
+                    if(xhr.status === 200) {
+                        alert("تغییر وضعیت با موفقیت انجام شد");
+                        let currentLocation = window.location;
+                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + "/users/" + $(".userId").val();
+                        window.location.replace(newUrl);
+                    } else {
+                        alert(xhr.responseText);
+                    }
+                }
+            });
+        }
+    }
+</script>
+
+</body>

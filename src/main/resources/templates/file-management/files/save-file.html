@@ -9,7 +9,7 @@
     <title th:if="${#strings.equals(pageType, 'update')}">ویرایش ویرایش</title>
 
     <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
-    <link rel="stylesheet" href="/webjars/select2/4.0.13/css/select2.min.css"/>
+    <link rel="stylesheet" th:href="@{/webjars/select2/4.0.13/css/select2.min.css}"/>
 
     <style>
         label {
@@ -99,7 +99,7 @@
 
 
 <script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
-<script src="/webjars/select2/4.0.13/js/select2.min.js"></script>
+<script th:src="@{/webjars/select2/4.0.13/js/select2.min.js}"></script>
 <script>
 
     let check1 = 0;
