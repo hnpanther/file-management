@@ -2,6 +2,7 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.RoleDTO;
 import com.hnp.filemanagement.dto.UserDTO;
+import com.hnp.filemanagement.entity.Permission;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
@@ -14,9 +15,11 @@ import com.hnp.filemanagement.util.ModelConverterUtil;
 import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +37,9 @@ public class UserService {
     private final RoleService roleService;
 
     private final EntityManager entityManager;
+
+    @Autowired
+    private BCryptPasswordEncoder bCryptPasswordEncoder;
 
     public UserService(UserRepository userRepository, RoleService roleService, EntityManager entityManager) {
         this.userRepository = userRepository;
@@ -60,7 +66,7 @@ public class UserService {
         user.setPersonelCode(userDTO.getPersonelCode());
         user.setNationalCode(userDTO.getNationalCode());
         user.setPhoneNumber(userDTO.getPhoneNumber());
-        user.setPassword(userDTO.getPassword());
+        user.setPassword(bCryptPasswordEncoder.encode(userDTO.getPassword()));
         user.setFirstName(userDTO.getFirstName());
         user.setLastName(userDTO.getLastName());
         user.setEmail(userDTO.getEmail());
@@ -165,7 +171,7 @@ public class UserService {
     public void changePassword(UserDTO userDTO) {
 
         User user = getUserByIdOrUsername(userDTO.getId(), null);
-        user.setPassword(userDTO.getPassword());
+        user.setPassword(bCryptPasswordEncoder.encode(userDTO.getPassword()));
         userRepository.save(user);
     }
 
@@ -194,6 +200,38 @@ public class UserService {
         );
 
         return  ModelConverterUtil.convertUserToUserDTO(user);
+    }
+
+    @Transactional
+    public User getUserByUsername(String username) {
+
+        return userRepository.findByUsername(username).orElseThrow(
+                () -> new ResourceNotFoundException("user not found." + "username=" + username)
+        );
+    }
+
+    @Transactional
+    public List<Permission> getAllPermissionsOfUser(int userId) {
+
+        User user = getUserByIdOrUsername(userId, null);
+        List<Role> roles = user.getRoles();
+        if(roles == null || roles.size() == 0) {
+            throw new ResourceNotFoundException("user don't have any role!");
+        }
+
+        List<Permission> permissions =
+                entityManager.createQuery("""
+                    SELECT p FROM Permission p JOIN FETCH p.roles r WHERE r in :roleList
+                        
+                """, Permission.class)
+                        .setParameter("roleList", roles)
+                        .getResultList();
+
+        if(permissions.size() == 0) {
+            new ArrayList<Permission>();
+        }
+
+        return permissions;
     }
 
     @Transactional

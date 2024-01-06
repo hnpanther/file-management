@@ -5,6 +5,7 @@ import com.hnp.filemanagement.dto.RoleDTO;
 import com.hnp.filemanagement.entity.Permission;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
+import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -137,8 +138,6 @@ public class RoleService {
     public List<RoleDTO> getAllRoles() {
         return roleRepository.findAll().stream().map(ModelConverterUtil::convertRoleToRoleDTO).toList();
     }
-
-
 
 
     private boolean checkRoleExistsWithName(String roleName) {

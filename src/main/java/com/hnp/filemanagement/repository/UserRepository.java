@@ -16,6 +16,8 @@ public interface UserRepository extends JpaRepository<User, Integer> {
 
     Optional<User> findByIdOrUsername(int id, String username);
 
+    Optional<User> findByUsername(String username);
+
 
 
     @Query("""
