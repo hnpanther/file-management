@@ -38,13 +38,13 @@ public class UserService {
 
     private final EntityManager entityManager;
 
-    @Autowired
-    private BCryptPasswordEncoder bCryptPasswordEncoder;
+    private final BCryptPasswordEncoder bCryptPasswordEncoder;
 
-    public UserService(UserRepository userRepository, RoleService roleService, EntityManager entityManager) {
+    public UserService(UserRepository userRepository, RoleService roleService, EntityManager entityManager, BCryptPasswordEncoder bCryptPasswordEncoder) {
         this.userRepository = userRepository;
         this.roleService = roleService;
         this.entityManager = entityManager;
+        this.bCryptPasswordEncoder = bCryptPasswordEncoder;
     }
 
 

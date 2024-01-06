@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.annotation.Commit;
 
 import java.time.LocalDateTime;
@@ -56,8 +57,11 @@ class UserServiceTest {
     @BeforeEach
     void setUp() {
 
+
+        BCryptPasswordEncoder bCryptPasswordEncoder = new BCryptPasswordEncoder();
+
         roleService = new RoleService(roleRepository, permissionRepository, entityManager);
-        underTest = new UserService(userRepository, roleService, entityManager);
+        underTest = new UserService(userRepository, roleService, entityManager, bCryptPasswordEncoder);
 
         Permission p1 = new Permission();
         p1.setPermissionName(PermissionEnum.CREATE_FILE_CATEGORY_PAGE);
