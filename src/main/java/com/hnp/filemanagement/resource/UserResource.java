@@ -9,6 +9,7 @@ import org.springframework.boot.json.JsonParser;
 import org.springframework.boot.json.JsonParserFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -31,6 +32,7 @@ public class UserResource {
     }
 
     //REST_CHANGE_USER_ENABLED
+    @PreAuthorize("hasAuthority('REST_CHANGE_USER_ENABLED') || hasAuthority('ADMIN')")
     @PutMapping("{userId}/change-enabled")
     public ResponseEntity<String> changeUserEnabled(@PathVariable("userId") int userId, @RequestBody() String body, HttpServletRequest request) {
         int principalId = 1;

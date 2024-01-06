@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -52,6 +53,7 @@ public class MainTagFileController {
 
 
     //CREATE_MAIN_TAG_FILE_PAGE,
+    @PreAuthorize("hasAuthority('CREATE_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("create")
     public String createMainTagFilePage(Model model, HttpServletRequest request) {
 
@@ -80,6 +82,7 @@ public class MainTagFileController {
 
 
     //SAVE_NEW_MAIN_TAG_FILE
+    @PreAuthorize("hasAuthority('SAVE_NEW_MAIN_TAG_FILE') || hasAuthority('ADMIN')")
     @PostMapping
     public String saveNewTagFile(@ModelAttribute @Validated(InsertValidation.class) MainTagFileDTO mainTagFileDTO, BindingResult bindingResult,
                                  Model model, HttpServletRequest request) {
@@ -140,6 +143,7 @@ public class MainTagFileController {
 
 
     //UPDATE_MAIN_TAG_FILE_PAGE
+    @PreAuthorize("hasAuthority('UPDATE_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{id}")
     public String updateMainTagFilePage(@PathVariable("id") int id, Model model, HttpServletRequest request) {
         int principalId = 1;
@@ -165,6 +169,7 @@ public class MainTagFileController {
     }
 
     //SAVE_UPDATED_MAIN_TAG_FILE
+    @PreAuthorize("hasAuthority('SAVE_UPDATED_MAIN_TAG_FILE') || hasAuthority('ADMIN')")
     @PostMapping("{id}")
     public String saveUpdatedMainTagFile(@PathVariable("id") int id, @ModelAttribute @Validated(UpdateValidation.class) MainTagFileDTO mainTagFileDTO, BindingResult bindingResult,
                                          Model model, HttpServletRequest request) {
@@ -219,6 +224,7 @@ public class MainTagFileController {
 
 
     //GET_ALL_MAIN_TAG_FILE_PAGE
+    @PreAuthorize("hasAuthority('GET_ALL_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
     public String getAllTags(Model model, HttpServletRequest request,
                              @RequestParam(name = "page-size", required = false) Integer pageSize,

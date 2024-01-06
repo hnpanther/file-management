@@ -2,6 +2,7 @@ package com.hnp.filemanagement.config.security;
 
 import com.hnp.filemanagement.entity.Permission;
 import com.hnp.filemanagement.entity.PermissionEnum;
+import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.service.UserService;
@@ -13,6 +14,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class UserDetailsServiceImpl implements UserDetailsService {
@@ -30,11 +32,11 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
 
-        logger.debug("security: login by username=" + username);
+
         try {
             User user = userService.getUserByUsername(username);
 
-            logger.debug("user find, userId=" + user.getId());
+
 
 
             UserDetailsImpl userDetails = new UserDetailsImpl();
@@ -46,10 +48,18 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
             List<Permission> allPermissionsOfUser = userService.getAllPermissionsOfUser(user.getId());
 
-            List<PermissionEnum> list = allPermissionsOfUser.stream().map(Permission::getPermissionName).toList();
+            List<PermissionEnum> list = new java.util.ArrayList<>(allPermissionsOfUser.stream().map(Permission::getPermissionName).toList());
+
+
+            Optional<Role> adminRole = user.getRoles().stream().filter(role -> role.getRoleName().equalsIgnoreCase("ADMIN")).findFirst();
+            if(adminRole.isPresent()) {
+                list.add(PermissionEnum.ADMIN);
+            }
+
+
             userDetails.setPermissions(list);
 
-            logger.debug("load permissions is ok");
+
             return userDetails;
         } catch (Exception e) {
             logger.debug("load by username exception", e);

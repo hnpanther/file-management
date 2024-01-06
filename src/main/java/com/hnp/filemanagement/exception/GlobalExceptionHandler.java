@@ -11,15 +11,17 @@ import org.springframework.web.servlet.ModelAndView;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.AccessDeniedException;
 
-@ControllerAdvice(assignableTypes = {UserController.class, FileController.class})
+//@ControllerAdvice(assignableTypes = {UserController.class, FileController.class})
+@ControllerAdvice
 public class GlobalExceptionHandler {
 
     Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
 
 //    @ResponseStatus(value= HttpStatus.NOT_FOUND, reason="Resource Not Found")
-    @ExceptionHandler({ResourceNotFoundException.class, DuplicateResourceException.class, DependencyResourceException.class, BusinessException.class})
+    @ExceptionHandler({ResourceNotFoundException.class, DuplicateResourceException.class, DependencyResourceException.class, BusinessException.class, org.springframework.security.access.AccessDeniedException.class})
     public ModelAndView ResourceNotFoundHandler(RuntimeException e) {
 
         logger.error(e.getMessage());
@@ -34,6 +36,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ModelAndView uncaughtException(Exception e) {
 
+        System.out.println("==== helllo");
+        System.out.println("==== helllo");
+        System.out.println("==== helllo");
+        System.out.println("==== helllo");
         StringWriter sw = new StringWriter();
         PrintWriter pw = new PrintWriter(sw);
         e.printStackTrace(pw);

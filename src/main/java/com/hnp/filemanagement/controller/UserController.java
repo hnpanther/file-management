@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -43,6 +44,7 @@ public class UserController {
 
 
     //CREATE_NEW_USER
+    @PreAuthorize("hasAuthority('CREATE_NEW_USER') || hasAuthority('ADMIN')")
     @GetMapping("/create")
     public String createUser(Model model, HttpServletRequest request) {
         int principalId = 0;
@@ -65,6 +67,7 @@ public class UserController {
     }
 
     //SAVE_NEW_USER
+    @PreAuthorize("hasAuthority('SAVE_NEW_USER') || hasAuthority('ADMIN')")
     @PostMapping
     public String saveUser(@ModelAttribute @Validated(InsertValidation.class) UserDTO userDTO, BindingResult bindingResult,
                            Model model, HttpServletRequest request) {
@@ -116,6 +119,7 @@ public class UserController {
     }
 
     //UPDATE_USER_PAGE
+    @PreAuthorize("hasAuthority('UPDATE_USER_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{userId}/edit")
     public String viewEditUserPage(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
         int principalId = 0;
@@ -138,6 +142,7 @@ public class UserController {
     }
 
     //VIEW_USER_PROFILE
+    @PreAuthorize("hasAuthority('VIEW_USER_PROFILE') || hasAuthority('ADMIN')")
     @GetMapping("{userId}")
     public String viewUserProfile(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
         int principalId = 0;
@@ -154,6 +159,7 @@ public class UserController {
     }
 
     //CHANGE_USER_PASSWORD_PAGE
+    @PreAuthorize("hasAuthority('CHANGE_USER_PASSWORD_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{userId}/change-password")
     public String changePasswordPage(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
         int principalId = 0;
@@ -173,6 +179,7 @@ public class UserController {
     }
 
     //CHANGE_USER_PASSWORD
+    @PreAuthorize("hasAuthority('CHANGE_USER_PASSWORD') || hasAuthority('ADMIN')")
     @PostMapping("{userId}/change-password")
     public String changeUserPassword(@ModelAttribute @Validated(UpdatePasswordValidation.class) UserDTO userDTO, BindingResult bindingResult,
                                      @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
@@ -217,6 +224,7 @@ public class UserController {
 
 
     //SAVE_UPDATED_USER
+    @PreAuthorize("hasAuthority('SAVE_UPDATED_USER') || hasAuthority('ADMIN')")
     @PostMapping("{userId}")
     public String saveupdatedUser(@ModelAttribute @Validated(UpdateValidation.class) UserDTO userDTO, BindingResult bindingResult,
                                   Model model, HttpServletRequest request) {
@@ -267,6 +275,7 @@ public class UserController {
 
 
     //USER_ROLE_PAGE
+    @PreAuthorize("hasAuthority('USER_ROLE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{userId}/roles")
     public String viewRoleOfUsers(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
 
@@ -291,6 +300,7 @@ public class UserController {
     }
 
     //SAVE_UPDATED_USER_ROLE
+    @PreAuthorize("hasAuthority('SAVE_UPDATED_USER_ROLE') || hasAuthority('ADMIN')")
     @PostMapping("{userId}/roles")
     public String saveUpdatedUserRoles(@PathVariable("userId") int userId, @ModelAttribute @Valid UserRoleDTO userRoleDTO, BindingResult bindingResult,
                                        Model model, HttpServletRequest request) {
@@ -342,6 +352,7 @@ public class UserController {
 
 
     //GET_ALL_USER_PAGE
+    @PreAuthorize("hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
     public String viewAllUserPage(Model model, HttpServletRequest request,
                                   @RequestParam(name = "search", required = false) String search,

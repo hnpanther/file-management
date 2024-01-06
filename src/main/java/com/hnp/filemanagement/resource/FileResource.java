@@ -10,6 +10,7 @@ import org.springframework.boot.json.JsonParserFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -32,6 +33,7 @@ public class FileResource {
 
 
     //REST_DELETE_FILE_INFO
+    @PreAuthorize("hasAuthority('REST_DELETE_FILE_INFO') || hasAuthority('ADMIN')")
     @DeleteMapping("file-info/{fileInfoId}")
     public ResponseEntity<String> deleteFileInfo(@PathVariable("fileInfoId") int fileInfoId, HttpServletRequest request) {
 
@@ -50,6 +52,7 @@ public class FileResource {
 
 
     //REST_UPDATE_FILE_INFO_DESCRIPTION
+    @PreAuthorize("hasAuthority('REST_UPDATE_FILE_INFO_DESCRIPTION') || hasAuthority('ADMIN')")
     @PutMapping("file-info/{fileInfoId}")
     public ResponseEntity<String> updateFileInfo(@PathVariable("fileInfoId") int fileInfoId, @RequestBody() String description, HttpServletRequest request) {
 
@@ -69,6 +72,7 @@ public class FileResource {
     }
 
     //REST_CHANGE_FILE_INFO_STATE
+    @PreAuthorize("hasAuthority('REST_CHANGE_FILE_INFO_STATE') || hasAuthority('ADMIN')")
     @PutMapping("file-info/{fileInfoId}/change-state")
     public ResponseEntity<String> changeFileInfoState(@PathVariable("fileInfoId") int fileInfoId, @RequestBody() String body, HttpServletRequest request) {
         int principalId = 1;

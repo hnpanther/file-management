@@ -1,6 +1,11 @@
 package com.hnp.filemanagement.entity;
 
+import org.springframework.web.bind.annotation.GetMapping;
+
 public enum PermissionEnum {
+
+
+    ADMIN,
 
     // FileCategoryController @RequestMapping("/file-categories") =======================================
     //@GetMapping("create")
@@ -134,6 +139,12 @@ public enum PermissionEnum {
     // UserResource @RequestMapping("/resource/users") ===================================================
     //@PutMapping("{userId}/change-enabled")
     REST_CHANGE_USER_ENABLED,
+
+    // ===================================================================================================
+
+    // HomeController ====================================================================================
+    //@GetMapping
+    ACCESS_HOME
 
     // ===================================================================================================
 

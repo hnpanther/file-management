@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -56,6 +57,7 @@ public class FileController {
     }
 
     //CREATE_FILE_PAGE
+    @PreAuthorize("hasAuthority('CREATE_FILE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("create")
     public String getCreateFilePage(Model model, HttpServletRequest request) {
 
@@ -82,6 +84,7 @@ public class FileController {
     }
 
     //SAVE_NEW_FILE
+    @PreAuthorize("hasAuthority('SAVE_NEW_FILE') || hasAuthority('ADMIN')")
     @PostMapping
     public String saveNewFile(@ModelAttribute @Validated(InsertValidation.class) FileInfoDTO fileInfoDTO,
                               BindingResult bindingResult,
@@ -146,6 +149,7 @@ public class FileController {
 
 
     //PUBLIC_FILE_PAGE
+//    @PreAuthorize("hasAuthority('PUBLIC_FILE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("public-files")
     public String getAllPublicFile(Model model, HttpServletRequest request,
                                    @RequestParam(name = "page-size", required = false) Integer pageSize,
@@ -180,6 +184,7 @@ public class FileController {
     }
 
     //FILE_INFO_PAGE
+    @PreAuthorize("hasAuthority('FILE_INFO_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("file-info/{id}")
     public String getFileInfoPage(@PathVariable("id") int fileInfoId, Model model, HttpServletRequest request) {
 
@@ -196,6 +201,7 @@ public class FileController {
     }
 
     //DOWNLOAD_PUBLIC_FILE
+//    @PreAuthorize("hasAuthority('DOWNLOAD_PUBLIC_FILE') || hasAuthority('ADMIN')")
     @GetMapping("public-download/{id}")
     public ResponseEntity<?> downloadPublicFile(@PathVariable("id") int fileDetailsId, HttpServletRequest request) {
 
@@ -220,6 +226,7 @@ public class FileController {
 
 
     //GET_ALL_FILE_INFO_PAGE
+    @PreAuthorize("hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("file-info")
     public String getAllFileInfo(Model model, HttpServletRequest request,
                                  @RequestParam(name = "page-size", required = false) Integer pageSize,
@@ -251,6 +258,7 @@ public class FileController {
     }
 
     //DOWNLOAD_FILE
+    @PreAuthorize("hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')")
     @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
     public ResponseEntity<?> downloadFile(@PathVariable("fileInfoId") int fileInfoId,
                                                 @PathVariable("fileDetailsId") int fileDetailsId,

@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -47,6 +48,7 @@ public class FileSubCategoryController {
     }
 
     //GET_CREATE_SUB_CATEGORY_PAGE
+    @PreAuthorize("hasAuthority('GET_CREATE_SUB_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("create")
     public String createSubCategoryPage(Model model, HttpServletRequest request) {
 
@@ -74,6 +76,7 @@ public class FileSubCategoryController {
 
 
     //SAVE_NEW_SUB_CATEGORY
+    @PreAuthorize("hasAuthority('SAVE_NEW_SUB_CATEGORY') || hasAuthority('ADMIN')")
     @PostMapping
     public String saveNewSubCategory(@ModelAttribute @Validated(InsertValidation.class) FileSubCategoryDTO fileSubCategoryDTO, BindingResult bindingResult,
                                      Model model, HttpServletRequest request) {
@@ -129,6 +132,7 @@ public class FileSubCategoryController {
 
 
     //GET_EDIT_SUB_CATEGORY_PAGE
+    @PreAuthorize("hasAuthority('GET_EDIT_SUB_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{id}")
     public String editSubCategoryPage(@PathVariable("id") int id, Model model, HttpServletRequest request) {
         int principalId = 1;
@@ -153,6 +157,7 @@ public class FileSubCategoryController {
     }
 
     //SAVE_UPDATED_SUB_CATEGORY
+    @PreAuthorize("hasAuthority('SAVE_UPDATED_SUB_CATEGORY') || hasAuthority('ADMIN')")
     @PostMapping("{id}")
     public String updateSubCategory(@ModelAttribute @Validated(UpdateValidation.class) FileSubCategoryDTO fileSubCategoryDTO, BindingResult bindingResult,
                                     Model model, HttpServletRequest request) {
@@ -207,6 +212,7 @@ public class FileSubCategoryController {
 
 
     //GET_ALL_SUB_CATEGORY_PAGE
+    @PreAuthorize("hasAuthority('GET_ALL_SUB_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
     public String viewAllSubCategory(Model model, HttpServletRequest request,
                                      @RequestParam(name = "page-number", required = false) Integer pageNumber,

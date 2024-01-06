@@ -8,6 +8,7 @@ import com.hnp.filemanagement.service.FileSubCategoryService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,6 +34,7 @@ public class FileCategoryResource {
     }
 
     //REST_GET_ALL_SUB_CATEGORY_OF_CATEGORY
+    @PreAuthorize("hasAuthority('REST_GET_ALL_SUB_CATEGORY_OF_CATEGORY') || hasAuthority('ADMIN')")
     @GetMapping("{id}/sub-categories")
     public GenericListResponse getAllSubCategoryOfCategory(@PathVariable("id") int id, HttpServletRequest request) {
 

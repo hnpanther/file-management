@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -41,6 +42,7 @@ public class FileCategoryController {
     }
 
     // CREATE_FILE_CATEGORY_PAGE
+    @PreAuthorize("hasAuthority('CREATE_FILE_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("create")
     public String getCreateCategoryPage(Model model, HttpServletRequest request) {
 
@@ -63,6 +65,7 @@ public class FileCategoryController {
     }
 
     // SAVE_NEW_CATEGORY
+    @PreAuthorize("hasAuthority('SAVE_NEW_CATEGORY') || hasAuthority('ADMIN')")
     @PostMapping
     public String saveNewCategory(@ModelAttribute @Validated(InsertValidation.class) FileCategoryDTO fileCategoryDTO, BindingResult bindingResult,
                                   Model model, HttpServletRequest request) {
@@ -107,6 +110,7 @@ public class FileCategoryController {
 
 
     // UPDATE_CATEGORY_PAGE
+    @PreAuthorize("hasAuthority('UPDATE_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{id}")
     public String updateCategoryPage(@PathVariable("id") int categoryId, Model model, HttpServletRequest request) {
 
@@ -134,6 +138,7 @@ public class FileCategoryController {
     }
 
     //SAVE_UPDATED_CATEGORY
+    @PreAuthorize("hasAuthority('SAVE_UPDATED_CATEGORY') || hasAuthority('ADMIN')")
     @PostMapping({"{id}"})
     public String saveUpdatedFileCategory(@PathVariable("id") int categoryId, @ModelAttribute @Validated(InsertValidation.class) FileCategoryDTO fileCategoryDTO,
                                    BindingResult bindingResult, Model model, HttpServletRequest request) {
@@ -181,6 +186,7 @@ public class FileCategoryController {
 
 
     // GET_ALL_FILE_CATEGORY_PAGE
+    @PreAuthorize("hasAuthority('GET_ALL_FILE_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
     public String getAllFileCategories(Model model, HttpServletRequest request,
                                        @RequestParam(name = "page-size", required = false) Integer pageSize,
