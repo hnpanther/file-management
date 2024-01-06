@@ -194,6 +194,7 @@ class FileServiceTest {
         MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
         FileInfo fileInfo = new FileInfo();
         fileInfo.setFileName("test");
+        fileInfo.setCodeName("test");
         fileInfo.setDescription("a test file");
         fileInfo.setFilePath(mainTagFilePreview.getFileSubCategory().getPath() + "/" + "test");
         fileInfo.setRelativePath(mainTagFilePreview.getFileSubCategory().getRelativePath() + "/" + "test");
@@ -206,6 +207,7 @@ class FileServiceTest {
 
         FileDetails fileDetails = new FileDetails();
         fileDetails.setFileName("test.txt");
+        fileDetails.setHashId("test.txt");
         fileDetails.setFileExtension("txt");
         fileDetails.setContentType(multipartFile.getContentType());
         fileDetails.setDescription("....");

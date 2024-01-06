@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
 import org.springframework.context.annotation.Bean;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -36,11 +37,12 @@ public class FileManagementApplication extends SpringBootServletInitializer {
 	public CommandLineRunner runner(
 			UserRepository userRepository,
 			RoleRepository roleRepository,
-			PermissionRepository permissionRepository) {
+			PermissionRepository permissionRepository,
+			BCryptPasswordEncoder bCryptPasswordEncoder) {
 
 		return  args -> {
 
-//            initialize(userRepository, roleRepository, permissionRepository);
+            initialize(userRepository, roleRepository, permissionRepository, bCryptPasswordEncoder);
 
 		};
 	}
@@ -49,7 +51,8 @@ public class FileManagementApplication extends SpringBootServletInitializer {
 	public void initialize(
 			UserRepository userRepository,
 			RoleRepository roleRepository,
-			PermissionRepository permissionRepository) {
+			PermissionRepository permissionRepository,
+			BCryptPasswordEncoder bCryptPasswordEncoder) {
 
 		// create permissions if not exists
 		List<Permission> allPermission = permissionRepository.findAll();
@@ -91,7 +94,7 @@ public class FileManagementApplication extends SpringBootServletInitializer {
             user.setNationalCode("9999999999");
             user.setPhoneNumber("99999999997");
             user.setPersonelCode(9999);
-            user.setPassword("password");
+            user.setPassword(bCryptPasswordEncoder.encode("password"));
 			user.setEnabled(1);
 			user.setState(0);
             user.setCreatedAt(LocalDateTime.now());

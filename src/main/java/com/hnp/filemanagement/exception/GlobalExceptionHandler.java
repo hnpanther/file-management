@@ -36,10 +36,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ModelAndView uncaughtException(Exception e) {
 
-        System.out.println("==== helllo");
-        System.out.println("==== helllo");
-        System.out.println("==== helllo");
-        System.out.println("==== helllo");
+
         StringWriter sw = new StringWriter();
         PrintWriter pw = new PrintWriter(sw);
         e.printStackTrace(pw);

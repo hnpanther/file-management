@@ -79,6 +79,7 @@ public class FileService {
 
         FileInfo fileInfo = new FileInfo();
         fileInfo.setFileName(fileNameWithoutExtension);
+        fileInfo.setCodeName(fileNameWithoutExtension);
         fileInfo.setDescription(fileInfoDTO.getDescription());
         fileInfo.setFilePath(mainTagFile.getFileSubCategory().getPath() + "/" + fileNameWithoutExtension);
         fileInfo.setRelativePath(mainTagFile.getFileSubCategory().getRelativePath() + "/" + fileNameWithoutExtension);
@@ -91,6 +92,7 @@ public class FileService {
 
         FileDetails fileDetails = new FileDetails();
         fileDetails.setFileName(fileInfoDTO.getMultipartFile().getOriginalFilename());
+        fileDetails.setHashId(fileInfoDTO.getMultipartFile().getOriginalFilename());
         fileDetails.setFileExtension(fileExtension);
         fileDetails.setContentType(fileInfoDTO.getMultipartFile().getContentType());
         fileDetails.setDescription(fileInfoDTO.getDescription());

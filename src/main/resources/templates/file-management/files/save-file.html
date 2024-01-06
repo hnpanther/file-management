@@ -49,7 +49,7 @@
 
             <div class="form-group col-md-6">
                 <label>انتخاب زیر دسته بندی </label>
-                <select onchange="changeSubCategory()" class="form-control fileSubCategoryId" name="fileSubCategoryId" id="fileSubCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
+                <select onclick="changeSubCategory()" onchange="changeSubCategory()" class="form-control fileSubCategoryId" name="fileSubCategoryId" id="fileSubCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
 
                 </select>
             </div>
@@ -120,42 +120,7 @@
 
         $('.fileCategoryId').val(null).trigger('change');
 
-        // $('.fileSubCategoryId').select2({
-        //     width: '100%',
-        //     ajax: {
-        //
-        //         url: function (params) {
-        //             if (typeof params.term == 'undefined') {
-        //                 params.term = '';
-        //             }
-        //
-        //             let fileCategoryId = $('#fileCategoryId').val();
-        //             if(fileCategoryId === null) {
-        //                 fileCategoryId = -1;
-        //             }
-        //             return '/resource/file-categories/' + fileCategoryId + '/sub-categories';
-        //         },
-        //         dataType: 'json'
-        //     }
-        // });
 
-        // $('.mainTagFileId').select2({
-        //     width: '100%',
-        //     ajax: {
-        //         url: function (params) {
-        //             if (typeof params.term == 'undefined') {
-        //                 params.term = '';
-        //             }
-        //
-        //             let fileSubCategoryId = $('#fileSubCategoryId').val();
-        //             if(fileSubCategoryId === null) {
-        //                 fileSubCategoryId = -1;
-        //             }
-        //             return '/resource/file-sub-categories/' + fileSubCategoryId + '/main-tags';
-        //         },
-        //         dataType: 'json'
-        //     }
-        // });
     })
 
     $('#fileForm').on('submit', function() {
@@ -186,7 +151,10 @@
                 select.empty().select2({
                     data: data.results
                 });
+                changeSubCategory();
             });
+
+
         }
 
 
@@ -194,8 +162,10 @@
     }
 
     function changeSubCategory() {
+
         $('.mainTagFileId').val(null).trigger('change');
         if(check2 !== 0) {
+
             var select = $('.mainTagFileId');
             let fileSubCategoryId = $('#fileSubCategoryId').val();
             if(fileSubCategoryId === null) {
@@ -209,10 +179,13 @@
                     data: data.results
                 });
             });
+        } else {
+            check2 = 1;
         }
 
 
-        check2 = 1;
+
+
 
     }
 

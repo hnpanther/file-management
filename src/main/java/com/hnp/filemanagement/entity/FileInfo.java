@@ -21,6 +21,9 @@ public class FileInfo {
     @Column(name = "file_name", nullable = false)
     private String fileName;
 
+    @Column(name = "code_name", nullable = false)
+    private String codeName;
+
     @Column(name = "description", nullable = false)
     private String description;
 

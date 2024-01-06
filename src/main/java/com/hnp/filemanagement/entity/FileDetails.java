@@ -18,6 +18,9 @@ public class FileDetails {
     @Column(name = "file_name", nullable = false)
     private String fileName;
 
+    @Column(name = "hash_id", nullable = false)
+    private String hashId;
+
     @Column(name = "file_extension", nullable = false)
     private String fileExtension;
 

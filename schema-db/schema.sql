@@ -169,6 +169,7 @@ CREATE TABLE file_info
 (
     id                   INT           NOT NULL PRIMARY KEY AUTO_INCREMENT,
     file_name            VARCHAR(100)  NOT NULL,
+    code_name            VARCHAR(300)  NOT NULL,
     description          VARCHAR(1000) NOT NULL,
     file_path            VARCHAR(1000) NOT NULL,
     relative_path        VARCHAR(1000) NOT NULL,
@@ -193,6 +194,7 @@ CREATE TABLE file_details
 (
     id             INT           NOT NULL PRIMARY KEY AUTO_INCREMENT,
     file_info_id   INT           NOT NULL,
+    hash_id        VARCHAR(300)  NOT NULL,
     file_name      VARCHAR(100)  NOT NULL,
     file_extension VARCHAR(10)   NOT NULL,
     content_type   VARCHAR(100)  NOT NULL,
