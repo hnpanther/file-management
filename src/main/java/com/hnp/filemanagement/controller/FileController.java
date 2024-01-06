@@ -55,8 +55,9 @@ public class FileController {
         this.fileService = fileService;
     }
 
+    //CREATE_FILE_PAGE
     @GetMapping("create")
-    public String getCreateFilePat(Model model, HttpServletRequest request) {
+    public String getCreateFilePage(Model model, HttpServletRequest request) {
 
         int principalId = 1;
         String principalUsername = "None";
@@ -80,6 +81,7 @@ public class FileController {
         return "file-management/files/save-file.html";
     }
 
+    //SAVE_NEW_FILE
     @PostMapping
     public String saveNewFile(@ModelAttribute @Validated(InsertValidation.class) FileInfoDTO fileInfoDTO,
                               BindingResult bindingResult,
@@ -143,6 +145,7 @@ public class FileController {
     }
 
 
+    //PUBLIC_FILE_PAGE
     @GetMapping("public-files")
     public String getAllPublicFile(Model model, HttpServletRequest request,
                                    @RequestParam(name = "page-size", required = false) Integer pageSize,
@@ -176,7 +179,7 @@ public class FileController {
         return "file-management/files/files-public.html";
     }
 
-
+    //FILE_INFO_PAGE
     @GetMapping("file-info/{id}")
     public String getFileInfoPage(@PathVariable("id") int fileInfoId, Model model, HttpServletRequest request) {
 
@@ -192,6 +195,7 @@ public class FileController {
         return "file-management/files/file-info-page.html";
     }
 
+    //DOWNLOAD_PUBLIC_FILE
     @GetMapping("public-download/{id}")
     public ResponseEntity<?> downloadPublicFile(@PathVariable("id") int fileDetailsId, HttpServletRequest request) {
 
@@ -214,6 +218,8 @@ public class FileController {
                 .body(fileDownloadDTO.getResource());
     }
 
+
+    //GET_ALL_FILE_INFO_PAGE
     @GetMapping("file-info")
     public String getAllFileInfo(Model model, HttpServletRequest request,
                                  @RequestParam(name = "page-size", required = false) Integer pageSize,
@@ -244,8 +250,9 @@ public class FileController {
         return "file-management/files/file-info.html";
     }
 
+    //DOWNLOAD_FILE
     @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
-    public ResponseEntity<?> downloadPublicFile(@PathVariable("fileInfoId") int fileInfoId,
+    public ResponseEntity<?> downloadFile(@PathVariable("fileInfoId") int fileInfoId,
                                                 @PathVariable("fileDetailsId") int fileDetailsId,
                                                 HttpServletRequest request) {
 

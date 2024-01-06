@@ -50,15 +50,15 @@ class RoleServiceTest {
         underTest = new RoleService(roleRepository, permissionRepository, entityManager);
 
         Permission p1 = new Permission();
-        p1.setPermissionName(PermissionEnum.READ_ALL_FILE);
+        p1.setPermissionName(PermissionEnum.CREATE_FILE_CATEGORY_PAGE);
         p1.setDescription("READ ALL");
 
         Permission p2 = new Permission();
-        p2.setPermissionName(PermissionEnum.WRITE_ALL_FILE);
+        p2.setPermissionName(PermissionEnum.SAVE_NEW_FILE_CATEGORY);
         p2.setDescription("WRITE ALL");
 
         Permission p3 = new Permission();
-        p3.setPermissionName(PermissionEnum.DELETE_ALL_FILE);
+        p3.setPermissionName(PermissionEnum.UPDATE_FILE_CATEGORY_PAGE);
         p3.setDescription("DELETE ALL");
 
         this.permissionRepository.saveAll(List.of(p1, p2, p3));
@@ -129,7 +129,7 @@ class RoleServiceTest {
     @Commit
     void updatePermissionOfRoleTest() {
         Role role = roleRepository.findByRoleName("USER").get();
-        Permission permission = permissionRepository.findByPermissionName(PermissionEnum.DELETE_ALL_FILE).get();
+        Permission permission = permissionRepository.findByPermissionName(PermissionEnum.UPDATE_FILE_CATEGORY_PAGE).get();
         PermissionDTO permissionDTO = new PermissionDTO();
         permissionDTO.setSelected(true);
         permissionDTO.setId(permission.getId());
@@ -141,7 +141,7 @@ class RoleServiceTest {
 
         Role updatedRole = roleRepository.findByRoleName("USER").get();
         assertThat(updatedRole.getPermissions().size()).isEqualTo(1);
-        assertThat(updatedRole.getPermissions().get(0).getPermissionName()).isEqualTo(PermissionEnum.DELETE_ALL_FILE);
+        assertThat(updatedRole.getPermissions().get(0).getPermissionName()).isEqualTo(PermissionEnum.UPDATE_FILE_CATEGORY_PAGE);
 
     }
 

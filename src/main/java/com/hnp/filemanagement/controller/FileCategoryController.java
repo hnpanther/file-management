@@ -40,6 +40,7 @@ public class FileCategoryController {
         this.fileCategoryService = fileCategoryService;
     }
 
+    // CREATE_FILE_CATEGORY_PAGE
     @GetMapping("create")
     public String getCreateCategoryPage(Model model, HttpServletRequest request) {
 
@@ -61,6 +62,7 @@ public class FileCategoryController {
         return "file-management/category/save-category.html";
     }
 
+    // SAVE_NEW_CATEGORY
     @PostMapping
     public String saveNewCategory(@ModelAttribute @Validated(InsertValidation.class) FileCategoryDTO fileCategoryDTO, BindingResult bindingResult,
                                   Model model, HttpServletRequest request) {
@@ -104,8 +106,9 @@ public class FileCategoryController {
     }
 
 
+    // UPDATE_CATEGORY_PAGE
     @GetMapping("{id}")
-    public String updateCagegoryPage(@PathVariable("id") int categoryId, Model model, HttpServletRequest request) {
+    public String updateCategoryPage(@PathVariable("id") int categoryId, Model model, HttpServletRequest request) {
 
         int principalId = 1;
         String principalUsername = "None";
@@ -130,6 +133,7 @@ public class FileCategoryController {
         return "file-management/category/save-category.html";
     }
 
+    //SAVE_UPDATED_CATEGORY
     @PostMapping({"{id}"})
     public String saveUpdatedFileCategory(@PathVariable("id") int categoryId, @ModelAttribute @Validated(InsertValidation.class) FileCategoryDTO fileCategoryDTO,
                                    BindingResult bindingResult, Model model, HttpServletRequest request) {
@@ -176,6 +180,7 @@ public class FileCategoryController {
     }
 
 
+    // GET_ALL_FILE_CATEGORY_PAGE
     @GetMapping
     public String getAllFileCategories(Model model, HttpServletRequest request,
                                        @RequestParam(name = "page-size", required = false) Integer pageSize,

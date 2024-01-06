@@ -60,10 +60,10 @@ class UserServiceTest {
         underTest = new UserService(userRepository, roleService, entityManager);
 
         Permission p1 = new Permission();
-        p1.setPermissionName(PermissionEnum.READ_ALL_FILE);
+        p1.setPermissionName(PermissionEnum.CREATE_FILE_CATEGORY_PAGE);
 
         Permission p2 = new Permission();
-        p2.setPermissionName(PermissionEnum.WRITE_ALL_FILE);
+        p2.setPermissionName(PermissionEnum.SAVE_NEW_FILE_CATEGORY);
 
         permissionRepository.saveAll(List.of(p1, p2));
 

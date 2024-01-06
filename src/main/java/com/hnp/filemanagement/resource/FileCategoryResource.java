@@ -32,6 +32,7 @@ public class FileCategoryResource {
         this.fileSubCategoryService = fileSubCategoryService;
     }
 
+    //REST_GET_ALL_SUB_CATEGORY_OF_CATEGORY
     @GetMapping("{id}/sub-categories")
     public GenericListResponse getAllSubCategoryOfCategory(@PathVariable("id") int id, HttpServletRequest request) {
 

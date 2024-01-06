@@ -46,6 +46,7 @@ public class FileSubCategoryController {
         this.fileCategoryService = fileCategoryService;
     }
 
+    //GET_CREATE_SUB_CATEGORY_PAGE
     @GetMapping("create")
     public String createSubCategoryPage(Model model, HttpServletRequest request) {
 
@@ -72,6 +73,7 @@ public class FileSubCategoryController {
     }
 
 
+    //SAVE_NEW_SUB_CATEGORY
     @PostMapping
     public String saveNewSubCategory(@ModelAttribute @Validated(InsertValidation.class) FileSubCategoryDTO fileSubCategoryDTO, BindingResult bindingResult,
                                      Model model, HttpServletRequest request) {
@@ -126,6 +128,7 @@ public class FileSubCategoryController {
     }
 
 
+    //GET_EDIT_SUB_CATEGORY_PAGE
     @GetMapping("{id}")
     public String editSubCategoryPage(@PathVariable("id") int id, Model model, HttpServletRequest request) {
         int principalId = 1;
@@ -149,6 +152,7 @@ public class FileSubCategoryController {
         return "file-management/sub-category/save-sub-category.html";
     }
 
+    //SAVE_UPDATED_SUB_CATEGORY
     @PostMapping("{id}")
     public String updateSubCategory(@ModelAttribute @Validated(UpdateValidation.class) FileSubCategoryDTO fileSubCategoryDTO, BindingResult bindingResult,
                                     Model model, HttpServletRequest request) {
@@ -202,6 +206,7 @@ public class FileSubCategoryController {
     }
 
 
+    //GET_ALL_SUB_CATEGORY_PAGE
     @GetMapping
     public String viewAllSubCategory(Model model, HttpServletRequest request,
                                      @RequestParam(name = "page-number", required = false) Integer pageNumber,

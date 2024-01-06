@@ -44,6 +44,7 @@ public class RoleController {
     }
 
 
+    //CREATE_ROLE_PAGE
     @GetMapping("/roles/create")
     public String createRolePage(Model model, HttpServletRequest request) {
         int principalId = 0;
@@ -65,6 +66,7 @@ public class RoleController {
     }
 
 
+    //SAVE_NEW_ROLE
     @PostMapping("/roles")
     public String saveNewRole(@ModelAttribute @Validated(InsertValidation.class) RoleDTO roleDTO, BindingResult bindingResult,
                               Model model, HttpServletRequest request) {
@@ -109,6 +111,7 @@ public class RoleController {
     }
 
 
+    //UPDATE_ROLE_PAGE
     @GetMapping("/roles/{roleId}")
     public String updateRolePage(@PathVariable("roleId") int roleId, Model model, HttpServletRequest request) {
 
@@ -134,6 +137,7 @@ public class RoleController {
         return "role/save-role.html";
     }
 
+    //SAVE_UPDATED_ROLE
     @PostMapping("/roles/{roleId}")
     public String saveUpdatedRole(@ModelAttribute @Validated(InsertValidation.class) RoleDTO roleDTO, BindingResult bindingResult,
                                   Model model, HttpServletRequest request) {
@@ -185,6 +189,7 @@ public class RoleController {
     }
 
 
+    //GET_ALL_ROLE_PAGE
     @GetMapping("/roles")
     public String viewAllRoles(Model model, HttpServletRequest request) {
         int principalId = 0;

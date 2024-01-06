@@ -30,6 +30,7 @@ public class UserResource {
         this.userService = userService;
     }
 
+    //REST_CHANGE_USER_ENABLED
     @PutMapping("{userId}/change-enabled")
     public ResponseEntity<String> changeUserEnabled(@PathVariable("userId") int userId, @RequestBody() String body, HttpServletRequest request) {
         int principalId = 1;

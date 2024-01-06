@@ -42,6 +42,7 @@ public class UserController {
     }
 
 
+    //CREATE_NEW_USER
     @GetMapping("/create")
     public String createUser(Model model, HttpServletRequest request) {
         int principalId = 0;
@@ -63,6 +64,7 @@ public class UserController {
         return "user/save-user.html";
     }
 
+    //SAVE_NEW_USER
     @PostMapping
     public String saveUser(@ModelAttribute @Validated(InsertValidation.class) UserDTO userDTO, BindingResult bindingResult,
                            Model model, HttpServletRequest request) {
@@ -113,6 +115,7 @@ public class UserController {
 
     }
 
+    //UPDATE_USER_PAGE
     @GetMapping("{userId}/edit")
     public String viewEditUserPage(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
         int principalId = 0;
@@ -134,6 +137,7 @@ public class UserController {
         return "user/save-user.html";
     }
 
+    //VIEW_USER_PROFILE
     @GetMapping("{userId}")
     public String viewUserProfile(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
         int principalId = 0;
@@ -149,6 +153,7 @@ public class UserController {
         return "user/user-profile.html";
     }
 
+    //CHANGE_USER_PASSWORD_PAGE
     @GetMapping("{userId}/change-password")
     public String changePasswordPage(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
         int principalId = 0;
@@ -167,6 +172,7 @@ public class UserController {
         return "user/user-change-password.html";
     }
 
+    //CHANGE_USER_PASSWORD
     @PostMapping("{userId}/change-password")
     public String changeUserPassword(@ModelAttribute @Validated(UpdatePasswordValidation.class) UserDTO userDTO, BindingResult bindingResult,
                                      @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
@@ -210,6 +216,7 @@ public class UserController {
     }
 
 
+    //SAVE_UPDATED_USER
     @PostMapping("{userId}")
     public String saveupdatedUser(@ModelAttribute @Validated(UpdateValidation.class) UserDTO userDTO, BindingResult bindingResult,
                                   Model model, HttpServletRequest request) {
@@ -259,6 +266,7 @@ public class UserController {
     }
 
 
+    //USER_ROLE_PAGE
     @GetMapping("{userId}/roles")
     public String viewRoleOfUsers(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
 
@@ -282,6 +290,7 @@ public class UserController {
         return "user/user-role.html";
     }
 
+    //SAVE_UPDATED_USER_ROLE
     @PostMapping("{userId}/roles")
     public String saveUpdatedUserRoles(@PathVariable("userId") int userId, @ModelAttribute @Valid UserRoleDTO userRoleDTO, BindingResult bindingResult,
                                        Model model, HttpServletRequest request) {
@@ -332,6 +341,7 @@ public class UserController {
     }
 
 
+    //GET_ALL_USER_PAGE
     @GetMapping
     public String viewAllUserPage(Model model, HttpServletRequest request,
                                   @RequestParam(name = "search", required = false) String search,

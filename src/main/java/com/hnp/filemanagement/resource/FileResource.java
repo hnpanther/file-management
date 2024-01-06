@@ -31,6 +31,7 @@ public class FileResource {
     }
 
 
+    //REST_DELETE_FILE_INFO
     @DeleteMapping("file-info/{fileInfoId}")
     public ResponseEntity<String> deleteFileInfo(@PathVariable("fileInfoId") int fileInfoId, HttpServletRequest request) {
 
@@ -48,6 +49,7 @@ public class FileResource {
     }
 
 
+    //REST_UPDATE_FILE_INFO_DESCRIPTION
     @PutMapping("file-info/{fileInfoId}")
     public ResponseEntity<String> updateFileInfo(@PathVariable("fileInfoId") int fileInfoId, @RequestBody() String description, HttpServletRequest request) {
 
@@ -66,6 +68,7 @@ public class FileResource {
         return new ResponseEntity<>("file info description updated", HttpStatus.OK);
     }
 
+    //REST_CHANGE_FILE_INFO_STATE
     @PutMapping("file-info/{fileInfoId}/change-state")
     public ResponseEntity<String> changeFileInfoState(@PathVariable("fileInfoId") int fileInfoId, @RequestBody() String body, HttpServletRequest request) {
         int principalId = 1;

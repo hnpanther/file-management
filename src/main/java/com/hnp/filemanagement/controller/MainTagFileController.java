@@ -51,6 +51,7 @@ public class MainTagFileController {
 
 
 
+    //CREATE_MAIN_TAG_FILE_PAGE,
     @GetMapping("create")
     public String createMainTagFilePage(Model model, HttpServletRequest request) {
 
@@ -78,6 +79,7 @@ public class MainTagFileController {
     }
 
 
+    //SAVE_NEW_MAIN_TAG_FILE
     @PostMapping
     public String saveNewTagFile(@ModelAttribute @Validated(InsertValidation.class) MainTagFileDTO mainTagFileDTO, BindingResult bindingResult,
                                  Model model, HttpServletRequest request) {
@@ -137,6 +139,7 @@ public class MainTagFileController {
     }
 
 
+    //UPDATE_MAIN_TAG_FILE_PAGE
     @GetMapping("{id}")
     public String updateMainTagFilePage(@PathVariable("id") int id, Model model, HttpServletRequest request) {
         int principalId = 1;
@@ -161,6 +164,7 @@ public class MainTagFileController {
         return "file-management/main-tag/save-main-tag.html";
     }
 
+    //SAVE_UPDATED_MAIN_TAG_FILE
     @PostMapping("{id}")
     public String saveUpdatedMainTagFile(@PathVariable("id") int id, @ModelAttribute @Validated(UpdateValidation.class) MainTagFileDTO mainTagFileDTO, BindingResult bindingResult,
                                          Model model, HttpServletRequest request) {
@@ -214,6 +218,7 @@ public class MainTagFileController {
     }
 
 
+    //GET_ALL_MAIN_TAG_FILE_PAGE
     @GetMapping
     public String getAllTags(Model model, HttpServletRequest request,
                              @RequestParam(name = "page-size", required = false) Integer pageSize,

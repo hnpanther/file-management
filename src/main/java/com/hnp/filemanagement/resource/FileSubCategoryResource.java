@@ -31,6 +31,7 @@ public class FileSubCategoryResource {
     }
 
 
+    //REST_GET_ALL_MAIN_TAGS_OF_SUB_CATEGORY_FILE
     @GetMapping("{id}/main-tags")
     public GenericListResponse getAllMainTagsOfSubCategory(@PathVariable("id") int id, HttpServletRequest request) {
 
