@@ -144,7 +144,7 @@ public class UserController {
     }
 
     //VIEW_USER_PROFILE
-    @PreAuthorize("hasAuthority('VIEW_USER_PROFILE') || hasAuthority('ADMIN')")
+    @PreAuthorize("hasAuthority('VIEW_USER_PROFILE') || hasAuthority('ADMIN') || #userId == authentication.principal.id")
     @GetMapping("{userId}")
     public String viewUserProfile(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
         int principalId = userDetails.getId();

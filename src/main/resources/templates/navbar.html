@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org">
+      xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
 <body>
 
 <nav th:fragment="navbar" class="navbar navbar-expand-lg navbar-light bg-light">
@@ -11,30 +11,35 @@
     </button>
     <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav">
-            <li class="nav-item active">
-                <a class="nav-link" th:href="@{/files/public-files}">خانه <span class="sr-only">(current)</span></a>
+            <li sec:authorize="isAuthenticated()" class="nav-item active">
+                <a class="nav-link" th:href="@{'/users/' + ${#authentication.principal.id}}">پروفایل <span class="sr-only">(current)</span></a>
             </li>
-            <li class="nav-item">
+            <li sec:authorize="hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('ADMIN')" class="nav-item">
                 <a class="nav-link" th:href="@{/roles}">نقش ها</a>
             </li>
-            <li class="nav-item">
+            <li sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('ADMIN')" class="nav-item">
                 <a class="nav-link" th:href="@{/users}">کابران</a>
             </li>
-            <li class="nav-item">
+            <li sec:authorize="hasAuthority('GET_ALL_FILE_CATEGORY_PAGE') || hasAuthority('ADMIN')" class="nav-item">
                 <a class="nav-link" th:href="@{/file-categories}">دسته بندی ها</a>
             </li>
-            <li class="nav-item">
+            <li sec:authorize="hasAuthority('GET_ALL_SUB_CATEGORY_PAGE') || hasAuthority('ADMIN')" class="nav-item">
                 <a class="nav-link" th:href="@{/file-sub-categories}">دسته بندی های جزئی</a>
             </li>
-            <li class="nav-item">
+            <li sec:authorize="hasAuthority('GET_ALL_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')" class="nav-item">
                 <a class="nav-link" th:href="@{/main-tags}">تگ های اصلی</a>
             </li>
-            <li class="nav-item">
+            <li sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('ADMIN')" class="nav-item">
                 <a class="nav-link" th:href="@{/files/file-info}">فایل ها</a>
             </li>
             <li class="nav-item">
                 <a class="nav-link" th:href="@{/files/public-files}">فایل های عمومی</a>
             </li>
+            <li sec:authorize="isAuthenticated()" class="nav-item">
+                <a class="nav-link" th:href="@{/logout}">خروج</a>
+            </li>
+
+
 
 
         </ul>
