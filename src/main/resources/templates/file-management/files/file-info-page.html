@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org">
+      xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
 <head>
     <meta charset="UTF-8">
     <title>اطلاعات فایل</title>
@@ -55,7 +55,7 @@
                                             <span th:if="${file.getState() != 0}" class="badge badge-secondary">غیرعمومی</span>
 
 
-                                            <div class="btn-group">
+                                            <div sec:authorize="hasAuthority('REST_CHANGE_FILE_INFO_STATE') || hasAuthority('ADMIN')" class="btn-group">
                                                 <button onclick="changeState(0)" th:if="${file.getState() == -1}" type="button" class="btn btn-secondary btn-sm" aria-haspopup="true" aria-expanded="false">تغییر به عمومی</button>
                                                 <button onclick="changeState(-1)" th:if="${file.getState() == 0}" type="button" class="btn btn-secondary btn-sm" aria-haspopup="true" aria-expanded="false">تغییر به غیر عمومی</button>
                                             </div>
@@ -169,7 +169,7 @@
                     <div class="card mb-3">
                         <div class="card-body">
                             <div class="px-xl-3">
-                                <button class="btn btn-block btn-danger" onclick="deleteFileInfo()">
+                                <button sec:authorize="hasAuthority('REST_DELETE_FILE_INFO') || hasAuthority('ADMIN')" class="btn btn-block btn-danger" onclick="deleteFileInfo()">
                                     <i class="fa fa-sign-out"></i>
                                     <span>حذف کامل فایل</span>
                                 </button>
@@ -177,11 +177,11 @@
                         </div>
                     </div>
                     <div class="card">
-                        <div class="card-body">
+                        <div sec:authorize="hasAuthority('REST_UPDATE_FILE_INFO_DESCRIPTION') || hasAuthority('ADMIN')" class="card-body">
                             <a onclick="updateFileInfoDescription()" type="button" class="btn btn-primary">ویرایش توضیحات</a>
 
                         </div>
-                        <div class="card-body">
+                        <div sec:authorize="hasAuthority('CREATE_FILE_PAGE') || hasAuthority('ADMIN')" class="card-body">
                             <a th:href="@{/files/create}" type="button"
                                class="btn btn-primary">ایجاد فایل جدید</a>
 
@@ -239,7 +239,7 @@
                                             <td th:text="${fd.getCreatedAt()}" class="text-nowrap align-middle"></td>
                                             <td th:text="${fd.getCreatedBy()}" class="text-nowrap align-middle"></td>
 
-                                            <td class="text-center align-middle">
+                                            <td sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')" class="text-center align-middle">
                                                 <div class="btn-group align-top">
                                                     <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/' + ${fd.getId() + '/download'} }"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">دانلود</a>

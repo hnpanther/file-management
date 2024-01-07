@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org">
+      xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
@@ -30,7 +30,7 @@
 
                     <div class="e-panel card">
                         <div class="card-body">
-                            <div class="card-title">
+                            <div sec:authorize="hasAuthority('CREATE_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')" class="card-title">
                                 <a class="btn btn-success btn-block" type="button" style="width: 30%;" th:href="@{/main-tags/create}">ایجاد
                                     تگ جدید
                                 </a>
