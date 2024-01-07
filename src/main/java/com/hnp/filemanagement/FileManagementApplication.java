@@ -7,6 +7,7 @@ import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.repository.PermissionRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -27,6 +28,11 @@ public class FileManagementApplication extends SpringBootServletInitializer {
 		SpringApplication.run(FileManagementApplication.class, args);
 	}
 
+	@Bean
+	public BCryptPasswordEncoder passwordEncoder() {
+		return new BCryptPasswordEncoder();
+	}
+
 
 	@Override
 	protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {
@@ -37,12 +43,12 @@ public class FileManagementApplication extends SpringBootServletInitializer {
 	public CommandLineRunner runner(
 			UserRepository userRepository,
 			RoleRepository roleRepository,
-			PermissionRepository permissionRepository,
-			BCryptPasswordEncoder bCryptPasswordEncoder) {
+			PermissionRepository permissionRepository
+			,BCryptPasswordEncoder bCryptPasswordEncoder) {
 
 		return  args -> {
 
-            initialize(userRepository, roleRepository, permissionRepository, bCryptPasswordEncoder);
+//            initialize(userRepository, roleRepository, permissionRepository, bCryptPasswordEncoder);
 
 		};
 	}
@@ -51,8 +57,8 @@ public class FileManagementApplication extends SpringBootServletInitializer {
 	public void initialize(
 			UserRepository userRepository,
 			RoleRepository roleRepository,
-			PermissionRepository permissionRepository,
-			BCryptPasswordEncoder bCryptPasswordEncoder) {
+			PermissionRepository permissionRepository
+			,BCryptPasswordEncoder bCryptPasswordEncoder) {
 
 		// create permissions if not exists
 		List<Permission> allPermission = permissionRepository.findAll();
@@ -94,7 +100,8 @@ public class FileManagementApplication extends SpringBootServletInitializer {
             user.setNationalCode("9999999999");
             user.setPhoneNumber("99999999997");
             user.setPersonelCode(9999);
-            user.setPassword(bCryptPasswordEncoder.encode("password"));
+//            user.setPassword(bCryptPasswordEncoder.encode("admin"));
+            user.setPassword("admin");
 			user.setEnabled(1);
 			user.setState(0);
             user.setCreatedAt(LocalDateTime.now());
