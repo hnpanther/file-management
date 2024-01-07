@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.controller;
 
+import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryPageDTO;
@@ -15,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -50,10 +52,10 @@ public class FileSubCategoryController {
     //GET_CREATE_SUB_CATEGORY_PAGE
     @PreAuthorize("hasAuthority('GET_CREATE_SUB_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("create")
-    public String createSubCategoryPage(Model model, HttpServletRequest request) {
+    public String createSubCategoryPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get create file sub category page";
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -78,12 +80,12 @@ public class FileSubCategoryController {
     //SAVE_NEW_SUB_CATEGORY
     @PreAuthorize("hasAuthority('SAVE_NEW_SUB_CATEGORY') || hasAuthority('ADMIN')")
     @PostMapping
-    public String saveNewSubCategory(@ModelAttribute @Validated(InsertValidation.class) FileSubCategoryDTO fileSubCategoryDTO, BindingResult bindingResult,
+    public String saveNewSubCategory(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) FileSubCategoryDTO fileSubCategoryDTO, BindingResult bindingResult,
                                      Model model, HttpServletRequest request) {
 
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to save new fileSubCategory=" + fileSubCategoryDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -134,9 +136,9 @@ public class FileSubCategoryController {
     //GET_EDIT_SUB_CATEGORY_PAGE
     @PreAuthorize("hasAuthority('GET_EDIT_SUB_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{id}")
-    public String editSubCategoryPage(@PathVariable("id") int id, Model model, HttpServletRequest request) {
-        int principalId = 1;
-        String principalUsername = "None";
+    public String editSubCategoryPage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int id, Model model, HttpServletRequest request) {
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get edit file sub category page";
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -159,11 +161,11 @@ public class FileSubCategoryController {
     //SAVE_UPDATED_SUB_CATEGORY
     @PreAuthorize("hasAuthority('SAVE_UPDATED_SUB_CATEGORY') || hasAuthority('ADMIN')")
     @PostMapping("{id}")
-    public String updateSubCategory(@ModelAttribute @Validated(UpdateValidation.class) FileSubCategoryDTO fileSubCategoryDTO, BindingResult bindingResult,
+    public String updateSubCategory(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(UpdateValidation.class) FileSubCategoryDTO fileSubCategoryDTO, BindingResult bindingResult,
                                     Model model, HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to save updated fileSubCategory=" + fileSubCategoryDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -214,13 +216,13 @@ public class FileSubCategoryController {
     //GET_ALL_SUB_CATEGORY_PAGE
     @PreAuthorize("hasAuthority('GET_ALL_SUB_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
-    public String viewAllSubCategory(Model model, HttpServletRequest request,
+    public String viewAllSubCategory(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request,
                                      @RequestParam(name = "page-number", required = false) Integer pageNumber,
                                      @RequestParam(name = "page-size",required = false) Integer pageSize,
                                      @RequestParam(name = "search", required = false) String search) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request get all file sub category,pageNumber=" + pageNumber + ",pageSize=" + pageSize + ",search=" + search;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,

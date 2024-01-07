@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.controller;
 
+import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
@@ -15,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -46,9 +48,9 @@ public class UserController {
     //CREATE_NEW_USER
     @PreAuthorize("hasAuthority('CREATE_NEW_USER') || hasAuthority('ADMIN')")
     @GetMapping("/create")
-    public String createUser(Model model, HttpServletRequest request) {
-        int principalId = 0;
-        String principalUsername = "None";
+    public String createUser(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request create user page";
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -69,10 +71,10 @@ public class UserController {
     //SAVE_NEW_USER
     @PreAuthorize("hasAuthority('SAVE_NEW_USER') || hasAuthority('ADMIN')")
     @PostMapping
-    public String saveUser(@ModelAttribute @Validated(InsertValidation.class) UserDTO userDTO, BindingResult bindingResult,
+    public String saveUser(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) UserDTO userDTO, BindingResult bindingResult,
                            Model model, HttpServletRequest request) {
-        int principalId = 0;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to save new user=" + userDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -121,9 +123,9 @@ public class UserController {
     //UPDATE_USER_PAGE
     @PreAuthorize("hasAuthority('UPDATE_USER_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{userId}/edit")
-    public String viewEditUserPage(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
-        int principalId = 0;
-        String principalUsername = "None";
+    public String viewEditUserPage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get edit user page with id=" + userId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -144,9 +146,9 @@ public class UserController {
     //VIEW_USER_PROFILE
     @PreAuthorize("hasAuthority('VIEW_USER_PROFILE') || hasAuthority('ADMIN')")
     @GetMapping("{userId}")
-    public String viewUserProfile(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
-        int principalId = 0;
-        String principalUsername = "None";
+    public String viewUserProfile(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get user profile page with id=" + userId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -161,9 +163,9 @@ public class UserController {
     //CHANGE_USER_PASSWORD_PAGE
     @PreAuthorize("hasAuthority('CHANGE_USER_PASSWORD_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{userId}/change-password")
-    public String changePasswordPage(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
-        int principalId = 0;
-        String principalUsername = "None";
+    public String changePasswordPage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get user change password page with id=" + userId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -181,10 +183,10 @@ public class UserController {
     //CHANGE_USER_PASSWORD
     @PreAuthorize("hasAuthority('CHANGE_USER_PASSWORD') || hasAuthority('ADMIN')")
     @PostMapping("{userId}/change-password")
-    public String changeUserPassword(@ModelAttribute @Validated(UpdatePasswordValidation.class) UserDTO userDTO, BindingResult bindingResult,
+    public String changeUserPassword(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(UpdatePasswordValidation.class) UserDTO userDTO, BindingResult bindingResult,
                                      @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
-        int principalId = 0;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get user change password page with id=" + userId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -226,10 +228,10 @@ public class UserController {
     //SAVE_UPDATED_USER
     @PreAuthorize("hasAuthority('SAVE_UPDATED_USER') || hasAuthority('ADMIN')")
     @PostMapping("{userId}")
-    public String saveupdatedUser(@ModelAttribute @Validated(UpdateValidation.class) UserDTO userDTO, BindingResult bindingResult,
+    public String saveupdatedUser(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(UpdateValidation.class) UserDTO userDTO, BindingResult bindingResult,
                                   Model model, HttpServletRequest request) {
-        int principalId = 0;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to save updated user=" + userDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -277,10 +279,10 @@ public class UserController {
     //USER_ROLE_PAGE
     @PreAuthorize("hasAuthority('USER_ROLE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{userId}/roles")
-    public String viewRoleOfUsers(@PathVariable("userId") int userId, Model model, HttpServletRequest request) {
+    public String viewRoleOfUsers(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
 
-        int principalId = 0;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get user role page with userId=" + userId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -302,11 +304,11 @@ public class UserController {
     //SAVE_UPDATED_USER_ROLE
     @PreAuthorize("hasAuthority('SAVE_UPDATED_USER_ROLE') || hasAuthority('ADMIN')")
     @PostMapping("{userId}/roles")
-    public String saveUpdatedUserRoles(@PathVariable("userId") int userId, @ModelAttribute @Valid UserRoleDTO userRoleDTO, BindingResult bindingResult,
+    public String saveUpdatedUserRoles(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, @ModelAttribute @Valid UserRoleDTO userRoleDTO, BindingResult bindingResult,
                                        Model model, HttpServletRequest request) {
 
-        int principalId = 0;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to save user roles for user with id=" + userId + " user roles=" + userRoleDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -354,12 +356,12 @@ public class UserController {
     //GET_ALL_USER_PAGE
     @PreAuthorize("hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
-    public String viewAllUserPage(Model model, HttpServletRequest request,
+    public String viewAllUserPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request,
                                   @RequestParam(name = "search", required = false) String search,
                                   @RequestParam(name = "page-size", required = false) Integer pageSize,
                                   @RequestParam(name = "page-number", required = false) Integer pageNumber) {
-        int principalId = 0;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get page of all user, search=" + search + ",pageSize=" + pageSize + ",pageNumber=" + pageNumber;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,

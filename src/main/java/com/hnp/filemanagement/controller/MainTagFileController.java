@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.controller;
 
+import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
@@ -15,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -55,10 +57,10 @@ public class MainTagFileController {
     //CREATE_MAIN_TAG_FILE_PAGE,
     @PreAuthorize("hasAuthority('CREATE_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("create")
-    public String createMainTagFilePage(Model model, HttpServletRequest request) {
+    public String createMainTagFilePage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get create main tag file page";
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -84,11 +86,11 @@ public class MainTagFileController {
     //SAVE_NEW_MAIN_TAG_FILE
     @PreAuthorize("hasAuthority('SAVE_NEW_MAIN_TAG_FILE') || hasAuthority('ADMIN')")
     @PostMapping
-    public String saveNewTagFile(@ModelAttribute @Validated(InsertValidation.class) MainTagFileDTO mainTagFileDTO, BindingResult bindingResult,
+    public String saveNewTagFile(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) MainTagFileDTO mainTagFileDTO, BindingResult bindingResult,
                                  Model model, HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to save new mainTagFile=" + mainTagFileDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -145,9 +147,9 @@ public class MainTagFileController {
     //UPDATE_MAIN_TAG_FILE_PAGE
     @PreAuthorize("hasAuthority('UPDATE_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{id}")
-    public String updateMainTagFilePage(@PathVariable("id") int id, Model model, HttpServletRequest request) {
-        int principalId = 1;
-        String principalUsername = "None";
+    public String updateMainTagFilePage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int id, Model model, HttpServletRequest request) {
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get update main tag file page with id=" + id;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -171,10 +173,10 @@ public class MainTagFileController {
     //SAVE_UPDATED_MAIN_TAG_FILE
     @PreAuthorize("hasAuthority('SAVE_UPDATED_MAIN_TAG_FILE') || hasAuthority('ADMIN')")
     @PostMapping("{id}")
-    public String saveUpdatedMainTagFile(@PathVariable("id") int id, @ModelAttribute @Validated(UpdateValidation.class) MainTagFileDTO mainTagFileDTO, BindingResult bindingResult,
+    public String saveUpdatedMainTagFile(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int id, @ModelAttribute @Validated(UpdateValidation.class) MainTagFileDTO mainTagFileDTO, BindingResult bindingResult,
                                          Model model, HttpServletRequest request) {
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "save updated mainTagFile=" + mainTagFileDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -226,13 +228,13 @@ public class MainTagFileController {
     //GET_ALL_MAIN_TAG_FILE_PAGE
     @PreAuthorize("hasAuthority('GET_ALL_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
-    public String getAllTags(Model model, HttpServletRequest request,
+    public String getAllTags(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request,
                              @RequestParam(name = "page-size", required = false) Integer pageSize,
                              @RequestParam(name = "page-number", required = false) Integer pageNumber,
                              @RequestParam(name = "search", required = false) String search) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get all tags, pageSize" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search;;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,

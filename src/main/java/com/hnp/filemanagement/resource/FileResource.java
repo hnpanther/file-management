@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.resource;
 
+import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
@@ -11,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -35,10 +37,10 @@ public class FileResource {
     //REST_DELETE_FILE_INFO
     @PreAuthorize("hasAuthority('REST_DELETE_FILE_INFO') || hasAuthority('ADMIN')")
     @DeleteMapping("file-info/{fileInfoId}")
-    public ResponseEntity<String> deleteFileInfo(@PathVariable("fileInfoId") int fileInfoId, HttpServletRequest request) {
+    public ResponseEntity<String> deleteFileInfo(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("fileInfoId") int fileInfoId, HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "rest request to delete file-info with id=" + fileInfoId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -54,10 +56,10 @@ public class FileResource {
     //REST_UPDATE_FILE_INFO_DESCRIPTION
     @PreAuthorize("hasAuthority('REST_UPDATE_FILE_INFO_DESCRIPTION') || hasAuthority('ADMIN')")
     @PutMapping("file-info/{fileInfoId}")
-    public ResponseEntity<String> updateFileInfo(@PathVariable("fileInfoId") int fileInfoId, @RequestBody() String description, HttpServletRequest request) {
+    public ResponseEntity<String> updateFileInfo(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("fileInfoId") int fileInfoId, @RequestBody() String description, HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "rest request to update file-info with id=" + fileInfoId + " and description=" + description;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -74,9 +76,9 @@ public class FileResource {
     //REST_CHANGE_FILE_INFO_STATE
     @PreAuthorize("hasAuthority('REST_CHANGE_FILE_INFO_STATE') || hasAuthority('ADMIN')")
     @PutMapping("file-info/{fileInfoId}/change-state")
-    public ResponseEntity<String> changeFileInfoState(@PathVariable("fileInfoId") int fileInfoId, @RequestBody() String body, HttpServletRequest request) {
-        int principalId = 1;
-        String principalUsername = "None";
+    public ResponseEntity<String> changeFileInfoState(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("fileInfoId") int fileInfoId, @RequestBody() String body, HttpServletRequest request) {
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "rest request to change state file-info state with id=" + fileInfoId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,

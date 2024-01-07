@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.controller;
 
+import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
@@ -18,6 +19,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -59,10 +61,10 @@ public class FileController {
     //CREATE_FILE_PAGE
     @PreAuthorize("hasAuthority('CREATE_FILE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("create")
-    public String getCreateFilePage(Model model, HttpServletRequest request) {
+    public String getCreateFilePage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get create file page";
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -86,13 +88,13 @@ public class FileController {
     //SAVE_NEW_FILE
     @PreAuthorize("hasAuthority('SAVE_NEW_FILE') || hasAuthority('ADMIN')")
     @PostMapping
-    public String saveNewFile(@ModelAttribute @Validated(InsertValidation.class) FileInfoDTO fileInfoDTO,
+    public String saveNewFile(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) FileInfoDTO fileInfoDTO,
                               BindingResult bindingResult,
                               Model model,
                               HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to save new file=" + fileInfoDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -151,14 +153,19 @@ public class FileController {
     //PUBLIC_FILE_PAGE
 //    @PreAuthorize("hasAuthority('PUBLIC_FILE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("public-files")
-    public String getAllPublicFile(Model model, HttpServletRequest request,
+    public String getAllPublicFile(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request,
                                    @RequestParam(name = "page-size", required = false) Integer pageSize,
                                    @RequestParam(name = "page-number", required = false) Integer pageNumber,
                                    @RequestParam(name = "search", required = false) String search) {
 
 
-        int principalId = 1;
+        int principalId = 0;
         String principalUsername = "None";
+        if(userDetails != null) {
+            principalId = userDetails.getId();
+            principalUsername = userDetails.getUsername();
+        }
+
         String logMessage = "request to get all public files, pageSize=" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -186,10 +193,10 @@ public class FileController {
     //FILE_INFO_PAGE
     @PreAuthorize("hasAuthority('FILE_INFO_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("file-info/{id}")
-    public String getFileInfoPage(@PathVariable("id") int fileInfoId, Model model, HttpServletRequest request) {
+    public String getFileInfoPage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int fileInfoId, Model model, HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get fileInfo Page with id=" + fileInfoId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -203,10 +210,15 @@ public class FileController {
     //DOWNLOAD_PUBLIC_FILE
 //    @PreAuthorize("hasAuthority('DOWNLOAD_PUBLIC_FILE') || hasAuthority('ADMIN')")
     @GetMapping("public-download/{id}")
-    public ResponseEntity<?> downloadPublicFile(@PathVariable("id") int fileDetailsId, HttpServletRequest request) {
+    public ResponseEntity<?> downloadPublicFile(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int fileDetailsId, HttpServletRequest request) {
 
-        int principalId = 1;
+        int principalId = 0;
         String principalUsername = "None";
+        if(userDetails != null) {
+            principalId = userDetails.getId();
+            principalUsername = userDetails.getUsername();
+        }
+
         String logMessage = "request download public fileDetails with id=" + fileDetailsId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -228,13 +240,13 @@ public class FileController {
     //GET_ALL_FILE_INFO_PAGE
     @PreAuthorize("hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("file-info")
-    public String getAllFileInfo(Model model, HttpServletRequest request,
+    public String getAllFileInfo(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request,
                                  @RequestParam(name = "page-size", required = false) Integer pageSize,
                                  @RequestParam(name = "page-number", required = false) Integer pageNumber,
                                  @RequestParam(name = "search", required = false) String search) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get all file info, pageSize=" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -260,12 +272,12 @@ public class FileController {
     //DOWNLOAD_FILE
     @PreAuthorize("hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')")
     @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
-    public ResponseEntity<?> downloadFile(@PathVariable("fileInfoId") int fileInfoId,
+    public ResponseEntity<?> downloadFile(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("fileInfoId") int fileInfoId,
                                                 @PathVariable("fileDetailsId") int fileDetailsId,
                                                 HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request download fileDetails with id=" + fileDetailsId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,

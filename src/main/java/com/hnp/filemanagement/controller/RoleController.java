@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.controller;
 
+import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.dto.PermissionDTO;
 import com.hnp.filemanagement.dto.RoleDTO;
@@ -14,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -48,9 +50,9 @@ public class RoleController {
     //CREATE_ROLE_PAGE
     @PreAuthorize("hasAuthority('CREATE_ROLE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("/roles/create")
-    public String createRolePage(Model model, HttpServletRequest request) {
-        int principalId = 0;
-        String principalUsername = "None";
+    public String createRolePage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request create role page";
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -71,10 +73,10 @@ public class RoleController {
     //SAVE_NEW_ROLE
     @PreAuthorize("hasAuthority('SAVE_NEW_ROLE') || hasAuthority('ADMIN')")
     @PostMapping("/roles")
-    public String saveNewRole(@ModelAttribute @Validated(InsertValidation.class) RoleDTO roleDTO, BindingResult bindingResult,
+    public String saveNewRole(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) RoleDTO roleDTO, BindingResult bindingResult,
                               Model model, HttpServletRequest request) {
-        int principalId = 0;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request save new role=" + roleDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -117,10 +119,10 @@ public class RoleController {
     //UPDATE_ROLE_PAGE
     @PreAuthorize("hasAuthority('UPDATE_ROLE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("/roles/{roleId}")
-    public String updateRolePage(@PathVariable("roleId") int roleId, Model model, HttpServletRequest request) {
+    public String updateRolePage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("roleId") int roleId, Model model, HttpServletRequest request) {
 
-        int principalId = 0;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get update role page with id=" + roleId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -144,11 +146,11 @@ public class RoleController {
     //SAVE_UPDATED_ROLE
     @PreAuthorize("hasAuthority('SAVE_UPDATED_ROLE') || hasAuthority('ADMIN')")
     @PostMapping("/roles/{roleId}")
-    public String saveUpdatedRole(@ModelAttribute @Validated(InsertValidation.class) RoleDTO roleDTO, BindingResult bindingResult,
+    public String saveUpdatedRole(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) RoleDTO roleDTO, BindingResult bindingResult,
                                   Model model, HttpServletRequest request) {
 
-        int principalId = 0;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to save updated role=" + roleDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -197,9 +199,9 @@ public class RoleController {
     //GET_ALL_ROLE_PAGE
     @PreAuthorize("hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("/roles")
-    public String viewAllRoles(Model model, HttpServletRequest request) {
-        int principalId = 0;
-        String principalUsername = "None";
+    public String viewAllRoles(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get view all roles";
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,

@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.resource;
 
+import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.service.UserService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
@@ -10,6 +11,7 @@ import org.springframework.boot.json.JsonParserFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -34,9 +36,9 @@ public class UserResource {
     //REST_CHANGE_USER_ENABLED
     @PreAuthorize("hasAuthority('REST_CHANGE_USER_ENABLED') || hasAuthority('ADMIN')")
     @PutMapping("{userId}/change-enabled")
-    public ResponseEntity<String> changeUserEnabled(@PathVariable("userId") int userId, @RequestBody() String body, HttpServletRequest request) {
-        int principalId = 1;
-        String principalUsername = "None";
+    public ResponseEntity<String> changeUserEnabled(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, @RequestBody() String body, HttpServletRequest request) {
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "rest request to change enabled user with id=" + userId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,

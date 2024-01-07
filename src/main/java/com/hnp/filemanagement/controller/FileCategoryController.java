@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.controller;
 
+import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileCategoryPageDTO;
 import com.hnp.filemanagement.validation.InsertValidation;
@@ -11,12 +12,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 
 @Controller
@@ -44,10 +47,12 @@ public class FileCategoryController {
     // CREATE_FILE_CATEGORY_PAGE
     @PreAuthorize("hasAuthority('CREATE_FILE_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("create")
-    public String getCreateCategoryPage(Model model, HttpServletRequest request) {
+    public String getCreateCategoryPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
 
-        int principalId = 0;
-        String principalUsername = "None";
+
+
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get create file category page";
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -67,11 +72,11 @@ public class FileCategoryController {
     // SAVE_NEW_CATEGORY
     @PreAuthorize("hasAuthority('SAVE_NEW_CATEGORY') || hasAuthority('ADMIN')")
     @PostMapping
-    public String saveNewCategory(@ModelAttribute @Validated(InsertValidation.class) FileCategoryDTO fileCategoryDTO, BindingResult bindingResult,
+    public String saveNewCategory(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) FileCategoryDTO fileCategoryDTO, BindingResult bindingResult,
                                   Model model, HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to save new file category=" + fileCategoryDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -112,10 +117,10 @@ public class FileCategoryController {
     // UPDATE_CATEGORY_PAGE
     @PreAuthorize("hasAuthority('UPDATE_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{id}")
-    public String updateCategoryPage(@PathVariable("id") int categoryId, Model model, HttpServletRequest request) {
+    public String updateCategoryPage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int categoryId, Model model, HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get file category update page";
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -140,11 +145,11 @@ public class FileCategoryController {
     //SAVE_UPDATED_CATEGORY
     @PreAuthorize("hasAuthority('SAVE_UPDATED_CATEGORY') || hasAuthority('ADMIN')")
     @PostMapping({"{id}"})
-    public String saveUpdatedFileCategory(@PathVariable("id") int categoryId, @ModelAttribute @Validated(InsertValidation.class) FileCategoryDTO fileCategoryDTO,
+    public String saveUpdatedFileCategory(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int categoryId, @ModelAttribute @Validated(InsertValidation.class) FileCategoryDTO fileCategoryDTO,
                                    BindingResult bindingResult, Model model, HttpServletRequest request) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to save updated file category=" + fileCategoryDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -188,13 +193,13 @@ public class FileCategoryController {
     // GET_ALL_FILE_CATEGORY_PAGE
     @PreAuthorize("hasAuthority('GET_ALL_FILE_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
-    public String getAllFileCategories(Model model, HttpServletRequest request,
+    public String getAllFileCategories(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request,
                                        @RequestParam(name = "page-size", required = false) Integer pageSize,
                                        @RequestParam(name = "page-number", required = false) Integer pageNumber,
                                        @RequestParam(name = "search", required = false) String search) {
 
-        int principalId = 1;
-        String principalUsername = "None";
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
         String logMessage = "request to get all categories. pageSize=" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
