@@ -70,7 +70,7 @@ public class FileCategoryController {
     }
 
     // SAVE_NEW_CATEGORY
-    @PreAuthorize("hasAuthority('SAVE_NEW_CATEGORY') || hasAuthority('ADMIN')")
+    @PreAuthorize("hasAuthority('SAVE_NEW_FILE_CATEGORY') || hasAuthority('ADMIN')")
     @PostMapping
     public String saveNewCategory(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) FileCategoryDTO fileCategoryDTO, BindingResult bindingResult,
                                   Model model, HttpServletRequest request) {
@@ -115,7 +115,7 @@ public class FileCategoryController {
 
 
     // UPDATE_CATEGORY_PAGE
-    @PreAuthorize("hasAuthority('UPDATE_CATEGORY_PAGE') || hasAuthority('ADMIN')")
+    @PreAuthorize("hasAuthority('UPDATE_FILE_CATEGORY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{id}")
     public String updateCategoryPage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int categoryId, Model model, HttpServletRequest request) {
 
@@ -143,7 +143,7 @@ public class FileCategoryController {
     }
 
     //SAVE_UPDATED_CATEGORY
-    @PreAuthorize("hasAuthority('SAVE_UPDATED_CATEGORY') || hasAuthority('ADMIN')")
+    @PreAuthorize("hasAuthority('SAVE_UPDATED_FILE_CATEGORY') || hasAuthority('ADMIN')")
     @PostMapping({"{id}"})
     public String saveUpdatedFileCategory(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int categoryId, @ModelAttribute @Validated(InsertValidation.class) FileCategoryDTO fileCategoryDTO,
                                    BindingResult bindingResult, Model model, HttpServletRequest request) {
