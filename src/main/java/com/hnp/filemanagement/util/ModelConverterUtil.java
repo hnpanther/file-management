@@ -67,6 +67,7 @@ public class ModelConverterUtil {
         fileCategoryDTO.setDescription(fileCategory.getDescription());
         fileCategoryDTO.setEnabled(fileCategory.getEnabled());
         fileCategoryDTO.setState(fileCategory.getState());
+        fileCategoryDTO.setDisplayName(fileCategory.getCategoryNameDescription() + " - " + fileCategory.getGeneralTag().getTagNameDescription());
 
         return fileCategoryDTO;
     }
@@ -92,6 +93,7 @@ public class ModelConverterUtil {
         MainTagFileDTO mainTagFileDTO = new MainTagFileDTO();
         mainTagFileDTO.setId(mainTagFile.getId());
         mainTagFileDTO.setTagName(mainTagFile.getTagName());
+        mainTagFileDTO.setTagNameDescription(mainTagFile.getTagNameDescription());
         mainTagFileDTO.setDescription(mainTagFile.getDescription());
         mainTagFileDTO.setFileSubCategoryId(mainTagFile.getFileSubCategory().getId());
         mainTagFileDTO.setFileSubCategoryName(mainTagFile.getFileSubCategory().getSubCategoryName());
@@ -118,6 +120,7 @@ public class ModelConverterUtil {
         fileDetailsDTO.setFileSize(fileDetails.getFileSize());
         fileDetailsDTO.setVersion(fileDetails.getVersion());
         fileDetailsDTO.setVersionName(fileDetails.getVersionName());
+        fileDetailsDTO.setVersionNameDescription(fileDetails.getVersionNameDescription());
         fileDetailsDTO.setEnabled(fileDetails.getEnabled());
         fileDetailsDTO.setState(fileDetails.getState());
         fileDetailsDTO.setCreatedById(fileDetails.getCreatedBy().getId());
@@ -171,6 +174,24 @@ public class ModelConverterUtil {
         publicFileDetailsDTO.setFileInfoName(fileDetails.getFileInfo().getDescription());
 
         return publicFileDetailsDTO;
+    }
+
+    public static GeneralTagDTO convertGeneralTagToGeneralTagDTO(GeneralTag generalTag) {
+
+        GeneralTagDTO generalTagDTO = new GeneralTagDTO();
+        generalTagDTO.setId(generalTag.getId());
+        generalTagDTO.setTagName(generalTag.getTagName());
+        generalTagDTO.setTagNameDescription(generalTag.getTagNameDescription());
+        generalTagDTO.setDescription(generalTag.getDescription());
+        generalTagDTO.setType(generalTag.getType());
+        generalTagDTO.setEnabled(generalTag.getEnabled());
+        generalTagDTO.setState(generalTag.getState());
+
+//        generalTagDTO.setFileCategoryDTOList(generalTag.getFileCategories().stream().map(ModelConverterUtil::convertFileCategoryToFileCategoryDTO).toList());
+
+        return generalTagDTO;
+
+
     }
 
 

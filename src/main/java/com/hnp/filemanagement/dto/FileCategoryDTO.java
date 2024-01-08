@@ -20,6 +20,8 @@ public class FileCategoryDTO {
     @NotBlank(groups = {InsertValidation.class, UpdateValidation.class})
     private String categoryNameDescription;
 
+    private String displayName;
+
 //    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
 //    @NotBlank(groups = {InsertValidation.class, UpdateValidation.class})
     private String description;

@@ -1,3 +1,4 @@
+
 CREATE TABLE user
 (
     id            INT          NOT NULL PRIMARY KEY AUTO_INCREMENT,
@@ -68,6 +69,26 @@ CREATE TABLE permission_role
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci;
 
+CREATE TABLE general_tag
+(
+    id                   INT          NOT NULL PRIMARY KEY AUTO_INCREMENT,
+    tag_name             VARCHAR(100) NOT NULL,
+    tag_name_description VARCHAR(200) NOT NULL,
+    description          VARCHAR(1000),
+    type                 INT          NOT NULL,
+    enabled              INT          NOT NULL,
+    state                INT          NOT NULL,
+    created_at           DATETIME     NOT NULL,
+    updated_at           DATETIME DEFAULT NULL,
+    created_by           INT          NOT NULL,
+    updated_by           INT      DEFAULT NULL,
+    CONSTRAINT uq_general_tag_name UNIQUE (tag_name),
+    CONSTRAINT fk_general_tag_created_by_user FOREIGN KEY (created_by) REFERENCES user (id),
+    CONSTRAINT fk_general_tag_updated_by_user FOREIGN KEY (updated_by) REFERENCES user (id)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci;
+
 CREATE TABLE file_category
 (
     id                        INT          NOT NULL PRIMARY KEY AUTO_INCREMENT,
@@ -76,6 +97,7 @@ CREATE TABLE file_category
     description               VARCHAR(1000),
     path                      VARCHAR(100) NOT NULL,
     relative_path             VARCHAR(100) NOT NULL,
+    general_tag_id            INT          NOT NULL,
     enabled                   INT          NOT NULL,
     state                     INT          NOT NULL,
     created_at                DATETIME     NOT NULL,
@@ -116,8 +138,10 @@ CREATE TABLE main_tag_file
 (
     id                   INT          NOT NULL PRIMARY KEY AUTO_INCREMENT,
     tag_name             VARCHAR(100) NOT NULL,
-    description          VARCHAR(200) NOT NULL,
+    tag_name_description VARCHAR(100) NOT NULL,
+    description          VARCHAR(1000),
     file_sub_category_id INT          NOT NULL,
+    type                 INT          NOT NULL,
     enabled              INT          NOT NULL,
     state                INT          NOT NULL,
     created_at           DATETIME     NOT NULL,
@@ -133,21 +157,22 @@ CREATE TABLE main_tag_file
 
 CREATE TABLE file_info
 (
-    id                   INT           NOT NULL PRIMARY KEY AUTO_INCREMENT,
-    file_name            VARCHAR(100)  NOT NULL,
-    code_name            VARCHAR(300)  NOT NULL,
-    description          VARCHAR(1000) NOT NULL,
-    file_path            VARCHAR(1000) NOT NULL,
-    relative_path        VARCHAR(1000) NOT NULL,
-    file_link            VARCHAR(1000),
-    file_sub_category_id INT           NOT NULL,
-    main_tag_file_id     INT           NOT NULL,
-    enabled              INT           NOT NULL,
-    state                INT           NOT NULL,
-    created_at           DATETIME      NOT NULL,
-    updated_at           DATETIME DEFAULT NULL,
-    created_by           INT           NOT NULL,
-    updated_by           INT      DEFAULT NULL,
+    id                    INT           NOT NULL PRIMARY KEY AUTO_INCREMENT,
+    file_name             VARCHAR(100)  NOT NULL,
+    code_name             VARCHAR(300)  NOT NULL,
+    file_name_description VARCHAR(500)  NOT NULL,
+    description           VARCHAR(1000) NOT NULL,
+    file_path             VARCHAR(1000) NOT NULL,
+    relative_path         VARCHAR(1000) NOT NULL,
+    file_link             VARCHAR(1000),
+    file_sub_category_id  INT           NOT NULL,
+    main_tag_file_id      INT           NOT NULL,
+    enabled               INT           NOT NULL,
+    state                 INT           NOT NULL,
+    created_at            DATETIME      NOT NULL,
+    updated_at            DATETIME DEFAULT NULL,
+    created_by            INT           NOT NULL,
+    updated_by            INT      DEFAULT NULL,
     CONSTRAINT fk_file_info_file_sub_category_id FOREIGN KEY (file_sub_category_id) REFERENCES file_sub_category (id),
     CONSTRAINT fk_file_info_created_by_user FOREIGN KEY (created_by) REFERENCES user (id),
     CONSTRAINT fk_file_info_updated_by_user FOREIGN KEY (updated_by) REFERENCES user (id),
@@ -158,25 +183,27 @@ CREATE TABLE file_info
 
 CREATE TABLE file_details
 (
-    id             INT           NOT NULL PRIMARY KEY AUTO_INCREMENT,
-    file_info_id   INT           NOT NULL,
-    hash_id        VARCHAR(300)  NOT NULL,
-    file_name      VARCHAR(100)  NOT NULL,
-    file_extension VARCHAR(10)   NOT NULL,
-    content_type   VARCHAR(100)  NOT NULL,
-    version        INT           NOT NULL,
-    version_name   VARCHAR(100)  NOT NULL,
-    description    VARCHAR(1000) NOT NULL,
-    file_path      VARCHAR(1000) NOT NULL,
-    relative_path  VARCHAR(1000) NOT NULL,
-    file_link      VARCHAR(1000),
-    file_size      INT           NOT NULL,
-    enabled        INT           NOT NULL,
-    state          INT           NOT NULL,
-    created_at     DATETIME      NOT NULL,
-    updated_at     DATETIME DEFAULT NULL,
-    created_by     INT           NOT NULL,
-    updated_by     INT      DEFAULT NULL,
+    id                       INT           NOT NULL PRIMARY KEY AUTO_INCREMENT,
+    file_info_id             INT           NOT NULL,
+    hash_id                  VARCHAR(300)  NOT NULL,
+    file_name                VARCHAR(100)  NOT NULL,
+    file_extension           VARCHAR(10)   NOT NULL,
+    content_type             VARCHAR(100)  NOT NULL,
+    version                  INT           NOT NULL,
+    version_name             VARCHAR(100)  NOT NULL,
+    version_name_description VARCHAR(1000),
+    description              VARCHAR(1000) NOT NULL,
+    file_path                VARCHAR(1000) NOT NULL,
+    relative_path            VARCHAR(1000) NOT NULL,
+    file_link                VARCHAR(1000),
+    file_size                INT           NOT NULL,
+    enabled                  INT           NOT NULL,
+    state                    INT           NOT NULL,
+    created_at               DATETIME      NOT NULL,
+    updated_at               DATETIME DEFAULT NULL,
+    created_by               INT           NOT NULL,
+    updated_by               INT      DEFAULT NULL,
+    CONSTRAINT uq_file_details_hash_id UNIQUE (hash_id),
     CONSTRAINT fk_file_details_file_info_id FOREIGN KEY (file_info_id) REFERENCES file_info (id),
     CONSTRAINT fk_file_details_created_by_user FOREIGN KEY (created_by) REFERENCES user (id),
     CONSTRAINT fk_file_details_updated_by_user FOREIGN KEY (updated_by) REFERENCES user (id)

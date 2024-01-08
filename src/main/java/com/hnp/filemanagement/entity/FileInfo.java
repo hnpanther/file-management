@@ -24,7 +24,10 @@ public class FileInfo {
     @Column(name = "code_name", nullable = false)
     private String codeName;
 
-    @Column(name = "description", nullable = false)
+    @Column(name = "file_name_description", nullable = false)
+    private String fileNameDescription;
+
+    @Column(name = "description")
     private String description;
 
     @Column(name = "file_path", nullable = false)

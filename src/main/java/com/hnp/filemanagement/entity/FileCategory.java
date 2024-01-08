@@ -59,5 +59,9 @@ public class FileCategory {
     )
     private List<FileSubCategory> fileSubCategories = new ArrayList<>();
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "general_tag_id")
+    private GeneralTag generalTag;
+
 
 }

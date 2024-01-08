@@ -45,8 +45,12 @@ public class FileDetails {
     @Column(name = "version", nullable = false)
     private Integer version;
 
+
     @Column(name = "version_name", nullable = false)
     private String versionName;
+
+    @Column(name = "version_name_description")
+    private String versionNameDescription;
 
     @Column(name = "enabled", nullable = false)
     private Integer enabled;

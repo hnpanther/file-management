@@ -6,8 +6,10 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
-public class MainTagFileDTO {
+public class GeneralTagDTO {
 
     @NotNull(groups = UpdateValidation.class)
     private Integer id;
@@ -22,18 +24,12 @@ public class MainTagFileDTO {
 
     private String description;
 
-    @NotNull(groups = {InsertValidation.class})
-    private Integer fileSubCategoryId;
 
-    private String fileSubCategoryName;
-    private String fileSubCategoryNameDescription;
-
-    @NotNull(groups = InsertValidation.class)
-    private Integer fileCategoryId;
-    private String fileCategoryName;
-    private String fileCategoryNameDescription;
+    private int type;
 
     private int enabled;
 
     private int state;
+
+    private List<FileCategoryDTO> fileCategoryDTOList;
 }

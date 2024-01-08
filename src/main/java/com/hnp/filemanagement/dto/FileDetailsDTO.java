@@ -27,6 +27,8 @@ public class FileDetailsDTO {
 
     private String versionName;
 
+    private String versionNameDescription;
+
     private Integer enabled;
 
     private Integer state;

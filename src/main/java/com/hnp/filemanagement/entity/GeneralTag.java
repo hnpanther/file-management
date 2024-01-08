@@ -1,22 +1,24 @@
 package com.hnp.filemanagement.entity;
 
-
 import jakarta.persistence.*;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
-@Table(name = "main_tag_file")
+@Table(name = "general_tag")
 @Data
-public class MainTagFile {
+public class GeneralTag {
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
     private Integer id;
 
-    @Column(name = "tag_name", unique = true, nullable = false)
+    @Column(name = "tag_name", nullable = false)
     private String tagName;
 
     @Column(name = "tag_name_description", nullable = false)
@@ -44,14 +46,12 @@ public class MainTagFile {
     @JoinColumn(name = "created_by", nullable = false)
     private User createdBy;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "updated_by")
-    private User updatedBy;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "file_sub_category_id")
-    private FileSubCategory fileSubCategory;
-
+    @OneToMany(
+            fetch = FetchType.LAZY,
+            cascade={CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH},
+            mappedBy = "generalTag"
+    )
+    private List<FileCategory> fileCategories = new ArrayList<>();
 
 
 }
