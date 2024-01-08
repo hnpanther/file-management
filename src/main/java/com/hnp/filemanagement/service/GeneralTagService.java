@@ -36,7 +36,7 @@ public class GeneralTagService {
     }
 
 
-    private GeneralTag getGeneralTagByIdOrTagName(int id, String tagName) {
+    public GeneralTag getGeneralTagByIdOrTagName(int id, String tagName) {
 
         return generalTagRepository.findByIdOrTagName(id, tagName).orElseThrow(
                 () -> new ResourceNotFoundException("general tag not found. id=" + id + ", tagName=" + tagName)

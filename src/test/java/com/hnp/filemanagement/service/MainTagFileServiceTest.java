@@ -2,17 +2,11 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.dto.MainTagFilePageDTO;
-import com.hnp.filemanagement.entity.FileCategory;
-import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.MainTagFile;
-import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.entity.*;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
-import com.hnp.filemanagement.repository.UserRepository;
+import com.hnp.filemanagement.repository.*;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +46,10 @@ class MainTagFileServiceTest {
     private EntityManager entityManager;
     @Autowired
     private MainTagFileRepository mainTagFileRepository;
+    @Autowired
+    private GeneralTagRepository generalTagRepository;
+
+    private GeneralTagService generalTagService;
 
     @Value("${file.management.base-dir}")
     private String baseDir;
@@ -71,11 +69,14 @@ class MainTagFileServiceTest {
     private int fileSubCategorySubMailId2 = 0;
     private int mainTagFileContractId = 0;
     private int mainTagFilePreviewId = 0;
+    private int generalTagId1 = 0;
     @BeforeEach
     void setUp() throws IOException {
 
+
         fileStorageService = new FileStorageFileSystemService(baseDir);
-        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir);
+        generalTagService = new GeneralTagService(entityManager, generalTagRepository);
+        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
         fileSubCategoryService = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, baseDir);
         underTest = new MainTagFileService(baseDir, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileRepository);
 
@@ -100,6 +101,17 @@ class MainTagFileServiceTest {
         userRepository.save(user);
         userId = user.getId();
 
+        GeneralTag generalTag1 = new GeneralTag();
+        generalTag1.setTagName("IT");
+        generalTag1.setTagNameDescription("Information Technology");
+        generalTag1.setType(0);
+        generalTag1.setEnabled(1);
+        generalTag1.setState(0);
+        generalTag1.setCreatedAt(LocalDateTime.now());
+        generalTag1.setCreatedBy(user);
+        generalTagRepository.save(generalTag1);
+        generalTagId1 = generalTag1.getId();
+
         FileCategory fileCategoryDocument = new FileCategory();
         fileCategoryDocument.setCategoryName("documents");
         fileCategoryDocument.setDescription("documents description");
@@ -110,6 +122,7 @@ class MainTagFileServiceTest {
         fileCategoryDocument.setState(0);
         fileCategoryDocument.setPath(baseDir + fileCategoryDocument.getCategoryName());
         fileCategoryDocument.setRelativePath(fileCategoryDocument.getCategoryName());
+        fileCategoryDocument.setGeneralTag(generalTag1);
         fileCategoryRepository.save(fileCategoryDocument);
         fileCategoryDocumentId = fileCategoryDocument.getId();
         fileStorageService.createDirectory(fileCategoryDocument.getCategoryName(), false);
@@ -124,6 +137,7 @@ class MainTagFileServiceTest {
         fileCategoryMail.setState(0);
         fileCategoryMail.setPath(baseDir + fileCategoryMail.getCategoryName());
         fileCategoryMail.setRelativePath(fileCategoryMail.getCategoryName());
+        fileCategoryMail.setGeneralTag(generalTag1);
         fileCategoryRepository.save(fileCategoryMail);
         fileStorageService.createDirectory(fileCategoryMail.getCategoryName(), false);
         fileCategoryMailId = fileCategoryMail.getId();
@@ -161,7 +175,9 @@ class MainTagFileServiceTest {
 
         MainTagFile mainTagFileContract = new MainTagFile();
         mainTagFileContract.setTagName("contract");
+        mainTagFileContract.setTagNameDescription("desc");
         mainTagFileContract.setDescription("contract description");
+        mainTagFileContract.setType(0);
         mainTagFileContract.setEnabled(1);
         mainTagFileContract.setState(0);
         mainTagFileContract.setCreatedAt(LocalDateTime.now());
@@ -172,7 +188,9 @@ class MainTagFileServiceTest {
 
         MainTagFile mainTagFilePreview = new MainTagFile();
         mainTagFilePreview.setTagName("preview");
+        mainTagFilePreview.setTagNameDescription("desc1");
         mainTagFilePreview.setDescription("preview description");
+        mainTagFilePreview.setType(0);
         mainTagFilePreview.setEnabled(1);
         mainTagFilePreview.setState(0);
         mainTagFilePreview.setCreatedAt(LocalDateTime.now());
@@ -192,6 +210,7 @@ class MainTagFileServiceTest {
         mainTagFileRepository.deleteAll();
         fileSubCategoryRepository.deleteAll();
         fileCategoryRepository.deleteAll();
+        generalTagRepository.deleteAll();
         userRepository.deleteAll();
 
         String directoryPath = baseDir;
@@ -215,8 +234,10 @@ class MainTagFileServiceTest {
         MainTagFileDTO mainTagFileDTO = new MainTagFileDTO();
         mainTagFileDTO.setTagName("new_tag_for_mail");
         mainTagFileDTO.setDescription("description new tag mail");
+        mainTagFileDTO.setTagNameDescription("desc1111");
         mainTagFileDTO.setFileSubCategoryId(fileSubCategorySubMailId);
         mainTagFileDTO.setFileCategoryId(fileCategoryMailId);
+        mainTagFileDTO.setType(0);
 
         underTest.createMainTagFile(mainTagFileDTO, userId);
 

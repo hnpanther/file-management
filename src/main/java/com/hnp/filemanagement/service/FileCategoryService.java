@@ -3,7 +3,9 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileCategoryPageDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
+import com.hnp.filemanagement.dto.GeneralTagDTO;
 import com.hnp.filemanagement.entity.FileCategory;
+import com.hnp.filemanagement.entity.GeneralTag;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DependencyResourceException;
@@ -42,20 +44,24 @@ public class FileCategoryService {
 
     private final FileCategoryRepository fileCategoryRepository;
 
+    private final GeneralTagService generalTagService;
+
 
     public FileCategoryService(FileStorageService fileStorageService, EntityManager entityManager,
                                FileCategoryRepository fileCategoryRepository,
-                               @Value("${file.management.base-dir}") String baseDir) {
+                               @Value("${file.management.base-dir}") String baseDir, GeneralTagService generalTagService) {
         this.fileStorageService = fileStorageService;
         this.entityManager = entityManager;
         this.fileCategoryRepository = fileCategoryRepository;
         this.baseDir = baseDir;
+        this.generalTagService = generalTagService;
     }
 
 
     @Transactional
     public void createCategory(FileCategoryDTO fileCategoryDTO, int principalId) {
 
+        GeneralTag generalTag = generalTagService.getGeneralTagByIdOrTagName(fileCategoryDTO.getGeneralTagId(), "");
 
         if(!ValidationUtil.checkCorrectDirectoryName(fileCategoryDTO.getCategoryName())) {
             throw new BusinessException("not correct file category name=" + fileCategoryDTO.getCategoryName());
@@ -75,6 +81,7 @@ public class FileCategoryService {
         fileCategory.setCreatedBy(entityManager.getReference(User.class, principalId));
         fileCategory.setPath(baseDir + fileCategory.getCategoryName());
         fileCategory.setRelativePath(fileCategory.getCategoryName());
+        fileCategory.setGeneralTag(generalTag);
         fileCategoryRepository.save(fileCategory);
 
 

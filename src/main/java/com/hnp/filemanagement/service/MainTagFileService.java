@@ -68,10 +68,12 @@ public class MainTagFileService {
 
         MainTagFile mainTagFile = new MainTagFile();
         mainTagFile.setFileSubCategory(fileSubCategory);
+        mainTagFile.setType(mainTagFileDTO.getType());
         mainTagFile.setEnabled(1);
         mainTagFile.setState(0);
         mainTagFile.setTagName(mainTagFileDTO.getTagName());
         mainTagFile.setDescription(mainTagFileDTO.getDescription());
+        mainTagFile.setTagNameDescription(mainTagFileDTO.getTagNameDescription());
         mainTagFile.setCreatedAt(LocalDateTime.now());
         mainTagFile.setCreatedBy(entityManager.getReference(User.class, principalId));
 

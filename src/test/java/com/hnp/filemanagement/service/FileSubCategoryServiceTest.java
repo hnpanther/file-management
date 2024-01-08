@@ -3,16 +3,10 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryPageDTO;
-import com.hnp.filemanagement.entity.FileCategory;
-import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.MainTagFile;
-import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.entity.*;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
-import com.hnp.filemanagement.repository.UserRepository;
+import com.hnp.filemanagement.repository.*;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,9 +50,16 @@ class FileSubCategoryServiceTest {
     @Value("${file.management.base-dir}")
     private String baseDir;
 
+    @Autowired
+    private GeneralTagRepository generalTagRepository;
+
+    private GeneralTagService generalTagService;
+
     private FileStorageService fileStorageService;
 
     private FileCategoryService fileCategoryService;
+
+
 
     private FileSubCategoryService underTest;
 
@@ -67,14 +68,15 @@ class FileSubCategoryServiceTest {
     private int fileCategoryMailId = 0;
     private int fileSubCategorySubMailId = 0;
     private int fileSubCategorySubMailId2 = 0;
-
+    private int generalTagId1 = 0;
 
 
     @BeforeEach
     void setUp() throws IOException {
 
+        generalTagService = new GeneralTagService(entityManager, generalTagRepository);
         fileStorageService = new FileStorageFileSystemService(baseDir);
-        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir);
+        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
         underTest = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, baseDir);
 
 
@@ -99,6 +101,17 @@ class FileSubCategoryServiceTest {
         userRepository.save(user);
         userId = user.getId();
 
+        GeneralTag generalTag1 = new GeneralTag();
+        generalTag1.setTagName("IT");
+        generalTag1.setTagNameDescription("Information Technology");
+        generalTag1.setType(0);
+        generalTag1.setEnabled(1);
+        generalTag1.setState(0);
+        generalTag1.setCreatedAt(LocalDateTime.now());
+        generalTag1.setCreatedBy(user);
+        generalTagRepository.save(generalTag1);
+        generalTagId1 = generalTag1.getId();
+
         FileCategory fileCategoryDocument = new FileCategory();
         fileCategoryDocument.setCategoryName("documents");
         fileCategoryDocument.setDescription("documents description");
@@ -109,6 +122,7 @@ class FileSubCategoryServiceTest {
         fileCategoryDocument.setState(0);
         fileCategoryDocument.setPath(baseDir + fileCategoryDocument.getCategoryName());
         fileCategoryDocument.setRelativePath(fileCategoryDocument.getCategoryName());
+        fileCategoryDocument.setGeneralTag(generalTag1);
         fileCategoryRepository.save(fileCategoryDocument);
         fileCategoryDocumentId = fileCategoryDocument.getId();
         fileStorageService.createDirectory(fileCategoryDocument.getCategoryName(), false);
@@ -123,6 +137,7 @@ class FileSubCategoryServiceTest {
         fileCategoryMail.setState(0);
         fileCategoryMail.setPath(baseDir + fileCategoryMail.getCategoryName());
         fileCategoryMail.setRelativePath(fileCategoryMail.getCategoryName());
+        fileCategoryMail.setGeneralTag(generalTag1);
         fileCategoryRepository.save(fileCategoryMail);
         fileStorageService.createDirectory(fileCategoryMail.getCategoryName(), false);
         fileCategoryMailId = fileCategoryMail.getId();
@@ -160,7 +175,9 @@ class FileSubCategoryServiceTest {
 
         MainTagFile mainTagFile = new MainTagFile();
         mainTagFile.setTagName("contract");
+        mainTagFile.setTagNameDescription("test...");
         mainTagFile.setDescription("contract description");
+        mainTagFile.setType(0);
         mainTagFile.setEnabled(1);
         mainTagFile.setState(0);
         mainTagFile.setCreatedAt(LocalDateTime.now());
@@ -182,6 +199,7 @@ class FileSubCategoryServiceTest {
         mainTagFileRepository.deleteAll();
         fileSubCategoryRepository.deleteAll();
         fileCategoryRepository.deleteAll();
+        generalTagRepository.deleteAll();
         userRepository.deleteAll();
 
         String directoryPath = baseDir;

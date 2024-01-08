@@ -202,7 +202,7 @@ CREATE TABLE file_info
     file_name             VARCHAR(100)  NOT NULL,
     code_name             VARCHAR(300)  NOT NULL,
     file_name_description VARCHAR(500)  NOT NULL,
-    description           VARCHAR(1000) NOT NULL,
+    description           VARCHAR(1000),
     file_path             VARCHAR(1000) NOT NULL,
     relative_path         VARCHAR(1000) NOT NULL,
     file_link             VARCHAR(1000),

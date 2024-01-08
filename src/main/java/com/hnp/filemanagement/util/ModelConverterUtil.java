@@ -68,6 +68,7 @@ public class ModelConverterUtil {
         fileCategoryDTO.setEnabled(fileCategory.getEnabled());
         fileCategoryDTO.setState(fileCategory.getState());
         fileCategoryDTO.setDisplayName(fileCategory.getCategoryNameDescription() + " - " + fileCategory.getGeneralTag().getTagNameDescription());
+        fileCategoryDTO.setGeneralTagId(fileCategory.getGeneralTag().getId());
 
         return fileCategoryDTO;
     }
@@ -95,6 +96,7 @@ public class ModelConverterUtil {
         mainTagFileDTO.setTagName(mainTagFile.getTagName());
         mainTagFileDTO.setTagNameDescription(mainTagFile.getTagNameDescription());
         mainTagFileDTO.setDescription(mainTagFile.getDescription());
+        mainTagFileDTO.setType(mainTagFile.getType());
         mainTagFileDTO.setFileSubCategoryId(mainTagFile.getFileSubCategory().getId());
         mainTagFileDTO.setFileSubCategoryName(mainTagFile.getFileSubCategory().getSubCategoryName());
         mainTagFileDTO.setFileSubCategoryNameDescription(mainTagFile.getFileSubCategory().getSubCategoryNameDescription());

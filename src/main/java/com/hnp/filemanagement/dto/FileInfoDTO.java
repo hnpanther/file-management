@@ -22,8 +22,11 @@ public class FileInfoDTO {
 
     private String fileName;
 
-    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+
     private String description;
+
+    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+    private String fileNameDescription;
 
     private String filePath;
 

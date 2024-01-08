@@ -52,6 +52,10 @@ class FileServiceTest {
     private FileInfoRepository fileInfoRepository;
     @Autowired
     private FileDetailsRepository fileDetailsRepository;
+    @Autowired
+    private GeneralTagRepository generalTagRepository;
+
+    private GeneralTagService generalTagService;
 
     @Value("${file.management.base-dir}")
     private String baseDir;
@@ -77,12 +81,14 @@ class FileServiceTest {
     private int mainTagFilePreviewId = 0;
 
     private int fileInfoId = 0;
+    private int generalTagId1 = 0;
 
     @BeforeEach
     void setUp() throws IOException {
 
         fileStorageService = new FileStorageFileSystemService(baseDir);
-        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir);
+        generalTagService = new GeneralTagService(entityManager, generalTagRepository);
+        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
         fileSubCategoryService = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, baseDir);
         mainTagFileService = new MainTagFileService(baseDir, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileRepository);
         underTest = new FileService(baseDir, fileStorageService, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileService, fileInfoRepository, fileDetailsRepository);
@@ -108,6 +114,17 @@ class FileServiceTest {
         userRepository.save(user);
         userId = user.getId();
 
+        GeneralTag generalTag1 = new GeneralTag();
+        generalTag1.setTagName("IT");
+        generalTag1.setTagNameDescription("Information Technology");
+        generalTag1.setType(0);
+        generalTag1.setEnabled(1);
+        generalTag1.setState(0);
+        generalTag1.setCreatedAt(LocalDateTime.now());
+        generalTag1.setCreatedBy(user);
+        generalTagRepository.save(generalTag1);
+        generalTagId1 = generalTag1.getId();
+
         FileCategory fileCategoryDocument = new FileCategory();
         fileCategoryDocument.setCategoryName("documents");
         fileCategoryDocument.setDescription("documents description");
@@ -118,6 +135,7 @@ class FileServiceTest {
         fileCategoryDocument.setState(0);
         fileCategoryDocument.setPath(baseDir + fileCategoryDocument.getCategoryName());
         fileCategoryDocument.setRelativePath(fileCategoryDocument.getCategoryName());
+        fileCategoryDocument.setGeneralTag(generalTag1);
         fileCategoryRepository.save(fileCategoryDocument);
         fileCategoryDocumentId = fileCategoryDocument.getId();
         fileStorageService.createDirectory(fileCategoryDocument.getCategoryName(), false);
@@ -132,6 +150,7 @@ class FileServiceTest {
         fileCategoryMail.setState(0);
         fileCategoryMail.setPath(baseDir + fileCategoryMail.getCategoryName());
         fileCategoryMail.setRelativePath(fileCategoryMail.getCategoryName());
+        fileCategoryMail.setGeneralTag(generalTag1);
         fileCategoryRepository.save(fileCategoryMail);
         fileStorageService.createDirectory(fileCategoryMail.getCategoryName(), false);
         fileCategoryMailId = fileCategoryMail.getId();
@@ -169,23 +188,25 @@ class FileServiceTest {
 
         MainTagFile mainTagFileContract = new MainTagFile();
         mainTagFileContract.setTagName("contract");
-        mainTagFileContract.setDescription("contract description");
+        mainTagFileContract.setTagNameDescription("contract description");
         mainTagFileContract.setEnabled(1);
         mainTagFileContract.setState(0);
         mainTagFileContract.setCreatedAt(LocalDateTime.now());
         mainTagFileContract.setCreatedBy(user);
         mainTagFileContract.setFileSubCategory(fileSubCategorySubMail);
+        mainTagFileContract.setType(0);
         mainTagFileRepository.save(mainTagFileContract);
         mainTagFileContractId = mainTagFileContract.getId();
 
         MainTagFile mainTagFilePreview = new MainTagFile();
         mainTagFilePreview.setTagName("preview");
-        mainTagFilePreview.setDescription("preview description");
+        mainTagFilePreview.setTagNameDescription("preview description");
         mainTagFilePreview.setEnabled(1);
         mainTagFilePreview.setState(0);
         mainTagFilePreview.setCreatedAt(LocalDateTime.now());
         mainTagFilePreview.setCreatedBy(user);
         mainTagFilePreview.setFileSubCategory(fileSubCategorySubMail);
+        mainTagFilePreview.setType(0);
         mainTagFileRepository.save(mainTagFilePreview);
         mainTagFilePreviewId = mainTagFilePreview.getId();
 
@@ -195,7 +216,7 @@ class FileServiceTest {
         FileInfo fileInfo = new FileInfo();
         fileInfo.setFileName("test");
         fileInfo.setCodeName("test");
-        fileInfo.setDescription("a test file");
+        fileInfo.setFileNameDescription("a test file");
         fileInfo.setFilePath(mainTagFilePreview.getFileSubCategory().getPath() + "/" + "test");
         fileInfo.setRelativePath(mainTagFilePreview.getFileSubCategory().getRelativePath() + "/" + "test");
         fileInfo.setEnabled(1);
@@ -243,6 +264,7 @@ class FileServiceTest {
         mainTagFileRepository.deleteAll();
         fileSubCategoryRepository.deleteAll();
         fileCategoryRepository.deleteAll();
+        generalTagRepository.deleteAll();
         userRepository.deleteAll();
 
         String directoryPath = baseDir;
@@ -267,11 +289,12 @@ class FileServiceTest {
         MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
 
         FileInfoDTO fileInfoDTO = new FileInfoDTO();
-        fileInfoDTO.setDescription("description....test2");
+        fileInfoDTO.setFileNameDescription("description....test2");
         fileInfoDTO.setFileSubCategoryId(fileSubCategorySubMailId);
         fileInfoDTO.setFileCategoryId(fileCategoryMailId);
         fileInfoDTO.setMainTagFileId(mainTagFilePreviewId);
         fileInfoDTO.setMultipartFile(multipartFile);
+        fileInfoDTO.setDescription("test");
 
 
         underTest.createNewFile(fileInfoDTO, userId);

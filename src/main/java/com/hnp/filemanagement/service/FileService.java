@@ -80,6 +80,7 @@ public class FileService {
         FileInfo fileInfo = new FileInfo();
         fileInfo.setFileName(fileNameWithoutExtension);
         fileInfo.setCodeName(fileNameWithoutExtension);
+        fileInfo.setFileNameDescription(fileInfoDTO.getFileNameDescription());
         fileInfo.setDescription(fileInfoDTO.getDescription());
         fileInfo.setFilePath(mainTagFile.getFileSubCategory().getPath() + "/" + fileNameWithoutExtension);
         fileInfo.setRelativePath(mainTagFile.getFileSubCategory().getRelativePath() + "/" + fileNameWithoutExtension);

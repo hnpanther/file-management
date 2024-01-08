@@ -4,6 +4,7 @@ import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileCategoryPageDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileSubCategory;
+import com.hnp.filemanagement.entity.GeneralTag;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DependencyResourceException;
@@ -11,6 +12,7 @@ import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileSubCategoryRepository;
+import com.hnp.filemanagement.repository.GeneralTagRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import jakarta.persistence.Entity;
@@ -63,15 +65,23 @@ class FileCategoryServiceTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private GeneralTagRepository generalTagRepository;
+
+    private GeneralTagService generalTagService;
+
 
     private int userId = 0;
 
     int fileCategoryId1 = 0;
     int fileCategoryId2 = 0;
 
+    int generalTagId1 = 0;
+
 
     @BeforeEach
     void setUp() throws IOException {
+
 
 
         // create base directory
@@ -80,8 +90,10 @@ class FileCategoryServiceTest {
         logger.info("creating: " + path);
         Files.createDirectory(path);
 
+        generalTagService = new GeneralTagService(entityManager, generalTagRepository);
+
         fileStorageService = new FileStorageFileSystemService(baseDir);
-        underTest = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir);
+        underTest = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
 
         User user = new User();
         user.setUsername("admin");
@@ -98,6 +110,17 @@ class FileCategoryServiceTest {
         userRepository.save(user);
         userId = user.getId();
 
+        GeneralTag generalTag1 = new GeneralTag();
+        generalTag1.setTagName("IT");
+        generalTag1.setTagNameDescription("Information Technology");
+        generalTag1.setType(0);
+        generalTag1.setEnabled(1);
+        generalTag1.setState(0);
+        generalTag1.setCreatedAt(LocalDateTime.now());
+        generalTag1.setCreatedBy(user);
+        generalTagRepository.save(generalTag1);
+        generalTagId1 = generalTag1.getId();
+
 
         FileCategory fileCategory = new FileCategory();
         fileCategory.setCategoryName("documents");
@@ -109,6 +132,7 @@ class FileCategoryServiceTest {
         fileCategory.setState(0);
         fileCategory.setPath(baseDir + fileCategory.getCategoryName());
         fileCategory.setRelativePath(fileCategory.getCategoryName());
+        fileCategory.setGeneralTag(generalTag1);
 
         fileCategoryRepository.save(fileCategory);
         fileStorageService.createDirectory(fileCategory.getCategoryName(), false);
@@ -123,6 +147,7 @@ class FileCategoryServiceTest {
         fileCategory2.setState(0);
         fileCategory2.setPath(baseDir + fileCategory2.getCategoryName());
         fileCategory2.setRelativePath(fileCategory2.getCategoryName());
+        fileCategory2.setGeneralTag(generalTag1);
 
         fileCategoryRepository.save(fileCategory2);
         fileStorageService.createDirectory(fileCategory2.getCategoryName(), false);
@@ -159,6 +184,7 @@ class FileCategoryServiceTest {
 
         fileSubCategoryRepository.deleteAll();
         fileCategoryRepository.deleteAll();
+        generalTagRepository.deleteAll();
         userRepository.deleteAll();
 
         String directoryPath = baseDir;
@@ -181,12 +207,16 @@ class FileCategoryServiceTest {
     @Commit
     void createCategoryTest() {
 
+
+//        GeneralTag generalTag = generalTagRepository.findById(generalTagId1).get();
+
         FileCategory fileCategory = new FileCategory();
         fileCategory.setCategoryName("preview");
         fileCategory.setDescription("preview description");
         fileCategory.setCategoryNameDescription("preview name");
         fileCategory.setEnabled(1);
         fileCategory.setState(0);
+        fileCategory.setGeneralTag(entityManager.getReference(GeneralTag.class, generalTagId1));
 
 
         underTest.createCategory(ModelConverterUtil.convertFileCategoryToFileCategoryDTO(fileCategory), userId);
@@ -208,6 +238,7 @@ class FileCategoryServiceTest {
         fileCategory.setCategoryNameDescription("preview name");
         fileCategory.setEnabled(1);
         fileCategory.setState(0);
+        fileCategory.setGeneralTag(entityManager.getReference(GeneralTag.class, generalTagId1));
 
         assertThatThrownBy(
                 () -> underTest.createCategory(ModelConverterUtil.convertFileCategoryToFileCategoryDTO(fileCategory), userId)
@@ -223,6 +254,8 @@ class FileCategoryServiceTest {
         fileCategory.setCategoryNameDescription("preview name");
         fileCategory.setEnabled(1);
         fileCategory.setState(0);
+        fileCategory.setGeneralTag(entityManager.getReference(GeneralTag.class, generalTagId1));
+
         assertThatThrownBy(
                 () -> underTest.createCategory(ModelConverterUtil.convertFileCategoryToFileCategoryDTO(fileCategory), userId)
         ).isInstanceOf(BusinessException.class);
