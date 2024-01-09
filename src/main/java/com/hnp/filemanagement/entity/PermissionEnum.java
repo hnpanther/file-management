@@ -144,9 +144,29 @@ public enum PermissionEnum {
 
     // HomeController ====================================================================================
     //@GetMapping
-    ACCESS_HOME
+    ACCESS_HOME,
 
     // ===================================================================================================
+
+    // GeneralTagController @RequestMapping("/general-tags") ==============================================
+
+    //@GetMapping("create")
+    CREATE_GENERAL_TAG_PAGE,
+
+    //@PostMapping
+    SAVE_NEW_GENERAL_TAG,
+
+    //@GetMapping
+    GET_ALL_GENERAL_TAG_PAGE,
+
+    //@GetMapping("{id}")
+    UPDATE_GENERAL_TAG_PAGE,
+
+    //@PostMapping("{id}")
+    SAVE_UPDATED_GENERAL_TAG
+
+    // ===================================================================================================
+
 
 
 

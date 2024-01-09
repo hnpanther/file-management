@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>لیست تگ های عمومی</title>
+
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
+
+</head>
+<body>
+
+<div th:insert="~{navbar.html :: navbar}"></div>
+
+<div class="container-fluid">
+    <div class="row flex-lg-nowrap">
+
+
+        <div class="col">
+            <div class="e-tabs mb-3 px-3">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item"><a class="nav-link active" href="#">تگ های عمومی</a></li>
+                </ul>
+            </div>
+
+            <div class="row flex-lg-nowrap">
+                <div class="col mb-3">
+
+                    <div class="e-panel card">
+                        <div class="card-body">
+                            <div sec:authorize="hasAuthority('CREATE_GENERAL_TAG_PAGE') || hasAuthority('ADMIN')" class="card-title">
+                                <a class="btn btn-success btn-block" type="button" style="width: 30%;" th:href="@{/general-tags/create}">ایجاد
+                                    تگ جدید
+                                </a>
+                            </div>
+                            <div class="e-table">
+                                <div class="table-responsive table-lg mt-3">
+                                    <table class="table table-bordered">
+                                        <thead>
+                                        <tr>
+                                            <th class="max-width">شناسه</th>
+                                            <th class="max-width">عنوان تگ(انگلیسی)</th>
+                                            <th class="max-width">نام تگ(فارسی)</th>
+                                            <th>عملیات</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        <tr th:each="g: ${generalTags}">
+
+                                            <td class="text-nowrap align-middle" th:text="${g.getId()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${g.getTagName()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${g.getTagNameDescription()}"></td>
+                                            <td class="text-center align-middle">
+                                                <div class="btn-group align-top">
+                                                    <a class="btn btn-sm btn-outline-secondary badge" type="button"
+                                                       th:href="@{'/general-tags/' + ${g.getId()}}">مشاهده
+                                                    </a>
+                                                </div>
+                                            </td>
+                                        </tr>
+
+
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="d-flex justify-content-center">
+                                    <ul class="pagination mt-3 mb-0">
+                                        <li th:if="${pageNumber > 1}" class="page-item disabled"><a th:href="@{/general-tags(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}">قبلی</a></li>
+
+                                        <li th:if="${pageNumber > 1}" class="page-item"><a th:text="${pageNumber-1}" th:href="@{/general-tags(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}" class="page-link"></a></li>
+
+                                        <li class="page-item active"><a th:text="${pageNumber}" href="#" class="page-link"></a></li>
+
+                                        <li th:if="${(pageNumber) < totalPages}" class="page-item"><a th:text="${pageNumber+1}" th:href="@{/general-tags(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}" class="page-link"></a></li>
+                                        <li th:if="${(pageNumber) < totalPages}" class="page-item">...</a></li>
+                                        <li th:if="${(pageNumber) < totalPages}" class="page-item"><a th:href="@{/general-tags(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}">بعدی</a></li>
+
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-lg-2 mb-2">
+                    <div class="card">
+                        <div class="card-body">
+
+                            <hr class="my-3">
+
+                            <div>
+
+                                <div class="form-group">
+                                    <label>جستجو:</label>
+                                    <div><input class="form-control w-100" type="text" placeholder="" th:value="${search}" id="search"></div>
+                                </div>
+                                <!--                                <div class="form-check">-->
+                                <!--                                    <input class="form-check-input" type="radio" name="stateRadio" id="exampleRadios1" value="3" th:checked="${stateFilter==3}">-->
+                                <!--                                    <label class="form-check-label" for="exampleRadios1">-->
+                                <!--                                        تمام درخواست-->
+                                <!--                                    </label>-->
+                                <!--                                </div>-->
+                                <!--                                <div class="form-check">-->
+                                <!--                                    <input class="form-check-input" type="radio" name="stateRadio" id="exampleRadios2" value="0" th:checked="${stateFilter==0}">-->
+                                <!--                                    <label class="form-check-label" for="exampleRadios2">-->
+                                <!--                                        ذخیره شده-->
+                                <!--                                    </label>-->
+                                <!--                                </div>-->
+
+                            </div>
+
+                            <hr>
+                            <div class="text-center px-xl-3">
+                                <button class="btn btn-success btn-block" type="button" onclick="search()">جستجو</button>
+                            </div>
+                            <hr>
+                            <div class="text-center px-xl-3">
+                                <button class="btn btn-success btn-block" type="button" onclick="reload()">بارگزاری مجدد</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+
+    </div>
+</div>
+
+<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
+
+
+<script>
+
+    function search() {
+
+        // let pageNumber = [[${pageNumber}]];
+        // let pageSize = [[${pageSize}]];
+        // let oldSearch = /*[[${oldSearch}]]*/ '';
+
+
+        let input;
+        input = document.getElementById("search").value;
+        // let params = (new URL(document.location)).searchParams;
+        // let pageNumber = params.get("page-number");
+        // let pageSize = params.get("page-size");
+        // let search = params.get("search-filter");
+        // let filterState = $('input[name="stateRadio"]:checked').val();
+
+        let loc = window.location;
+        let newUrl = loc.protocol + "//" + loc.host + loc.pathname + "?";
+        newUrl += "search=" + input;
+        window.location = newUrl;
+        // if (input !== "") {
+        //     newUrl += "search=" + input;
+        //     window.location = newUrl;
+        // }
+
+
+    }
+
+    function reload() {
+        let loc = window.location;
+        window.location = loc.protocol + "//" + loc.host + loc.pathname;
+    }
+
+</script>
+
+</body>

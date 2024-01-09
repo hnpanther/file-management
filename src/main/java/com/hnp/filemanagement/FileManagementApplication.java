@@ -113,8 +113,8 @@ public class FileManagementApplication extends SpringBootServletInitializer {
             user.setNationalCode("9999999999");
             user.setPhoneNumber("99999999997");
             user.setPersonelCode(9999);
-//            user.setPassword(bCryptPasswordEncoder.encode("admin"));
-            user.setPassword("admin");
+            user.setPassword(bCryptPasswordEncoder.encode("admin"));
+//            user.setPassword("admin");
 			user.setEnabled(1);
 			user.setState(0);
             user.setCreatedAt(LocalDateTime.now());

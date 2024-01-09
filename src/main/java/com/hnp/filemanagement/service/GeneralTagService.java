@@ -2,6 +2,7 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.GeneralTagDTO;
+import com.hnp.filemanagement.dto.GeneralTagPageDTO;
 import com.hnp.filemanagement.entity.GeneralTag;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
@@ -9,6 +10,10 @@ import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.GeneralTagRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import jakarta.persistence.EntityManager;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,9 +60,9 @@ public class GeneralTagService {
         generalTag.setTagName(generalTagDTO.getTagName());
         generalTag.setTagNameDescription(generalTagDTO.getTagNameDescription());
         generalTag.setDescription(generalTagDTO.getDescription());
-        generalTag.setType(generalTagDTO.getType());
-        generalTag.setEnabled(generalTagDTO.getEnabled());
-        generalTag.setState(generalTagDTO.getState());
+        generalTag.setType(0);
+        generalTag.setEnabled(1);
+        generalTag.setState(0);
         generalTag.setCreatedAt(LocalDateTime.now());
         generalTag.setCreatedBy(entityManager.getReference(User.class, principalId));
 
@@ -76,13 +81,32 @@ public class GeneralTagService {
 
 
     @Transactional
-    public void updateDescription(int id, String tagNameDescription, String description) {
+    public void updateDescription(int id, String tagNameDescription, String description, int principalId) {
         GeneralTag generalTag = getGeneralTagByIdOrTagName(id, null);
 
         generalTag.setTagNameDescription(tagNameDescription);
         generalTag.setDescription(description);
 
         generalTagRepository.save(generalTag);
+
+    }
+
+
+    public GeneralTagPageDTO getGeneralTagPage(int pageSize, int pageNumber, String search) {
+        if(search != null) {
+            if(search.isEmpty() || search.isBlank()) {
+                search = null;
+            }
+        }
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
+        Page<GeneralTag> page = generalTagRepository.findByParameterAndPagination(search, pageable);
+        GeneralTagPageDTO generalTagPageDTO = new GeneralTagPageDTO();
+        generalTagPageDTO.setGeneralTagDTOList(page.getContent().stream().map(ModelConverterUtil::convertGeneralTagToGeneralTagDTO).toList());
+        generalTagPageDTO.setTotalPages(page.getTotalPages());
+        generalTagPageDTO.setPageSize(page.getSize());
+        generalTagPageDTO.setNumberOfElement(page.getNumberOfElements());
+        return generalTagPageDTO;
 
     }
 

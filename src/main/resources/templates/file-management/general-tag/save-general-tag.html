@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title th:if="${#strings.equals(pageType, 'create')}">ساخت تگ</title>
+    <title th:if="${#strings.equals(pageType, 'update')}">ویرایش تگ</title>
+
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
+
+    <style>
+        label {
+            float: right
+        }
+
+    </style>
+</head>
+<body>
+
+<div th:insert="~{navbar.html :: navbar}"></div>
+
+
+<h2></h2>
+<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl">ایجاد تگ جدید</h2>
+<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl">ویرایش تگ</h2>
+<div class="container">
+    <form th:action="@{ ${#strings.equals(pageType, 'create') ? '/general-tags' : '/general-tags/' + generalTag.getId()}  }" method="post" id="categoryForm" th:object="${generalTag}">
+
+        <input th:field="*{id}" type="hidden">
+
+
+
+
+        <div class="form-row">
+
+            <div class="form-group col-md-6">
+                <label>نام تگ(فارسی)</label>
+                <input dir="rtl" type="text" class="form-control" th:field="*{tagNameDescription}" required>
+            </div>
+
+            <div class="form-group col-md-6">
+                <label>عنوان تگ(به انگلیسی بدون فاصله)</label>
+                <input dir="rtl" type="text" class="form-control" th:field="*{tagName}" required th:readonly="${#strings.equals(pageType, 'update')}">
+            </div>
+
+
+
+        </div>
+
+
+        <!-- Success message -->
+        <div th:if="${showMessage && valid}" class="alert alert-success" role="alert" id="success_message"><i
+                class="glyphicon glyphicon-thumbs-up" th:text="${message}"></i>
+        </div>
+        <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert" id="warning_message"
+             th:text="${message}"><i class="glyphicon glyphicon-thumbs-up"></i>
+        </div>
+
+        <button type="submit" class="btn btn-primary">ذخیره</button>
+    </form>
+    <hr>
+    <a th:href="@{/general-tags}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست تگ ها</a>
+</div>
+
+
+<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
+
+<script>
+
+    $('#categoryForm').on('submit', function() {
+
+        return true;
+    });
+
+</script>
+
+
+</body>
+</html>
