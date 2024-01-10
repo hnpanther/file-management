@@ -3,10 +3,13 @@ package com.hnp.filemanagement.controller;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileCategoryPageDTO;
+import com.hnp.filemanagement.dto.GeneralTagDTO;
+import com.hnp.filemanagement.service.GeneralTagService;
 import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.service.FileCategoryService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
+import com.hnp.filemanagement.validation.UpdateValidation;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +35,8 @@ public class FileCategoryController {
 
     private final FileCategoryService fileCategoryService;
 
+    private final GeneralTagService generalTagService;
+
     @Value("${filemanagement.default.page-size:50}")
     private int defaultPageSize;
 
@@ -39,9 +44,10 @@ public class FileCategoryController {
     private int defaultElementSize;
 
 
-    public FileCategoryController(GlobalGeneralLogging globalGeneralLogging, FileCategoryService fileCategoryService) {
+    public FileCategoryController(GlobalGeneralLogging globalGeneralLogging, FileCategoryService fileCategoryService, GeneralTagService generalTagService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.fileCategoryService = fileCategoryService;
+        this.generalTagService = generalTagService;
     }
 
     // CREATE_FILE_CATEGORY_PAGE
@@ -60,7 +66,9 @@ public class FileCategoryController {
 
 
         FileCategoryDTO fileCategoryDTO = new FileCategoryDTO();
+        List<GeneralTagDTO> generalTagDTOList = generalTagService.getGeneralTagPage(defaultElementSize, 0, null).getGeneralTagDTOList();
         model.addAttribute("fileCategory", fileCategoryDTO);
+        model.addAttribute("generalTags", generalTagDTOList);
         model.addAttribute("pageType", "create");
         model.addAttribute("showMessage", false);
         model.addAttribute("valid", false);
@@ -104,7 +112,9 @@ public class FileCategoryController {
             }
         }
 
+        List<GeneralTagDTO> generalTagDTOList = generalTagService.getGeneralTagPage(defaultElementSize, 0, null).getGeneralTagDTOList();
         model.addAttribute("fileCategory", fileCategoryDTO);
+        model.addAttribute("generalTags", generalTagDTOList);
         model.addAttribute("pageType", "create");
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);
@@ -131,9 +141,10 @@ public class FileCategoryController {
         String message = "";
 
         FileCategoryDTO fileCategoryDTO = fileCategoryService.getFileCategoryDtoByIdOrCategoryName(categoryId, null);
-
+        List<GeneralTagDTO> generalTagDTOList = generalTagService.getGeneralTagPage(defaultElementSize, 0, null).getGeneralTagDTOList();
 
         model.addAttribute("fileCategory", fileCategoryDTO);
+        model.addAttribute("generalTags", generalTagDTOList);
         model.addAttribute("pageType", "update");
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);
@@ -145,7 +156,7 @@ public class FileCategoryController {
     //SAVE_UPDATED_CATEGORY
     @PreAuthorize("hasAuthority('SAVE_UPDATED_FILE_CATEGORY') || hasAuthority('ADMIN')")
     @PostMapping({"{id}"})
-    public String saveUpdatedFileCategory(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int categoryId, @ModelAttribute @Validated(InsertValidation.class) FileCategoryDTO fileCategoryDTO,
+    public String saveUpdatedFileCategory(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int categoryId, @ModelAttribute @Validated(UpdateValidation.class) FileCategoryDTO fileCategoryDTO,
                                    BindingResult bindingResult, Model model, HttpServletRequest request) {
 
         int principalId = userDetails.getId();
@@ -178,8 +189,9 @@ public class FileCategoryController {
         }
 
 
-
+        List<GeneralTagDTO> generalTagDTOList = generalTagService.getGeneralTagPage(defaultElementSize, 0, null).getGeneralTagDTOList();
         model.addAttribute("fileCategory", fileCategoryDTO);
+        model.addAttribute("generalTags", generalTagDTOList);
         model.addAttribute("pageType", "update");
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);

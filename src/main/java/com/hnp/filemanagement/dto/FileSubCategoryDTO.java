@@ -28,6 +28,8 @@ public class FileSubCategoryDTO {
 
     private String fileCategoryNameDescription;
 
+    private String fileCategoryDisplayName;
+
     private String description;
 
     private int enabled;

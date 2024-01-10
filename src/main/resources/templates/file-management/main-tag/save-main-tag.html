@@ -38,7 +38,7 @@
 
             <div class="form-group col-md-6">
                 <label>نام تگ(فارسی)</label>
-                <input dir="rtl" type="text" class="form-control" th:field="*{description}" required>
+                <input dir="rtl" type="text" class="form-control" th:field="*{tagNameDescription}" required>
             </div>
 
             <div class="form-group col-md-6">
@@ -56,7 +56,7 @@
             <div class="form-group col-md-6">
                 <label>انتخاب دسته بندی اصلی</label>
                 <select onchange="changeCategory()" class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
-                    <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getCategoryNameDescription()}" th:selected="${f.getId() == mainTag.getFileCategoryId()}"></option>
+                    <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getDisplayName()}" th:selected="${f.getId() == mainTag.getFileCategoryId()}"></option>
                 </select>
             </div>
 

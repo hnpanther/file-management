@@ -33,5 +33,7 @@ public class FileCategoryDTO {
     @NotNull(groups = {InsertValidation.class})
     private Integer generalTagId;
 
+    private String generalTagName;
+
 
 }

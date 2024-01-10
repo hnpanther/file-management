@@ -48,7 +48,7 @@ public class FileSubCategoryResource {
 
         List<MainTagFileDTO> mainTagsOfSubCategory = fileSubCategoryService.getMainTagsOfSubCategory(id);
         List<GenericListResponse.GenericResponse> list = mainTagsOfSubCategory.stream().map(mainTagFileDTO -> new GenericListResponse.GenericResponse(
-                mainTagFileDTO.getId(), mainTagFileDTO.getTagName() + "-" + mainTagFileDTO.getDescription()
+                mainTagFileDTO.getId(), mainTagFileDTO.getTagName() + "-" + mainTagFileDTO.getTagNameDescription()
         )).toList();
 
         GenericListResponse genericListResponse = new GenericListResponse();

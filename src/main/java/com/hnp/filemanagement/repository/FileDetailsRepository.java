@@ -22,9 +22,14 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
     Optional<FileDetails> findByIdAndState(int id, int state);
 
     @Query("""
+    SELECT fd FROM FileDetails fd WHERE fd.id = (:id) AND fd.fileInfo.state = (:state)
+    """)
+    Optional<FileDetails> findPublicFile(int id, int state);
+
+    @Query("""
     SELECT fd FROM FileDetails fd
     WHERE
-    fd.state = 0 AND(
+    (fd.state = 0 AND fd.fileInfo.state = 0) AND(
     ((:search) IS NULL) OR (fd.fileName LIKE CONCAT('%', (:search), '%')) OR (fd.description LIKE CONCAT('%', (:search), '%'))
     OR (fd.fileInfo.mainTagFile.description LIKE CONCAT('%', (:search), '%')) OR (fd.fileInfo.fileSubCategory.subCategoryNameDescription LIKE CONCAT('%', (:search), '%'))
     OR (fd.fileInfo.fileSubCategory.fileCategory.categoryNameDescription LIKE CONCAT('%', (:search), '%'))

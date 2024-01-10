@@ -61,6 +61,7 @@ public class GeneralTagController {
 
         GeneralTagDTO generalTagDTO = new GeneralTagDTO();
 
+
         model.addAttribute("generalTag", generalTagDTO);
         model.addAttribute("pageType", "create");
         model.addAttribute("showMessage", showMessage);

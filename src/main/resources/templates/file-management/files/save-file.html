@@ -58,7 +58,7 @@
             <div class="form-group col-md-6">
                 <label>انتخاب دسته بندی اصلی</label>
                 <select onchange="changeMainCategory()" class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
-                    <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getCategoryNameDescription()}" th:selected="${f.getId() == file.getFileCategoryId()}"></option>
+                    <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getDisplayName()}" th:selected="${f.getId() == file.getFileCategoryId()}"></option>
                 </select>
             </div>
 

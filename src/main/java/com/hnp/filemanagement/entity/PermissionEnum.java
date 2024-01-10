@@ -163,12 +163,17 @@ public enum PermissionEnum {
     UPDATE_GENERAL_TAG_PAGE,
 
     //@PostMapping("{id}")
-    SAVE_UPDATED_GENERAL_TAG
+    SAVE_UPDATED_GENERAL_TAG,
 
     // ===================================================================================================
 
 
+    // GeneralTagResource @RequestMapping("/resource/general-tags") ======================================
 
+    //@GetMapping()
+    REST_GET_ALL_GENERAL_TAG
+
+    // ===================================================================================================
 
 
 

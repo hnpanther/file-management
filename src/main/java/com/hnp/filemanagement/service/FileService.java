@@ -80,7 +80,8 @@ public class FileService {
         FileInfo fileInfo = new FileInfo();
         fileInfo.setFileName(fileNameWithoutExtension);
         fileInfo.setCodeName(fileNameWithoutExtension);
-        fileInfo.setFileNameDescription(fileInfoDTO.getFileNameDescription());
+        fileInfo.setFileNameDescription(fileNameWithoutExtension);
+        fileInfo.setDescription(fileInfoDTO.getDescription());
         fileInfo.setDescription(fileInfoDTO.getDescription());
         fileInfo.setFilePath(mainTagFile.getFileSubCategory().getPath() + "/" + fileNameWithoutExtension);
         fileInfo.setRelativePath(mainTagFile.getFileSubCategory().getRelativePath() + "/" + fileNameWithoutExtension);
@@ -106,6 +107,9 @@ public class FileService {
         fileDetails.setState(0);
         fileDetails.setCreatedAt(LocalDateTime.now());
         fileDetails.setCreatedBy(entityManager.getReference(User.class, principalId));
+
+        // do ...
+        fileDetails.setDescription(fileInfo.getDescription());
 
         fileDetails.setFileInfo(fileInfo);
         fileInfo.getFileDetailsList().add(fileDetails);
@@ -140,6 +144,7 @@ public class FileService {
                 () -> new ResourceNotFoundException("file info with id=" + fileInfoId + " not exists")
         );
 
+
         fileInfo.setState(newState);
         fileInfoRepository.save(fileInfo);
     }
@@ -156,7 +161,7 @@ public class FileService {
     }
 
     public FileDownloadDTO downloadPublicFile(int fileDetailsId) {
-        FileDetails fileDetails = fileDetailsRepository.findByIdAndState(fileDetailsId, 0)
+        FileDetails fileDetails = fileDetailsRepository.findPublicFile(fileDetailsId, 0)
                 .orElseThrow(
                         () -> new ResourceNotFoundException("public fileDetails with id=" + fileDetailsId + " not exists")
                 );
