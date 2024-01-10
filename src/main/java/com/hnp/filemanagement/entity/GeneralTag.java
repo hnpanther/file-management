@@ -46,6 +46,10 @@ public class GeneralTag {
     @JoinColumn(name = "created_by", nullable = false)
     private User createdBy;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "updated_by")
+    private User updatedBy;
+
     @OneToMany(
             fetch = FetchType.LAZY,
             cascade={CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH},

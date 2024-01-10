@@ -60,6 +60,8 @@ public class FileManagementApplication extends SpringBootServletInitializer {
 			if(this.activeProfile.equals("prod")) {
 				logger.debug("App Run in " + activeProfile + " Mode");
 				initialize(userRepository, roleRepository, permissionRepository, bCryptPasswordEncoder);
+			} else {
+				logger.debug("App Run in " + activeProfile + " Dev");
 			}
 
 

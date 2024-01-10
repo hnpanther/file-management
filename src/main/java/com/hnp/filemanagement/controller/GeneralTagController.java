@@ -213,7 +213,7 @@ public class GeneralTagController {
                     "ValidationError:" + bindingResult);
         } else {
             try {
-//                generalTagService.updateDescription(generalTagDTO, principalId);
+                generalTagService.updateDescription(generalTagDTO.getId(), generalTagDTO.getTagNameDescription(), generalTagDTO.getDescription(), principalId);
             } catch (DuplicateResourceException e) {
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,
                         request.getMethod() + " " + path, "GeneralTagController.class",

@@ -1,8 +1,12 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.dto.GeneralTagDTO;
+import com.hnp.filemanagement.dto.GeneralTagPageDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.GeneralTag;
 import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.exception.DuplicateResourceException;
+import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.GeneralTagRepository;
 import com.hnp.filemanagement.repository.UserRepository;
@@ -20,6 +24,8 @@ import org.springframework.test.annotation.Commit;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -77,6 +83,7 @@ class GeneralTagServiceTest {
         generalTag1.setCreatedAt(LocalDateTime.now());
         generalTag1.setCreatedBy(user);
         generalTagRepository.save(generalTag1);
+        genertalTagId1 = generalTag1.getId();
 
 
         FileCategory fileCategory = new FileCategory();
@@ -108,18 +115,61 @@ class GeneralTagServiceTest {
 
     @Test
     @Commit
-    void getGeneralTagDTOByIdOrTagName() {
+    void getGeneralTagDTOByIdOrTagNameTest() {
+        GeneralTag generalTagByIdOrTagName = underTest.getGeneralTagByIdOrTagName(genertalTagId1, null);
+        assertThat(generalTagByIdOrTagName.getTagName()).isEqualTo("IT");
     }
 
     @Test
-    void createNewGeneralTag() {
+    @Commit
+    void getInvalidGeneralTagDTOByIdOrTagNameTest() {
+        assertThatThrownBy(
+                () -> underTest.getGeneralTagByIdOrTagName(0, null)
+        ).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
-    void getFileCategoryOfGeneralTag() {
+    @Commit
+    void createNewGeneralTagTest() {
+        GeneralTagDTO generalTagDTO = new GeneralTagDTO();
+        generalTagDTO.setTagName("HR");
+        generalTagDTO.setTagNameDescription("HR Desc");
+        underTest.createNewGeneralTag(generalTagDTO, userId);
+
+
+        GeneralTagDTO generalTagDTO1 = underTest.getGeneralTagDTOByIdOrTagName(0, "HR");
+        assertThat(generalTagDTO1.getTagNameDescription()).isEqualTo("HR Desc");
+
+    }
+
+
+    @Test
+    @Commit
+    void createDuplicateNewGeneralTagTest() {
+        GeneralTagDTO generalTagDTO = new GeneralTagDTO();
+        generalTagDTO.setTagName("IT");
+        generalTagDTO.setTagNameDescription("HR Desc");
+
+        assertThatThrownBy(
+                () -> underTest.createNewGeneralTag(generalTagDTO, userId)
+        ).isInstanceOf(DuplicateResourceException.class);
+
+
     }
 
     @Test
-    void updateDescription() {
+    void updateDescriptionTest() {
+
+
+        GeneralTagDTO generalTagDTO = underTest.getGeneralTagDTOByIdOrTagName(genertalTagId1, null);
+        String oldDesc = generalTagDTO.getDescription();
+        generalTagDTO.setDescription("Hello");
+        underTest.updateDescription(generalTagDTO.getId(), "Hello", "", userId);
+
+        GeneralTagDTO updatedGeneralTagDto = underTest.getGeneralTagDTOByIdOrTagName(genertalTagId1, null);
+        assertThat(updatedGeneralTagDto.getTagNameDescription()).isEqualTo("Hello");
+        assertThat(updatedGeneralTagDto.getDescription()).isEqualTo(oldDesc);
+
     }
+
 }

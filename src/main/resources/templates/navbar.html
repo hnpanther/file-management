@@ -20,6 +20,9 @@
             <li sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('ADMIN')" class="nav-item">
                 <a class="nav-link" th:href="@{/users}">کابران</a>
             </li>
+            <li sec:authorize="hasAuthority('GET_ALL_GENERAL_TAG_PAGE') || hasAuthority('ADMIN')" class="nav-item">
+                <a class="nav-link" th:href="@{/general-tags}">تگ های عمومی</a>
+            </li>
             <li sec:authorize="hasAuthority('GET_ALL_FILE_CATEGORY_PAGE') || hasAuthority('ADMIN')" class="nav-item">
                 <a class="nav-link" th:href="@{/file-categories}">دسته بندی ها</a>
             </li>

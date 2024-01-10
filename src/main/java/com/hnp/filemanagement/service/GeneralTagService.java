@@ -84,8 +84,18 @@ public class GeneralTagService {
     public void updateDescription(int id, String tagNameDescription, String description, int principalId) {
         GeneralTag generalTag = getGeneralTagByIdOrTagName(id, null);
 
-        generalTag.setTagNameDescription(tagNameDescription);
-        generalTag.setDescription(description);
+
+
+        if(description != null && !description.isEmpty()) {
+            generalTag.setDescription(description);
+        }
+
+        if(tagNameDescription != null && !tagNameDescription.isEmpty()) {
+            generalTag.setTagNameDescription(tagNameDescription);
+        }
+
+        generalTag.setUpdatedAt(LocalDateTime.now());
+        generalTag.setUpdatedBy(entityManager.getReference(User.class, principalId));
 
         generalTagRepository.save(generalTag);
 
