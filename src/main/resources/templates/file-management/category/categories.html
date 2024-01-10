@@ -43,6 +43,7 @@
                                             <th class="max-width">شناسه</th>
                                             <th class="max-width">عنوان دسته بندی(انگلیسی)</th>
                                             <th class="max-width">نام دسته بندی(فارسی)</th>
+                                            <th class="max-width">عنوان تگ</th>
                                             <th>عملیات</th>
                                         </tr>
                                         </thead>
@@ -52,6 +53,7 @@
                                             <td class="text-nowrap align-middle" th:text="${f.getId()}"></td>
                                             <td class="text-nowrap align-middle" th:text="${f.getCategoryName()}"></td>
                                             <td class="text-nowrap align-middle" th:text="${f.getCategoryNameDescription()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${f.getGeneralTagName()}"></td>
                                             <td class="text-center align-middle">
                                                 <div class="btn-group align-top">
                                                     <a class="btn btn-sm btn-outline-secondary badge" type="button"

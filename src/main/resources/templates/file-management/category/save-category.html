@@ -45,6 +45,13 @@
                 <input dir="rtl" type="text" class="form-control" th:field="*{categoryName}" required th:readonly="${#strings.equals(pageType, 'update')}">
             </div>
 
+            <div class="form-group col-md-6">
+                <label>انتخاب تگ عمومی</label>
+                <select class="form-control generalTagId" name="generalTagId" id="generalTagId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
+                    <option th:each="g: ${generalTags}" th:value="${g.getId()}" th:text="${g.getTagName() + ' - ' + g.getTagNameDescription()}" th:selected="${g.getId() == fileCategory.getGeneralTagId()}"></option>
+                </select>
+            </div>
+
 
 
         </div>

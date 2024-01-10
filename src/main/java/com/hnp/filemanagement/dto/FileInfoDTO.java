@@ -23,9 +23,10 @@ public class FileInfoDTO {
     private String fileName;
 
 
+    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
     private String description;
 
-    @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
+
     private String fileNameDescription;
 
     private String filePath;
@@ -41,6 +42,7 @@ public class FileInfoDTO {
     private Integer fileCategoryId;
     private String fileCategoryName;
     private String fileCategoryNameDescription;
+    private String fileCategoryDisplayName;
 
     @NotNull(groups = InsertValidation.class)
     private Integer mainTagFileId;

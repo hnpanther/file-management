@@ -40,7 +40,7 @@
                                         <tr>
                                             <th class="max-width">شناسه</th>
                                             <th class="max-width">عنوان فایل</th>
-                                            <th class="max-width">توضیحات عنوان</th>
+                                            <th class="max-width">توضیحات</th>
                                             <th class="max-width">دسته بندی اصلی</th>
                                             <th class="max-width">دسته بندی فرعی</th>
                                             <th class="max-width">تگ</th>
@@ -53,7 +53,7 @@
                                             <td class="text-nowrap align-middle" th:text="${file.getId()}"></td>
                                             <td class="text-nowrap align-middle" th:text="${file.getFileName()}"></td>
                                             <td class="text-nowrap align-middle" th:text="${file.getDescription()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${file.getFileCategoryNameDescription()}"></td>
+                                            <td class="text-nowrap align-middle" th:text="${file.getFileCategoryDisplayName()}"></td>
                                             <td class="text-nowrap align-middle" th:text="${file.getFileSubCategoryNameDescription()}"></td>
                                             <td class="text-nowrap align-middle" th:text="${file.getTagName() + '-' + file.getTagDescription()}"></td>
                                             <td class="text-center align-middle">

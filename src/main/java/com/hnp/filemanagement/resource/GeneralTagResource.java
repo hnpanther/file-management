@@ -1,0 +1,59 @@
+package com.hnp.filemanagement.resource;
+
+import com.hnp.filemanagement.config.security.UserDetailsImpl;
+import com.hnp.filemanagement.dto.GeneralTagPageDTO;
+import com.hnp.filemanagement.dto.GenericListResponse;
+import com.hnp.filemanagement.service.GeneralTagService;
+import com.hnp.filemanagement.util.GlobalGeneralLogging;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@RestController()
+@RequestMapping("/resource/general-tags")
+public class GeneralTagResource {
+
+
+    private final GlobalGeneralLogging globalGeneralLogging;
+    private final GeneralTagService generalTagService;
+
+    @Value("${filemanagement.default.element-size:50}")
+    private int defaultElementSize;
+
+    public GeneralTagResource(GlobalGeneralLogging globalGeneralLogging, GeneralTagService generalTagService) {
+        this.globalGeneralLogging = globalGeneralLogging;
+        this.generalTagService = generalTagService;
+    }
+
+
+    //REST_GET_ALL_GENERAL_TAG
+    @PreAuthorize("hasAuthority('REST_GET_ALL_GENERAL_TAG') || hasAuthority('ADMIN')")
+    @GetMapping
+    public GenericListResponse getAllGeneralTAg(@AuthenticationPrincipal UserDetailsImpl userDetails, HttpServletRequest request) {
+
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
+        String logMessage = "rest request to get all general tags";
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "GeneralTagResource.class", logMessage);
+
+
+        GeneralTagPageDTO generalTagPage = generalTagService.getGeneralTagPage(defaultElementSize, 0, null);
+
+        List<GenericListResponse.GenericResponse> list = generalTagPage.getGeneralTagDTOList().stream().map(generalTagDTO ->
+                new GenericListResponse.GenericResponse(generalTagDTO.getId(), generalTagDTO.getTagName() + " - " + generalTagDTO.getTagNameDescription())).toList();
+
+        GenericListResponse genericListResponse = new GenericListResponse();
+        genericListResponse.results = list;
+        return genericListResponse;
+
+    }
+}
