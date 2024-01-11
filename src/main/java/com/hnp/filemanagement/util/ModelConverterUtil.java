@@ -204,6 +204,10 @@ public class ModelConverterUtil {
 
     }
 
+    public static String getFileNameWithoutExtension(String fileName) {
+        return fileName.replaceFirst("[.][^.]+$", "");
+    }
+
 
 
 

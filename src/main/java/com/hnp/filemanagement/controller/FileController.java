@@ -7,6 +7,7 @@ import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.FileService;
+import com.hnp.filemanagement.util.ModelConverterUtil;
 import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.service.FileCategoryService;
 import com.hnp.filemanagement.service.FileSubCategoryService;
@@ -298,6 +299,7 @@ public class FileController {
 
 
     // SAVE_NEW_FILE_DETAILS_PAGE
+    @PreAuthorize("hasAuthority('SAVE_NEW_FILE_DETAILS_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("file-info/{fileInfoId}/file-details/create")
     public String createFileDetailsPage(@PathVariable("fileInfoId") int fileInfoId, @RequestParam(name = "type", required = true) String type,
                                         @AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
@@ -335,6 +337,61 @@ public class FileController {
 
 
         return "file-management/files/new-file-details.html";
+    }
+
+    //SAVE_NEW_FILE_DETAILS
+    @PreAuthorize("hasAuthority('SAVE_NEW_FILE_DETAILS') || hasAuthority('ADMIN')")
+    @PostMapping("file-info/{fileInfoId}/file-details")
+    public String createNewFileDetails(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) FileUploadDTO fileUploadDTO,
+                                       BindingResult bindingResult,
+                                       Model model,
+                                       HttpServletRequest request) {
+
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
+        String logMessage = "request to save new file details, upload=" + fileUploadDTO;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileController.class", logMessage);
+
+        if(fileUploadDTO.getType() == null || !(fileUploadDTO.getType().equals("format") || fileUploadDTO.getType().equals("version"))) {
+            throw new  InvalidDataException("type not correct, type=" + fileUploadDTO.getType());
+        }
+
+        logger.debug("file details for create new file===============");
+        logger.debug("orig name=" +fileUploadDTO.getMultipartFile().getOriginalFilename());
+        logger.debug("name=" + fileUploadDTO.getMultipartFile().getName());
+        logger.debug("content type=" + fileUploadDTO.getMultipartFile().getContentType());
+        logger.debug("size=" + fileUploadDTO.getMultipartFile().getSize());
+        logger.debug("===============================================");
+
+
+
+
+        boolean showMessage = true;
+        boolean valid = false;
+        String message = "";
+
+        String fileNameWithoutExtension = ModelConverterUtil.getFileNameWithoutExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
+        if(bindingResult.hasErrors() || !fileNameWithoutExtension.equals(fileUploadDTO.getFileName())) {
+            message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "FileController.class",
+                    "ValidationError:" + bindingResult);
+        } else {
+
+        }
+
+        model.addAttribute("file", fileUploadDTO);
+        model.addAttribute("lastVersion", fileUploadDTO.getVersion());
+        model.addAttribute("pageType", fileUploadDTO.getType());
+        model.addAttribute("showMessage", showMessage);
+        model.addAttribute("valid", valid);
+        model.addAttribute("message", message);
+
+
+        return "file-management/files/new-file-details.html";
+
     }
 
 

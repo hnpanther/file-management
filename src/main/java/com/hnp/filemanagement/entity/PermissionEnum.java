@@ -41,6 +41,9 @@ public enum PermissionEnum {
     //@GetMapping("file-info/{fileInfoId}/file-details/create")
     SAVE_NEW_FILE_DETAILS_PAGE,
 
+
+    SAVE_NEW_FILE_DETAILS,
+
     // ===================================================================================================
 
     // FileSubCategoryController @RequestMapping("file-sub-categories") ==================================

@@ -28,7 +28,7 @@
 <h2 th:if="${#strings.equals(pageType, 'version')}" class="text-center" dir="rtl">ایجاد ورژن جدید</h2>
 <h3 class="text-center" dir="rtl">عنوان فایل باید دقیقا مشابه با فایل قبلی باشد</h3>
 <div class="container">
-    <form enctype="multipart/form-data" th:action="@{'/files/file-info/' + file.getFileId() + '/file-details'}" method="post" id="fileForm" th:object="${file}">
+    <form enctype="multipart/form-data" th:action="@{'/files/file-info/' + ${file.getFileId()} + '/file-details'}" method="post" id="fileForm" th:object="${file}">
 
         <input th:field="*{fileId}" type="hidden">
         <input name="type" type="hidden" th:value="*{type}">
@@ -56,12 +56,12 @@
 
             <div th:if="${#strings.equals(pageType, 'format')}" class="form-group col-md-6">
                 <label>ورژن</label>
-                <input dir="rtl" type="text" class="form-control" th:value="${lastVersion}" readonly>
+                <input name="version" dir="rtl" type="text" class="form-control" th:value="${lastVersion}" readonly>
             </div>
 
             <div th:if="${#strings.equals(pageType, 'version')}" class="form-group col-md-6">
                 <label>ورژن جدید</label>
-                <input dir="rtl" type="text" class="form-control" th:value="${lastVersion + 1}" readonly>
+                <input name="version" dir="rtl" type="text" class="form-control" th:value="${lastVersion + 1}" readonly>
             </div>
 
 
@@ -86,7 +86,7 @@
         <button type="submit" class="btn btn-primary">ذخیره</button>
     </form>
     <hr>
-    <a th:href="@{/files/file-info}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست فایل ها</a>
+    <a th:href="@{'/files/file-info/' + ${file.getFileId()}}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست فایل ها</a>
 </div>
 
 
