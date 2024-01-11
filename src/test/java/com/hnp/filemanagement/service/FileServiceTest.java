@@ -378,7 +378,7 @@ class FileServiceTest {
     @Commit
     @Test
     void updateFileInfoDescriptionTest() {
-        underTest.updateFileInfoDescription(fileInfoId, "updated desc");
+        underTest.updateFileInfoDescription(fileInfoId, "updated desc", userId);
 
         FileInfoDTO fileInfoWithFileDetails = underTest.getFileInfoDtoWithFileDetails(fileInfoId);
         assertThat(fileInfoWithFileDetails.getDescription()).isEqualTo("updated desc");
@@ -389,7 +389,7 @@ class FileServiceTest {
     void updateFileInfoDescriptionInvalidTest() {
 
         assertThatThrownBy(
-                () -> underTest.updateFileInfoDescription(0, "updated desc")
+                () -> underTest.updateFileInfoDescription(0, "updated desc", userId)
         ).isInstanceOf(ResourceNotFoundException.class);
     }
 

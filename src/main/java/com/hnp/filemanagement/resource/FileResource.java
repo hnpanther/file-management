@@ -68,7 +68,7 @@ public class FileResource {
         JsonParser springParser = JsonParserFactory.getJsonParser();
         Map<String, Object> map = springParser.parseMap(description);
         String updatedDesc = map.get("description").toString();
-        fileService.updateFileInfoDescription(fileInfoId, updatedDesc);
+        fileService.updateFileInfoDescription(fileInfoId, updatedDesc, principalId);
 
         return new ResponseEntity<>("file info description updated", HttpStatus.OK);
     }

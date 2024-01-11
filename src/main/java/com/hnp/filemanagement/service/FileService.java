@@ -121,7 +121,7 @@ public class FileService {
 
     }
 
-    public void updateFileInfoDescription(int id, String description) {
+    public void updateFileInfoDescription(int id, String description, int principalId) {
 
         if(description == null || description.isEmpty()) {
             throw new InvalidDataException("description of file info can not be empty");
@@ -131,6 +131,8 @@ public class FileService {
                 () -> new ResourceNotFoundException("file info with id=" + id + " not exists")
         );
         fileInfo.setDescription(description);
+        fileInfo.setUpdatedAt(LocalDateTime.now());
+        fileInfo.setUpdatedBy(entityManager.getReference(User.class, principalId));
         fileInfoRepository.save(fileInfo);
     }
 
