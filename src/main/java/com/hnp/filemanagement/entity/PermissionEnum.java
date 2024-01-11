@@ -37,6 +37,10 @@ public enum PermissionEnum {
     //@GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
     DOWNLOAD_FILE,
 
+
+    //@GetMapping("file-info/{fileInfoId}/file-details/create")
+    SAVE_NEW_FILE_DETAILS_PAGE,
+
     // ===================================================================================================
 
     // FileSubCategoryController @RequestMapping("file-sub-categories") ==================================
@@ -127,6 +131,9 @@ public enum PermissionEnum {
     REST_UPDATE_FILE_INFO_DESCRIPTION,
     //@PutMapping("file-info/{fileInfoId}/change-state")
     REST_CHANGE_FILE_INFO_STATE,
+
+    //@DeleteMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}")
+    REST_DELETE_FILE_DETAILS,
 
     // ===================================================================================================
 

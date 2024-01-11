@@ -22,7 +22,7 @@
             <div class="card p-3">
                 <div class="e-navlist e-navlist--active-bg">
                     <ul class="nav">
-                        <li class="nav-item"><a class="nav-link px-1 active" th:href="11"><i
+                        <li class="nav-item"><a class="nav-link px-1 active" th:href="@{/}"><i
                                 class="fa fa-fw fa-th mr-1"></i><span style="font-size:15px">صفحه اصلی</span></a></li>
                         <li class="nav-item"><a class="nav-link px-1" th:href="@{/files/file-info}"><i class="fa fa-fw fa-th mr-1"></i><span
                                 style="font-size:15px">فایل ها</span></a></li>
@@ -219,6 +219,7 @@
                                         <thead>
                                         <tr>
 
+                                            <th class="max-width">شناسه</th>
                                             <th class="max-width">نام فایل</th>
                                             <th class="max-width">ورژن</th>
                                             <th class="max-width">حجم</th>
@@ -232,6 +233,7 @@
                                         <tbody>
                                         <tr th:each="fd: ${file.getFileDetailsDTOS()}">
 
+                                            <td th:text="${fd.getId()}" class="text-nowrap align-middle"></td>
                                             <td th:text="${fd.getFileName()}" class="text-nowrap align-middle"></td>
                                             <td th:text="${fd.getVersion}" class="text-nowrap align-middle"></td>
                                             <td th:text="${(fd.getFileSize() / 1024)}" class="text-nowrap align-middle"></td>
@@ -243,6 +245,12 @@
                                                 <div class="btn-group align-top">
                                                     <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/' + ${fd.getId() + '/download'} }"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">دانلود</a>
+                                                    <a th:onclick="deleteFileDetails(/*[[${fd.getId()}]]*/, /*[[${file.getFileDetailsDTOS().size()}]]*/)"
+                                                       class="btn btn-sm btn-outline-secondary badge" type="button">حذف</a>
+                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=format'}"
+                                                       class="btn btn-sm btn-outline-secondary badge" type="button">فرمت جدید</a>
+                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=version'}"
+                                                       class="btn btn-sm btn-outline-secondary badge" type="button">ورژن جدید</a>
                                                 </div>
                                             </td>
                                         </tr>
@@ -348,6 +356,38 @@
                     }
                 }
             });
+        }
+    }
+
+    function deleteFileDetails(i, size) {
+        // console.log("id=" + i + ", size=" + size);
+        if(confirm('آیا از حذف این فایل اطمینان دارید؟ در صورتی که این فایل تنها فایل موجود در این قسمت باشه کل اطلاعات فایل بطور کامل حذف خواهد شد')) {
+            $.ajax({
+                url: "/resource/files/file-info/" + $(".idInput").val() + "/file-details/" + i,
+                type: "DELETE",
+                dataType: "json",
+                contentType: "application/json; charset=utf-8",
+                data: JSON.stringify({ check: 'check'}),
+                complete: function (xhr, status) {
+                    if(xhr.status === 200) {
+                        alert("حذف با موفقیت انجام شد");
+                        if(size === 1) {
+                            let currentLocation = window.location;
+                            let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + "/files/file-info";
+                            window.location.replace(newUrl);
+                        } else if(size > 1) {
+                            let currentLocation = window.location;
+                            let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + "/files/file-info/" + $(".idInput").val();
+                            window.location.replace(newUrl);
+                        }
+
+                    } else {
+                        alert(xhr.responseText);
+                    }
+                }
+            });
+        } else {
+
         }
     }
 

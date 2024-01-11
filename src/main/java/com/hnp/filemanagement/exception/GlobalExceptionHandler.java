@@ -33,10 +33,10 @@ public class GlobalExceptionHandler {
 
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         if(userDetails != null) {
-            logger.error("user=[" + userDetails.getId() + ", " + userDetails.getUsername() + "], path=" + path + " -> error=RuntimeException," + e.getMessage(),
+            logger.error("user=[" + userDetails.getId() + ", " + userDetails.getUsername() + "], path=" + request.getMethod() + " " + path + " -> error=RuntimeException," + e.getMessage(),
                     e.getMessage());
         } else {
-            logger.error("user=[none user]," + " path=" + path + " -> error=RuntimeException," + e.getMessage(), e.getMessage());
+            logger.error("user=[none user]," + " path=" + request.getMethod() + " " +  path + " -> error=RuntimeException," + e.getMessage(), e.getMessage());
         }
 
         logger.error(e.getMessage());
@@ -54,10 +54,10 @@ public class GlobalExceptionHandler {
 
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         if(userDetails != null) {
-            logger.error("user=[" + userDetails.getId() + ", " + userDetails.getUsername() + "], path=" + path + " -> error=HttpRequestMethodNotSupportedException," + e.getMessage() ,
+            logger.error("user=[" + userDetails.getId() + ", " + userDetails.getUsername() + "], path=" + request.getMethod() + " "  + path + " -> error=HttpRequestMethodNotSupportedException," + e.getMessage() ,
                     e.getMessage());
         } else {
-            logger.error("user=[none user]," + " path=" + path + " -> error=HttpRequestMethodNotSupportedException," + e.getMessage(), e.getMessage());
+            logger.error("user=[none user]," + " path=" + request.getMethod() + " " + path + " -> error=HttpRequestMethodNotSupportedException," + e.getMessage(), e.getMessage());
         }
 
 
@@ -74,10 +74,10 @@ public class GlobalExceptionHandler {
                                                HttpServletRequest request) {
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         if(userDetails != null) {
-            logger.error("user=[" + userDetails.getId() + ", " + userDetails.getUsername() + "], path=" + path + " -> error=NoResourceFoundException," + e.getMessage(),
+            logger.error("user=[" + userDetails.getId() + ", " + userDetails.getUsername() + "], path=" + request.getMethod() + " "  + path + " -> error=NoResourceFoundException," + e.getMessage(),
                     e.getMessage());
         } else {
-            logger.error("user=[none user]," + " path=" + path + " -> error=NoResourceFoundException," + e.getMessage(), e.getMessage());
+            logger.error("user=[none user]," + " path=" + request.getMethod() + " "  + path + " -> error=NoResourceFoundException," + e.getMessage(), e.getMessage());
         }
 
         ModelAndView modelAndView = new ModelAndView();

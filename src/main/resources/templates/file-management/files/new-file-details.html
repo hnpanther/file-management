@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title th:if="${#strings.equals(pageType, 'format')}">ایجاد فرمت جدید</title>
+    <title th:if="${#strings.equals(pageType, 'version')}">ایجاد ورژن جدید</title>
+
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/webjars/select2/4.0.13/css/select2.min.css}"/>
+
+    <style>
+        label {
+            float: right
+        }
+
+    </style>
+</head>
+<body>
+
+<div th:insert="~{navbar.html :: navbar}"></div>
+
+
+<h2></h2>
+<h2 th:if="${#strings.equals(pageType, 'format')}" class="text-center" dir="rtl">ایجاد فرمت جدید </h2>
+<h2 th:if="${#strings.equals(pageType, 'version')}" class="text-center" dir="rtl">ایجاد ورژن جدید</h2>
+<h3 class="text-center" dir="rtl">عنوان فایل باید دقیقا مشابه با فایل قبلی باشد</h3>
+<div class="container">
+    <form enctype="multipart/form-data" th:action="@{'/files/file-info/' + file.getFileId() + '/file-details'}" method="post" id="fileForm" th:object="${file}">
+
+        <input th:field="*{fileId}" type="hidden">
+        <input name="type" type="hidden" th:value="*{type}">
+
+
+
+
+        <div class="form-row">
+
+
+            <div class="form-group col-md-6">
+                <label>توضیحات</label>
+                <input dir="rtl" type="text" class="form-control" th:field="*{fileDetailsDescription}" required>
+            </div>
+
+            <div class="form-group col-md-6">
+                <label>عنوان فایل</label>
+                <input dir="rtl" type="text" class="form-control" th:field="*{fileName}" readonly>
+            </div>
+
+            <div class="form-group col-md-6" style="text-align: right">
+                <label dir="rtl" for="multipartFile">انتخاب فایل(فرمت های مجاز: txt-pdf-jpg-xlsx-docx)-حداکثر حجم 20MB</label>
+                <input type="file" class="form-control-file" name="multipartFile" id="multipartFile" accept=".jpg,.xlsx,.docx,.pdf,.txt">
+            </div>
+
+            <div th:if="${#strings.equals(pageType, 'format')}" class="form-group col-md-6">
+                <label>ورژن</label>
+                <input dir="rtl" type="text" class="form-control" th:value="${lastVersion}" readonly>
+            </div>
+
+            <div th:if="${#strings.equals(pageType, 'version')}" class="form-group col-md-6">
+                <label>ورژن جدید</label>
+                <input dir="rtl" type="text" class="form-control" th:value="${lastVersion + 1}" readonly>
+            </div>
+
+
+
+
+
+
+
+
+
+        </div>
+
+
+        <!-- Success message -->
+        <div th:if="${showMessage && valid}" class="alert alert-success" role="alert" id="success_message"><i
+                class="glyphicon glyphicon-thumbs-up" th:text="${message}"></i>
+        </div>
+        <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert" id="warning_message"
+             th:text="${message}"><i class="glyphicon glyphicon-thumbs-up"></i>
+        </div>
+
+        <button type="submit" class="btn btn-primary">ذخیره</button>
+    </form>
+    <hr>
+    <a th:href="@{/files/file-info}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست فایل ها</a>
+</div>
+
+
+<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
+<script th:src="@{/webjars/select2/4.0.13/js/select2.min.js}"></script>
+<script>
+
+
+
+    $(document).ready(function () {
+
+
+
+    })
+
+    $('#fileForm').on('submit', function() {
+
+    });
+
+
+</script>
+
+
+</body>
+</html>

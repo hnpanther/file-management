@@ -409,6 +409,26 @@ class FileServiceTest {
     }
 
 
+    @Commit
+    @Test
+    void getLastVersionOfFileTest() {
+
+        int lastVersionOfFile = underTest.getLastVersionOfFile(fileInfoId);
+        assertThat(lastVersionOfFile).isEqualTo(1);
+    }
+
+    @Commit
+    @Test
+    void getLastVersionOfFileWithInvalidIdTest() {
+
+
+        assertThatThrownBy(
+                () -> underTest.getLastVersionOfFile(0)
+        ).isInstanceOf(ResourceNotFoundException.class);
+
+    }
+
+
 
 
 }

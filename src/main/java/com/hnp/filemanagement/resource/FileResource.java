@@ -105,4 +105,36 @@ public class FileResource {
 
         return new ResponseEntity<>("file info state changed", HttpStatus.OK);
     }
+
+
+    // REST_DELETE_FILE_DETAILS
+    @PreAuthorize("hasAuthority('REST_DELETE_FILE_DETAILS') || hasAuthority('ADMIN')")
+    @DeleteMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}")
+    public ResponseEntity<String> deleteFileDetails(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                    @PathVariable("fileInfoId") int fileInfoId,
+                                                    @PathVariable("fileDetailsId") int fileDetailsId,
+                                                    HttpServletRequest request) {
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
+        String logMessage = "rest request to delete file details with id==" + fileDetailsId + " and fileInfoId=" + fileInfoId;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileResource.class", logMessage);
+
+        try {
+            fileService.deleteFileDetails(fileInfoId, fileDetailsId, principalId);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return new ResponseEntity<>("file details deleted", HttpStatus.OK);
+
+    }
+
+
+
+
+
+
+
 }

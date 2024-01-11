@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class FileService {
@@ -151,6 +152,7 @@ public class FileService {
         fileInfoRepository.save(fileInfo);
     }
 
+    // in progress ...
     @Transactional
     public void deleteCompleteFileById(int id) {
 
@@ -160,6 +162,14 @@ public class FileService {
 
         fileInfoRepository.delete(fileInfo);
         fileStorageService.delete(address, "", 1, "", false);
+    }
+
+    public int getLastVersionOfFile(int fileInfoId) {
+        Integer lastVersionNumberOfFile = fileDetailsRepository.getLastVersionNumberOfFile(fileInfoId);
+        if(lastVersionNumberOfFile == null) {
+            throw new ResourceNotFoundException(("file with fileInfoId=" + fileInfoId + " doesn't have version!"));
+        }
+        return lastVersionNumberOfFile;
     }
 
     public FileDownloadDTO downloadPublicFile(int fileDetailsId) {
@@ -258,10 +268,36 @@ public class FileService {
     }
 
 
+    @Transactional
+    public void deleteFileDetails(int fileInfoId, int fileDetailsId, int principalId) {
+
+        Optional<FileDetails> fileDetailsOp = fileDetailsRepository.findById(fileDetailsId);
+        if(fileDetailsOp.isEmpty() || fileDetailsOp.get().getFileInfo().getId() != fileInfoId) {
+            throw new ResourceNotFoundException("fileDetails with id=" + fileDetailsId + " and fileInfoId=" + fileInfoId + " not exists");
+        }
+
+        FileDetails fileDetails = fileDetailsOp.get();
+        int listSize = fileDetails.getFileInfo().getFileDetailsList().size();
+
+        if(listSize == 1) {
+
+        } else if(listSize > 1) {
+
+        }
+
+
+
+    }
+
+
 
     public boolean isDuplicate(String fileName, int subCategoryId) {
         List<FileInfo> fileInfos = fileInfoRepository.checkExistsFile(fileName, subCategoryId);
         return fileInfos != null && !fileInfos.isEmpty();
+    }
+
+    private boolean checkFileDetailsWithInfoIdExists(int fileInfoId, int fileDetailsId) {
+        return fileInfoRepository.checkExistsWithFileDetails(fileInfoId, fileDetailsId).isPresent();
     }
 
     public FileInfoDTO getFileInfoDtoWithFileDetails(int id) {

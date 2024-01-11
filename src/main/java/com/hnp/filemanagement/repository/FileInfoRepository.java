@@ -17,12 +17,17 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     @Query("SELECT fi FROM FileInfo fi WHERE fi.fileName = (:fileName) AND fi.fileSubCategory.id = (:subCategoryId)")
     List<FileInfo> checkExistsFile(String fileName, int subCategoryId);
 
+    @Query("SELECT fi FROM FileInfo fi JOIN FETCH fi.fileDetailsList fd WHERE fi.id = (:fileInfoId) AND fd.id = (:fileDetailsId)")
+    Optional<FileInfo> checkExistsWithFileDetails(int fileInfoId, int fileDetailsId);
+
 
     @Query("SELECT f FROM FileInfo f JOIN FETCH f.fileDetailsList WHERE f.id = (:id)")
     Optional<FileInfo> findByIdAndFetchFileDetails(int id);
 
     @Query("SELECT f FROM FileInfo f JOIN FETCH f.fileDetailsList WHERE f.fileSubCategory.id = (:subCategoryId) AND f.fileName = (:name)")
     Optional<FileInfo> findByNameAndSubCategoryId(int subCategoryId, String name);
+
+
 
 
 

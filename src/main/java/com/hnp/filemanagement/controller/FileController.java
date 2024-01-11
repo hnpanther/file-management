@@ -2,6 +2,7 @@ package com.hnp.filemanagement.controller;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.*;
+import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -293,6 +294,47 @@ public class FileController {
                 .contentType(MediaType.parseMediaType(contentType))
                 .header(HttpHeaders.CONTENT_DISPOSITION, header)
                 .body(fileDownloadDTO.getResource());
+    }
+
+
+    // SAVE_NEW_FILE_DETAILS_PAGE
+    @GetMapping("file-info/{fileInfoId}/file-details/create")
+    public String createFileDetailsPage(@PathVariable("fileInfoId") int fileInfoId, @RequestParam(name = "type", required = true) String type,
+                                        @AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
+
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
+        String logMessage = "request get create file details page with type=" + type;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileController.class", logMessage);
+
+        if(type == null || !(type.equals("format") || type.equals("version"))) {
+            throw new  InvalidDataException("type not correct, type=" + type);
+        }
+
+        boolean showMessage = false;
+        boolean valid = false;
+        String message = "";
+
+        FileInfoDTO fileInfoDTO = fileService.getFileInfoDtoWithFileDetails(fileInfoId);
+        int lastVersion = fileService.getLastVersionOfFile(fileInfoId);
+        FileUploadDTO fileUploadDTO = new FileUploadDTO();
+        fileUploadDTO.setFileName(fileInfoDTO.getFileName());
+        fileUploadDTO.setFileId(fileInfoDTO.getId());
+        fileUploadDTO.setVersion(lastVersion);
+        fileUploadDTO.setType(type);
+
+
+        model.addAttribute("file", fileUploadDTO);
+        model.addAttribute("lastVersion", lastVersion);
+        model.addAttribute("pageType", type);
+        model.addAttribute("showMessage", showMessage);
+        model.addAttribute("valid", valid);
+        model.addAttribute("message", message);
+
+
+        return "file-management/files/new-file-details.html";
     }
 
 

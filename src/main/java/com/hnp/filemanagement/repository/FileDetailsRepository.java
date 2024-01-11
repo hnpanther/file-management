@@ -36,4 +36,8 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
     )
     """)
     Page<FileDetails> getAllPublicFileDetailsPage(String search, Pageable pageable);
+
+
+    @Query("SELECT MAX(f.version) FROM FileDetails f WHERE f.fileInfo.id = (:fileInfoId)")
+    Integer getLastVersionNumberOfFile(int fileInfoId);
 }
