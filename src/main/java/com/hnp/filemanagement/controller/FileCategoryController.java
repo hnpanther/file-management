@@ -177,7 +177,7 @@ public class FileCategoryController {
                     "ValidationError:" + bindingResult);
         } else {
             try {
-                fileCategoryService.updateCategoryNameDescription(fileCategoryDTO.getId(), fileCategoryDTO.getCategoryNameDescription());
+                fileCategoryService.updateCategoryNameDescription(fileCategoryDTO.getId(), fileCategoryDTO.getCategoryNameDescription(), principalId);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (DuplicateResourceException e) {

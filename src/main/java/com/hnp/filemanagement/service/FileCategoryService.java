@@ -89,7 +89,7 @@ public class FileCategoryService {
 
     }
 
-    public void updateCategoryNameDescription(int fileCategoryId, String categoryNameDescription) {
+    public void updateCategoryNameDescription(int fileCategoryId, String categoryNameDescription, int principalId) {
 
         FileCategory fileCategory = getFileCategoryByIdOrCategoryName(fileCategoryId, null);
 
@@ -99,6 +99,8 @@ public class FileCategoryService {
                 throw new DuplicateResourceException("category with categoryNameDescription=" + categoryNameDescription + " exists");
             } else {
                 fileCategory.setCategoryNameDescription(categoryNameDescription);
+                fileCategory.setUpdatedAt(LocalDateTime.now());
+                fileCategory.setUpdatedBy(entityManager.getReference(User.class, principalId));
                 fileCategoryRepository.save(fileCategory);
             }
         }

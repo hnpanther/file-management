@@ -267,7 +267,7 @@ class FileCategoryServiceTest {
     void updateCategoryNameDescriptionTest() {
         FileCategoryDTO documents = underTest.getFileCategoryDtoByIdOrCategoryName(0, "documents");
 
-        underTest.updateCategoryNameDescription(documents.getId(), "edited name description");
+        underTest.updateCategoryNameDescription(documents.getId(), "edited name description", userId);
 
         FileCategoryDTO updated = underTest.getFileCategoryDtoByIdOrCategoryName(0, "documents");
 
@@ -281,7 +281,7 @@ class FileCategoryServiceTest {
 
 
         assertThatThrownBy(
-                () -> underTest.updateCategoryNameDescription(documents.getId(), "description mail")
+                () -> underTest.updateCategoryNameDescription(documents.getId(), "description mail", userId)
         ).isInstanceOf(DuplicateResourceException.class);
 
     }
