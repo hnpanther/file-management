@@ -131,9 +131,10 @@ public class FileService {
 
         int version = fileUploadDTO.getVersion();
         String fileExtension = getFileExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
+        String fileNameWithoutExtension = getFileWithoutExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
 
         // check correct name
-        if(!fileInfo.getFileName().equals(fileUploadDTO.getFileName())) {
+        if(!fileInfo.getFileName().equals(fileUploadDTO.getFileName()) || !fileInfo.getFileName().equals(fileNameWithoutExtension)) {
             throw new InvalidDataException("file name not correct, fileName=" + fileUploadDTO.getFileNameWithoutExtension() + " should be=" + fileInfo.getFileName());
         }
 
@@ -155,7 +156,45 @@ public class FileService {
 
     private void createNewFormatFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo, int principalId) {
 
+        String fileExtension = getFileExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
+        String fileNameWithoutExtension = getFileWithoutExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
+
+        FileDetails sampleFileDetails = fileDetailsRepository.findById(fileUploadDTO.getFileDetailsId()).orElseThrow(
+                () -> new InvalidDataException("invalid fileDetailsId=" + fileUploadDTO.getFileDetailsId())
+        );
+
+        if(!fileNameWithoutExtension.equals(getFileWithoutExtension(sampleFileDetails.getFileName()))) {
+            throw new InvalidDataException("invalid fileDetailsId, file name not same");
+        }
+
+        if(!sampleFileDetails.getVersion().equals(fileUploadDTO.getVersion())) {
+            throw new InvalidDataException("invalid fileDetailsId, version not same");
+        }
+
         //check duplicate format
+        if(existsFileDetailsWithSameVersionAndFormat(fileInfo.getId(), fileUploadDTO.getVersion(), fileExtension)) {
+            throw new DuplicateResourceException("fileDetails with same version and format exists. version=" + fileUploadDTO.getVersion() + ", format=" + fileExtension);
+        }
+
+        FileDetails fileDetails = new FileDetails();
+        fileDetails.setFileName(fileUploadDTO.getMultipartFile().getOriginalFilename());
+        fileDetails.setHashId(fileUploadDTO.getMultipartFile().getOriginalFilename() + fileUploadDTO.getVersion());
+        fileDetails.setFileExtension(fileExtension);
+        fileDetails.setContentType(fileUploadDTO.getMultipartFile().getContentType());
+        fileDetails.setDescription(fileUploadDTO.getFileDetailsDescription());
+        fileDetails.setFilePath(fileInfo.getMainTagFile().getFileSubCategory().getPath() + "/" + fileNameWithoutExtension + "/v" + sampleFileDetails.getVersion() + "/" + fileUploadDTO.getMultipartFile().getOriginalFilename());
+        fileDetails.setRelativePath(fileInfo.getFileSubCategory().getRelativePath() + "/" + fileNameWithoutExtension + "/v" + sampleFileDetails.getVersion() + "/" + fileUploadDTO.getMultipartFile().getOriginalFilename());
+        fileDetails.setFileSize((int) fileUploadDTO.getMultipartFile().getSize());
+        fileDetails.setVersion(sampleFileDetails.getVersion());
+        fileDetails.setVersionName(sampleFileDetails.getVersionName());
+        fileDetails.setEnabled(1);
+        fileDetails.setState(0);
+        fileDetails.setCreatedAt(LocalDateTime.now());
+        fileDetails.setCreatedBy(entityManager.getReference(User.class, principalId));
+
+        fileDetails.setFileInfo(fileInfo);
+
+        fileDetailsRepository.save(fileDetails);
 
     }
 
@@ -369,6 +408,11 @@ public class FileService {
 
     private boolean checkFileDetailsWithInfoIdExists(int fileInfoId, int fileDetailsId) {
         return fileInfoRepository.checkExistsWithFileDetails(fileInfoId, fileDetailsId).isPresent();
+    }
+
+    private boolean existsFileDetailsWithSameVersionAndFormat(int fileInfoId, int version, String format) {
+        List<FileDetails> list = fileDetailsRepository.findByFileInfoAndVersionAndFormat(fileInfoId, version, format);
+        return list != null && !list.isEmpty();
     }
 
     public FileInfoDTO getFileInfoDtoWithFileDetails(int id) {

@@ -559,6 +559,80 @@ class FileServiceTest {
 
     }
 
+    @Commit
+    @Test
+    void createNewFileDetailsWithNewFormatTest() throws IOException {
+        FileUploadDTO fileUploadDTO = new FileUploadDTO();
+        Resource testFile = resourceLoader.getResource("classpath:test.jpg");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "image/jpg", testFile.getInputStream());
+        fileUploadDTO.setFileDetailsId(fileDetailsId);
+        fileUploadDTO.setFileId(fileInfoId);
+        fileUploadDTO.setFileDetailsDescription("new desc");
+        fileUploadDTO.setMultipartFile(multipartFile);
+        fileUploadDTO.setType("format");
+        fileUploadDTO.setVersion(1);
+        fileUploadDTO.setFileName("test");
+
+        underTest.createNewFileDetails(fileUploadDTO, userId);
+
+
+        entityManager.flush();
+        entityManager.clear();
+
+
+        FileInfo fileInfo = underTest.getFileInfoWithFileDetails(fileInfoId);
+        assertThat(fileInfo.getFileDetailsList().size()).isEqualTo(2);
+        String address = baseDir + "mail/subMail/test/v1/test.jpg";
+        assertThat(Files.exists(Paths.get(address))).isTrue();
+
+    }
+
+    @Commit
+    @Test
+    void createNewFileDetailsWithDuplicateFormatTest() throws IOException {
+        FileUploadDTO fileUploadDTO = new FileUploadDTO();
+        Resource testFile = resourceLoader.getResource("classpath:test.txt");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+        fileUploadDTO.setFileDetailsId(fileDetailsId);
+        fileUploadDTO.setFileId(fileInfoId);
+        fileUploadDTO.setFileDetailsDescription("new desc");
+        fileUploadDTO.setMultipartFile(multipartFile);
+        fileUploadDTO.setType("format");
+        fileUploadDTO.setVersion(1);
+        fileUploadDTO.setFileName("test");
+
+
+
+        assertThatThrownBy(
+                () -> underTest.createNewFileDetails(fileUploadDTO, userId)
+        ).isInstanceOf(DuplicateResourceException.class);
+
+
+    }
+
+    @Commit
+    @Test
+    void createNewFileDetailsWithInvalidVersionFormatTest() throws IOException {
+        FileUploadDTO fileUploadDTO = new FileUploadDTO();
+        Resource testFile = resourceLoader.getResource("classpath:test.jpg");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "image/jpg", testFile.getInputStream());
+        fileUploadDTO.setFileDetailsId(fileDetailsId);
+        fileUploadDTO.setFileId(fileInfoId);
+        fileUploadDTO.setFileDetailsDescription("new desc");
+        fileUploadDTO.setMultipartFile(multipartFile);
+        fileUploadDTO.setType("format");
+        fileUploadDTO.setVersion(2);
+        fileUploadDTO.setFileName("test");
+
+
+
+        assertThatThrownBy(
+                () -> underTest.createNewFileDetails(fileUploadDTO, userId)
+        ).isInstanceOf(InvalidDataException.class);
+
+
+    }
+
 
 
 

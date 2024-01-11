@@ -390,6 +390,11 @@ public class FileController {
                         request.getMethod() + " " + path, "FileController.class",
                         "InvalidDataException:" + e.getMessage());
                 message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
+            } catch (DuplicateResourceException e) {
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "FileController.class",
+                        "DuplicateResourceException:" + e.getMessage());
+                message = "فایل با این مشخصات وجود دارد";
             }
 
         }

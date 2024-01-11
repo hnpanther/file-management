@@ -40,4 +40,9 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
 
     @Query("SELECT MAX(f.version) FROM FileDetails f WHERE f.fileInfo.id = (:fileInfoId)")
     Integer getLastVersionNumberOfFile(int fileInfoId);
+
+
+    @Query("SELECT fd FROM FileDetails fd WHERE fd.fileInfo.id = (:fileInfoId) AND fd.version = (:version) AND fd.fileExtension = (:format)")
+    List<FileDetails> findByFileInfoAndVersionAndFormat(int fileInfoId, int version, String format);
+
 }
