@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FileInfoDTO;
+import com.hnp.filemanagement.dto.FileUploadDTO;
 import com.hnp.filemanagement.entity.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
@@ -82,6 +83,8 @@ class FileServiceTest {
 
     private int fileInfoId = 0;
     private int generalTagId1 = 0;
+
+    private int fileDetailsId = 0;
 
     @BeforeEach
     void setUp() throws IOException {
@@ -246,6 +249,7 @@ class FileServiceTest {
         fileInfo.getFileDetailsList().add(fileDetails);
         fileInfoRepository.save(fileInfo);
         fileInfoId = fileInfo.getId();
+        fileDetailsId = fileDetails.getId();
 
         String address = mainTagFilePreview.getFileSubCategory().getFileCategory().getCategoryName() + "/" + mainTagFilePreview.getFileSubCategory().getSubCategoryName();
 
@@ -259,7 +263,7 @@ class FileServiceTest {
 
     @AfterEach
     void tearDown() throws IOException {
-//        fileDetailsRepository.deleteAll();
+//    -----    fileDetailsRepository.deleteAll();
         fileInfoRepository.deleteAll();
         mainTagFileRepository.deleteAll();
         fileSubCategoryRepository.deleteAll();
@@ -425,6 +429,133 @@ class FileServiceTest {
         assertThatThrownBy(
                 () -> underTest.getLastVersionOfFile(0)
         ).isInstanceOf(ResourceNotFoundException.class);
+
+    }
+
+    @Commit
+    @Test
+    void createNewFileDetailsWithNewVersionTest() throws IOException {
+        FileUploadDTO fileUploadDTO = new FileUploadDTO();
+        Resource testFile = resourceLoader.getResource("classpath:test.txt");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+        fileUploadDTO.setFileDetailsId(fileDetailsId);
+        fileUploadDTO.setFileId(fileInfoId);
+        fileUploadDTO.setFileDetailsDescription("new desc");
+        fileUploadDTO.setMultipartFile(multipartFile);
+        fileUploadDTO.setType("version");
+        fileUploadDTO.setVersion(2);
+        fileUploadDTO.setFileName("test");
+
+        underTest.createNewFileDetails(fileUploadDTO, userId);
+
+
+        entityManager.flush();
+        entityManager.clear();
+
+
+        FileInfo fileInfo = underTest.getFileInfoWithFileDetails(fileInfoId);
+        assertThat(fileInfo.getFileDetailsList().size()).isEqualTo(2);
+        String address = baseDir + "mail/subMail/test/v2/test.txt";
+        assertThat(Files.exists(Paths.get(address))).isTrue();
+
+
+
+    }
+
+
+    @Commit
+    @Test
+    void createNewFileDetailsWithNewInvalidVersionTest() throws IOException {
+        FileUploadDTO fileUploadDTO = new FileUploadDTO();
+        Resource testFile = resourceLoader.getResource("classpath:test.txt");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+        fileUploadDTO.setFileDetailsId(fileDetailsId);
+        fileUploadDTO.setFileId(fileInfoId);
+        fileUploadDTO.setFileDetailsDescription("new desc");
+        fileUploadDTO.setMultipartFile(multipartFile);
+        fileUploadDTO.setType("version");
+        fileUploadDTO.setVersion(3);
+        fileUploadDTO.setFileName("test");
+
+
+        assertThatThrownBy(
+                () -> underTest.createNewFileDetails(fileUploadDTO, userId)
+        ).isInstanceOf(InvalidDataException.class);
+
+
+        entityManager.flush();
+        entityManager.clear();
+
+
+        FileInfo fileInfo = underTest.getFileInfoWithFileDetails(fileInfoId);
+        assertThat(fileInfo.getFileDetailsList().size()).isEqualTo(1);
+        String address = baseDir + "mail/subMail/test/v3/test.txt";
+        assertThat(Files.exists(Paths.get(address))).isFalse();
+
+
+
+    }
+
+    @Commit
+    @Test
+    void createNewFileDetailsWithNewInvalidFileNameTest() throws IOException {
+        FileUploadDTO fileUploadDTO = new FileUploadDTO();
+        Resource testFile = resourceLoader.getResource("classpath:test.txt");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+        fileUploadDTO.setFileDetailsId(fileDetailsId);
+        fileUploadDTO.setFileId(fileInfoId);
+        fileUploadDTO.setFileDetailsDescription("new desc");
+        fileUploadDTO.setMultipartFile(multipartFile);
+        fileUploadDTO.setType("version");
+        fileUploadDTO.setVersion(2);
+        fileUploadDTO.setFileName("test1");
+
+
+        assertThatThrownBy(
+                () -> underTest.createNewFileDetails(fileUploadDTO, userId)
+        ).isInstanceOf(InvalidDataException.class);
+
+
+        entityManager.flush();
+        entityManager.clear();
+
+
+        FileInfo fileInfo = underTest.getFileInfoWithFileDetails(fileInfoId);
+        assertThat(fileInfo.getFileDetailsList().size()).isEqualTo(1);
+        String address = baseDir + "mail/subMail/test/v2/test.txt";
+        assertThat(Files.exists(Paths.get(address))).isFalse();
+
+    }
+
+    @Commit
+    @Test
+    void createNewFileDetailsWithDuplicateVersionTest() throws IOException {
+        FileUploadDTO fileUploadDTO = new FileUploadDTO();
+        Resource testFile = resourceLoader.getResource("classpath:test.txt");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+        fileUploadDTO.setFileDetailsId(fileDetailsId);
+        fileUploadDTO.setFileId(fileInfoId);
+        fileUploadDTO.setFileDetailsDescription("new desc");
+        fileUploadDTO.setMultipartFile(multipartFile);
+        fileUploadDTO.setType("version");
+        fileUploadDTO.setVersion(1);
+        fileUploadDTO.setFileName("test");
+
+
+
+        assertThatThrownBy(
+                () -> underTest.createNewFileDetails(fileUploadDTO, userId)
+        ).isInstanceOf(InvalidDataException.class);
+
+
+        entityManager.flush();
+        entityManager.clear();
+
+
+        FileInfo fileInfo = underTest.getFileInfoWithFileDetails(fileInfoId);
+        assertThat(fileInfo.getFileDetailsList().size()).isEqualTo(1);
+        String address = baseDir + "mail/subMail/test/v2/test.txt";
+        assertThat(Files.exists(Paths.get(address))).isFalse();
 
     }
 

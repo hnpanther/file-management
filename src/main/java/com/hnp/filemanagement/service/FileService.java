@@ -2,6 +2,7 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.entity.*;
+import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -119,6 +120,75 @@ public class FileService {
 
         String address = mainTagFile.getFileSubCategory().getFileCategory().getCategoryName() + "/" + mainTagFile.getFileSubCategory().getSubCategoryName();
         fileStorageService.save(address, fileInfoDTO.getMultipartFile(), 1, fileExtension);
+
+    }
+
+
+    @Transactional
+    public void createNewFileDetails(FileUploadDTO fileUploadDTO, int principalId) {
+
+        FileInfo fileInfo = getFileInfoWithFileDetails(fileUploadDTO.getFileId());
+
+        int version = fileUploadDTO.getVersion();
+        String fileExtension = getFileExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
+
+        // check correct name
+        if(!fileInfo.getFileName().equals(fileUploadDTO.getFileName())) {
+            throw new InvalidDataException("file name not correct, fileName=" + fileUploadDTO.getFileNameWithoutExtension() + " should be=" + fileInfo.getFileName());
+        }
+
+
+        // check type
+        if(fileUploadDTO.getType().equals("format")) {
+            createNewFormatFileDetails(fileUploadDTO, fileInfo, principalId);
+        } else  {
+            createNewVersionFileDetails(fileUploadDTO, fileInfo, principalId);
+        }
+
+        String address = fileInfo.getMainTagFile().getFileSubCategory().getFileCategory().getCategoryName() + "/" + fileInfo.getMainTagFile().getFileSubCategory().getSubCategoryName();
+        fileStorageService.save(address, fileUploadDTO.getMultipartFile(), version, fileExtension);
+
+
+
+
+    }
+
+    private void createNewFormatFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo, int principalId) {
+
+        //check duplicate format
+
+    }
+
+    private void createNewVersionFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo, int principalId) {
+        // check duplicate version
+        int lastVersion = getLastVersionOfFile(fileInfo.getId());
+        if(lastVersion != fileUploadDTO.getVersion() -1) {
+            throw new InvalidDataException("version is not correct, current version=" + lastVersion + ", new version=" + fileUploadDTO.getVersion());
+        }
+
+        String fileExtension = getFileExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
+        String fileNameWithoutExtension = getFileWithoutExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
+
+        FileDetails fileDetails = new FileDetails();
+        fileDetails.setFileName(fileUploadDTO.getMultipartFile().getOriginalFilename());
+        fileDetails.setHashId(fileUploadDTO.getMultipartFile().getOriginalFilename() + fileUploadDTO.getVersion());
+        fileDetails.setFileExtension(fileExtension);
+        fileDetails.setContentType(fileUploadDTO.getMultipartFile().getContentType());
+        fileDetails.setDescription(fileUploadDTO.getFileDetailsDescription());
+        fileDetails.setFilePath(fileInfo.getMainTagFile().getFileSubCategory().getPath() + "/" + fileNameWithoutExtension + "/v" + fileUploadDTO.getVersion() + "/" + fileUploadDTO.getMultipartFile().getOriginalFilename());
+        fileDetails.setRelativePath(fileInfo.getFileSubCategory().getRelativePath() + "/" + fileNameWithoutExtension + "/v" + fileUploadDTO.getVersion() + "/" + fileUploadDTO.getMultipartFile().getOriginalFilename());
+        fileDetails.setFileSize((int) fileUploadDTO.getMultipartFile().getSize());
+        fileDetails.setVersion(fileUploadDTO.getVersion());
+        fileDetails.setVersionName("V" + fileUploadDTO.getVersion());
+        fileDetails.setEnabled(1);
+        fileDetails.setState(0);
+        fileDetails.setCreatedAt(LocalDateTime.now());
+        fileDetails.setCreatedBy(entityManager.getReference(User.class, principalId));
+
+        fileDetails.setFileInfo(fileInfo);
+
+        fileDetailsRepository.save(fileDetails);
+
 
     }
 
@@ -280,9 +350,10 @@ public class FileService {
         int listSize = fileDetails.getFileInfo().getFileDetailsList().size();
 
         if(listSize == 1) {
+            // delete whole file info...
 
         } else if(listSize > 1) {
-
+            // just delete file details...
         }
 
 

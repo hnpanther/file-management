@@ -302,11 +302,12 @@ public class FileController {
     @PreAuthorize("hasAuthority('SAVE_NEW_FILE_DETAILS_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("file-info/{fileInfoId}/file-details/create")
     public String createFileDetailsPage(@PathVariable("fileInfoId") int fileInfoId, @RequestParam(name = "type", required = true) String type,
+                                        @RequestParam(name = "id", required = true) Integer fileDetailsId,
                                         @AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
 
         int principalId = userDetails.getId();
         String principalUsername = userDetails.getUsername();
-        String logMessage = "request get create file details page with type=" + type;
+        String logMessage = "request get create file details page with type=" + type + ", fileDetailsId=" + fileDetailsId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileController.class", logMessage);
@@ -326,6 +327,7 @@ public class FileController {
         fileUploadDTO.setFileId(fileInfoDTO.getId());
         fileUploadDTO.setVersion(lastVersion);
         fileUploadDTO.setType(type);
+        fileUploadDTO.setFileDetailsId(fileDetailsId);
 
 
         model.addAttribute("file", fileUploadDTO);
@@ -370,15 +372,25 @@ public class FileController {
 
         boolean showMessage = true;
         boolean valid = false;
-        String message = "";
+        String message = "اطلاعات با موفقیت ذخیره شد";
 
         String fileNameWithoutExtension = ModelConverterUtil.getFileNameWithoutExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
+        fileUploadDTO.setFileNameWithoutExtension(fileNameWithoutExtension);
         if(bindingResult.hasErrors() || !fileNameWithoutExtension.equals(fileUploadDTO.getFileName())) {
             message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
             globalGeneralLogging.controllerLogging(principalId, principalUsername,
                     request.getMethod() + " " + path, "FileController.class",
                     "ValidationError:" + bindingResult);
         } else {
+            try {
+                fileService.createNewFileDetails(fileUploadDTO, principalId);
+                valid = true;
+            } catch (InvalidDataException e) {
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "FileController.class",
+                        "InvalidDataException:" + e.getMessage());
+                message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
+            }
 
         }
 

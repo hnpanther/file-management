@@ -247,9 +247,9 @@
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">دانلود</a>
                                                     <a th:onclick="deleteFileDetails(/*[[${fd.getId()}]]*/, /*[[${file.getFileDetailsDTOS().size()}]]*/)"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">حذف</a>
-                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=format'}"
+                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=format&id=' + ${fd.getId()}}"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">فرمت جدید</a>
-                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=version'}"
+                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=version&id=' + ${fd.getId()}}"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">ورژن جدید</a>
                                                 </div>
                                             </td>

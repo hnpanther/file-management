@@ -12,6 +12,10 @@ public class FileUploadDTO {
     @NotNull(groups = {InsertValidation.class})
     private Integer fileId;
 
+    @NotNull(groups = {InsertValidation.class})
+    private Integer fileDetailsId;
+
+    @NotNull(groups = {InsertValidation.class})
     private String fileName;
 
     @NotNull(groups = {InsertValidation.class})
@@ -22,7 +26,10 @@ public class FileUploadDTO {
 
     private String description;
 
+    @NotNull(groups = {InsertValidation.class})
     private String type;
+
+    private String fileNameWithoutExtension;
 
     @NotNull(groups = InsertValidation.class)
     @ValidFile(groups = InsertValidation.class)
