@@ -303,6 +303,7 @@ public class FileController {
     @GetMapping("file-info/{fileInfoId}/file-details/create")
     public String createFileDetailsPage(@PathVariable("fileInfoId") int fileInfoId, @RequestParam(name = "type", required = true) String type,
                                         @RequestParam(name = "id", required = true) Integer fileDetailsId,
+                                        @RequestParam(name = "version-number", required = true) Integer version,
                                         @AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
 
         int principalId = userDetails.getId();
@@ -325,13 +326,18 @@ public class FileController {
         FileUploadDTO fileUploadDTO = new FileUploadDTO();
         fileUploadDTO.setFileName(fileInfoDTO.getFileName());
         fileUploadDTO.setFileId(fileInfoDTO.getId());
-        fileUploadDTO.setVersion(lastVersion);
+        if(type.equals("version")) {
+            fileUploadDTO.setVersion(lastVersion);
+        } else {
+            fileUploadDTO.setVersion(version);
+        }
+
         fileUploadDTO.setType(type);
         fileUploadDTO.setFileDetailsId(fileDetailsId);
 
 
         model.addAttribute("file", fileUploadDTO);
-        model.addAttribute("lastVersion", lastVersion);
+        model.addAttribute("lastVersion", fileUploadDTO.getVersion());
         model.addAttribute("pageType", type);
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);

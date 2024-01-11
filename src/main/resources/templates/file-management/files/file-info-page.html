@@ -235,9 +235,9 @@
 
                                             <td th:text="${fd.getId()}" class="text-nowrap align-middle"></td>
                                             <td th:text="${fd.getFileName()}" class="text-nowrap align-middle"></td>
-                                            <td th:text="${fd.getVersion}" class="text-nowrap align-middle"></td>
+                                            <td th:text="${fd.getVersion()}" class="text-nowrap align-middle"></td>
                                             <td th:text="${(fd.getFileSize() / 1024)}" class="text-nowrap align-middle"></td>
-                                            <td th:text="${fd.getFileExtension}" class="text-nowrap align-middle"></td>
+                                            <td th:text="${fd.getFileExtension()}" class="text-nowrap align-middle"></td>
                                             <td th:text="${fd.getCreatedAt()}" class="text-nowrap align-middle"></td>
                                             <td th:text="${fd.getCreatedBy()}" class="text-nowrap align-middle"></td>
 
@@ -247,9 +247,9 @@
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">دانلود</a>
                                                     <a th:onclick="deleteFileDetails(/*[[${fd.getId()}]]*/, /*[[${file.getFileDetailsDTOS().size()}]]*/)"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">حذف</a>
-                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=format&id=' + ${fd.getId()}}"
+                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=format&id=' + ${fd.getId()} + '&version-number=' + ${fd.getVersion()}}"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">فرمت جدید</a>
-                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=version&id=' + ${fd.getId()}}"
+                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=version&id=' + ${fd.getId()} + '&version-number=' + ${fd.getVersion()}}"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">ورژن جدید</a>
                                                 </div>
                                             </td>
