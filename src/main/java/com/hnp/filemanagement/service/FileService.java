@@ -411,13 +411,40 @@ public class FileService {
         }
 
         FileDetails fileDetails = fileDetailsOp.get();
-        int listSize = fileDetails.getFileInfo().getFileDetailsList().size();
+        FileInfo fileInfo = fileDetails.getFileInfo();
+        List<FileDetails> fileDetailsList = fileInfo.getFileDetailsList();
+        int listSize = fileDetailsList.size();
+        String completeName = fileDetails.getFileName();
+        int version = fileDetails.getVersion();
+        String extension = fileDetails.getFileExtension();
 
         if(listSize == 1) {
-            // delete whole file info...
+            deleteCompleteFileById(fileInfoId);
 
-        } else if(listSize > 1) {
-            // just delete file details...
+
+        } else {
+            // check same version
+            List<FileDetails> list = fileDetailsList.stream()
+                    .filter(fd -> fd.getVersion().equals(fileDetails.getVersion())).toList();
+            if(list == null || list.size() == 0) {
+                throw new BusinessException("list of same version file is empty!");
+            }
+            if(list.size() == 1) {
+                fileInfo.getFileDetailsList().remove(fileDetails);
+                fileDetailsRepository.delete(fileDetails);
+                String address = fileInfo.getMainTagFile().getFileSubCategory().getFileCategory().getCategoryName() + "/" +
+                        fileInfo.getMainTagFile().getFileSubCategory().getSubCategoryName() + "/" + fileInfo.getFileName() +
+                        "/v" + fileDetails.getVersion();
+                fileStorageService.delete(address, "", 1, "", false);
+            } else {
+                fileInfo.getFileDetailsList().remove(fileDetails);
+                fileDetailsRepository.delete(fileDetails);
+                String address = fileInfo.getMainTagFile().getFileSubCategory().getFileCategory().getCategoryName() + "/" +
+                        fileInfo.getMainTagFile().getFileSubCategory().getSubCategoryName();
+                fileStorageService.delete(address, completeName, version, extension, true);
+            }
+
+
         }
 
 

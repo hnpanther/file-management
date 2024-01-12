@@ -635,6 +635,55 @@ class FileServiceTest {
     }
 
 
+    @Commit
+    @Test
+    void deleteFileDetailsWithMultiFileDetailsExistsTest() throws IOException {
+
+        FileUploadDTO fileUploadDTO = new FileUploadDTO();
+        Resource testFile = resourceLoader.getResource("classpath:test.txt");
+        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+        fileUploadDTO.setFileDetailsId(fileDetailsId);
+        fileUploadDTO.setFileId(fileInfoId);
+        fileUploadDTO.setFileDetailsDescription("new desc");
+        fileUploadDTO.setMultipartFile(multipartFile);
+        fileUploadDTO.setType("version");
+        fileUploadDTO.setVersion(2);
+        fileUploadDTO.setFileName("test");
+
+        underTest.createNewFileDetails(fileUploadDTO, userId);
+
+
+        entityManager.flush();
+        entityManager.clear();
+
+        underTest.deleteFileDetails(fileInfoId, fileDetailsId, userId);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        FileInfo fileInfoWithFileDetails = underTest.getFileInfoWithFileDetails(fileInfoId);
+
+        assertThat(fileInfoWithFileDetails.getFileDetailsList().size()).isEqualTo(1);
+        assertThat(fileInfoWithFileDetails.getFileDetailsList().get(0).getId()).isNotEqualTo(fileDetailsId);
+
+
+    }
+
+    @Commit
+    @Test
+    void deleteFileDetailsWithOneFileDetailsExistsTest() {
+
+
+        underTest.deleteFileDetails(fileInfoId, fileDetailsId, userId);
+
+        assertThatThrownBy(
+                () -> underTest.getFileInfoWithFileDetails(fileInfoId)
+        ).isInstanceOf(ResourceNotFoundException.class);
+
+
+    }
+
+
 
 
 }
