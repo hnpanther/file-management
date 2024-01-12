@@ -243,13 +243,13 @@
 
                                             <td sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')" class="text-center align-middle">
                                                 <div class="btn-group align-top">
-                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/' + ${fd.getId() + '/download'} }"
+                                                    <a sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/' + ${fd.getId() + '/download'} }"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">دانلود</a>
-                                                    <a th:onclick="deleteFileDetails(/*[[${fd.getId()}]]*/, /*[[${file.getFileDetailsDTOS().size()}]]*/)"
+                                                    <a sec:authorize="hasAuthority('REST_DELETE_FILE_DETAILS') || hasAuthority('ADMIN')" th:onclick="deleteFileDetails(/*[[${fd.getId()}]]*/, /*[[${file.getFileDetailsDTOS().size()}]]*/)"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">حذف</a>
-                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=format&id=' + ${fd.getId()} + '&version-number=' + ${fd.getVersion()}}"
+                                                    <a sec:authorize="hasAuthority('SAVE_NEW_FILE_DETAILS_PAGE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=format&id=' + ${fd.getId()} + '&version-number=' + ${fd.getVersion()}}"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">فرمت جدید</a>
-                                                    <a th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=version&id=' + ${fd.getId()} + '&version-number=' + ${fd.getVersion()}}"
+                                                    <a sec:authorize="hasAuthority('SAVE_NEW_FILE_DETAILS_PAGE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=version&id=' + ${fd.getId()} + '&version-number=' + ${fd.getVersion()}}"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">ورژن جدید</a>
                                                 </div>
                                             </td>

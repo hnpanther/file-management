@@ -247,6 +247,7 @@ class FileServiceTest {
         fileDetails.setFileInfo(fileInfo);
 
         fileInfo.getFileDetailsList().add(fileDetails);
+        fileInfo.setLastVersion(1);
         fileInfoRepository.save(fileInfo);
         fileInfoId = fileInfo.getId();
         fileDetailsId = fileDetails.getId();

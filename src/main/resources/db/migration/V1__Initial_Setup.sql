@@ -1,4 +1,3 @@
-
 CREATE TABLE user
 (
     id            INT          NOT NULL PRIMARY KEY AUTO_INCREMENT,
@@ -165,6 +164,7 @@ CREATE TABLE file_info
     file_path             VARCHAR(1000) NOT NULL,
     relative_path         VARCHAR(1000) NOT NULL,
     file_link             VARCHAR(1000),
+    last_version          INT           NOT NULL,
     file_sub_category_id  INT           NOT NULL,
     main_tag_file_id      INT           NOT NULL,
     enabled               INT           NOT NULL,

@@ -41,5 +41,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     """)
     Page<FileInfo> findByParameterAndPagination(String search, Pageable pageable);
 
+    @Query("SELECT f.lastVersion FROM FileInfo f WHERE f.id = (:fileInfoId)")
+    Integer getLastVersionNumberOfFile(int fileInfoId);
+
 
 }

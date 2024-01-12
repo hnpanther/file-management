@@ -147,6 +147,7 @@ public class ModelConverterUtil {
         fileInfoDTO.setDescription(fileInfo.getDescription());
         fileInfoDTO.setFilePath(fileInfo.getFilePath());
         fileInfoDTO.setFileLink(fileInfo.getFileLink());
+        fileInfoDTO.setLastVersion(fileInfo.getLastVersion());
         fileInfoDTO.setFileSubCategoryId(fileInfo.getFileSubCategory().getId());
         fileInfoDTO.setFileSubCategoryName(fileInfo.getFileSubCategory().getSubCategoryName());
         fileInfoDTO.setFileSubCategoryNameDescription(fileInfo.getFileSubCategory().getSubCategoryNameDescription());

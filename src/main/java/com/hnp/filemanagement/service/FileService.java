@@ -115,6 +115,7 @@ public class FileService {
 
         fileDetails.setFileInfo(fileInfo);
         fileInfo.getFileDetailsList().add(fileDetails);
+        fileInfo.setLastVersion(1);
 
         fileInfoRepository.save(fileInfo);
 
@@ -138,16 +139,34 @@ public class FileService {
             throw new InvalidDataException("file name not correct, fileName=" + fileUploadDTO.getFileNameWithoutExtension() + " should be=" + fileInfo.getFileName());
         }
 
+        boolean saveFile = false;
 
         // check type
         if(fileUploadDTO.getType().equals("format")) {
+
+            if(version > fileInfo.getLastVersion()) {
+                throw new InvalidDataException("wrong version for new format, requested version=" +
+                        version + ", last version=" + fileInfo.getLastVersion());
+            }
+
             createNewFormatFileDetails(fileUploadDTO, fileInfo, principalId);
-        } else  {
+            saveFile = true;
+        } else  if(fileUploadDTO.getType().equals("version")) {
+
+            if(version != fileInfo.getLastVersion() + 1) {
+                throw new InvalidDataException("wrong version for create new version, requested version=" +
+                        version + ", last version=" + fileInfo.getLastVersion());
+            }
+
             createNewVersionFileDetails(fileUploadDTO, fileInfo, principalId);
+            saveFile = true;
         }
 
-        String address = fileInfo.getMainTagFile().getFileSubCategory().getFileCategory().getCategoryName() + "/" + fileInfo.getMainTagFile().getFileSubCategory().getSubCategoryName();
-        fileStorageService.save(address, fileUploadDTO.getMultipartFile(), version, fileExtension);
+        if(saveFile) {
+            String address = fileInfo.getMainTagFile().getFileSubCategory().getFileCategory().getCategoryName() + "/" + fileInfo.getMainTagFile().getFileSubCategory().getSubCategoryName();
+            fileStorageService.save(address, fileUploadDTO.getMultipartFile(), version, fileExtension);
+        }
+
 
 
 
@@ -176,6 +195,7 @@ public class FileService {
             throw new DuplicateResourceException("fileDetails with same version and format exists. version=" + fileUploadDTO.getVersion() + ", format=" + fileExtension);
         }
 
+
         FileDetails fileDetails = new FileDetails();
         fileDetails.setFileName(fileUploadDTO.getMultipartFile().getOriginalFilename());
         fileDetails.setHashId(fileUploadDTO.getMultipartFile().getOriginalFilename() + fileUploadDTO.getVersion());
@@ -193,6 +213,7 @@ public class FileService {
         fileDetails.setCreatedBy(entityManager.getReference(User.class, principalId));
 
         fileDetails.setFileInfo(fileInfo);
+
 
         fileDetailsRepository.save(fileDetails);
 
@@ -226,7 +247,11 @@ public class FileService {
 
         fileDetails.setFileInfo(fileInfo);
 
-        fileDetailsRepository.save(fileDetails);
+        fileInfo.setLastVersion(fileDetails.getVersion());
+        fileInfo.getFileDetailsList().add(fileDetails);
+        fileInfoRepository.save(fileInfo);
+
+//        fileDetailsRepository.save(fileDetails);
 
 
     }
@@ -274,7 +299,7 @@ public class FileService {
     }
 
     public int getLastVersionOfFile(int fileInfoId) {
-        Integer lastVersionNumberOfFile = fileDetailsRepository.getLastVersionNumberOfFile(fileInfoId);
+        Integer lastVersionNumberOfFile = fileInfoRepository.getLastVersionNumberOfFile(fileInfoId);
         if(lastVersionNumberOfFile == null) {
             throw new ResourceNotFoundException(("file with fileInfoId=" + fileInfoId + " doesn't have version!"));
         }

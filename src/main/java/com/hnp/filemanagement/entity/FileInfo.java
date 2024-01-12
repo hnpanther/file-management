@@ -39,6 +39,9 @@ public class FileInfo {
     @Column(name = "file_link")
     private String fileLink;
 
+    @Column(name = "last_version", nullable = false)
+    private Integer lastVersion;
+
     @Column(name = "enabled", nullable = false)
     private Integer enabled;
 

@@ -1,18 +1,18 @@
 DROP
-DATABASE IF EXISTS file_management;
+    DATABASE IF EXISTS file_management;
 CREATE
-DATABASE file_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DATABASE file_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 DROP
-USER IF EXISTS 'file_management'@'localhost';
+    USER IF EXISTS 'file_management'@'localhost';
 CREATE
-USER 'file_management'@'localhost' IDENTIFIED BY 'file_management';
+    USER 'file_management'@'localhost' IDENTIFIED BY 'file_management';
 
 GRANT ALL PRIVILEGES ON file_management.* TO
-'file_management'@'localhost';
+    'file_management'@'localhost';
 
 USE
-file_management;
+    file_management;
 
 -- DELETE FROM file_details;
 -- DELETE FROM file_info;
@@ -206,6 +206,7 @@ CREATE TABLE file_info
     file_path             VARCHAR(1000) NOT NULL,
     relative_path         VARCHAR(1000) NOT NULL,
     file_link             VARCHAR(1000),
+    last_version          INT           NOT NULL,
     file_sub_category_id  INT           NOT NULL,
     main_tag_file_id      INT           NOT NULL,
     enabled               INT           NOT NULL,

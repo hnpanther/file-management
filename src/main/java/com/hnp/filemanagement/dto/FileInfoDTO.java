@@ -33,6 +33,8 @@ public class FileInfoDTO {
 
     private String fileLink;
 
+    private Integer lastVersion;
+
     @NotNull(groups = {InsertValidation.class})
     private Integer fileSubCategoryId;
     private String fileSubCategoryName;
