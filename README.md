@@ -41,3 +41,4 @@ You can run in standlone mode or build and create war file and deploy on Tomcat
   mvn clean install
 ```
 
+Default username and password for admin: 'admin'
