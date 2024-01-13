@@ -128,9 +128,10 @@
             }
             let token = $("meta[name='_csrf']").attr("content");
             let headerToken = $("meta[name='_csrf_header']").attr("content");
+            let contextPath = "[[@{/}]]";
             $.ajax({
                 type: 'GET',
-                url: '/resource/file-categories/' + fileCategoryId + '/sub-categories'
+                url: contextPath + 'resource/file-categories/' + fileCategoryId + '/sub-categories'
             }).then(function (data) {
                 select.empty().select2({
                     data: data.results

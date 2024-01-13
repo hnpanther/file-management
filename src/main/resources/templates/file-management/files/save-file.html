@@ -146,9 +146,10 @@
             }
             let token = $("meta[name='_csrf']").attr("content");
             let headerToken = $("meta[name='_csrf_header']").attr("content");
+            let contextPath = "[[@{/}]]";
             $.ajax({
                 type: 'GET',
-                url: '/resource/file-categories/' + fileCategoryId + '/sub-categories',
+                url: contextPath + 'resource/file-categories/' + fileCategoryId + '/sub-categories',
                 headers: {
                     'X-CSRF-TOKEN': token
                 },
@@ -178,9 +179,10 @@
             }
             let token = $("meta[name='_csrf']").attr("content");
             let headerToken = $("meta[name='_csrf_header']").attr("content");
+            let contextPath = "[[@{/}]]";
             $.ajax({
                 type: 'GET',
-                url: '/resource/file-sub-categories/' + fileSubCategoryId + '/main-tags',
+                url: contextPath + 'resource/file-sub-categories/' + fileSubCategoryId + '/main-tags',
                 headers: {
                     'X-CSRF-TOKEN': token
                 },

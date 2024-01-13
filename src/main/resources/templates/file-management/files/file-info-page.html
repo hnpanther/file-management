@@ -297,8 +297,9 @@
         if(confirm("آیا از حذف کامل این فایل اطمینان دارید؟ با حذف این فایل تمام فرمت ها و ورژن های مرتبط با فایل نیز حذف خواهد شد")) {
             let token = $("meta[name='_csrf']").attr("content");
             let headerToken = $("meta[name='_csrf_header']").attr("content");
+            let contextPath = "[[@{/}]]";
             $.ajax({
-                url: "/resource/files/file-info/" + $(".idInput").val(),
+                url: contextPath + "resource/files/file-info/" + $(".idInput").val(),
                 type: "DELETE",
                 dataType: "json",
                 contentType: "application/json; charset=utf-8",
@@ -310,7 +311,7 @@
                     if(xhr.status === 200) {
                         alert("حذف با موفقیت انجام شد.");
                         let currentLocation = window.location;
-                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + "/files/file-info";
+                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "files/file-info";
                         window.location.replace(newUrl);
                     } else {
                         alert(xhr.responseText);
@@ -329,8 +330,9 @@
             if(confirm("آیا از بروزرسانی توضیحات اطمینان دارید؟")) {
                 let token = $("meta[name='_csrf']").attr("content");
                 let headerToken = $("meta[name='_csrf_header']").attr("content");
+                let contextPath = "[[@{/}]]";
                 $.ajax({
-                    url: "/resource/files/file-info/" + $(".idInput").val(),
+                    url: contextPath + "resource/files/file-info/" + $(".idInput").val(),
                     type: "PUT",
                     dataType: "json",
                     contentType: "application/json; charset=utf-8",
@@ -357,8 +359,9 @@
         if(confirm("آیا از تغییر وضعیت اطمینان دارید؟")) {
             let token = $("meta[name='_csrf']").attr("content");
             let headerToken = $("meta[name='_csrf_header']").attr("content");
+            let contextPath = "[[@{/}]]";
             $.ajax({
-                url: "/resource/files/file-info/" + $(".idInput").val() + "/change-state",
+                url: contextPath + "resource/files/file-info/" + $(".idInput").val() + "/change-state",
                 type: "PUT",
                 dataType: "json",
                 contentType: "application/json; charset=utf-8",
@@ -370,7 +373,7 @@
                     if(xhr.status === 200) {
                         alert("تغییر وضعیت با موفقیت انجام شد");
                         let currentLocation = window.location;
-                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + "/files/file-info/" + $(".idInput").val();
+                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "files/file-info/" + $(".idInput").val();
                         window.location.replace(newUrl);
                     } else {
                         alert(xhr.responseText);
@@ -385,8 +388,9 @@
         if(confirm('آیا از حذف این فایل اطمینان دارید؟ در صورتی که این فایل تنها فایل موجود در این قسمت باشه کل اطلاعات فایل بطور کامل حذف خواهد شد')) {
             let token = $("meta[name='_csrf']").attr("content");
             let headerToken = $("meta[name='_csrf_header']").attr("content");
+            let contextPath = "[[@{/}]]";
             $.ajax({
-                url: "/resource/files/file-info/" + $(".idInput").val() + "/file-details/" + i,
+                url: contextPath + "resource/files/file-info/" + $(".idInput").val() + "/file-details/" + i,
                 type: "DELETE",
                 dataType: "json",
                 contentType: "application/json; charset=utf-8",
@@ -399,11 +403,11 @@
                         alert("حذف با موفقیت انجام شد");
                         if(size === 1) {
                             let currentLocation = window.location;
-                            let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + "/files/file-info";
+                            let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "files/file-info";
                             window.location.replace(newUrl);
                         } else if(size > 1) {
                             let currentLocation = window.location;
-                            let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + "/files/file-info/" + $(".idInput").val();
+                            let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "files/file-info/" + $(".idInput").val();
                             window.location.replace(newUrl);
                         }
 
@@ -431,8 +435,10 @@
         if(confirm('آیا از تغییر وضعیت اطمینان دارید؟')) {
             let token = $("meta[name='_csrf']").attr("content");
             let headerToken = $("meta[name='_csrf_header']").attr("content");
+            let contextPath = "[[@{/}]]";
+
             $.ajax({
-                url: "/resource/files/file-info/" + $(".idInput").val() + "/file-details/" + fileDetailsId + "/change-state/" + newState,
+                url: contextPath + "resource/files/file-info/" + $(".idInput").val() + "/file-details/" + fileDetailsId + "/change-state/" + newState,
                 type: "PUT",
                 dataType: "json",
                 contentType: "application/json; charset=utf-8",
@@ -444,7 +450,7 @@
                     if(xhr.status === 200) {
                         alert("تغییر وضعیت با موفقیت انجام شد.");
                         let currentLocation = window.location;
-                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + "/files/file-info/" + $(".idInput").val();
+                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "files/file-info/" + $(".idInput").val();
                         window.location.replace(newUrl);
                     } else {
                         alert(xhr.responseText);

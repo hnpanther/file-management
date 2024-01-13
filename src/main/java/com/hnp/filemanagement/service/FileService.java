@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class FileService {
@@ -94,9 +95,11 @@ public class FileService {
         fileInfo.setMainTagFile(mainTagFile);
         fileInfo.setFileSubCategory(mainTagFile.getFileSubCategory());
 
+        UUID uuid = UUID. randomUUID();
         FileDetails fileDetails = new FileDetails();
         fileDetails.setFileName(fileInfoDTO.getMultipartFile().getOriginalFilename());
-        fileDetails.setHashId(fileInfoDTO.getMultipartFile().getOriginalFilename());
+//        fileDetails.setHashId(fileInfoDTO.getMultipartFile().getOriginalFilename());
+        fileDetails.setHashId(uuid.toString());
         fileDetails.setFileExtension(fileExtension);
         fileDetails.setContentType(fileInfoDTO.getMultipartFile().getContentType());
         fileDetails.setDescription(fileInfoDTO.getDescription());
@@ -198,7 +201,9 @@ public class FileService {
 
         FileDetails fileDetails = new FileDetails();
         fileDetails.setFileName(fileUploadDTO.getMultipartFile().getOriginalFilename());
-        fileDetails.setHashId(fileUploadDTO.getMultipartFile().getOriginalFilename() + fileUploadDTO.getVersion());
+        UUID uuid = UUID. randomUUID();
+//        fileDetails.setHashId(fileUploadDTO.getMultipartFile().getOriginalFilename() + fileUploadDTO.getVersion());
+        fileDetails.setHashId(uuid.toString());
         fileDetails.setFileExtension(fileExtension);
         fileDetails.setContentType(fileUploadDTO.getMultipartFile().getContentType());
         fileDetails.setDescription(fileUploadDTO.getFileDetailsDescription());
@@ -229,9 +234,11 @@ public class FileService {
         String fileExtension = getFileExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
         String fileNameWithoutExtension = getFileWithoutExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
 
+        UUID uuid = UUID. randomUUID();
         FileDetails fileDetails = new FileDetails();
         fileDetails.setFileName(fileUploadDTO.getMultipartFile().getOriginalFilename());
-        fileDetails.setHashId(fileUploadDTO.getMultipartFile().getOriginalFilename() + fileUploadDTO.getVersion());
+//        fileDetails.setHashId(fileUploadDTO.getMultipartFile().getOriginalFilename() + fileUploadDTO.getVersion());
+        fileDetails.setHashId(uuid.toString());
         fileDetails.setFileExtension(fileExtension);
         fileDetails.setContentType(fileUploadDTO.getMultipartFile().getContentType());
         fileDetails.setDescription(fileUploadDTO.getFileDetailsDescription());

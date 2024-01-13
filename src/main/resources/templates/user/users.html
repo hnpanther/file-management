@@ -176,7 +176,7 @@
         // let filterState = $('input[name="stateRadio"]:checked').val();
 
         let loc = window.location;
-        let newUrl = loc.protocol + "//" + loc.host + loc.pathname + "?";
+        let newUrl = loc.protocol + "//" + loc.host + loc.pathname+ "?";
         newUrl += "search=" + input;
         window.location = newUrl;
         // if (input !== "") {
@@ -190,6 +190,7 @@
     function reload() {
         let loc = window.location;
         window.location = loc.protocol + "//" + loc.host + loc.pathname;
+
     }
 
 </script>

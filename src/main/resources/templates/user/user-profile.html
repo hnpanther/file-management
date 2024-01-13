@@ -189,8 +189,9 @@
         if(confirm("آیا از تغییر وضعیت اطمینان دارید؟")) {
             let token = $("meta[name='_csrf']").attr("content");
             let headerToken = $("meta[name='_csrf_header']").attr("content");
+            let contextPath = "[[@{/}]]";
             $.ajax({
-                url: "/resource/users/" + $(".userId").val() + "/change-enabled",
+                url: contextPath + "resource/users/" + $(".userId").val() + "/change-enabled",
                 type: "PUT",
                 dataType: "json",
                 contentType: "application/json; charset=utf-8",
@@ -202,7 +203,7 @@
                     if(xhr.status === 200) {
                         alert("تغییر وضعیت با موفقیت انجام شد");
                         let currentLocation = window.location;
-                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + "/users/" + $(".userId").val();
+                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "users/" + $(".userId").val();
                         window.location.replace(newUrl);
                     } else {
                         alert(xhr.responseText);
