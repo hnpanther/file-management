@@ -56,6 +56,7 @@ public class SecurityConfig {
                             auth.requestMatchers("/webjars/**").permitAll();
                             auth.requestMatchers("/css/**").permitAll();
                             auth.requestMatchers("/js/**").permitAll();
+                            auth.requestMatchers("/public-pages/**").permitAll();
 
                             auth.anyRequest().authenticated();
                         }
