@@ -1,7 +1,9 @@
 package com.hnp.filemanagement.resource;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
+import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.InvalidDataException;
+import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.util.Map;
 
 @RestController()
@@ -123,11 +126,57 @@ public class FileResource {
 
         try {
             fileService.deleteFileDetails(fileInfoId, fileDetailsId, principalId);
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (BusinessException e) {
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "FileResource.class",
+                    "BusinessException" + e.getMessage());
+            return new ResponseEntity<>("invalid data", HttpStatus.BAD_REQUEST);
+        } catch (ResourceNotFoundException e) {
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "FileResource.class",
+                    "ResourceNotFoundException" + e.getMessage());
+            return new ResponseEntity<>("invalid data", HttpStatus.BAD_REQUEST);
         }
 
         return new ResponseEntity<>("file details deleted", HttpStatus.OK);
+
+    }
+
+
+    // REST_CHANGE_STATE_FILE_DETAILS
+    @PreAuthorize("hasAuthority('REST_CHANGE_STATE_FILE_DETAILS') || hasAuthority('ADMIN')")
+    @PutMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/change-state/{newState}")
+    public ResponseEntity<String> changeFileDetailsState(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                    @PathVariable("fileInfoId") int fileInfoId,
+                                                    @PathVariable("fileDetailsId") int fileDetailsId,
+                                                    @PathVariable("newState") int newState,
+                                                    HttpServletRequest request) {
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
+        String logMessage = "rest request to change file details state with id==" + fileDetailsId + " and fileInfoId=" + fileInfoId + " and newState=" + newState;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileResource.class", logMessage);
+
+        if(newState != 0 && newState != -1) {
+            return new ResponseEntity<>("invalid state, state=" + newState, HttpStatus.BAD_REQUEST);
+        }
+
+        try {
+            fileService.changeFileDetailsState(fileDetailsId, newState);
+        } catch (InvalidDataException e) {
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "FileResource.class",
+                    "InvalidDataException" + e.getMessage());
+            return new ResponseEntity<>("invalid state, state=" + newState, HttpStatus.BAD_REQUEST);
+        } catch (ResourceNotFoundException e) {
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "FileResource.class",
+                    "ResourceNotFoundException" + e.getMessage());
+            return new ResponseEntity<>("fileDetails not exists=", HttpStatus.BAD_REQUEST);
+        }
+
+        return new ResponseEntity<>("file details state changed", HttpStatus.OK);
 
     }
 

@@ -286,6 +286,21 @@ public class FileService {
         fileInfoRepository.save(fileInfo);
     }
 
+    public void changeFileDetailsState(int fileDetailsId, int newState) {
+
+        if(newState != 0 && newState != -1) {
+            throw new InvalidDataException("newState not correct");
+        }
+
+        FileDetails fileDetails = fileDetailsRepository.findById(fileDetailsId).orElseThrow(
+                () -> new ResourceNotFoundException("file details with id=" + fileDetailsRepository + " not exists")
+        );
+
+
+        fileDetails.setState(newState);
+        fileDetailsRepository.save(fileDetails);
+    }
+
     // in progress ...
     @Transactional
     public void deleteCompleteFileById(int id) {

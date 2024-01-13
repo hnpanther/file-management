@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.entity;
 
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 
 public enum PermissionEnum {
 
@@ -137,6 +138,9 @@ public enum PermissionEnum {
 
     //@DeleteMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}")
     REST_DELETE_FILE_DETAILS,
+
+    // @PutMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/change-state/{newState}")
+    REST_CHANGE_STATE_FILE_DETAILS,
 
     // ===================================================================================================
 

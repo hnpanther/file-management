@@ -251,6 +251,10 @@
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">فرمت جدید</a>
                                                     <a sec:authorize="hasAuthority('SAVE_NEW_FILE_DETAILS_PAGE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=version&id=' + ${fd.getId()} + '&version-number=' + ${fd.getVersion()}}"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button">ورژن جدید</a>
+
+                                                    <a sec:authorize="hasAuthority('REST_CHANGE_STATE_FILE_DETAILS') || hasAuthority('ADMIN')"
+                                                       class="btn btn-sm btn-outline-secondary badge" th:onclick="changeFileDetailsState(/*[[${fd.getId()}]]*/, /*[[${fd.getState}]]*/)" type="button" th:text="${fd.getState()} == 0 ? 'عمومی' : 'غیرعمومی'"></a>
+
                                                 </div>
                                             </td>
                                         </tr>
@@ -389,6 +393,39 @@
         } else {
 
         }
+    }
+
+    function changeFileDetailsState(fileDetailsId, currentState) {
+
+
+
+        let newState = -1;
+        if(currentState == -1) {
+            newState = 0;
+        } else {
+            newState = -1;
+        }
+
+        if(confirm('آیا از تغییر وضعیت اطمینان دارید؟')) {
+            $.ajax({
+                url: "/resource/files/file-info/" + $(".idInput").val() + "/file-details/" + fileDetailsId + "/change-state/" + newState,
+                type: "PUT",
+                dataType: "json",
+                contentType: "application/json; charset=utf-8",
+                data: JSON.stringify({ name: 'value1', email: 'value2' }),
+                complete: function (xhr, status) {
+                    if(xhr.status === 200) {
+                        alert("تغییر وضعیت با موفقیت انجام شد.");
+                        let currentLocation = window.location;
+                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + "/files/file-info/" + $(".idInput").val();
+                        window.location.replace(newUrl);
+                    } else {
+                        alert(xhr.responseText);
+                    }
+                }
+            });
+        }
+
     }
 
 </script>
