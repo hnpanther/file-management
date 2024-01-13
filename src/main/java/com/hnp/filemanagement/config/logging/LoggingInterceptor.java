@@ -21,8 +21,11 @@ public class LoggingInterceptor implements HandlerInterceptor {
 
         if(authentication.getPrincipal() instanceof UserDetailsImpl) {
             UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+            String userInformation = "{id=" + userDetails.getId() + ", username=" + userDetails.getUsername() + " ,permission=" + userDetails.getPermissions() +
+                    " ,enabled=" + userDetails.getEnabled() + ", state=" + userDetails.getState() + "}";
 
-            logger.debug("Received request: {} {} from {} and user={}", request.getMethod(), request.getRequestURI(), request.getRemoteAddr(), userDetails);
+            logger.debug("Received request: {} {} from {} and user={}", request.getMethod(), request.getRequestURI(), request.getRemoteAddr(), userInformation);
+//            logger.debug("Received request: {} {} from {} and user={}", request.getMethod(), request.getRequestURI(), request.getRemoteAddr(), userDetails);
         }
         logger.debug("Received request: {} {} from {}", request.getMethod(), request.getRequestURI(), request.getRemoteAddr());
         return true;

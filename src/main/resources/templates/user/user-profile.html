@@ -7,6 +7,8 @@
 
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta th:name="_csrf" th:content="${_csrf.token}"/>
+    <meta th:name="_csrf_header" th:content="${_csrf.headerName}"/>
     <title>پروفایل</title>
 
     <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
@@ -176,6 +178,7 @@
 
 <script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
 <script>
+
     function changeState() {
         let newVal = $(".enabled").val();
         if(newVal == 1) {
@@ -184,12 +187,17 @@
             newVal = 1;
         }
         if(confirm("آیا از تغییر وضعیت اطمینان دارید؟")) {
+            let token = $("meta[name='_csrf']").attr("content");
+            let headerToken = $("meta[name='_csrf_header']").attr("content");
             $.ajax({
                 url: "/resource/users/" + $(".userId").val() + "/change-enabled",
                 type: "PUT",
                 dataType: "json",
                 contentType: "application/json; charset=utf-8",
                 data: JSON.stringify({ enabled: newVal}),
+                headers: {
+                    'X-CSRF-TOKEN': token
+                },
                 complete: function (xhr, status) {
                     if(xhr.status === 200) {
                         alert("تغییر وضعیت با موفقیت انجام شد");

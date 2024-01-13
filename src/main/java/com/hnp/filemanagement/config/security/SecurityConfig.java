@@ -44,8 +44,8 @@ public class SecurityConfig {
 //                .build();
 
         return httpSecurity
-                .csrf(csrf -> csrf.disable())
-                .cors(cors -> cors.disable())
+//                .csrf(csrf -> csrf.disable())
+//                .cors(cors -> cors.disable())
                 .authorizeHttpRequests(
                         auth -> {
                             auth.requestMatchers("/files/public-files/**").permitAll();

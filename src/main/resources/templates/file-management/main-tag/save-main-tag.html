@@ -126,6 +126,8 @@
             if(fileCategoryId === null) {
                 fileCategoryId = -1;
             }
+            let token = $("meta[name='_csrf']").attr("content");
+            let headerToken = $("meta[name='_csrf_header']").attr("content");
             $.ajax({
                 type: 'GET',
                 url: '/resource/file-categories/' + fileCategoryId + '/sub-categories'

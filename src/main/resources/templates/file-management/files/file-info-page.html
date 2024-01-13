@@ -4,6 +4,8 @@
       xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
 <head>
     <meta charset="UTF-8">
+    <meta th:name="_csrf" th:content="${_csrf.token}"/>
+    <meta th:name="_csrf_header" th:content="${_csrf.headerName}"/>
     <title>اطلاعات فایل</title>
 
     <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
@@ -293,12 +295,17 @@
 
     function deleteFileInfo() {
         if(confirm("آیا از حذف کامل این فایل اطمینان دارید؟ با حذف این فایل تمام فرمت ها و ورژن های مرتبط با فایل نیز حذف خواهد شد")) {
+            let token = $("meta[name='_csrf']").attr("content");
+            let headerToken = $("meta[name='_csrf_header']").attr("content");
             $.ajax({
                 url: "/resource/files/file-info/" + $(".idInput").val(),
                 type: "DELETE",
                 dataType: "json",
                 contentType: "application/json; charset=utf-8",
                 data: JSON.stringify({ name: 'value1', email: 'value2' }),
+                headers: {
+                    'X-CSRF-TOKEN': token
+                },
                 complete: function (xhr, status) {
                     if(xhr.status === 200) {
                         alert("حذف با موفقیت انجام شد.");
@@ -320,12 +327,17 @@
             alert("توضیحات وارد نشده است")
         } else {
             if(confirm("آیا از بروزرسانی توضیحات اطمینان دارید؟")) {
+                let token = $("meta[name='_csrf']").attr("content");
+                let headerToken = $("meta[name='_csrf_header']").attr("content");
                 $.ajax({
                     url: "/resource/files/file-info/" + $(".idInput").val(),
                     type: "PUT",
                     dataType: "json",
                     contentType: "application/json; charset=utf-8",
                     data: JSON.stringify({ description: updatedDesc, email: 'value2' }),
+                    headers: {
+                        'X-CSRF-TOKEN': token
+                    },
                     complete: function (xhr, status) {
                         if(xhr.status === 200) {
                             alert("بروزرسانی با موفقیت انجام شد");
@@ -343,12 +355,17 @@
 
     function changeState(i) {
         if(confirm("آیا از تغییر وضعیت اطمینان دارید؟")) {
+            let token = $("meta[name='_csrf']").attr("content");
+            let headerToken = $("meta[name='_csrf_header']").attr("content");
             $.ajax({
                 url: "/resource/files/file-info/" + $(".idInput").val() + "/change-state",
                 type: "PUT",
                 dataType: "json",
                 contentType: "application/json; charset=utf-8",
                 data: JSON.stringify({ newState: i}),
+                headers: {
+                    'X-CSRF-TOKEN': token
+                },
                 complete: function (xhr, status) {
                     if(xhr.status === 200) {
                         alert("تغییر وضعیت با موفقیت انجام شد");
@@ -366,12 +383,17 @@
     function deleteFileDetails(i, size) {
         // console.log("id=" + i + ", size=" + size);
         if(confirm('آیا از حذف این فایل اطمینان دارید؟ در صورتی که این فایل تنها فایل موجود در این قسمت باشه کل اطلاعات فایل بطور کامل حذف خواهد شد')) {
+            let token = $("meta[name='_csrf']").attr("content");
+            let headerToken = $("meta[name='_csrf_header']").attr("content");
             $.ajax({
                 url: "/resource/files/file-info/" + $(".idInput").val() + "/file-details/" + i,
                 type: "DELETE",
                 dataType: "json",
                 contentType: "application/json; charset=utf-8",
                 data: JSON.stringify({ check: 'check'}),
+                headers: {
+                    'X-CSRF-TOKEN': token
+                },
                 complete: function (xhr, status) {
                     if(xhr.status === 200) {
                         alert("حذف با موفقیت انجام شد");
@@ -407,12 +429,17 @@
         }
 
         if(confirm('آیا از تغییر وضعیت اطمینان دارید؟')) {
+            let token = $("meta[name='_csrf']").attr("content");
+            let headerToken = $("meta[name='_csrf_header']").attr("content");
             $.ajax({
                 url: "/resource/files/file-info/" + $(".idInput").val() + "/file-details/" + fileDetailsId + "/change-state/" + newState,
                 type: "PUT",
                 dataType: "json",
                 contentType: "application/json; charset=utf-8",
                 data: JSON.stringify({ name: 'value1', email: 'value2' }),
+                headers: {
+                    'X-CSRF-TOKEN': token
+                },
                 complete: function (xhr, status) {
                     if(xhr.status === 200) {
                         alert("تغییر وضعیت با موفقیت انجام شد.");
