@@ -59,8 +59,9 @@ public class ActiveDirectoryCustomAuthenticationProvider implements Authenticati
             LdapUserDetails ldapUserDetails = (LdapUserDetails) authenticate.getPrincipal();
             logger.debug("extracted username from active directory=" + ldapUserDetails.getUsername());
             UserDetailsImpl userDetails = (UserDetailsImpl) userDetailsService.loadUserByUsername(ldapUserDetails.getUsername());
+//            userDetails.getPermissions().forEach(System.out::println);
             return new UsernamePasswordAuthenticationToken
-                    (userDetails, password);
+                    (userDetails, password, userDetails.getAuthorities());
         }
 
 
