@@ -4,6 +4,7 @@ import com.hnp.filemanagement.entity.Permission;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.service.UserService;
 import org.slf4j.Logger;
@@ -61,9 +62,9 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
 
             return userDetails;
-        } catch (Exception e) {
-            logger.debug("load by username exception", e);
-            throw new UsernameNotFoundException("username not found");
+        } catch (ResourceNotFoundException e) {
+//            logger.debug("load by username exception", e);
+            throw new UsernameNotFoundException("username not found, username=" + username);
         }
 
     }

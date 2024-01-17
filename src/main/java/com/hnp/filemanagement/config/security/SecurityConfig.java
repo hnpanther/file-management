@@ -1,23 +1,18 @@
 package com.hnp.filemanagement.config.security;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.ldap.authentication.ad.ActiveDirectoryLdapAuthenticationProvider;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
@@ -26,14 +21,22 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 @EnableMethodSecurity(securedEnabled = true, prePostEnabled = true)
 public class SecurityConfig {
 
+    @Value("${filemanagement.auth.ldap.activedirectory.enabled:false}")
+    private boolean activeDirectoryEnabled;
 
 
-    @Autowired
-    private BCryptPasswordEncoder passwordEncoder;
-    @Autowired
-    private UserDetailsService userDetailsService;
-    @Autowired
-    private CustomAuthenticationProvider customAuthenticationProvider;
+
+    private final BCryptPasswordEncoder passwordEncoder;
+
+    private final UserDetailsService userDetailsService;
+
+    private final ActiveDirectoryCustomAuthenticationProvider activeDirectoryCustomAuthenticationProvider;
+
+    public SecurityConfig(BCryptPasswordEncoder passwordEncoder, UserDetailsService userDetailsService, ActiveDirectoryCustomAuthenticationProvider activeDirectoryCustomAuthenticationProvider) {
+        this.passwordEncoder = passwordEncoder;
+        this.userDetailsService = userDetailsService;
+        this.activeDirectoryCustomAuthenticationProvider = activeDirectoryCustomAuthenticationProvider;
+    }
 
     @Bean
     public DaoAuthenticationProvider daoAuthenticationProvider() {
@@ -43,24 +46,31 @@ public class SecurityConfig {
         return daoAuthenticationProvider;
     }
 
-    @Bean
-    public AuthenticationProvider activeDirectoryLdapAuthenticationProvider() {
-
-        ActiveDirectoryLdapAuthenticationProvider activeDirectoryLdapAuthenticationProvider =
-                new ActiveDirectoryLdapAuthenticationProvider( "hnp.local", "ldap://172.29.76.9");
-
-        // to parse AD failed credentails error message due to account - expiry,lock, credentialis - expiry,lock
-        activeDirectoryLdapAuthenticationProvider.setConvertSubErrorCodesToExceptions(true);
-
-        return activeDirectoryLdapAuthenticationProvider;
-    }
+//    @Bean
+//    public AuthenticationProvider activeDirectoryLdapAuthenticationProvider() {
+//
+//        org.springframework.security.ldap.authentication.ad.ActiveDirectoryLdapAuthenticationProvider activeDirectoryLdapAuthenticationProvider =
+//                new org.springframework.security.ldap.authentication.ad.ActiveDirectoryLdapAuthenticationProvider( "hnp.local", "ldap://172.29.76.9");
+//
+//        // to parse AD failed credentails error message due to account - expiry,lock, credentialis - expiry,lock
+//        activeDirectoryLdapAuthenticationProvider.setConvertSubErrorCodesToExceptions(true);
+//
+//        return activeDirectoryLdapAuthenticationProvider;
+//    }
 
     @Bean
     public AuthenticationManager authenticationManager(HttpSecurity httpSecurity) throws Exception {
         AuthenticationManagerBuilder authenticationManagerBuilder = httpSecurity.getSharedObject(AuthenticationManagerBuilder.class);
-        authenticationManagerBuilder.authenticationProvider(customAuthenticationProvider)
-                .authenticationProvider(daoAuthenticationProvider());
+
+        if(activeDirectoryEnabled) {
+            authenticationManagerBuilder.authenticationProvider(activeDirectoryCustomAuthenticationProvider)
+                    .authenticationProvider(daoAuthenticationProvider());
 //                .authenticationProvider(activeDirectoryLdapAuthenticationProvider());
+        } else {
+            authenticationManagerBuilder.authenticationProvider(daoAuthenticationProvider());
+        }
+
+
         return authenticationManagerBuilder.build();
     }
 
