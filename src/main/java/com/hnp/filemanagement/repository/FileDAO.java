@@ -38,7 +38,7 @@ public class FileDAO {
 
         String fileNameWithoutExtension = getFileWithoutExtension(fileInfoDTO.getMultipartFile().getOriginalFilename());
 
-        List<FileInfo> list = jdbcClient.sql("SELECT fi.* FROM file_info fi JOIN file_sub_category fsc WHERE fi.file_name = :(fileName) AND fsc.id = (fileSubCategoryId)")
+        List<FileInfo> list = jdbcClient.sql("SELECT fi.* FROM file_info fi JOIN file_sub_category fsc WHERE fi.file_name = (:fileName) AND fsc.id = (:fileSubCategoryId)")
                 .param("fileName", fileNameWithoutExtension)
                 .param("fileSubCategoryId", fileInfoDTO.getFileSubCategoryId())
                 .query(FileInfo.class)

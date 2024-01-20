@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.Commit;
 
 import java.io.IOException;
@@ -45,6 +46,8 @@ class MainTagFileServiceTest {
     @Autowired
     private EntityManager entityManager;
     @Autowired
+    private JdbcClient jdbcClient;
+    @Autowired
     private MainTagFileRepository mainTagFileRepository;
     @Autowired
     private GeneralTagRepository generalTagRepository;
@@ -59,6 +62,8 @@ class MainTagFileServiceTest {
     private FileCategoryService fileCategoryService;
 
     private FileSubCategoryService fileSubCategoryService;
+
+    private MainTagFileDAO mainTagFileDAO;
 
     private MainTagFileService underTest;
 
@@ -78,7 +83,8 @@ class MainTagFileServiceTest {
         generalTagService = new GeneralTagService(entityManager, generalTagRepository);
         fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
         fileSubCategoryService = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, baseDir);
-        underTest = new MainTagFileService(baseDir, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileRepository);
+        mainTagFileDAO = new MainTagFileDAO(entityManager, jdbcClient);
+        underTest = new MainTagFileService(baseDir, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileRepository, mainTagFileDAO);
 
         // create base directory
         String directoryPath = baseDir;
@@ -346,6 +352,13 @@ class MainTagFileServiceTest {
 
 
     }
+
+//    @Test
+//    @Commit
+//    void deleteMainTagFileTest() {
+//        underTest.deleteMainTagFile(mainTagFileContractId);
+//        underTest.deleteMainTagFile(mainTagFilePreviewId);
+//    }
 
 
 }

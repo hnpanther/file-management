@@ -44,5 +44,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     @Query("SELECT f.lastVersion FROM FileInfo f WHERE f.id = (:fileInfoId)")
     Integer getLastVersionNumberOfFile(int fileInfoId);
 
+    @Query("SELECT COUNT(f.id) FROM FileInfo f WHERE f.mainTagFile.id = (:mainTagFileId)")
+    Integer countFileWithTagId(int mainTagFileId);
+
 
 }

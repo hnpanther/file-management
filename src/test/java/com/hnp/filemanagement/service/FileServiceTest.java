@@ -19,6 +19,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.annotation.Commit;
 import org.springframework.web.multipart.MultipartFile;
@@ -55,6 +56,10 @@ class FileServiceTest {
     private FileDetailsRepository fileDetailsRepository;
     @Autowired
     private GeneralTagRepository generalTagRepository;
+    @Autowired
+    private JdbcClient jdbcClient;
+
+    private MainTagFileDAO mainTagFileDAO;
 
     private GeneralTagService generalTagService;
 
@@ -93,7 +98,8 @@ class FileServiceTest {
         generalTagService = new GeneralTagService(entityManager, generalTagRepository);
         fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
         fileSubCategoryService = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, baseDir);
-        mainTagFileService = new MainTagFileService(baseDir, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileRepository);
+        mainTagFileService = new MainTagFileService(baseDir, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileRepository, mainTagFileDAO);
+        mainTagFileDAO = new MainTagFileDAO(entityManager, jdbcClient);
         underTest = new FileService(baseDir, fileStorageService, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileService, fileInfoRepository, fileDetailsRepository);
 
         // create base directory
@@ -681,6 +687,17 @@ class FileServiceTest {
         ).isInstanceOf(ResourceNotFoundException.class);
 
 
+    }
+
+
+    @Commit
+    @Test
+    void countFileWithSameTagTest() {
+        int count1 = underTest.countFileWithSameTag(mainTagFilePreviewId);
+        int count2 = underTest.countFileWithSameTag(mainTagFileContractId);
+
+        assertThat(count1).isEqualTo(1);
+        assertThat(count2).isEqualTo(0);
     }
 
 

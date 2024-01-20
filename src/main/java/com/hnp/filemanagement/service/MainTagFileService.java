@@ -10,6 +10,7 @@ import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.repository.MainTagFileDAO;
 import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import com.hnp.filemanagement.validation.ValidationUtil;
@@ -39,14 +40,18 @@ public class MainTagFileService {
 
     private final FileSubCategoryService fileSubCategoryService;
 
+
     private final MainTagFileRepository mainTagFileRepository;
 
-    public MainTagFileService(@Value("${file.management.base-dir}") String baseDir, EntityManager entityManager, FileCategoryService fileCategoryService, FileSubCategoryService fileSubCategoryService, MainTagFileRepository mainTagFileRepository) {
+    private final MainTagFileDAO mainTagFileDAO;
+
+    public MainTagFileService(@Value("${file.management.base-dir}") String baseDir, EntityManager entityManager, FileCategoryService fileCategoryService, FileSubCategoryService fileSubCategoryService, MainTagFileRepository mainTagFileRepository, MainTagFileDAO mainTagFileDAO) {
         this.baseDir = baseDir;
         this.entityManager = entityManager;
         this.fileCategoryService = fileCategoryService;
         this.fileSubCategoryService = fileSubCategoryService;
         this.mainTagFileRepository = mainTagFileRepository;
+        this.mainTagFileDAO = mainTagFileDAO;
     }
 
     @Transactional
@@ -117,6 +122,13 @@ public class MainTagFileService {
         mainTagFile.setUpdatedAt(LocalDateTime.now());
         mainTagFile.setUpdatedBy(entityManager.getReference(User.class, principalId));
         mainTagFileRepository.save(mainTagFile);
+    }
+
+
+    @Transactional
+    public void deleteMainTagFile(int mainTagFileId) {
+        boolean deletable = mainTagFileDAO.isDeletable(mainTagFileId);
+        logger.info("deletable? => " + deletable);
     }
 
 

@@ -473,6 +473,10 @@ public class FileService {
 
     }
 
+    public int countFileWithSameTag(int mainTagFileId) {
+        return fileInfoRepository.countFileWithTagId(mainTagFileId);
+    }
+
 
 
     public boolean isDuplicate(String fileName, int subCategoryId) {

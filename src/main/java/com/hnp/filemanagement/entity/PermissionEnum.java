@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.entity;
 
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 
@@ -185,7 +186,14 @@ public enum PermissionEnum {
     // GeneralTagResource @RequestMapping("/resource/general-tags") ======================================
 
     //@GetMapping()
-    REST_GET_ALL_GENERAL_TAG
+    REST_GET_ALL_GENERAL_TAG,
+
+    // ===================================================================================================
+
+    // MainTagFileResource @RequestMapping("/resource/main-tags") ======================================
+
+    // @DeleteMapping("{id}")
+    REST_DELETE_MAIN_TAG_FILE
 
     // ===================================================================================================
 
