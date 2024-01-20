@@ -27,6 +27,12 @@ Specify a path for the root of the files. For example in Windows(create files/ma
 ```bash
   file.management.base-dir=D:/files/main/
 ```
+
+Specify path for log in logback-spring.xml
+```bash
+  <property name="LOG_PATH" value="D:/files/logs" />
+```
+
 Repeat these steps for application.propertes file in the test directory as well(don't create test directory. it's create and delete automatic in tests)
 ```bash
   spring.datasource.url=jdbc:mysql://localhost:3306/file_management_test

@@ -384,6 +384,7 @@ public class FileController {
         fileUploadDTO.setFileNameWithoutExtension(fileNameWithoutExtension);
         if(bindingResult.hasErrors() || !fileNameWithoutExtension.equals(fileUploadDTO.getFileName())) {
             message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
+            fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
             globalGeneralLogging.controllerLogging(principalId, principalUsername,
                     request.getMethod() + " " + path, "FileController.class",
                     "ValidationError:" + bindingResult);
@@ -392,11 +393,13 @@ public class FileController {
                 fileService.createNewFileDetails(fileUploadDTO, principalId);
                 valid = true;
             } catch (InvalidDataException e) {
+                fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,
                         request.getMethod() + " " + path, "FileController.class",
                         "InvalidDataException:" + e.getMessage());
                 message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
             } catch (DuplicateResourceException e) {
+                fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,
                         request.getMethod() + " " + path, "FileController.class",
                         "DuplicateResourceException:" + e.getMessage());
