@@ -80,7 +80,7 @@
         <button type="submit" class="btn btn-primary">ذخیره</button>
     </form>
     <hr>
-    <a sec:authorize="hasAuthority('REST_DELETE_MAIN_TAG_FILE') || hasAuthority('ADMIN')" th:onclick="deleteTag()" class="btn btn-block btn-danger"> <i class="fa fa-arrow-circle-o-left"></i>حذف</a>
+    <a sec:authorize="hasAuthority('REST_DELETE_MAIN_TAG_FILE') || hasAuthority('ADMIN')" th:onclick="deleteTag()" class="btn btn-danger"> <i class="fa fa-arrow-circle-o-left"></i>حذف</a>
     <hr>
     <a th:href="@{/main-tags}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست تگ ها</a>
 </div>
@@ -168,7 +168,8 @@
                         let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "main-tags";
                         window.location.replace(newUrl);
                     } else {
-                        alert(xhr.responseText);
+                        // alert(xhr.responseText);
+                        alert('امکان حذف وجود ندارد. مطمئن شوید فایل مرتبط با این آیتم وجود نداشته باشد.');
                     }
                 }
             });

@@ -128,7 +128,13 @@ public class MainTagFileService {
     @Transactional
     public void deleteMainTagFile(int mainTagFileId) {
         boolean deletable = mainTagFileDAO.isDeletable(mainTagFileId);
-        logger.info("deletable? => " + deletable);
+        if(!deletable) {
+            throw new BusinessException("can not delete mainTagFile, check id is correct and not related file to it");
+        }
+
+        MainTagFile mainTagFile = getMainTagFileByIdOrTagName(mainTagFileId, null);
+
+        mainTagFileRepository.delete(mainTagFile);
     }
 
 

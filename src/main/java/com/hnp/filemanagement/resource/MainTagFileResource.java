@@ -1,10 +1,13 @@
 package com.hnp.filemanagement.resource;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
+import com.hnp.filemanagement.exception.BusinessException;
+import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.MainTagFileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -45,11 +48,23 @@ public class MainTagFileResource {
                 request.getMethod() + " " + path, "MainTagFileResource.class", logMessage);
 
 
-        mainTagFileService.deleteMainTagFile(mainTagFileId);
+        try {
+            mainTagFileService.deleteMainTagFile(mainTagFileId);
+        } catch (BusinessException e) {
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "MainTagFileResource.class",
+                    "BusinessException" + e.getMessage());
+            return new ResponseEntity<>("can not delete, first delete all related files" + mainTagFileId, HttpStatus.BAD_REQUEST);
+        } catch (ResourceNotFoundException e) {
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "MainTagFileResource.class",
+                    "ResourceNotFoundException" + e.getMessage());
+            return new ResponseEntity<>("main tag file not exists=" + mainTagFileId, HttpStatus.BAD_REQUEST);
+        }
 
 
 
-        return null;
+        return new ResponseEntity<>("main tag file deleted", HttpStatus.OK);
     }
 
 

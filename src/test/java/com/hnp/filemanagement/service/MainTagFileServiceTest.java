@@ -6,6 +6,7 @@ import com.hnp.filemanagement.entity.*;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
+import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.*;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
@@ -17,8 +18,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.annotation.Commit;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -51,6 +56,10 @@ class MainTagFileServiceTest {
     private MainTagFileRepository mainTagFileRepository;
     @Autowired
     private GeneralTagRepository generalTagRepository;
+    @Autowired
+    private FileInfoRepository fileInfoRepository;
+    @Autowired
+    private ResourceLoader resourceLoader;
 
     private GeneralTagService generalTagService;
 
@@ -206,6 +215,25 @@ class MainTagFileServiceTest {
         mainTagFilePreviewId = mainTagFilePreview.getId();
 
 
+//        Resource testFile = resourceLoader.getResource("classpath:test.txt");
+//        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+        FileInfo fileInfo = new FileInfo();
+        fileInfo.setFileName("test");
+        fileInfo.setCodeName("test");
+        fileInfo.setFileNameDescription("a test file");
+        fileInfo.setFilePath(mainTagFilePreview.getFileSubCategory().getPath() + "/" + "test");
+        fileInfo.setRelativePath(mainTagFilePreview.getFileSubCategory().getRelativePath() + "/" + "test");
+        fileInfo.setEnabled(1);
+        fileInfo.setState(0);
+        fileInfo.setCreatedAt(LocalDateTime.now());
+        fileInfo.setCreatedBy(user);
+        fileInfo.setMainTagFile(mainTagFileContract);
+        fileInfo.setFileSubCategory(fileSubCategorySubMail);
+        fileInfo.setLastVersion(1);
+
+        fileInfoRepository.save(fileInfo);
+
+
         entityManager.flush();
         entityManager.clear();
 
@@ -213,6 +241,7 @@ class MainTagFileServiceTest {
     }
     @AfterEach
     void tearDown() throws IOException {
+        fileInfoRepository.deleteAll();
         mainTagFileRepository.deleteAll();
         fileSubCategoryRepository.deleteAll();
         fileCategoryRepository.deleteAll();
@@ -353,12 +382,26 @@ class MainTagFileServiceTest {
 
     }
 
-//    @Test
-//    @Commit
-//    void deleteMainTagFileTest() {
-//        underTest.deleteMainTagFile(mainTagFileContractId);
-//        underTest.deleteMainTagFile(mainTagFilePreviewId);
-//    }
+
+    @Test
+    @Commit
+    void deleteMainTagFileTest() {
+        underTest.deleteMainTagFile(mainTagFilePreviewId);
+
+        assertThatThrownBy(
+                () -> underTest.getMainTagFileDtoByIdOrTagName(mainTagFilePreviewId, null)
+        ).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @Commit
+    void deleteUndeletableMainTagFileTest() {
+
+
+        assertThatThrownBy(
+                () -> underTest.deleteMainTagFile(mainTagFileContractId)
+        ).isInstanceOf(BusinessException.class);
+    }
 
 
 }
