@@ -188,12 +188,18 @@ public enum PermissionEnum {
     //@GetMapping()
     REST_GET_ALL_GENERAL_TAG,
 
+
+    //@DeleteMapping("{id}")
+    REST_DELETE_GENERAL_TAG,
+
+
     // ===================================================================================================
 
     // MainTagFileResource @RequestMapping("/resource/main-tags") ======================================
 
-    // @DeleteMapping("{id}")
+    //@DeleteMapping("{id}")
     REST_DELETE_MAIN_TAG_FILE
+
 
     // ===================================================================================================
 

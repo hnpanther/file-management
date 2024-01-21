@@ -5,6 +5,7 @@ import com.hnp.filemanagement.dto.GeneralTagPageDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.GeneralTag;
 import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
@@ -52,6 +53,7 @@ class GeneralTagServiceTest {
 
     int fileCategoryId1 = 0;
     int genertalTagId1 = 0;
+    int generalTagId2 = 0;
 
     @BeforeEach
     void setUp() {
@@ -84,6 +86,17 @@ class GeneralTagServiceTest {
         generalTag1.setCreatedBy(user);
         generalTagRepository.save(generalTag1);
         genertalTagId1 = generalTag1.getId();
+
+        GeneralTag generalTag2 = new GeneralTag();
+        generalTag2.setTagName("Contract");
+        generalTag2.setTagNameDescription("Contract");
+        generalTag2.setType(0);
+        generalTag2.setEnabled(1);
+        generalTag2.setState(0);
+        generalTag2.setCreatedAt(LocalDateTime.now());
+        generalTag2.setCreatedBy(user);
+        generalTagRepository.save(generalTag2);
+        generalTagId2 = generalTag2.getId();
 
 
         FileCategory fileCategory = new FileCategory();
@@ -170,6 +183,24 @@ class GeneralTagServiceTest {
         assertThat(updatedGeneralTagDto.getTagNameDescription()).isEqualTo("Hello");
         assertThat(updatedGeneralTagDto.getDescription()).isEqualTo(oldDesc);
 
+    }
+
+
+    @Test
+    void deleteGeneralTagTest() {
+        underTest.deleteGeneralTag(generalTagId2);
+
+        assertThatThrownBy(
+                () -> underTest.getGeneralTagByIdOrTagName(generalTagId2, null)
+        ).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void deleteUndeletableGeneralTagTest() {
+
+        assertThatThrownBy(
+                () -> underTest.deleteGeneralTag(genertalTagId1)
+        ).isInstanceOf(BusinessException.class);
     }
 
 }

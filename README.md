@@ -15,7 +15,7 @@ Clone the project
   git clone https://github.com/hnpanther/file-management.git
 ```
 Create a database in mysql and
-go to application.properties and set database propertes
+go to application.properties and set database properties
 
 ```bash
   spring.datasource.url=jdbc:mysql://localhost:3306/file_management

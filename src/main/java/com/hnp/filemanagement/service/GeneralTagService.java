@@ -3,8 +3,10 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.GeneralTagDTO;
 import com.hnp.filemanagement.dto.GeneralTagPageDTO;
+import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.GeneralTag;
 import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.GeneralTagRepository;
@@ -98,6 +100,19 @@ public class GeneralTagService {
         generalTag.setUpdatedBy(entityManager.getReference(User.class, principalId));
 
         generalTagRepository.save(generalTag);
+
+    }
+
+
+    @Transactional
+    public void deleteGeneralTag(int generalTagId) {
+        int count = generalTagRepository.countGeneralTagWithCategory(generalTagId);
+        if(count > 0) {
+            throw new BusinessException("can not delete general tag with id=" + generalTagId + " , first delete all related FileCategory");
+        }
+        GeneralTag generalTag = getGeneralTagByIdOrTagName(generalTagId, null);
+
+        generalTagRepository.delete(generalTag);
 
     }
 

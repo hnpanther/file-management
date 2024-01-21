@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org">
+      xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta th:name="_csrf" th:content="${_csrf.token}"/>
+    <meta th:name="_csrf_header" th:content="${_csrf.headerName}"/>
     <title th:if="${#strings.equals(pageType, 'create')}">ساخت تگ</title>
     <title th:if="${#strings.equals(pageType, 'update')}">ویرایش تگ</title>
 
@@ -28,7 +30,7 @@
 <div class="container">
     <form th:action="@{ ${#strings.equals(pageType, 'create') ? '/general-tags' : '/general-tags/' + generalTag.getId()}  }" method="post" id="categoryForm" th:object="${generalTag}">
 
-        <input th:field="*{id}" type="hidden">
+        <input class="generalTagId" th:field="*{id}" type="hidden">
 
 
 
@@ -61,6 +63,8 @@
         <button type="submit" class="btn btn-primary">ذخیره</button>
     </form>
     <hr>
+    <a sec:authorize="hasAuthority('REST_DELETE_GENERAL_TAG') || hasAuthority('ADMIN')" th:onclick="deleteTag()" class="btn btn-danger"> <i class="fa fa-arrow-circle-o-left"></i>حذف</a>
+    <hr>
     <a th:href="@{/general-tags}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست تگ ها</a>
 </div>
 
@@ -68,6 +72,35 @@
 <script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
 
 <script>
+
+
+    function deleteTag() {
+        if(confirm("آیا از حذف اطمینان دارید؟")) {
+            let token = $("meta[name='_csrf']").attr("content");
+            let headerToken = $("meta[name='_csrf_header']").attr("content");
+            let contextPath = "[[@{/}]]";
+            $.ajax({
+                url: contextPath + "resource/general-tags/" + $(".generalTagId").val(),
+                type: "DELETE",
+                dataType: "json",
+                contentType: "application/json; charset=utf-8",
+                headers: {
+                    'X-CSRF-TOKEN': token
+                },
+                complete: function (xhr, status) {
+                    if(xhr.status === 200) {
+                        alert("حذف با موفقیت انجام شد.");
+                        let currentLocation = window.location;
+                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "general-tags";
+                        window.location.replace(newUrl);
+                    } else {
+                        // alert(xhr.responseText);
+                        alert('امکان حذف وجود ندارد. مطمئن شوید دسته بندی مرتبط با این آیتم وجود نداشته باشد.');
+                    }
+                }
+            });
+        }
+    }
 
     $('#categoryForm').on('submit', function() {
 

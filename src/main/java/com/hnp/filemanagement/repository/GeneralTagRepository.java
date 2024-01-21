@@ -30,4 +30,8 @@ public interface GeneralTagRepository extends JpaRepository<GeneralTag, Integer>
     """)
     Page<GeneralTag> findByParameterAndPagination(String search, Pageable pageable);
 
+
+    @Query("SELECT COUNT(*) FROM GeneralTag gt JOIN gt.fileCategories WHERE gt.id = (:generalTagId)")
+    Integer countGeneralTagWithCategory(int generalTagId);
+
 }

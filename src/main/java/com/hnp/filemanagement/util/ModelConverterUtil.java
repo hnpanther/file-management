@@ -179,7 +179,7 @@ public class ModelConverterUtil {
         publicFileDetailsDTO.setDescription(fileDetails.getDescription());
         publicFileDetailsDTO.setCategoryNameDescription(fileDetails.getFileInfo().getMainTagFile().getFileSubCategory().getFileCategory().getCategoryNameDescription());
         publicFileDetailsDTO.setSubCategoryNameDescription(fileDetails.getFileInfo().getMainTagFile().getFileSubCategory().getSubCategoryNameDescription());
-        publicFileDetailsDTO.setTagDescription(fileDetails.getFileInfo().getMainTagFile().getDescription());
+        publicFileDetailsDTO.setTagDescription(fileDetails.getFileInfo().getMainTagFile().getTagNameDescription());
         publicFileDetailsDTO.setVersion(fileDetails.getVersionName());
         publicFileDetailsDTO.setSize(fileDetails.getFileSize());
         publicFileDetailsDTO.setFileInfoName(fileDetails.getFileInfo().getDescription());

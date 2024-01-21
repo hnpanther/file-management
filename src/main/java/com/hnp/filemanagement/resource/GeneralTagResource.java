@@ -3,15 +3,17 @@ package com.hnp.filemanagement.resource;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.GeneralTagPageDTO;
 import com.hnp.filemanagement.dto.GenericListResponse;
+import com.hnp.filemanagement.exception.BusinessException;
+import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.GeneralTagService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -54,6 +56,42 @@ public class GeneralTagResource {
         GenericListResponse genericListResponse = new GenericListResponse();
         genericListResponse.results = list;
         return genericListResponse;
+
+    }
+
+
+    //REST_DELETE_GENERAL_TAG
+    @PreAuthorize("hasAuthority('REST_DELETE_GENERAL_TAG') || hasAuthority('ADMIN')")
+    @DeleteMapping("{id}")
+    public ResponseEntity<String> deleteGeneralTag(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                   @PathVariable("id") int generalTagId,
+                                                   HttpServletRequest request) {
+
+
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
+        String logMessage = "rest request to delete general tag with id==" + generalTagId;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "GeneralTagResource.class", logMessage);
+
+        try {
+            generalTagService.deleteGeneralTag(generalTagId);
+        } catch (BusinessException e) {
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "GeneralTagResource.class",
+                    "BusinessException" + e.getMessage());
+            return new ResponseEntity<>("can not delete, first delete all related category" + generalTagId, HttpStatus.BAD_REQUEST);
+        } catch (ResourceNotFoundException e) {
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "GeneralTagResource.class",
+                    "ResourceNotFoundException" + e.getMessage());
+            return new ResponseEntity<>("general tag file not exists=" + generalTagId, HttpStatus.BAD_REQUEST);
+        }
+
+
+
+        return new ResponseEntity<>("general tag deleted", HttpStatus.OK);
 
     }
 }
