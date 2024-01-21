@@ -7,6 +7,7 @@ import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.GeneralTag;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.BusinessException;
+import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.GeneralTagRepository;
@@ -108,7 +109,7 @@ public class GeneralTagService {
     public void deleteGeneralTag(int generalTagId) {
         int count = generalTagRepository.countGeneralTagWithCategory(generalTagId);
         if(count > 0) {
-            throw new BusinessException("can not delete general tag with id=" + generalTagId + " , first delete all related FileCategory");
+            throw new DependencyResourceException("can not delete general tag with id=" + generalTagId + " , first delete all related FileCategory");
         }
         GeneralTag generalTag = getGeneralTagByIdOrTagName(generalTagId, null);
 

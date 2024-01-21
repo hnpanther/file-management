@@ -6,6 +6,7 @@ import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.GeneralTag;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.BusinessException;
+import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
@@ -200,7 +201,7 @@ class GeneralTagServiceTest {
 
         assertThatThrownBy(
                 () -> underTest.deleteGeneralTag(genertalTagId1)
-        ).isInstanceOf(BusinessException.class);
+        ).isInstanceOf(DependencyResourceException.class);
     }
 
 }

@@ -6,10 +6,7 @@ import com.hnp.filemanagement.dto.MainTagFilePageDTO;
 import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.exception.BusinessException;
-import com.hnp.filemanagement.exception.DuplicateResourceException;
-import com.hnp.filemanagement.exception.InvalidDataException;
-import com.hnp.filemanagement.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.exception.*;
 import com.hnp.filemanagement.repository.MainTagFileDAO;
 import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
@@ -129,7 +126,7 @@ public class MainTagFileService {
     public void deleteMainTagFile(int mainTagFileId) {
         boolean deletable = mainTagFileDAO.isDeletable(mainTagFileId);
         if(!deletable) {
-            throw new BusinessException("can not delete mainTagFile, check id is correct and not related file to it");
+            throw new DependencyResourceException("can not delete mainTagFile, check id is correct and not related file to it");
         }
 
         MainTagFile mainTagFile = getMainTagFileByIdOrTagName(mainTagFileId, null);

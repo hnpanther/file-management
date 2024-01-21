@@ -4,6 +4,7 @@ import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.GeneralTagPageDTO;
 import com.hnp.filemanagement.dto.GenericListResponse;
 import com.hnp.filemanagement.exception.BusinessException;
+import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.GeneralTagService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
@@ -77,10 +78,10 @@ public class GeneralTagResource {
 
         try {
             generalTagService.deleteGeneralTag(generalTagId);
-        } catch (BusinessException e) {
+        } catch (DependencyResourceException e) {
             globalGeneralLogging.controllerLogging(principalId, principalUsername,
                     request.getMethod() + " " + path, "GeneralTagResource.class",
-                    "BusinessException" + e.getMessage());
+                    "DependencyResourceException" + e.getMessage());
             return new ResponseEntity<>("can not delete, first delete all related category" + generalTagId, HttpStatus.BAD_REQUEST);
         } catch (ResourceNotFoundException e) {
             globalGeneralLogging.controllerLogging(principalId, principalUsername,

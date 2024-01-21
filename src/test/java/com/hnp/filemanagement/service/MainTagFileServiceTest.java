@@ -3,10 +3,7 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.dto.MainTagFilePageDTO;
 import com.hnp.filemanagement.entity.*;
-import com.hnp.filemanagement.exception.BusinessException;
-import com.hnp.filemanagement.exception.DuplicateResourceException;
-import com.hnp.filemanagement.exception.InvalidDataException;
-import com.hnp.filemanagement.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.exception.*;
 import com.hnp.filemanagement.repository.*;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
@@ -400,7 +397,7 @@ class MainTagFileServiceTest {
 
         assertThatThrownBy(
                 () -> underTest.deleteMainTagFile(mainTagFileContractId)
-        ).isInstanceOf(BusinessException.class);
+        ).isInstanceOf(DependencyResourceException.class);
     }
 
 
