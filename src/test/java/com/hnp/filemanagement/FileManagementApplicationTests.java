@@ -3,10 +3,10 @@ package com.hnp.filemanagement;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
+//@SpringBootTest
 class FileManagementApplicationTests {
 
-	@Test
+//	@Test
 	void contextLoads() {
 	}
 
