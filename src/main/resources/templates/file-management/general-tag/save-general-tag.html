@@ -63,7 +63,7 @@
         <button type="submit" class="btn btn-primary">ذخیره</button>
     </form>
     <hr>
-    <a sec:authorize="hasAuthority('REST_DELETE_GENERAL_TAG') || hasAuthority('ADMIN')" th:onclick="deleteTag()" class="btn btn-danger"> <i class="fa fa-arrow-circle-o-left"></i>حذف</a>
+    <a th:if="${#strings.equals(pageType, 'update')}" sec:authorize="hasAuthority('REST_DELETE_GENERAL_TAG') || hasAuthority('ADMIN')" th:onclick="deleteTag()" class="btn btn-danger"> <i class="fa fa-arrow-circle-o-left"></i>حذف</a>
     <hr>
     <a th:href="@{/general-tags}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست تگ ها</a>
 </div>

@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org">
+      xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta th:name="_csrf" th:content="${_csrf.token}"/>
+    <meta th:name="_csrf_header" th:content="${_csrf.headerName}"/>
     <title th:if="${#strings.equals(pageType, 'create')}">ساخت زیر دسته بندی</title>
     <title th:if="${#strings.equals(pageType, 'update')}">ویرایش زیر دسته بندی</title>
 
@@ -29,7 +31,7 @@
 <div class="container">
     <form th:action="@{ ${#strings.equals(pageType, 'create') ? '/file-sub-categories' : '/file-sub-categories/' + fileSubCategory.getId()}  }" method="post" id="categoryForm" th:object="${fileSubCategory}">
 
-        <input th:field="*{id}" type="hidden">
+        <input class="subCategoryId" th:field="*{id}" type="hidden">
 
 
 
@@ -69,6 +71,8 @@
         <button type="submit" class="btn btn-primary">ذخیره</button>
     </form>
     <hr>
+    <a th:if="${#strings.equals(pageType, 'update')}" sec:authorize="hasAuthority('REST_DELETE_FILE_SUB_CATEGORY') || hasAuthority('ADMIN')" th:onclick="deleteSubCategory()" class="btn btn-danger"> <i class="fa fa-arrow-circle-o-left"></i>حذف</a>
+    <hr>
     <a th:href="@{/file-sub-categories}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست زیر دسته بندی ها</a>
 </div>
 
@@ -87,6 +91,34 @@
 
         return true;
     });
+
+    function deleteSubCategory() {
+        if(confirm("آیا از حذف اطمینان دارید؟")) {
+            let token = $("meta[name='_csrf']").attr("content");
+            let headerToken = $("meta[name='_csrf_header']").attr("content");
+            let contextPath = "[[@{/}]]";
+            $.ajax({
+                url: contextPath + "resource/file-sub-categories/" + $(".subCategoryId").val(),
+                type: "DELETE",
+                dataType: "json",
+                contentType: "application/json; charset=utf-8",
+                headers: {
+                    'X-CSRF-TOKEN': token
+                },
+                complete: function (xhr, status) {
+                    if(xhr.status === 200) {
+                        alert("حذف با موفقیت انجام شد.");
+                        let currentLocation = window.location;
+                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "file-sub-categories";
+                        window.location.replace(newUrl);
+                    } else {
+                        // alert(xhr.responseText);
+                        alert('امکان حذف وجود ندارد. مطمئن شوید تگ اصلی مرتبط با این آیتم وجود نداشته باشد.');
+                    }
+                }
+            });
+        }
+    }
 
 </script>
 

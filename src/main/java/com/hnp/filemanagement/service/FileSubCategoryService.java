@@ -7,6 +7,7 @@ import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.BusinessException;
+import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileSubCategoryRepository;
@@ -111,6 +112,20 @@ public class FileSubCategoryService {
 
         fileSubCategoryRepository.save(fileSubCategory);
 
+    }
+
+
+    @Transactional
+    public void deleteSubCategory(int subCategoryId) {
+        int count = fileSubCategoryRepository.countFileSubCategoryWithMainTagFile(subCategoryId);
+        if(count > 0) {
+            throw new DependencyResourceException("can not delete sub category with id=" + subCategoryId + ", first delete all related main tag files");
+        }
+
+        FileSubCategory fileSubCategory = getFileSubCategoryByIdOrSubCategoryName(subCategoryId, null);
+        String relativePath = fileSubCategory.getRelativePath();
+        fileSubCategoryRepository.delete(fileSubCategory);
+        fileStorageService.delete(relativePath, null, 0, "", false);
     }
 
 

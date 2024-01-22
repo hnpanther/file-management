@@ -31,4 +31,7 @@ public interface FileSubCategoryRepository extends JpaRepository<FileSubCategory
     """)
     Page<FileSubCategory> findByParameterAndPagination(String search, Pageable pageable);
 
+    @Query("SELECT COUNT(fsc.id) FROM FileSubCategory fsc JOIN fsc.mainTagFiles WHERE fsc.id = (:fileSubCategoryId)")
+    Integer countFileSubCategoryWithMainTagFile(int fileSubCategoryId);
+
 }

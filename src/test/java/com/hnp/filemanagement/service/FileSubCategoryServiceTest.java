@@ -5,7 +5,9 @@ import com.hnp.filemanagement.dto.FileSubCategoryDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryPageDTO;
 import com.hnp.filemanagement.entity.*;
 import com.hnp.filemanagement.exception.BusinessException;
+import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
+import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.*;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
@@ -312,6 +314,35 @@ class FileSubCategoryServiceTest {
 
         assertThat(pageFileSubCategories2.getTotalPages()).isEqualTo(1);
         assertThat(pageFileSubCategories2.getNumberOfElement()).isEqualTo(1);
+    }
+
+
+    @Test
+    @Commit
+    void deleteFileCategoryTest() {
+
+        FileSubCategory fileSubCategory = underTest.getFileSubCategoryByIdOrSubCategoryName(fileSubCategorySubMailId2, null);
+        String path = fileSubCategory.getPath();
+
+        underTest.deleteSubCategory(fileSubCategory.getId());
+
+
+        assertThat(Files.exists(Path.of(path))).isFalse();
+
+        assertThatThrownBy(
+                () -> underTest.getFileSubCategoryDtoByIdOrSubCategoryName(fileSubCategorySubMailId2, null)
+        ).isInstanceOf(ResourceNotFoundException.class);
+
+    }
+
+    @Test
+    @Commit
+    void deleteUnDeletableFileCategoryTest() {
+
+        assertThatThrownBy(
+                () -> underTest.deleteSubCategory(fileSubCategorySubMailId)
+        ).isInstanceOf(DependencyResourceException.class);
+
     }
 
 

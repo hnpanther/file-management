@@ -124,6 +124,9 @@ public enum PermissionEnum {
     //@GetMapping("{id}/sub-categories")
     REST_GET_ALL_SUB_CATEGORY_OF_CATEGORY,
 
+    //@DeleteMapping("{id}")
+    REST_DELETE_FILE_CATEGORY,
+
 
 
     // ===================================================================================================
@@ -148,6 +151,9 @@ public enum PermissionEnum {
     // FileSubCategoryResource @RequestMapping("/resource/file-sub-categories") ==========================
     //@GetMapping("{id}/main-tags")
     REST_GET_ALL_MAIN_TAGS_OF_SUB_CATEGORY_FILE,
+
+    //@DeleteMapping("{id}")
+    REST_DELETE_FILE_SUB_CATEGORY,
 
     // ===================================================================================================
 
