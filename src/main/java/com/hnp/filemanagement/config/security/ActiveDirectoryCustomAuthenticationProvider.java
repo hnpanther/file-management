@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.config.security;
 
+import com.hnp.filemanagement.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,8 +31,11 @@ public class ActiveDirectoryCustomAuthenticationProvider implements Authenticati
 
     private final UserDetailsService userDetailsService;
 
-    public ActiveDirectoryCustomAuthenticationProvider(UserDetailsService userDetailsService) {
+    private final UserService userService;
+
+    public ActiveDirectoryCustomAuthenticationProvider(UserDetailsService userDetailsService, UserService userService) {
         this.userDetailsService = userDetailsService;
+        this.userService = userService;
     }
 
 
@@ -58,9 +62,19 @@ public class ActiveDirectoryCustomAuthenticationProvider implements Authenticati
         if(authenticate.isAuthenticated()) {
             LdapUserDetails ldapUserDetails = (LdapUserDetails) authenticate.getPrincipal();
             logger.debug("extracted username from active directory=" + ldapUserDetails.getUsername());
-            UserDetailsImpl userDetails = (UserDetailsImpl) userDetailsService.loadUserByUsername(ldapUserDetails.getUsername());
+//            UserDetailsImpl userDetails = (UserDetailsImpl) userDetailsService.loadUserByUsername(ldapUserDetails.getUsername());
+            UserDetailsImpl userDetails = (UserDetailsImpl) userService.createUserDetailsFromUser(ldapUserDetails.getUsername());
+
+//            logger.debug("login type => " + userDetails.getLoginType());
+            if(userDetails.getLoginType() != 0 && userDetails.getLoginType() != 2) {
+                return null;
+            }
+
+
 //            userDetails.getPermissions().forEach(System.out::println);
 //            logger.debug("enabled ? => " + userDetails.getEnabled());
+
+
             if(userDetails.getEnabled() == 1) {
                 return new UsernamePasswordAuthenticationToken
                         (userDetails, null, userDetails.getAuthorities());

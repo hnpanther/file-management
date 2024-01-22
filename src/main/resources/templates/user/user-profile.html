@@ -100,7 +100,32 @@
                                 <p class="text-secondary mb-1" th:text="${user.getEnabled() == 1 ? 'وضعیت: فعال' : 'وضعیت: غیرفعال'}"></p>
 <!--                                <p class="text-muted font-size-sm">state</p>-->
                                 <button sec:authorize="hasAuthority('REST_CHANGE_USER_ENABLED') || hasAuthority('ADMIN')" onclick="changeState()" class="btn btn-primary" th:text="${user.getEnabled() == 1 ? 'غیرفعال کردن' : 'فعال کردن'}"></button>
-<!--                                <button class="btn btn-outline-primary">خروج</button>-->
+
+
+                                <th:block th:if="${user.getLoginType() == 0}">
+                                    <p class="text-secondary mb-1">نوع ورود: بدون محدودیت</p>
+                                </th:block>
+                                <th:block th:if="${user.getLoginType() == 1}">
+                                    <p class="text-secondary mb-1">نوع ورود: فقط احراز هویت داخلی</p>
+                                </th:block>
+                                <th:block th:if="${user.getLoginType() == 2}">
+                                    <p class="text-secondary mb-1">نوع ورود: فقط Active Directory</p>
+                                </th:block>
+
+                                <div class="dropdown" sec:authorize="hasAuthority('REST_CHANGE_USER_LOGIN_TYPE') || hasAuthority('ADMIN')">
+                                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                        تغییر نوع ورود
+                                    </button>
+                                    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                                        <a class="dropdown-item" onclick="changeLoginType(0)">بدون محدودیت</a>
+                                        <a class="dropdown-item" onclick="changeLoginType(1)">فقط احراز هویت داخلی</a>
+                                        <a class="dropdown-item" onclick="changeLoginType(2)">فقط Active Directory</a>
+                                    </div>
+                                </div>
+
+
+
+
                             </div>
                         </div>
                     </div>
@@ -177,6 +202,7 @@
 </div>
 
 <script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
+<script th:src="@{/webjars/bootstrap/4.5.0/js/bootstrap.bundle.js}"></script>
 <script>
 
     function changeState() {
@@ -212,6 +238,35 @@
             });
         }
     }
+
+
+    function changeLoginType(i) {
+        if(confirm("آیا از تغییر نوع ورود اطمینان دارید؟")) {
+            let token = $("meta[name='_csrf']").attr("content");
+            let headerToken = $("meta[name='_csrf_header']").attr("content");
+            let contextPath = "[[@{/}]]";
+            $.ajax({
+                url: contextPath + "resource/users/" + $(".userId").val() + "/change-login-type/" + i,
+                type: "PUT",
+                dataType: "json",
+                contentType: "application/json; charset=utf-8",
+                headers: {
+                    'X-CSRF-TOKEN': token
+                },
+                complete: function (xhr, status) {
+                    if(xhr.status === 200) {
+                        alert("تغییر نوع ورود با موفقیت انجام شد");
+                        let currentLocation = window.location;
+                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "users/" + $(".userId").val();
+                        window.location.replace(newUrl);
+                    } else {
+                        alert('امکان تغییر نوع ورود وجود ندارد');
+                    }
+                }
+            });
+        }
+    }
+
 </script>
 
 </body>

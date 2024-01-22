@@ -55,5 +55,7 @@ public class UserDTO {
 
     private Integer state;
 
+    private Integer loginType;
+
     private List<RoleDTO> roleList;
 }

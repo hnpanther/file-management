@@ -37,7 +37,10 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         try {
             User user = userService.getUserByUsername(username);
 
-
+//            logger.debug("login type => " + user.getLoginType());
+            if(user.getLoginType() != 0 && user.getLoginType() != 1) {
+                throw new UsernameNotFoundException("username not found, username=" + username);
+            }
 
 
             UserDetailsImpl userDetails = new UserDetailsImpl();
@@ -46,6 +49,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
             userDetails.setPassword(user.getPassword());
             userDetails.setEnabled(user.getEnabled());
             userDetails.setState(user.getState());
+            userDetails.setLoginType(user.getLoginType());
 
             List<Permission> allPermissionsOfUser = userService.getAllPermissionsOfUser(user.getId());
 

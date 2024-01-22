@@ -49,6 +49,9 @@ public class User {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "login_type")
+    private int loginType;
+
     @Column(name = "enabled", nullable = false)
     private int enabled;
 

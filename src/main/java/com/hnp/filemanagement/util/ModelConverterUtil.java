@@ -20,6 +20,7 @@ public class ModelConverterUtil {
         userDTO.setLastName(user.getLastName());
         userDTO.setEnabled(user.getEnabled());
         userDTO.setState(user.getState());
+        userDTO.setLoginType(user.getLoginType());
         userDTO.setRoleList(
                 user.getRoles().stream().map(
                         role -> convertRoleToRoleDTO(role)

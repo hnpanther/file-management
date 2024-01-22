@@ -1,8 +1,10 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.RoleDTO;
 import com.hnp.filemanagement.dto.UserDTO;
 import com.hnp.filemanagement.entity.Permission;
+import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
@@ -19,6 +21,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +31,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 public class UserService {
@@ -73,11 +78,48 @@ public class UserService {
         user.setCreatedAt(LocalDateTime.now());
         user.setEnabled(1);
         user.setState(1);
+        user.setLoginType(0);
 
         user.getRoles().add(role);
 
         userRepository.save(user);
 
+    }
+
+
+    @Transactional
+    public UserDetails createUserDetailsFromUser(String username) {
+        try {
+            User user = getUserByUsername(username);
+
+
+            UserDetailsImpl userDetails = new UserDetailsImpl();
+            userDetails.setId(user.getId());
+            userDetails.setUsername(user.getUsername());
+            userDetails.setPassword(user.getPassword());
+            userDetails.setEnabled(user.getEnabled());
+            userDetails.setState(user.getState());
+            userDetails.setLoginType(user.getLoginType());
+
+            List<Permission> allPermissionsOfUser = getAllPermissionsOfUser(user.getId());
+
+            List<PermissionEnum> list = new java.util.ArrayList<>(allPermissionsOfUser.stream().map(Permission::getPermissionName).toList());
+
+
+            Optional<Role> adminRole = user.getRoles().stream().filter(role -> role.getRoleName().equalsIgnoreCase("ADMIN")).findFirst();
+            if(adminRole.isPresent()) {
+                list.add(PermissionEnum.ADMIN);
+            }
+
+
+            userDetails.setPermissions(list);
+
+
+            return userDetails;
+        } catch (ResourceNotFoundException e) {
+//            logger.debug("load by username exception", e);
+            throw new UsernameNotFoundException("username not found, username=" + username);
+        }
     }
 
 
@@ -183,6 +225,16 @@ public class UserService {
         }
         User user = getUserByIdOrUsername(userId, null);
         user.setEnabled(enabled);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void changeLoginType(int userId, int type) {
+        if(type != 0 && type != 1 && type != 2) {
+            throw new InvalidDataException("login type is invalid, type=" + type);
+        }
+        User user = getUserByIdOrUsername(userId, null);
+        user.setLoginType(type);
         userRepository.save(user);
     }
 

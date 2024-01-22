@@ -65,5 +65,40 @@ public class UserResource {
         return new ResponseEntity<>("user enabled changed", HttpStatus.OK);
     }
 
+    //REST_CHANGE_USER_LOGIN_TYPE
+    @PreAuthorize("hasAuthority('REST_CHANGE_USER_LOGIN_TYPE') || hasAuthority('ADMIN')")
+    @PutMapping("{userId}/change-login-type/{type}")
+    public ResponseEntity<String> changeLoginType(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                  @PathVariable("userId") int userId,
+                                                  @PathVariable("type") int type,
+                                                  HttpServletRequest request) {
+
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
+        String logMessage = "rest request to change user login type with id=" + userId + " and new type=" + type;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "UserResource.class", logMessage);
+
+
+        try {
+
+
+            if(type != 0 && type != 1 && type != 2) {
+                return new ResponseEntity<>("invalid data", HttpStatus.BAD_REQUEST);
+            }
+            userService.changeLoginType(userId, type);
+        } catch (NumberFormatException | InvalidDataException e) {
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "UserResource.class",
+                    "NumberFormatException | InvalidDataException:" + e.getMessage());
+            return new ResponseEntity<>("invalid data", HttpStatus.BAD_REQUEST);
+        }
+
+
+        return new ResponseEntity<>("user login type changed", HttpStatus.OK);
+
+    }
+
 
 }

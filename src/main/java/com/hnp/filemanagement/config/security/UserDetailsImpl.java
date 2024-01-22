@@ -18,6 +18,7 @@ public class UserDetailsImpl implements UserDetails {
     private String password;
     private int enabled;
     private int state;
+    private int loginType;
 
 
     @Override
@@ -55,4 +56,5 @@ public class UserDetailsImpl implements UserDetails {
     public boolean isEnabled() {
         return enabled == 1;
     }
+
 }

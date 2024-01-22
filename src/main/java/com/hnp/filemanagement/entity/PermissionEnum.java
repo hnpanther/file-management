@@ -3,6 +3,7 @@ package com.hnp.filemanagement.entity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 
 public enum PermissionEnum {
 
@@ -160,6 +161,9 @@ public enum PermissionEnum {
     // UserResource @RequestMapping("/resource/users") ===================================================
     //@PutMapping("{userId}/change-enabled")
     REST_CHANGE_USER_ENABLED,
+
+    //@PutMapping("{userId}/change-login-type/{type}")
+    REST_CHANGE_USER_LOGIN_TYPE,
 
     // ===================================================================================================
 
