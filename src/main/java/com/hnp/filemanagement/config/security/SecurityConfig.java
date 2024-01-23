@@ -106,6 +106,7 @@ public class SecurityConfig {
                             auth.requestMatchers("/files/public-files/**").permitAll();
                             auth.requestMatchers("/files/public-download/**").permitAll();
                             auth.requestMatchers("/files/public-download/**").permitAll();
+                            auth.requestMatchers("/resource/file-content/**").permitAll();
                             auth.requestMatchers("/").permitAll();
                             auth.requestMatchers("/favicon.ico").permitAll();
                             auth.requestMatchers("/webjars/**").permitAll();
