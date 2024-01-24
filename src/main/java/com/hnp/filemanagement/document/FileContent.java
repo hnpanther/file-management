@@ -23,5 +23,8 @@ public class FileContent {
     @Field(name = "file")
     private FileContentDetails fileContentDetails;
 
+    @Field(name = "path")
+    private FilePath filePath;
+
 
 }
