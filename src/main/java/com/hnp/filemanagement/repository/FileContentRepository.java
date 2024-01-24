@@ -6,8 +6,12 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
+
 public interface FileContentRepository extends ElasticsearchRepository<FileContent, String> {
 
     List<FileContent> findByContent(String content);
+    List<FileContent> findByContentIsLikeIgnoreCase(String content);
+
+
 
 }

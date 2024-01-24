@@ -31,6 +31,8 @@ public class ElasticSearchConfig extends ElasticsearchConfiguration {
     private String certificatePath;
     @Value("${filemanagement.elasticsearch.ssl.enabled:false}")
     private boolean sslEnabled;
+    @Value("${filemanagement.elasticsearch.enabled:false}")
+    private boolean enabled;
 
 
     @Override
