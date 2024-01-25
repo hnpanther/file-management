@@ -2,6 +2,9 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.document.FileContent;
 import com.hnp.filemanagement.repository.FileContentRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -18,9 +21,8 @@ public class FileContentService {
     }
 
 
-    public List<FileContent> findMatchSearchFile(String search) {
-
-
-        return fileContentRepository.findByContentIsLikeIgnoreCase(search);
+    public List<FileContent> findMatchSearchFile(String search, int pageNumber, int pageSize) {
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
+        return fileContentRepository.findByContentIsLikeIgnoreCase(search, pageable);
     }
 }

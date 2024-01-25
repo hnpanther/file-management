@@ -38,7 +38,7 @@ public class FileContentResource {
     public List<FileContent> search(@PathVariable("search") String search) throws IOException {
 
 
-        return fileContentService.findMatchSearchFile(search);
+        return fileContentService.findMatchSearchFile(search,0,2);
 
     }
 
