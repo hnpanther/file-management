@@ -41,6 +41,8 @@ class FileServiceTest {
     Logger logger = LoggerFactory.getLogger(FileSubCategoryServiceTest.class);
 
     @Autowired
+    private ActionHistoryRepository actionHistoryRepository;
+    @Autowired
     private FileCategoryRepository fileCategoryRepository;
     @Autowired
     private FileSubCategoryRepository fileSubCategoryRepository;
@@ -73,6 +75,9 @@ class FileServiceTest {
     private FileSubCategoryService fileSubCategoryService;
 
     private MainTagFileService mainTagFileService;
+
+    private ActionHistoryService actionHistoryService;
+
     @Autowired
     private ResourceLoader resourceLoader;
 
@@ -94,8 +99,9 @@ class FileServiceTest {
     @BeforeEach
     void setUp() throws IOException {
 
+        actionHistoryService = new ActionHistoryService(entityManager, actionHistoryRepository);
         fileStorageService = new FileStorageFileSystemService(baseDir);
-        generalTagService = new GeneralTagService(entityManager, generalTagRepository);
+        generalTagService = new GeneralTagService(entityManager, generalTagRepository, actionHistoryService);
         fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
         fileSubCategoryService = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, baseDir);
         mainTagFileService = new MainTagFileService(baseDir, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileRepository, mainTagFileDAO);
@@ -270,6 +276,7 @@ class FileServiceTest {
 
     @AfterEach
     void tearDown() throws IOException {
+        actionHistoryRepository.deleteAll();
 //    -----    fileDetailsRepository.deleteAll();
         fileInfoRepository.deleteAll();
         mainTagFileRepository.deleteAll();

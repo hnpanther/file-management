@@ -10,10 +10,7 @@ import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.UserRepository;
+import com.hnp.filemanagement.repository.*;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityManager;
@@ -50,10 +47,15 @@ class FileCategoryServiceTest {
     private EntityManager entityManager;
 
     @Autowired
+    private ActionHistoryRepository actionHistoryRepository;
+
+    @Autowired
     private FileCategoryRepository fileCategoryRepository;
 
     @Autowired
     private FileSubCategoryRepository fileSubCategoryRepository;
+
+    private ActionHistoryService actionHistoryService;
 
     @Value("${file.management.base-dir}")
     private String baseDir;
@@ -90,7 +92,9 @@ class FileCategoryServiceTest {
         logger.info("creating: " + path);
         Files.createDirectory(path);
 
-        generalTagService = new GeneralTagService(entityManager, generalTagRepository);
+        ActionHistoryService actionHistoryService = new ActionHistoryService(entityManager, actionHistoryRepository);
+
+        generalTagService = new GeneralTagService(entityManager, generalTagRepository, actionHistoryService);
 
         fileStorageService = new FileStorageFileSystemService(baseDir);
         underTest = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
@@ -182,6 +186,7 @@ class FileCategoryServiceTest {
     void tearDown() throws IOException {
 
 
+        actionHistoryRepository.deleteAll();
         fileSubCategoryRepository.deleteAll();
         fileCategoryRepository.deleteAll();
         generalTagRepository.deleteAll();

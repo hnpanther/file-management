@@ -39,6 +39,8 @@ class FileSubCategoryServiceTest {
     Logger logger = LoggerFactory.getLogger(FileSubCategoryServiceTest.class);
 
     @Autowired
+    private ActionHistoryRepository actionHistoryRepository;
+    @Autowired
     private FileCategoryRepository fileCategoryRepository;
     @Autowired
     private FileSubCategoryRepository fileSubCategoryRepository;
@@ -61,6 +63,8 @@ class FileSubCategoryServiceTest {
 
     private FileCategoryService fileCategoryService;
 
+    private ActionHistoryService actionHistoryService;
+
 
 
     private FileSubCategoryService underTest;
@@ -76,7 +80,8 @@ class FileSubCategoryServiceTest {
     @BeforeEach
     void setUp() throws IOException {
 
-        generalTagService = new GeneralTagService(entityManager, generalTagRepository);
+        actionHistoryService = new ActionHistoryService(entityManager, actionHistoryRepository);
+        generalTagService = new GeneralTagService(entityManager, generalTagRepository, actionHistoryService);
         fileStorageService = new FileStorageFileSystemService(baseDir);
         fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
         underTest = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, baseDir);
@@ -198,6 +203,7 @@ class FileSubCategoryServiceTest {
     @AfterEach
     void tearDown() throws IOException {
 
+        actionHistoryRepository.deleteAll();
         mainTagFileRepository.deleteAll();
         fileSubCategoryRepository.deleteAll();
         fileCategoryRepository.deleteAll();

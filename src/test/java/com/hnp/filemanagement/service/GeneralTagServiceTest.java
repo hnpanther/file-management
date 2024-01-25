@@ -9,6 +9,7 @@ import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.repository.ActionHistoryRepository;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.GeneralTagRepository;
 import com.hnp.filemanagement.repository.UserRepository;
@@ -37,6 +38,9 @@ class GeneralTagServiceTest {
 
 
     @Autowired
+    private ActionHistoryRepository actionHistoryRepository;
+
+    @Autowired
     private EntityManager entityManager;
 
     @Autowired
@@ -47,6 +51,8 @@ class GeneralTagServiceTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    private ActionHistoryService actionHistoryService;
 
     private GeneralTagService underTest;
 
@@ -59,7 +65,8 @@ class GeneralTagServiceTest {
     @BeforeEach
     void setUp() {
 
-        underTest = new GeneralTagService(entityManager, generalTagRepository);
+        actionHistoryService = new ActionHistoryService(entityManager, actionHistoryRepository);
+        underTest = new GeneralTagService(entityManager, generalTagRepository, actionHistoryService);
 
         User user = new User();
         user.setUsername("admin");
@@ -122,6 +129,7 @@ class GeneralTagServiceTest {
     @AfterEach
     void tearDown() {
 
+        actionHistoryRepository.deleteAll();
         fileCategoryRepository.deleteAll();
         generalTagRepository.deleteAll();
         userRepository.deleteAll();

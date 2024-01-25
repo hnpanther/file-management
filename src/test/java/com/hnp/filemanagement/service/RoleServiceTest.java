@@ -6,6 +6,7 @@ import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
+import com.hnp.filemanagement.repository.ActionHistoryRepository;
 import com.hnp.filemanagement.repository.PermissionRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import jakarta.persistence.EntityManager;
@@ -34,6 +35,8 @@ class RoleServiceTest {
     @Autowired
     private EntityManager entityManager;
 
+    @Autowired
+    private ActionHistoryRepository actionHistoryRepository;
     @Autowired
     private RoleRepository roleRepository;
 
@@ -77,6 +80,7 @@ class RoleServiceTest {
     @AfterEach
     void tearDown() {
 
+        actionHistoryRepository.deleteAll();
         permissionRepository.deleteAll();
         roleRepository.deleteAll();
     }

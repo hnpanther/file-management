@@ -7,6 +7,7 @@ import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
+import com.hnp.filemanagement.repository.ActionHistoryRepository;
 import com.hnp.filemanagement.repository.PermissionRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
@@ -34,6 +35,8 @@ class UserServiceTest {
 
 
 
+    @Autowired
+    private ActionHistoryRepository actionHistoryRepository;
     @Autowired
     private UserRepository userRepository;
 
@@ -121,6 +124,7 @@ class UserServiceTest {
 
     @AfterEach
     void tearDown() {
+        actionHistoryRepository.deleteAll();
         userRepository.deleteAll();
         permissionRepository.deleteAll();
         roleRepository.deleteAll();

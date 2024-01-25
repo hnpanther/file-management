@@ -30,9 +30,12 @@ public class GeneralTagService {
     private final EntityManager entityManager;
     private final GeneralTagRepository generalTagRepository;
 
-    public GeneralTagService(EntityManager entityManager, GeneralTagRepository generalTagRepository) {
+    private final ActionHistoryService actionHistoryService;
+
+    public GeneralTagService(EntityManager entityManager, GeneralTagRepository generalTagRepository, ActionHistoryService actionHistoryService) {
         this.entityManager = entityManager;
         this.generalTagRepository = generalTagRepository;
+        this.actionHistoryService = actionHistoryService;
     }
 
     @Transactional
