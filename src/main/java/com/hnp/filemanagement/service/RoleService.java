@@ -2,10 +2,10 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.PermissionDTO;
 import com.hnp.filemanagement.dto.RoleDTO;
+import com.hnp.filemanagement.entity.ActionEnum;
+import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.Permission;
-import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
-import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -18,7 +18,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.SQLIntegrityConstraintViolationException;
 import java.util.List;
 
 @Service
@@ -33,18 +32,21 @@ public class RoleService {
 
     private final EntityManager entityManager;
 
+    private final ActionHistoryService actionHistoryService;
+
 
     public RoleService(RoleRepository roleRepository,
                        PermissionRepository permissionRepository,
-                       EntityManager entityManager) {
+                       EntityManager entityManager, ActionHistoryService actionHistoryService) {
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
         this.entityManager = entityManager;
+        this.actionHistoryService = actionHistoryService;
     }
 
 
     @Transactional
-    public void createRole(String roleName, List<PermissionDTO> permissionDTOList) {
+    public void createRole(String roleName, List<PermissionDTO> permissionDTOList, int principalId) {
 
         // check if roleName exists
         if(checkRoleExistsWithName(roleName)) {
@@ -64,11 +66,14 @@ public class RoleService {
 
         this.roleRepository.save(role);
 
+        actionHistoryService.saveActionHistory(EntityEnum.Role, role.getId(), ActionEnum.CREATE, principalId,
+                "CREATE NEW ROLE", "CREATE NEW ROLE");
+
 
     }
 
     @Transactional
-    public void updatePermissionsOfRole(int roleId, List<Integer> permissionDTOIDList) {
+    public void updatePermissionsOfRole(int roleId, List<Integer> permissionDTOIDList, int principalId) {
 
         Role role = roleRepository.findById(roleId).orElseThrow(
                 () -> new ResourceNotFoundException("role with id=" + roleId + " doesn't exists")
@@ -89,6 +94,9 @@ public class RoleService {
 
 
         roleRepository.save(role);
+
+        actionHistoryService.saveActionHistory(EntityEnum.PermissionRole, role.getId(), ActionEnum.UPDATE_VALUES, principalId,
+                "UPDATE PERMISSION_ROLE", "UPDATE PERMISSION_ROLE");
     }
 
     @Transactional

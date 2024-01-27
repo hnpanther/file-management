@@ -1,11 +1,8 @@
 package com.hnp.filemanagement.service;
 
-import com.hnp.filemanagement.dto.FileSubCategoryPageDTO;
 import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.dto.MainTagFilePageDTO;
-import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.MainTagFile;
-import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.entity.*;
 import com.hnp.filemanagement.exception.*;
 import com.hnp.filemanagement.repository.MainTagFileDAO;
 import com.hnp.filemanagement.repository.MainTagFileRepository;
@@ -42,13 +39,16 @@ public class MainTagFileService {
 
     private final MainTagFileDAO mainTagFileDAO;
 
-    public MainTagFileService(@Value("${file.management.base-dir}") String baseDir, EntityManager entityManager, FileCategoryService fileCategoryService, FileSubCategoryService fileSubCategoryService, MainTagFileRepository mainTagFileRepository, MainTagFileDAO mainTagFileDAO) {
+    private final ActionHistoryService actionHistoryService;
+
+    public MainTagFileService(@Value("${file.management.base-dir}") String baseDir, EntityManager entityManager, FileCategoryService fileCategoryService, FileSubCategoryService fileSubCategoryService, MainTagFileRepository mainTagFileRepository, MainTagFileDAO mainTagFileDAO, ActionHistoryService actionHistoryService) {
         this.baseDir = baseDir;
         this.entityManager = entityManager;
         this.fileCategoryService = fileCategoryService;
         this.fileSubCategoryService = fileSubCategoryService;
         this.mainTagFileRepository = mainTagFileRepository;
         this.mainTagFileDAO = mainTagFileDAO;
+        this.actionHistoryService = actionHistoryService;
     }
 
     @Transactional
@@ -80,6 +80,9 @@ public class MainTagFileService {
         mainTagFile.setCreatedBy(entityManager.getReference(User.class, principalId));
 
         mainTagFileRepository.save(mainTagFile);
+
+        actionHistoryService.saveActionHistory(EntityEnum.MainTagFile, mainTagFile.getId(), ActionEnum.CREATE, principalId,
+                "CREATE NEW MAIN_TAG_FILE", "CREATE NEW MAIN_TAG_FILE");
 
     }
 
@@ -119,11 +122,16 @@ public class MainTagFileService {
         mainTagFile.setUpdatedAt(LocalDateTime.now());
         mainTagFile.setUpdatedBy(entityManager.getReference(User.class, principalId));
         mainTagFileRepository.save(mainTagFile);
+
+
+        actionHistoryService.saveActionHistory(EntityEnum.MainTagFile, mainTagFileDTO.getId(), ActionEnum.UPDATE_VALUES, principalId,
+                "UPDATE MAIN_TAG_FILE", "UPDATE MAIN_TAG_FILE");
+
     }
 
 
     @Transactional
-    public void deleteMainTagFile(int mainTagFileId) {
+    public void deleteMainTagFile(int mainTagFileId, int principalId) {
         boolean deletable = mainTagFileDAO.isDeletable(mainTagFileId);
         if(!deletable) {
             throw new DependencyResourceException("can not delete mainTagFile, check id is correct and not related file to it");
@@ -132,6 +140,9 @@ public class MainTagFileService {
         MainTagFile mainTagFile = getMainTagFileByIdOrTagName(mainTagFileId, null);
 
         mainTagFileRepository.delete(mainTagFile);
+
+        actionHistoryService.saveActionHistory(EntityEnum.MainTagFile, mainTagFileId, ActionEnum.DELETE, principalId,
+                "DELETE MAIN_TAG_FILE", "DELETE MAIN_TAG_FILE");
     }
 
 

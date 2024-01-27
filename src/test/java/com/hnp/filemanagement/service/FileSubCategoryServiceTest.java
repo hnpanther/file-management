@@ -1,6 +1,5 @@
 package com.hnp.filemanagement.service;
 
-import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryPageDTO;
 import com.hnp.filemanagement.entity.*;
@@ -27,7 +26,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.Comparator;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -83,8 +81,8 @@ class FileSubCategoryServiceTest {
         actionHistoryService = new ActionHistoryService(entityManager, actionHistoryRepository);
         generalTagService = new GeneralTagService(entityManager, generalTagRepository, actionHistoryService);
         fileStorageService = new FileStorageFileSystemService(baseDir);
-        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
-        underTest = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, baseDir);
+        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService, actionHistoryService);
+        underTest = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, actionHistoryService, baseDir);
 
 
         // create base directory
@@ -330,7 +328,7 @@ class FileSubCategoryServiceTest {
         FileSubCategory fileSubCategory = underTest.getFileSubCategoryByIdOrSubCategoryName(fileSubCategorySubMailId2, null);
         String path = fileSubCategory.getPath();
 
-        underTest.deleteSubCategory(fileSubCategory.getId());
+        underTest.deleteSubCategory(fileSubCategory.getId(), userId);
 
 
         assertThat(Files.exists(Path.of(path))).isFalse();
@@ -346,7 +344,7 @@ class FileSubCategoryServiceTest {
     void deleteUnDeletableFileCategoryTest() {
 
         assertThatThrownBy(
-                () -> underTest.deleteSubCategory(fileSubCategorySubMailId)
+                () -> underTest.deleteSubCategory(fileSubCategorySubMailId, userId)
         ).isInstanceOf(DependencyResourceException.class);
 
     }

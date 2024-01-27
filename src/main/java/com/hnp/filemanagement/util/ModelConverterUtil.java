@@ -206,6 +206,27 @@ public class ModelConverterUtil {
 
     }
 
+
+    public static ActionHistoryDTO convertActionHistoryToActionHistoryDTO(ActionHistory actionHistory) {
+
+        ActionHistoryDTO actionHistoryDTO = new ActionHistoryDTO();
+        actionHistoryDTO.setId(actionHistory.getId());
+        actionHistoryDTO.setEntityName(actionHistory.getEntityName());
+        actionHistoryDTO.setTableName(actionHistory.getEntityName().getValue());
+        actionHistoryDTO.setEntityId(actionHistory.getEntityId());
+        actionHistoryDTO.setAction(actionHistory.getAction());
+        actionHistoryDTO.setActionDescription(actionHistory.getActionDescription());
+        actionHistoryDTO.setDescription(actionHistory.getDescription());
+        actionHistoryDTO.setEnabled(actionHistory.getEnabled());
+        actionHistoryDTO.setState(actionHistory.getState());
+        actionHistoryDTO.setCreatedAt(actionHistory.getCreatedAt());
+        actionHistoryDTO.setUsername(actionHistory.getUser().getUsername());
+        actionHistoryDTO.setFullName(actionHistory.getUser().getFirstName() + " " + actionHistory.getUser().getLastName());
+
+        return actionHistoryDTO;
+    }
+
+
     public static String getFileNameWithoutExtension(String fileName) {
         return fileName.replaceFirst("[.][^.]+$", "");
     }

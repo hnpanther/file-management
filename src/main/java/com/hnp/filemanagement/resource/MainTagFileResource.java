@@ -50,7 +50,7 @@ public class MainTagFileResource {
 
 
         try {
-            mainTagFileService.deleteMainTagFile(mainTagFileId);
+            mainTagFileService.deleteMainTagFile(mainTagFileId, principalId);
         } catch (DependencyResourceException e) {
             globalGeneralLogging.controllerLogging(principalId, principalUsername,
                     request.getMethod() + " " + path, "MainTagFileResource.class",

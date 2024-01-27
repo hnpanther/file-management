@@ -4,11 +4,13 @@ import com.hnp.filemanagement.dto.PermissionDTO;
 import com.hnp.filemanagement.entity.Permission;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
+import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.ActionHistoryRepository;
 import com.hnp.filemanagement.repository.PermissionRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
+import com.hnp.filemanagement.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +20,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.test.annotation.Commit;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -43,14 +46,22 @@ class RoleServiceTest {
     @Autowired
     private PermissionRepository permissionRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
     private RoleService underTest;
 
+    private ActionHistoryService actionHistoryService;
+
     private int role1Id = 0;
+
+    private int userId = 0;
 
     @BeforeEach
     void setUp() {
 
-        underTest = new RoleService(roleRepository, permissionRepository, entityManager);
+        actionHistoryService = new ActionHistoryService(entityManager, actionHistoryRepository);
+        underTest = new RoleService(roleRepository, permissionRepository, entityManager, actionHistoryService);
 
         Permission p1 = new Permission();
         p1.setPermissionName(PermissionEnum.CREATE_FILE_CATEGORY_PAGE);
@@ -75,6 +86,23 @@ class RoleServiceTest {
 
         role1Id = role1.getId();
 
+        User user1 = new User();
+        user1.setUsername("admin username");
+        user1.setPassword("password");
+        user1.setFirstName("name");
+        user1.setLastName("family");
+        user1.setPhoneNumber("009843435");
+        user1.setNationalCode("5252525");
+        user1.setPersonelCode(1111);
+        user1.setCreatedAt(LocalDateTime.now());
+        user1.setEnabled(1);
+        user1.setState(0);
+
+        userRepository.save(user1);
+
+        userId = user1.getId();
+
+
     }
 
     @AfterEach
@@ -83,6 +111,7 @@ class RoleServiceTest {
         actionHistoryRepository.deleteAll();
         permissionRepository.deleteAll();
         roleRepository.deleteAll();
+        userRepository.deleteAll();
     }
 
     @Test
@@ -90,7 +119,7 @@ class RoleServiceTest {
     void createRoleWithoutPermissionTest() {
 
         String roleName = "MANAGER";
-        underTest.createRole(roleName, null);
+        underTest.createRole(roleName, null, userId);
 
         Optional<Role> optionalRole = roleRepository.findByRoleName(roleName);
         assertThat(optionalRole.isPresent()).isTrue();
@@ -110,7 +139,7 @@ class RoleServiceTest {
                 }).toList();
         String roleName = "MANAGER";
 
-        underTest.createRole(roleName, permissionDTOList);
+        underTest.createRole(roleName, permissionDTOList, userId);
 
         Optional<Role> createdRoleOptional = roleRepository.findByRoleName(roleName);
         assertThat(createdRoleOptional.isPresent()).isTrue();
@@ -125,7 +154,7 @@ class RoleServiceTest {
 
         String roleName = "USER";
         assertThatThrownBy(
-                () -> underTest.createRole(roleName, null)
+                () -> underTest.createRole(roleName, null, userId)
         ).isInstanceOf(DuplicateResourceException.class);
     }
 
@@ -141,7 +170,7 @@ class RoleServiceTest {
 //        List<PermissionDTO> permissionDTOList = new ArrayList<>();
 //        permissionDTOList.addAll(List.of(permissionDTO));
 
-        underTest.updatePermissionsOfRole(role.getId(), List.of(permissionDTO.getId()));
+        underTest.updatePermissionsOfRole(role.getId(), List.of(permissionDTO.getId()), userId);
 
         Role updatedRole = roleRepository.findByRoleName("USER").get();
         assertThat(updatedRole.getPermissions().size()).isEqualTo(1);
@@ -154,7 +183,7 @@ class RoleServiceTest {
     void updatePermissionOfRoleWithEmptyListTest() {
         Role role = roleRepository.findByRoleName("USER").get();
 
-        underTest.updatePermissionsOfRole(role.getId(), new ArrayList<>());
+        underTest.updatePermissionsOfRole(role.getId(), new ArrayList<>(), userId);
 
         Role updatedRole = roleRepository.findByRoleName("USER").get();
         assertThat(updatedRole.getPermissions().size()).isEqualTo(0);
@@ -170,7 +199,7 @@ class RoleServiceTest {
         permissionDTO.setSelected(true);
 
         assertThatThrownBy(
-                () -> underTest.updatePermissionsOfRole(role.getId(), List.of(permissionDTO.getId()))
+                () -> underTest.updatePermissionsOfRole(role.getId(), List.of(permissionDTO.getId()), userId)
         ).isInstanceOf(InvalidDataException.class);
 
 

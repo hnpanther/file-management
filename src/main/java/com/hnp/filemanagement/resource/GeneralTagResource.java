@@ -3,7 +3,6 @@ package com.hnp.filemanagement.resource;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.GeneralTagPageDTO;
 import com.hnp.filemanagement.dto.GenericListResponse;
-import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.GeneralTagService;
@@ -16,7 +15,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @RestController()
@@ -77,7 +75,7 @@ public class GeneralTagResource {
                 request.getMethod() + " " + path, "GeneralTagResource.class", logMessage);
 
         try {
-            generalTagService.deleteGeneralTag(generalTagId);
+            generalTagService.deleteGeneralTag(generalTagId, principalId);
         } catch (DependencyResourceException e) {
             globalGeneralLogging.controllerLogging(principalId, principalUsername,
                     request.getMethod() + " " + path, "GeneralTagResource.class",

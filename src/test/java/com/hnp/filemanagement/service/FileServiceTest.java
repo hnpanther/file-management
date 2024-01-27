@@ -102,11 +102,12 @@ class FileServiceTest {
         actionHistoryService = new ActionHistoryService(entityManager, actionHistoryRepository);
         fileStorageService = new FileStorageFileSystemService(baseDir);
         generalTagService = new GeneralTagService(entityManager, generalTagRepository, actionHistoryService);
-        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
-        fileSubCategoryService = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, baseDir);
-        mainTagFileService = new MainTagFileService(baseDir, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileRepository, mainTagFileDAO);
+        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService, actionHistoryService);
+        fileSubCategoryService = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, actionHistoryService, baseDir);
+        mainTagFileService = new MainTagFileService(baseDir, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileRepository, mainTagFileDAO, actionHistoryService);
         mainTagFileDAO = new MainTagFileDAO(entityManager, jdbcClient);
-        underTest = new FileService(baseDir, fileStorageService, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileService, fileInfoRepository, fileDetailsRepository);
+        underTest = new FileService(baseDir, fileStorageService, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileService,
+                fileInfoRepository, fileDetailsRepository, actionHistoryService);
 
         // create base directory
         String directoryPath = baseDir;
@@ -417,7 +418,7 @@ class FileServiceTest {
     void deleteCompleteFileByIdTest() {
         FileInfoDTO f = underTest.getFileInfoDtoWithFileDetails(fileInfoId);
         String address = f.getFilePath();
-        underTest.deleteCompleteFileById(fileInfoId);
+        underTest.deleteCompleteFileById(fileInfoId, userId);
 
 
         assertThat(Files.exists(Paths.get(address))).isFalse();

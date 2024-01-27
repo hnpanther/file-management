@@ -40,11 +40,12 @@ public class FileService {
     private final EntityManager entityManager;
     private final FileInfoRepository fileInfoRepository;
     private final FileDetailsRepository fileDetailsRepository;
+    private final ActionHistoryService actionHistoryService;
 
 
     public FileService(@Value("${file.management.base-dir}") String baseDir, FileStorageService fileStorageService,
                        EntityManager entityManager, FileCategoryService fileCategoryService, FileSubCategoryService fileSubCategoryService,
-                       MainTagFileService mainTagFileService, FileInfoRepository fileInfoRepository, FileDetailsRepository fileDetailsRepository) {
+                       MainTagFileService mainTagFileService, FileInfoRepository fileInfoRepository, FileDetailsRepository fileDetailsRepository, ActionHistoryService actionHistoryService) {
         this.baseDir = baseDir;
         this.fileStorageService = fileStorageService;
         this.fileCategoryService = fileCategoryService;
@@ -53,6 +54,7 @@ public class FileService {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.entityManager = entityManager;
+        this.actionHistoryService = actionHistoryService;
     }
 
 
@@ -121,6 +123,12 @@ public class FileService {
         fileInfo.setLastVersion(1);
 
         fileInfoRepository.save(fileInfo);
+
+        actionHistoryService.saveActionHistory(EntityEnum.FileInfo, fileInfo.getId(), ActionEnum.CREATE, principalId,
+                "CREATE NEW FILE_INFO", "CREATE NEW FILE_INFO");
+        actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetails.getId(), ActionEnum.CREATE, principalId,
+                "CREATE NEW FILE_DETAILS", "CREATE NEW FILE_DETAILS");
+
 
         String address = mainTagFile.getFileSubCategory().getFileCategory().getCategoryName() + "/" + mainTagFile.getFileSubCategory().getSubCategoryName();
         fileStorageService.save(address, fileInfoDTO.getMultipartFile(), 1, fileExtension);
@@ -222,6 +230,9 @@ public class FileService {
 
         fileDetailsRepository.save(fileDetails);
 
+        actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetails.getId(), ActionEnum.CREATE, principalId,
+                "CREATE NEW FILE_DETAILS", "CREATE NEW FILE_DETAILS");
+
     }
 
     private void createNewVersionFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo, int principalId) {
@@ -260,6 +271,9 @@ public class FileService {
 
 //        fileDetailsRepository.save(fileDetails);
 
+        actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetails.getId(), ActionEnum.CREATE, principalId,
+                "CREATE NEW FILE_DETAILS", "CREATE NEW FILE_DETAILS");
+
 
     }
 
@@ -276,9 +290,12 @@ public class FileService {
         fileInfo.setUpdatedAt(LocalDateTime.now());
         fileInfo.setUpdatedBy(entityManager.getReference(User.class, principalId));
         fileInfoRepository.save(fileInfo);
+
+        actionHistoryService.saveActionHistory(EntityEnum.FileInfo, id, ActionEnum.UPDATE_VALUES, principalId,
+                "UPDATE FILE_INFO", "Update File info, new description=" + description);
     }
 
-    public void changeFileInfoState(int fileInfoId, int newState) {
+    public void changeFileInfoState(int fileInfoId, int newState, int principalId) {
 
         if(newState != 0 && newState != -1) {
             throw new InvalidDataException("newState not correct");
@@ -288,12 +305,15 @@ public class FileService {
                 () -> new ResourceNotFoundException("file info with id=" + fileInfoId + " not exists")
         );
 
-
+        int oldState = fileInfo.getState();
         fileInfo.setState(newState);
         fileInfoRepository.save(fileInfo);
+
+        actionHistoryService.saveActionHistory(EntityEnum.FileInfo, fileInfoId, ActionEnum.UPDATE_CHANGE_STATE, principalId,
+                "CHANGE STATE FILE_INFO", "Change state from " + oldState + " to " + newState);
     }
 
-    public void changeFileDetailsState(int fileDetailsId, int newState) {
+    public void changeFileDetailsState(int fileDetailsId, int newState, int principalId) {
 
         if(newState != 0 && newState != -1) {
             throw new InvalidDataException("newState not correct");
@@ -303,20 +323,25 @@ public class FileService {
                 () -> new ResourceNotFoundException("file details with id=" + fileDetailsRepository + " not exists")
         );
 
-
+        int oldState = fileDetails.getState();
         fileDetails.setState(newState);
         fileDetailsRepository.save(fileDetails);
+
+        actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetailsId, ActionEnum.UPDATE_CHANGE_STATE, principalId,
+                "CHANGE STATE FILE_DETAILS", "Change state from " + oldState + " to " + newState);
     }
 
     // in progress ...
     @Transactional
-    public void deleteCompleteFileById(int id) {
+    public void deleteCompleteFileById(int id, int principalId) {
 
         FileInfo fileInfo = getFileInfoWithFileDetails(id);
         String address = fileInfo.getMainTagFile().getFileSubCategory().getFileCategory().getCategoryName() + "/" +
                 fileInfo.getMainTagFile().getFileSubCategory().getSubCategoryName() + "/" + fileInfo.getFileName();
 
         fileInfoRepository.delete(fileInfo);
+        actionHistoryService.saveActionHistory(EntityEnum.FileInfo, id, ActionEnum.DELETE, principalId,
+                "DELETE FILE_INFO", "Delete Complete File_Info");
         fileStorageService.delete(address, "", 1, "", false);
     }
 
@@ -441,7 +466,7 @@ public class FileService {
         String extension = fileDetails.getFileExtension();
 
         if(listSize == 1) {
-            deleteCompleteFileById(fileInfoId);
+            deleteCompleteFileById(fileInfoId, principalId);
 
 
         } else {

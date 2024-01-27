@@ -94,7 +94,7 @@ public class RoleController {
                     "ValidationError:" + bindingResult);
         } else {
             try {
-                roleService.createRole(roleDTO.getRoleName(), null);
+                roleService.createRole(roleDTO.getRoleName(), null, principalId);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (DuplicateResourceException e) {
@@ -166,7 +166,8 @@ public class RoleController {
                     "ValidationError:" + bindingResult);
         } else {
             try {
-                roleService.updatePermissionsOfRole(roleDTO.getId(), roleDTO.getPermissionDTOListId());
+                roleService.updatePermissionsOfRole(roleDTO.getId(),
+                        roleDTO.getPermissionDTOListId(), principalId);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (ResourceNotFoundException e) {

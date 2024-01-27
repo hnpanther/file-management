@@ -11,13 +11,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.json.JsonParser;
 import org.springframework.boot.json.JsonParserFactory;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
 import java.util.Map;
 
 @RestController()
@@ -50,7 +48,7 @@ public class FileResource {
                 request.getMethod() + " " + path, "FileResource.class", logMessage);
 
 
-        fileService.deleteCompleteFileById(fileInfoId);
+        fileService.deleteCompleteFileById(fileInfoId, principalId);
 
         return new ResponseEntity<>(("file info with id =" + fileInfoId + " deleted"), HttpStatus.OK);
     }
@@ -97,7 +95,7 @@ public class FileResource {
             if(newState != 0 && newState != -1) {
                 return new ResponseEntity<>("invalid data", HttpStatus.BAD_REQUEST);
             }
-            fileService.changeFileInfoState(fileInfoId, newState);
+            fileService.changeFileInfoState(fileInfoId, newState, principalId);
         } catch (NumberFormatException | InvalidDataException e) {
             globalGeneralLogging.controllerLogging(principalId, principalUsername,
                     request.getMethod() + " " + path, "FileResource.class",
@@ -163,7 +161,7 @@ public class FileResource {
         }
 
         try {
-            fileService.changeFileDetailsState(fileDetailsId, newState);
+            fileService.changeFileDetailsState(fileDetailsId, newState, principalId);
         } catch (InvalidDataException e) {
             globalGeneralLogging.controllerLogging(principalId, principalUsername,
                     request.getMethod() + " " + path, "FileResource.class",

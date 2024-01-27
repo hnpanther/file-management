@@ -91,7 +91,7 @@ public class UserController {
                     "ValidationError:" + bindingResult);
         } else {
             try {
-                userService.createUser(userDTO);
+                userService.createUser(userDTO, principalId);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (ResourceNotFoundException e) {
@@ -203,7 +203,7 @@ public class UserController {
                     "ValidationError:" + bindingResult);
         } else {
             try {
-                userService.changePassword(userDTO);
+                userService.changePassword(userDTO, principalId);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (ResourceNotFoundException e) {
@@ -248,7 +248,7 @@ public class UserController {
                     "ValidationError:" + bindingResult);
         } else {
             try {
-                userService.updateUser(userDTO);
+                userService.updateUser(userDTO, principalId);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (ResourceNotFoundException e) {
@@ -325,7 +325,7 @@ public class UserController {
                     "ValidationError:" + bindingResult);
         } else {
             try {
-                userService.updateUserRoles(userId, userRoleDTO.getRolesIds());
+                userService.updateUserRoles(userId, userRoleDTO.getRolesIds(), principalId);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (ResourceNotFoundException e) {

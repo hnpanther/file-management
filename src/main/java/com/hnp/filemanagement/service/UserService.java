@@ -3,21 +3,15 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.RoleDTO;
 import com.hnp.filemanagement.dto.UserDTO;
-import com.hnp.filemanagement.entity.Permission;
-import com.hnp.filemanagement.entity.PermissionEnum;
-import com.hnp.filemanagement.entity.Role;
-import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.entity.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
-import com.hnp.filemanagement.repository.PermissionRepository;
-import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -45,16 +39,19 @@ public class UserService {
 
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
 
-    public UserService(UserRepository userRepository, RoleService roleService, EntityManager entityManager, BCryptPasswordEncoder bCryptPasswordEncoder) {
+    private final ActionHistoryService actionHistoryService;
+
+    public UserService(UserRepository userRepository, RoleService roleService, EntityManager entityManager, BCryptPasswordEncoder bCryptPasswordEncoder, ActionHistoryService actionHistoryService) {
         this.userRepository = userRepository;
         this.roleService = roleService;
         this.entityManager = entityManager;
         this.bCryptPasswordEncoder = bCryptPasswordEncoder;
+        this.actionHistoryService = actionHistoryService;
     }
 
 
     @Transactional
-    public void createUser(UserDTO userDTO) {
+    public void createUser(UserDTO userDTO, int principalId) {
 
         Role role = roleService.getByIdOrRoleName(0, "USER");
 
@@ -83,6 +80,9 @@ public class UserService {
         user.getRoles().add(role);
 
         userRepository.save(user);
+
+        actionHistoryService.saveActionHistory(EntityEnum.User, user.getId(), ActionEnum.CREATE, principalId,
+                "CREATE NEW USER", "CREATE NEW USER");
 
     }
 
@@ -124,7 +124,7 @@ public class UserService {
 
 
     @Transactional
-    public void updateUser(UserDTO userDTO) {
+    public void updateUser(UserDTO userDTO, int principalId) {
 
         User user = getUserByIdOrUsername(userDTO.getId(), null);
 
@@ -180,12 +180,15 @@ public class UserService {
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
 
+        actionHistoryService.saveActionHistory(EntityEnum.User, user.getId(), ActionEnum.UPDATE_VALUES, principalId,
+                "UPDATE USER", "UPDATE USER");
+
 
 
     }
 
     @Transactional
-    public void updateUserRoles(int userId, List<Integer> roleDTOIdList) {
+    public void updateUserRoles(int userId, List<Integer> roleDTOIdList, int principalId) {
 
         if(roleDTOIdList == null) {
             throw new InvalidDataException("role list can not be null");
@@ -193,32 +196,33 @@ public class UserService {
 
         User user = getUserByIdOrUsername(userId, null);
 
-
-
         List<Role> roles = this.roleService.getRoleByIds(roleDTOIdList);
         if(roles.size() != roleDTOIdList.size()) {
             throw new InvalidDataException("invalid role for add to user, roleList=" +roleDTOIdList);
         }
 
 
-
         user.setRoles(roles);
         userRepository.save(user);
 
-
+        actionHistoryService.saveActionHistory(EntityEnum.UserRole, user.getId(), ActionEnum.UPDATE_VALUES, principalId,
+                "UPDATE USER_ROLE", "UPDATE USER_ROLE");
 
     }
 
     @Transactional
-    public void changePassword(UserDTO userDTO) {
+    public void changePassword(UserDTO userDTO, int principalId) {
 
         User user = getUserByIdOrUsername(userDTO.getId(), null);
         user.setPassword(bCryptPasswordEncoder.encode(userDTO.getPassword()));
         userRepository.save(user);
+
+        actionHistoryService.saveActionHistory(EntityEnum.User, user.getId(), ActionEnum.UPDATE_VALUES, principalId,
+                "CHANGE PASSWORD", "CHANGE PASSWORD");
     }
 
     @Transactional
-    public void changeEnabled(int userId, int enabled) {
+    public void changeEnabled(int userId, int enabled, int principalId) {
 
         if(enabled != 0 && enabled != 1) {
             throw new InvalidDataException("enabled is invalid, enabled=" + enabled);
@@ -226,16 +230,23 @@ public class UserService {
         User user = getUserByIdOrUsername(userId, null);
         user.setEnabled(enabled);
         userRepository.save(user);
+
+        actionHistoryService.saveActionHistory(EntityEnum.User, user.getId(), ActionEnum.UPDATE_VALUES, principalId,
+                "CHANGE ENABLED", "Change enabled to " + enabled);
     }
 
     @Transactional
-    public void changeLoginType(int userId, int type) {
+    public void changeLoginType(int userId, int type, int principalId) {
         if(type != 0 && type != 1 && type != 2) {
             throw new InvalidDataException("login type is invalid, type=" + type);
         }
         User user = getUserByIdOrUsername(userId, null);
+        int oldLoginType = user.getLoginType();
         user.setLoginType(type);
         userRepository.save(user);
+
+        actionHistoryService.saveActionHistory(EntityEnum.User, userId, ActionEnum.UPDATE_VALUES, principalId,
+                "CHANGE LOGIN TYPE", "Change Login Type from " + oldLoginType + " to " + type);
     }
 
 

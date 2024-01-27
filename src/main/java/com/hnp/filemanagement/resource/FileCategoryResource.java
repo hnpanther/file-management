@@ -74,7 +74,7 @@ public class FileCategoryResource {
                 request.getMethod() + " " + path, "FileCategoryResource.class", logMessage);
 
         try {
-            fileCategoryService.deleteFileCategory(fileCategoryId);
+            fileCategoryService.deleteFileCategory(fileCategoryId, principalId);
         } catch (DependencyResourceException e) {
             globalGeneralLogging.controllerLogging(principalId, principalUsername,
                     request.getMethod() + " " + path, "FileCategoryResource.class",

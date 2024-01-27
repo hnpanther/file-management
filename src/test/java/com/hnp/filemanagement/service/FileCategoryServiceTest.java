@@ -12,7 +12,6 @@ import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.*;
 import com.hnp.filemanagement.util.ModelConverterUtil;
-import jakarta.persistence.Entity;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -97,7 +96,7 @@ class FileCategoryServiceTest {
         generalTagService = new GeneralTagService(entityManager, generalTagRepository, actionHistoryService);
 
         fileStorageService = new FileStorageFileSystemService(baseDir);
-        underTest = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
+        underTest = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService, actionHistoryService);
 
         User user = new User();
         user.setUsername("admin");
@@ -298,7 +297,7 @@ class FileCategoryServiceTest {
         FileCategory fileCategory = fileCategoryRepository.findById(fileCategoryId1).get();
         String path = fileCategory.getPath();
 
-        underTest.deleteFileCategory(fileCategory.getId());
+        underTest.deleteFileCategory(fileCategory.getId(), userId);
 
 
         assertThat(Files.exists(Paths.get(path))).isFalse();
@@ -312,7 +311,7 @@ class FileCategoryServiceTest {
     @Commit
     void deleteFileCategoryDependencyTest() {
         assertThatThrownBy(
-                () -> underTest.deleteFileCategory(fileCategoryId2)
+                () -> underTest.deleteFileCategory(fileCategoryId2, userId)
         ).isInstanceOf(DependencyResourceException.class);
     }
 

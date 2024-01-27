@@ -1,11 +1,8 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.dto.ActionHistoryDTO;
 import com.hnp.filemanagement.dto.GeneralTagDTO;
-import com.hnp.filemanagement.dto.GeneralTagPageDTO;
-import com.hnp.filemanagement.entity.FileCategory;
-import com.hnp.filemanagement.entity.GeneralTag;
-import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.exception.BusinessException;
+import com.hnp.filemanagement.entity.*;
 import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -25,8 +22,8 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.test.annotation.Commit;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -95,6 +92,9 @@ class GeneralTagServiceTest {
         generalTagRepository.save(generalTag1);
         genertalTagId1 = generalTag1.getId();
 
+        actionHistoryService.saveActionHistory(EntityEnum.GeneralTag, genertalTagId1, ActionEnum.CREATE, userId,
+                "CREATE NEW GENERAL_TAG", "CREATE NEW GENERAL_TAG");
+
         GeneralTag generalTag2 = new GeneralTag();
         generalTag2.setTagName("Contract");
         generalTag2.setTagNameDescription("Contract");
@@ -105,6 +105,9 @@ class GeneralTagServiceTest {
         generalTag2.setCreatedBy(user);
         generalTagRepository.save(generalTag2);
         generalTagId2 = generalTag2.getId();
+
+        actionHistoryService.saveActionHistory(EntityEnum.GeneralTag, generalTagId2, ActionEnum.CREATE, userId,
+                "CREATE NEW GENERAL_TAG", "CREATE NEW GENERAL_TAG");
 
 
         FileCategory fileCategory = new FileCategory();
@@ -162,6 +165,9 @@ class GeneralTagServiceTest {
         GeneralTagDTO generalTagDTO1 = underTest.getGeneralTagDTOByIdOrTagName(0, "HR");
         assertThat(generalTagDTO1.getTagNameDescription()).isEqualTo("HR Desc");
 
+        List<ActionHistoryDTO> actionHistoriesOfEntity = actionHistoryService.getActionHistoriesOfEntity(generalTagDTO1.getId(), EntityEnum.GeneralTag);
+        assertThat(actionHistoriesOfEntity.size()).isEqualTo(1);
+
     }
 
 
@@ -197,7 +203,10 @@ class GeneralTagServiceTest {
 
     @Test
     void deleteGeneralTagTest() {
-        underTest.deleteGeneralTag(generalTagId2);
+        underTest.deleteGeneralTag(generalTagId2, userId);
+
+        List<ActionHistoryDTO> actionHistoriesOfEntity = actionHistoryService.getActionHistoriesOfEntity(generalTagId2, EntityEnum.GeneralTag);
+        assertThat(actionHistoriesOfEntity.size()).isEqualTo(2);
 
         assertThatThrownBy(
                 () -> underTest.getGeneralTagByIdOrTagName(generalTagId2, null)
@@ -208,7 +217,7 @@ class GeneralTagServiceTest {
     void deleteUndeletableGeneralTagTest() {
 
         assertThatThrownBy(
-                () -> underTest.deleteGeneralTag(genertalTagId1)
+                () -> underTest.deleteGeneralTag(genertalTagId1, userId)
         ).isInstanceOf(DependencyResourceException.class);
     }
 

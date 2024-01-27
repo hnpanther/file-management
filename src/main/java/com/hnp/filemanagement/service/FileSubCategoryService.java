@@ -3,9 +3,7 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryPageDTO;
 import com.hnp.filemanagement.dto.MainTagFileDTO;
-import com.hnp.filemanagement.entity.FileCategory;
-import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.entity.*;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
@@ -41,17 +39,20 @@ public class FileSubCategoryService {
 
     private final FileStorageService fileStorageService;
 
+    private final ActionHistoryService actionHistoryService;
+
     private final String baseDir;
 
     public FileSubCategoryService(EntityManager entityManager,
                                   FileCategoryService fileCategoryService,
                                   FileSubCategoryRepository fileSubCategoryRepository,
-                                  FileStorageService fileStorageService,
+                                  FileStorageService fileStorageService, ActionHistoryService actionHistoryService,
                                   @Value("${file.management.base-dir}") String baseDir) {
         this.entityManager = entityManager;
         this.fileCategoryService = fileCategoryService;
         this.fileSubCategoryRepository = fileSubCategoryRepository;
         this.fileStorageService = fileStorageService;
+        this.actionHistoryService = actionHistoryService;
         this.baseDir = baseDir;
     }
 
@@ -84,6 +85,9 @@ public class FileSubCategoryService {
 
         fileSubCategoryRepository.save(fileSubCategory);
 
+        actionHistoryService.saveActionHistory(EntityEnum.FileSubCategory, fileSubCategory.getId(), ActionEnum.CREATE, principalId,
+                "CREATE NEW FILE_SUB_CATEGORY", "CREATE NEW FILE_SUB_CATEGORY");
+
 
         fileStorageService.createDirectory(fileCategory.getCategoryName() + "/" + fileSubCategory.getSubCategoryName(), true);
 
@@ -112,11 +116,14 @@ public class FileSubCategoryService {
 
         fileSubCategoryRepository.save(fileSubCategory);
 
+        actionHistoryService.saveActionHistory(EntityEnum.FileSubCategory, fileSubCategory.getId(), ActionEnum.UPDATE_VALUES, principalId,
+                "UPDATE FILE_SUB_CATEGORY", "UPDATE FILE_SUB_CATEGORY");
+
     }
 
 
     @Transactional
-    public void deleteSubCategory(int subCategoryId) {
+    public void deleteSubCategory(int subCategoryId, int principalId) {
         int count = fileSubCategoryRepository.countFileSubCategoryWithMainTagFile(subCategoryId);
         if(count > 0) {
             throw new DependencyResourceException("can not delete sub category with id=" + subCategoryId + ", first delete all related main tag files");
@@ -125,6 +132,10 @@ public class FileSubCategoryService {
         FileSubCategory fileSubCategory = getFileSubCategoryByIdOrSubCategoryName(subCategoryId, null);
         String relativePath = fileSubCategory.getRelativePath();
         fileSubCategoryRepository.delete(fileSubCategory);
+        actionHistoryService.saveActionHistory(EntityEnum.FileSubCategory, subCategoryId, ActionEnum.DELETE, principalId,
+                "DELETE FILE_SUB_CATEGORY", "DELETE FILE_SUB_CATEGORY");
+
+
         fileStorageService.delete(relativePath, null, 0, "", false);
     }
 

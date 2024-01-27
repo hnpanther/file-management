@@ -50,6 +50,9 @@ class UserServiceTest {
     private EntityManager entityManager;
 
     private RoleService roleService;
+
+    private ActionHistoryService actionHistoryService;
+
     private UserService underTest;
 
     private int user1Id = 0;
@@ -60,11 +63,12 @@ class UserServiceTest {
     @BeforeEach
     void setUp() {
 
+        actionHistoryService = new ActionHistoryService(entityManager, actionHistoryRepository);
 
         BCryptPasswordEncoder bCryptPasswordEncoder = new BCryptPasswordEncoder();
 
-        roleService = new RoleService(roleRepository, permissionRepository, entityManager);
-        underTest = new UserService(userRepository, roleService, entityManager, bCryptPasswordEncoder);
+        roleService = new RoleService(roleRepository, permissionRepository, entityManager, actionHistoryService);
+        underTest = new UserService(userRepository, roleService, entityManager, bCryptPasswordEncoder, actionHistoryService);
 
         Permission p1 = new Permission();
         p1.setPermissionName(PermissionEnum.CREATE_FILE_CATEGORY_PAGE);
@@ -142,7 +146,7 @@ class UserServiceTest {
         userDTO.setPhoneNumber("79539573");
         userDTO.setPersonelCode(2221);
 
-        underTest.createUser(userDTO);
+        underTest.createUser(userDTO, user1Id);
 
         Optional<User> newUserOptional = userRepository.findByIdOrUsername(0, "new username");
         assertThat(newUserOptional.isPresent()).isTrue();
@@ -162,7 +166,7 @@ class UserServiceTest {
         userDTO.setPersonelCode(1111);
 
         assertThatThrownBy(
-                () -> underTest.createUser(userDTO)
+                () -> underTest.createUser(userDTO, user1Id)
         ).isInstanceOf(DuplicateResourceException.class);
 
 
@@ -173,7 +177,7 @@ class UserServiceTest {
     void updateUserWithEmptyRolesTest() {
 
 
-        underTest.updateUserRoles(user1Id, new ArrayList<>());
+        underTest.updateUserRoles(user1Id, new ArrayList<>(), user1Id);
 
         UserDTO user = underTest.getUserDtoByIdOrUsername(0, "admin username");
 
@@ -197,7 +201,7 @@ class UserServiceTest {
 
         roleDTOList.addAll(List.of(roleDTO1.getId(), roleDTO2.getId()));
 
-        underTest.updateUserRoles(user1Id, roleDTOList);
+        underTest.updateUserRoles(user1Id, roleDTOList, user1Id);
 
         UserDTO user = underTest.getUserDtoByIdOrUsername(user1Id, null);
         assertThat(user.getRoleList().size()).isEqualTo(2);
@@ -216,7 +220,7 @@ class UserServiceTest {
         userDTO.setNationalCode("5252525");
         userDTO.setPersonelCode(1111);
 
-        underTest.updateUser(userDTO);
+        underTest.updateUser(userDTO, user1Id);
 
         UserDTO updatedUserDto = underTest.getUserDtoByIdOrUsername(user1Id, null);
         assertThat(updatedUserDto.getFirstName()).isEqualTo("updated name");
@@ -237,7 +241,7 @@ class UserServiceTest {
         userDTO.setNationalCode("5252525");
         userDTO.setPersonelCode(1121);
 
-        underTest.updateUser(userDTO);
+        underTest.updateUser(userDTO, user1Id);
 
         UserDTO updatedUserDto = underTest.getUserDtoByIdOrUsername(user1Id, null);
         assertThat(updatedUserDto.getFirstName()).isEqualTo("updated name");
@@ -262,7 +266,7 @@ class UserServiceTest {
 
 
         assertThatThrownBy(
-                () -> underTest.updateUser(userDTO)
+                () -> underTest.updateUser(userDTO, user1Id)
         ).isInstanceOf(DuplicateResourceException.class);
 
     }

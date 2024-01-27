@@ -54,7 +54,7 @@ public class UserResource {
             if(enabled != 0 && enabled != 1) {
                 return new ResponseEntity<>("invalid data", HttpStatus.BAD_REQUEST);
             }
-            userService.changeEnabled(userId, enabled);
+            userService.changeEnabled(userId, enabled, principalId);
         } catch (NumberFormatException | InvalidDataException e) {
             globalGeneralLogging.controllerLogging(principalId, principalUsername,
                     request.getMethod() + " " + path, "UserResource.class",
@@ -87,7 +87,7 @@ public class UserResource {
             if(type != 0 && type != 1 && type != 2) {
                 return new ResponseEntity<>("invalid data", HttpStatus.BAD_REQUEST);
             }
-            userService.changeLoginType(userId, type);
+            userService.changeLoginType(userId, type, principalId);
         } catch (NumberFormatException | InvalidDataException e) {
             globalGeneralLogging.controllerLogging(principalId, principalUsername,
                     request.getMethod() + " " + path, "UserResource.class",

@@ -3,7 +3,10 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.dto.MainTagFilePageDTO;
 import com.hnp.filemanagement.entity.*;
-import com.hnp.filemanagement.exception.*;
+import com.hnp.filemanagement.exception.BusinessException;
+import com.hnp.filemanagement.exception.DependencyResourceException;
+import com.hnp.filemanagement.exception.DuplicateResourceException;
+import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.*;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
@@ -15,12 +18,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.annotation.Commit;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -92,10 +92,10 @@ class MainTagFileServiceTest {
         actionHistoryService = new ActionHistoryService(entityManager, actionHistoryRepository);
         fileStorageService = new FileStorageFileSystemService(baseDir);
         generalTagService = new GeneralTagService(entityManager, generalTagRepository, actionHistoryService);
-        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService);
-        fileSubCategoryService = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, baseDir);
+        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService, actionHistoryService);
+        fileSubCategoryService = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, actionHistoryService, baseDir);
         mainTagFileDAO = new MainTagFileDAO(entityManager, jdbcClient);
-        underTest = new MainTagFileService(baseDir, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileRepository, mainTagFileDAO);
+        underTest = new MainTagFileService(baseDir, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileRepository, mainTagFileDAO, actionHistoryService);
 
         // create base directory
         String directoryPath = baseDir;
@@ -389,7 +389,7 @@ class MainTagFileServiceTest {
     @Test
     @Commit
     void deleteMainTagFileTest() {
-        underTest.deleteMainTagFile(mainTagFilePreviewId);
+        underTest.deleteMainTagFile(mainTagFilePreviewId, userId);
 
         assertThatThrownBy(
                 () -> underTest.getMainTagFileDtoByIdOrTagName(mainTagFilePreviewId, null)
@@ -402,7 +402,7 @@ class MainTagFileServiceTest {
 
 
         assertThatThrownBy(
-                () -> underTest.deleteMainTagFile(mainTagFileContractId)
+                () -> underTest.deleteMainTagFile(mainTagFileContractId, userId)
         ).isInstanceOf(DependencyResourceException.class);
     }
 

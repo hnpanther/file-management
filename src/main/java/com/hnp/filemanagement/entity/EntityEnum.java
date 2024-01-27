@@ -11,7 +11,9 @@ public enum EntityEnum {
     Permission("permission"),
     Role("role"),
     User("user"),
-    ActionHistory("action_history")
+    ActionHistory("action_history"),
+    UserRole("user_role"),
+    PermissionRole("permission_role")
     ;
 
 

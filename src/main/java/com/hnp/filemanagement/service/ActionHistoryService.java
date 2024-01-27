@@ -1,14 +1,19 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.dto.ActionHistoryDTO;
 import com.hnp.filemanagement.entity.ActionEnum;
 import com.hnp.filemanagement.entity.ActionHistory;
 import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.repository.ActionHistoryRepository;
+import com.hnp.filemanagement.util.ModelConverterUtil;
 import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class ActionHistoryService {
@@ -35,9 +40,20 @@ public class ActionHistoryService {
         actionHistory.setUser(entityManager.getReference(User.class, userId));
         actionHistory.setActionDescription(actionDescription);
         actionHistory.setDescription(description);
+        actionHistory.setCreatedAt(LocalDateTime.now());
+        actionHistory.setEnabled(1);
+        actionHistory.setState(0);
+
 
         actionHistoryRepository.save(actionHistory);
 
+    }
+
+
+    public List<ActionHistoryDTO> getActionHistoriesOfEntity(int entityId, EntityEnum entityName) {
+        List<ActionHistory> actionHistories = actionHistoryRepository.findByEntityIdAndEntityName(entityId, entityName);
+
+        return actionHistories.stream().map(ModelConverterUtil::convertActionHistoryToActionHistoryDTO).toList();
     }
 
 

@@ -3,10 +3,10 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.GeneralTagDTO;
 import com.hnp.filemanagement.dto.GeneralTagPageDTO;
-import com.hnp.filemanagement.entity.FileCategory;
+import com.hnp.filemanagement.entity.ActionEnum;
+import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.GeneralTag;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -22,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class GeneralTagService {
@@ -74,6 +73,9 @@ public class GeneralTagService {
 
         generalTagRepository.save(generalTag);
 
+        actionHistoryService.saveActionHistory(EntityEnum.GeneralTag, generalTag.getId(), ActionEnum.CREATE, principalId,
+                "CREATE NEW GENERAL_TAG", "CREATE NEW GENERAL_TAG");
+
     }
 
 
@@ -105,11 +107,14 @@ public class GeneralTagService {
 
         generalTagRepository.save(generalTag);
 
+        actionHistoryService.saveActionHistory(EntityEnum.GeneralTag, generalTag.getId(), ActionEnum.UPDATE_VALUES, principalId,
+                "UPDATE GENERAL TAG", "Update GeneralTag, new tagNameDescription=" + tagNameDescription + ", new description=" + description);
+
     }
 
 
     @Transactional
-    public void deleteGeneralTag(int generalTagId) {
+    public void deleteGeneralTag(int generalTagId, int principalId) {
         int count = generalTagRepository.countGeneralTagWithCategory(generalTagId);
         if(count > 0) {
             throw new DependencyResourceException("can not delete general tag with id=" + generalTagId + " , first delete all related FileCategory");
@@ -117,6 +122,9 @@ public class GeneralTagService {
         GeneralTag generalTag = getGeneralTagByIdOrTagName(generalTagId, null);
 
         generalTagRepository.delete(generalTag);
+
+        actionHistoryService.saveActionHistory(EntityEnum.GeneralTag, generalTagId, ActionEnum.DELETE, principalId,
+                "DELETE GENERAL TAG", "DELETE GENERAL TAG");
 
     }
 
