@@ -19,7 +19,9 @@ public class FileValidator implements ConstraintValidator<ValidFile, MultipartFi
         valid = contentType.equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") ||
                 contentType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document") ||
                 contentType.equals("application/pdf") ||
-                contentType.equals("text/plain");
+                contentType.equals("text/plain") ||
+                contentType.equals("image/jpeg") ||
+                contentType.equals("image/png");
 
         return valid;
     }
