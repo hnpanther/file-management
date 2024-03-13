@@ -1,10 +1,5 @@
 package com.hnp.filemanagement.entity;
 
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-
 public enum PermissionEnum {
 
 
@@ -208,7 +203,15 @@ public enum PermissionEnum {
     // MainTagFileResource @RequestMapping("/resource/main-tags") ======================================
 
     //@DeleteMapping("{id}")
-    REST_DELETE_MAIN_TAG_FILE
+    REST_DELETE_MAIN_TAG_FILE,
+
+
+    // ===================================================================================================
+
+    // FileApi @RequestMapping("api/v1/files") ==========================================================
+
+    API_SAVE_NEW_FILE
+
 
 
     // ===================================================================================================

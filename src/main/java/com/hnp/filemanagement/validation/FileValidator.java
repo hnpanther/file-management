@@ -14,6 +14,10 @@ public class FileValidator implements ConstraintValidator<ValidFile, MultipartFi
     public boolean isValid(MultipartFile file, ConstraintValidatorContext constraintValidatorContext) {
         boolean valid = false;
 
+        if(file == null) {
+            return false;
+        }
+
         String contentType = file.getContentType();
 
         valid = contentType.equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") ||

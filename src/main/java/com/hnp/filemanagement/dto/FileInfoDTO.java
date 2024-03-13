@@ -1,6 +1,5 @@
 package com.hnp.filemanagement.dto;
 
-import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.validation.UpdateValidation;
 import com.hnp.filemanagement.validation.ValidFile;
@@ -40,13 +39,13 @@ public class FileInfoDTO {
     private String fileSubCategoryName;
     private String fileSubCategoryNameDescription;
 
-    @NotNull(groups = InsertValidation.class)
+    @NotNull(groups = {InsertValidation.class})
     private Integer fileCategoryId;
     private String fileCategoryName;
     private String fileCategoryNameDescription;
     private String fileCategoryDisplayName;
 
-    @NotNull(groups = InsertValidation.class)
+    @NotNull(groups = {InsertValidation.class})
     private Integer mainTagFileId;
     private String tagName;
     private String tagDescription;
