@@ -17,10 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.ModelAttribute;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/files")
@@ -106,6 +103,24 @@ public class FileApi {
 
     }
 
+//    @GetMapping
+//    public String test() {
+//
+//        logger.info("request ......======");
+//        return "hello from endpoint";
+//    }
+//
+//    @PostMapping("test")
+//    public String test1(@AuthenticationPrincipal UserDetailsImpl userDetails,
+//                        @ModelAttribute FileInfoDTO fileInfoDTO,
+//                        BindingResult bindingResult,
+//                        HttpServletRequest request) {
+//
+//
+//        logger.info("request ......======: " + fileInfoDTO);
+//        logger.info("file: " + fileInfoDTO.getMultipartFile().getOriginalFilename());
+//        return "testpost";
+//    }
 
 
 
