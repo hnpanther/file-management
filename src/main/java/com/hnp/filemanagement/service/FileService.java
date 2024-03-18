@@ -59,7 +59,7 @@ public class FileService {
 
 
     @Transactional
-    public void createNewFile(FileInfoDTO fileInfoDTO, int principalId) {
+    public FileDetailsDTO createNewFile(FileInfoDTO fileInfoDTO, int principalId) {
 
         if(fileInfoDTO.getMultipartFile().getOriginalFilename() == null) {
             throw new InvalidDataException("file name is null");
@@ -130,8 +130,12 @@ public class FileService {
                 "CREATE NEW FILE_DETAILS", "CREATE NEW FILE_DETAILS");
 
 
+        FileDetailsDTO fileDetailsDTO = ModelConverterUtil.covertFileDetailsToFileDetailsDTO(fileDetails);
+
         String address = mainTagFile.getFileSubCategory().getFileCategory().getCategoryName() + "/" + mainTagFile.getFileSubCategory().getSubCategoryName();
         fileStorageService.save(address, fileInfoDTO.getMultipartFile(), 1, fileExtension);
+
+        return fileDetailsDTO;
 
     }
 

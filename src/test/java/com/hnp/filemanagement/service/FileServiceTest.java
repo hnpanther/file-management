@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FileUploadDTO;
 import com.hnp.filemanagement.entity.*;
@@ -316,12 +317,14 @@ class FileServiceTest {
         fileInfoDTO.setDescription("test");
 
 
-        underTest.createNewFile(fileInfoDTO, userId);
+        FileDetailsDTO createdFile = underTest.createNewFile(fileInfoDTO, userId);
         String address = baseDir + "mail/subMail/test2/v1/test2.txt";
         assertThat(Files.exists(Paths.get(address))).isTrue();
         FileInfoDTO test = underTest.getFileInfoDtoWithFileDetails(fileSubCategorySubMailId, "test");
         assertThat(test.getId()).isNotNull();
         assertThat(!test.getFileDetailsDTOS().isEmpty()).isTrue();
+        assertThat(createdFile.getFileInfoId()).isNotNull();
+        assertThat(createdFile.getId()).isNotNull();
 
 
 

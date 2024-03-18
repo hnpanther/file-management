@@ -2,17 +2,15 @@ package com.hnp.filemanagement.controller;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.*;
-import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
-import com.hnp.filemanagement.exception.ResourceNotFoundException;
-import com.hnp.filemanagement.service.FileService;
-import com.hnp.filemanagement.util.ModelConverterUtil;
-import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.service.FileCategoryService;
+import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.service.FileSubCategoryService;
 import com.hnp.filemanagement.service.MainTagFileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
+import com.hnp.filemanagement.util.ModelConverterUtil;
+import com.hnp.filemanagement.validation.InsertValidation;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -123,7 +121,7 @@ public class FileController {
         } else {
 
             try {
-                fileService.createNewFile(fileInfoDTO, principalId);
+                FileDetailsDTO fileDetailsDTO = fileService.createNewFile(fileInfoDTO, principalId);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (InvalidDataException e) {

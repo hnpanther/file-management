@@ -226,6 +226,19 @@ public class ModelConverterUtil {
         return actionHistoryDTO;
     }
 
+    public static FileUploadOutputDTO convertFileDetailsDTOToFileUploadOutputDTO(FileDetailsDTO fileDetailsDTO) {
+        FileUploadOutputDTO fileUploadOutputDTO = new FileUploadOutputDTO();
+
+        fileUploadOutputDTO.setFileId(fileDetailsDTO.getFileInfoId());
+        fileUploadOutputDTO.setFileDetailsId(fileDetailsDTO.getId());
+        fileUploadOutputDTO.setFileName(fileDetailsDTO.getFileName());
+        fileUploadOutputDTO.setFileExtension(fileDetailsDTO.getFileExtension());
+        fileUploadOutputDTO.setContentType(fileDetailsDTO.getContentType());
+        fileUploadOutputDTO.setDescription(fileDetailsDTO.getDescription());
+
+        return fileUploadOutputDTO;
+    }
+
 
     public static String getFileNameWithoutExtension(String fileName) {
         return fileName.replaceFirst("[.][^.]+$", "");

@@ -1,11 +1,14 @@
 package com.hnp.filemanagement.api;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
+import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
+import com.hnp.filemanagement.dto.FileUploadOutputDTO;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
+import com.hnp.filemanagement.util.ModelConverterUtil;
 import com.hnp.filemanagement.validation.InsertValidation;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -64,7 +67,8 @@ public class FileApi {
         boolean showMessage = true;
         boolean valid = false;
         String message = "";
-
+        FileDetailsDTO fileDetailsDTO = null;
+        FileUploadOutputDTO fileUploadOutputDTO = null;
 
         if(bindingResult.hasErrors()) {
             message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
@@ -74,7 +78,8 @@ public class FileApi {
         } else {
 
             try {
-                fileService.createNewFile(fileInfoDTO, principalId);
+                fileDetailsDTO = fileService.createNewFile(fileInfoDTO, principalId);
+                fileUploadOutputDTO = ModelConverterUtil.convertFileDetailsDTOToFileUploadOutputDTO(fileDetailsDTO);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (InvalidDataException e) {
@@ -93,7 +98,7 @@ public class FileApi {
 
         if(valid) {
             return new ResponseEntity<>(
-                    "file saved: " + message,
+                    fileUploadOutputDTO,
                     HttpStatus.OK);
         }
 
