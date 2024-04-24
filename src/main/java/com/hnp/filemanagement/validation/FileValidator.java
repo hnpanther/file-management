@@ -22,10 +22,12 @@ public class FileValidator implements ConstraintValidator<ValidFile, MultipartFi
 
         valid = contentType.equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") ||
                 contentType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document") ||
+                contentType.equals("application/vnd.openxmlformats-officedocument.presentationml.presentation") ||
                 contentType.equals("application/pdf") ||
                 contentType.equals("text/plain") ||
                 contentType.equals("image/jpeg") ||
-                contentType.equals("image/png");
+                contentType.equals("image/png") ||
+                contentType.equals("video/mp4");
 
         return valid;
     }
