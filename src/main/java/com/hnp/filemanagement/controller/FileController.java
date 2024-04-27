@@ -210,7 +210,10 @@ public class FileController {
     //DOWNLOAD_PUBLIC_FILE
 //    @PreAuthorize("hasAuthority('DOWNLOAD_PUBLIC_FILE') || hasAuthority('ADMIN')")
     @GetMapping("public-download/{id}")
-    public ResponseEntity<?> downloadPublicFile(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int fileDetailsId, HttpServletRequest request) {
+    public ResponseEntity<?> downloadPublicFile(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                @PathVariable("id") int fileDetailsId,
+                                                @RequestParam(value = "inline", required = false) String inline,
+                                                HttpServletRequest request) {
 
         int principalId = 0;
         String principalUsername = "None";
@@ -226,7 +229,14 @@ public class FileController {
 
         FileDownloadDTO fileDownloadDTO = fileService.downloadPublicFile(fileDetailsId);
         String contentType = fileDownloadDTO.getContentType();
-        String header = "attachment; filename=\"" + fileDownloadDTO.getFileName() + "\"";
+
+        String header;
+        if(inline.equals("1")) {
+            header = "inline; filename=\"" + fileDownloadDTO.getFileName() + "\"";
+        } else {
+            header = "attachment; filename=\"" + fileDownloadDTO.getFileName() + "\"";
+        }
+
 
 
 
