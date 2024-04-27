@@ -41,6 +41,16 @@ public class FileApi {
     }
 
 
+//    API_HEALTH_TEST
+    @PreAuthorize("hasAuthority('API_HEALTH_TEST') || hasAuthority('ADMIN')")
+    @GetMapping("/health-test")
+    public String healthTest() {
+
+        logger.info("request for health test");
+        return "hello from endpoint";
+    }
+
+
 //    API_SAVE_NEW_FILE
     @PreAuthorize("hasAuthority('API_SAVE_NEW_FILE') || hasAuthority('ADMIN')")
     @PostMapping
@@ -108,13 +118,8 @@ public class FileApi {
 
     }
 
-//    @GetMapping
-//    public String test() {
-//
-//        logger.info("request ......======");
-//        return "hello from endpoint";
-//    }
-//
+
+
 //    @PostMapping("test")
 //    public String test1(@AuthenticationPrincipal UserDetailsImpl userDetails,
 //                        @ModelAttribute FileInfoDTO fileInfoDTO,

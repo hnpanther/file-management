@@ -210,7 +210,14 @@ public enum PermissionEnum {
 
     // FileApi @RequestMapping("api/v1/files") ==========================================================
 
-    API_SAVE_NEW_FILE
+
+//    @GetMapping("/health-test")
+    API_HEALTH_TEST,
+
+//    @PostMapping
+    API_SAVE_NEW_FILE,
+
+
 
 
 
