@@ -4,8 +4,10 @@ import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FileUploadOutputDTO;
+import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
+import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import com.hnp.filemanagement.util.ModelConverterUtil;
@@ -62,7 +64,7 @@ public class FileApi {
 
         int principalId = userDetails.getId();
         String principalUsername = userDetails.getUsername();
-        String logMessage = "request to save new file=" + fileInfoDTO;
+        String logMessage = "API request to save new file=" + fileInfoDTO;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileApi.class", logMessage);
@@ -115,6 +117,42 @@ public class FileApi {
         return new ResponseEntity<>(
                 "can not save file: " + message,
                 HttpStatus.BAD_REQUEST);
+
+    }
+
+
+//    API_DELETE_FILE_DETAILS
+    @PreAuthorize("hasAuthority('API_DELETE_FILE_DETAILS') || hasAuthority('ADMIN')")
+    @DeleteMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}")
+    public ResponseEntity<Object> deleteFileDetails(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                    @PathVariable("fileInfoId") int fileInfoId,
+                                                    @PathVariable("fileDetailsId") int fileDetailsId,
+                                                    HttpServletRequest request) {
+
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
+        String logMessage = "API request to delete file details with id==" + fileDetailsId + " and fileInfoId=" + fileInfoId;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileApi.class", logMessage);
+
+
+        try {
+            fileService.deleteFileDetails(fileInfoId, fileDetailsId, principalId);
+        } catch (BusinessException e) {
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "FileResource.class",
+                    "BusinessException" + e.getMessage());
+            return new ResponseEntity<>("invalid data", HttpStatus.BAD_REQUEST);
+        } catch (ResourceNotFoundException e) {
+            globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                    request.getMethod() + " " + path, "FileResource.class",
+                    "ResourceNotFoundException" + e.getMessage());
+            return new ResponseEntity<>("invalid data", HttpStatus.BAD_REQUEST);
+        }
+
+        return new ResponseEntity<>("file details deleted", HttpStatus.OK);
+
 
     }
 

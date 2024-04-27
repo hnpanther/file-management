@@ -217,6 +217,9 @@ public enum PermissionEnum {
 //    @PostMapping
     API_SAVE_NEW_FILE,
 
+//    @DeleteMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}")
+    API_DELETE_FILE_DETAILS
+
 
 
 
