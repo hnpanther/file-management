@@ -231,7 +231,7 @@ public class FileController {
         String contentType = fileDownloadDTO.getContentType();
 
         String header;
-        if(inline.equals("1")) {
+        if(inline != null && inline.equals("1")) {
             header = "inline; filename=\"" + fileDownloadDTO.getFileName() + "\"";
         } else {
             header = "attachment; filename=\"" + fileDownloadDTO.getFileName() + "\"";

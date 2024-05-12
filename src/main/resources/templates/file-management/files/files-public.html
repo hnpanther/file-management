@@ -46,6 +46,7 @@
                                             <th class="max-width">حجم فایل(MB)</th>
                                             <th class="max-width">نسخه</th>
                                             <th>عملیات</th>
+                                            <th>عملیات</th>
                                         </tr>
                                         </thead>
                                         <tbody>
@@ -62,6 +63,13 @@
                                                 <div class="btn-group align-top">
                                                     <a class="btn btn-sm btn-outline-secondary badge" target="_blank" type="button"
                                                        th:href="@{'/files/public-download/' + ${file.getId()}}">دانلود
+                                                    </a>
+                                                </div>
+                                            </td>
+                                            <td class="text-center align-middle">
+                                                <div class="btn-group align-top">
+                                                    <a class="btn btn-sm btn-outline-secondary badge" target="_blank" type="button"
+                                                       th:href="@{'/files/public-download/' + ${file.getId()} + '?inline=1'}">نمایش
                                                     </a>
                                                 </div>
                                             </td>
