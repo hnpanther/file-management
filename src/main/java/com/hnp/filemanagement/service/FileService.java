@@ -59,7 +59,7 @@ public class FileService {
 
 
     @Transactional
-    public FileDetailsDTO createNewFile(FileInfoDTO fileInfoDTO, int principalId) {
+    public FileDetailsDTO createNewFile(FileInfoDTO fileInfoDTO, int principalId, int publicFile) {
 
         if(fileInfoDTO.getMultipartFile().getOriginalFilename() == null) {
             throw new InvalidDataException("file name is null");
@@ -91,7 +91,14 @@ public class FileService {
         fileInfo.setFilePath(mainTagFile.getFileSubCategory().getPath() + "/" + fileNameWithoutExtension);
         fileInfo.setRelativePath(mainTagFile.getFileSubCategory().getRelativePath() + "/" + fileNameWithoutExtension);
         fileInfo.setEnabled(1);
-        fileInfo.setState(0);
+
+        if(publicFile == 1) {
+            fileInfo.setState(0);
+        } else {
+            fileInfo.setState(-1);
+        }
+
+
         fileInfo.setCreatedAt(LocalDateTime.now());
         fileInfo.setCreatedBy(entityManager.getReference(User.class, principalId));
         fileInfo.setMainTagFile(mainTagFile);

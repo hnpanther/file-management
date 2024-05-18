@@ -317,7 +317,7 @@ class FileServiceTest {
         fileInfoDTO.setDescription("test");
 
 
-        FileDetailsDTO createdFile = underTest.createNewFile(fileInfoDTO, userId);
+        FileDetailsDTO createdFile = underTest.createNewFile(fileInfoDTO, userId, 1);
         String address = baseDir + "mail/subMail/test2/v1/test2.txt";
         assertThat(Files.exists(Paths.get(address))).isTrue();
         FileInfoDTO test = underTest.getFileInfoDtoWithFileDetails(fileSubCategorySubMailId, "test");
@@ -346,7 +346,7 @@ class FileServiceTest {
 
 
         assertThatThrownBy(
-                () -> underTest.createNewFile(fileInfoDTO, userId)
+                () -> underTest.createNewFile(fileInfoDTO, userId, 1)
         ).isInstanceOf(DuplicateResourceException.class);
 
 
@@ -368,7 +368,7 @@ class FileServiceTest {
 
 
         assertThatThrownBy(
-                () -> underTest.createNewFile(fileInfoDTO, userId)
+                () -> underTest.createNewFile(fileInfoDTO, userId, 1)
         ).isInstanceOf(InvalidDataException.class);
 
 
@@ -390,7 +390,7 @@ class FileServiceTest {
 
 
         assertThatThrownBy(
-                () -> underTest.createNewFile(fileInfoDTO, userId)
+                () -> underTest.createNewFile(fileInfoDTO, userId, 1)
         ).isInstanceOf(InvalidDataException.class);
 
 

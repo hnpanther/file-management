@@ -60,6 +60,7 @@ public class FileApi {
     @PreAuthorize("hasAuthority('API_SAVE_NEW_FILE') || hasAuthority('ADMIN')")
     @PostMapping
     public ResponseEntity<Object> saveNewFile(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                            @RequestParam(value = "public-file", required = false) String publicFile,
                             @ModelAttribute @Validated(InsertValidation.class) FileInfoDTO fileInfoDTO,
                             BindingResult bindingResult,
                             HttpServletRequest request
@@ -93,7 +94,15 @@ public class FileApi {
         } else {
 
             try {
-                fileDetailsDTO = fileService.createNewFile(fileInfoDTO, principalId);
+
+                int savePublicFile = 1;
+                if(publicFile != null && publicFile.equals("0")) {
+                    savePublicFile = 0;
+                }
+
+                logger.debug("==========!!!!! => " + publicFile);
+
+                fileDetailsDTO = fileService.createNewFile(fileInfoDTO, principalId, savePublicFile);
                 fileUploadOutputDTO = ModelConverterUtil.convertFileDetailsDTOToFileUploadOutputDTO(fileDetailsDTO);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";

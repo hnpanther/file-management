@@ -121,7 +121,7 @@ public class FileController {
         } else {
 
             try {
-                FileDetailsDTO fileDetailsDTO = fileService.createNewFile(fileInfoDTO, principalId);
+                FileDetailsDTO fileDetailsDTO = fileService.createNewFile(fileInfoDTO, principalId, 1);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (InvalidDataException e) {
