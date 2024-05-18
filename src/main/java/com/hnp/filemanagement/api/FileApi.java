@@ -2,6 +2,7 @@ package com.hnp.filemanagement.api;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.FileDetailsDTO;
+import com.hnp.filemanagement.dto.FileDownloadDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FileUploadOutputDTO;
 import com.hnp.filemanagement.exception.BusinessException;
@@ -16,7 +17,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -154,6 +157,32 @@ public class FileApi {
         return new ResponseEntity<>("file details deleted", HttpStatus.OK);
 
 
+    }
+
+    //    API_DOWNLOAD_FILE
+    @PreAuthorize("hasAuthority('API_DOWNLOAD_FILE') || hasAuthority('ADMIN')")
+    @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
+    public ResponseEntity<?> downloadFile(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("fileInfoId") int fileInfoId,
+                                          @PathVariable("fileDetailsId") int fileDetailsId,
+                                          HttpServletRequest request) {
+
+        int principalId = userDetails.getId();
+        String principalUsername = userDetails.getUsername();
+        String logMessage = "request download fileDetails with id=" + fileDetailsId;
+        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+        globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                request.getMethod() + " " + path, "FileController.class", logMessage);
+
+        FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId);
+        String contentType = fileDownloadDTO.getContentType();
+        String header = "attachment; filename=\"" + fileDownloadDTO.getFileName() + "\"";
+
+
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(HttpHeaders.CONTENT_DISPOSITION, header)
+                .body(fileDownloadDTO.getResource());
     }
 
 

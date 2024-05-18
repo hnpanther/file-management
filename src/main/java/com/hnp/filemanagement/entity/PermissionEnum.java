@@ -218,10 +218,10 @@ public enum PermissionEnum {
     API_SAVE_NEW_FILE,
 
 //    @DeleteMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}")
-    API_DELETE_FILE_DETAILS
+    API_DELETE_FILE_DETAILS,
 
-
-
+//    @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
+    API_DOWNLOAD_FILE
 
 
     // ===================================================================================================
