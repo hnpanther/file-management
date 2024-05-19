@@ -27,7 +27,8 @@ public class FileValidator implements ConstraintValidator<ValidFile, MultipartFi
                 contentType.equals("text/plain") ||
                 contentType.equals("image/jpeg") ||
                 contentType.equals("image/png") ||
-                contentType.equals("video/mp4");
+                contentType.equals("video/mp4") ||
+                contentType.equals("audio/mpeg");
 
         return valid;
     }
