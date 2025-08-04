@@ -109,9 +109,11 @@ class RoleServiceTest {
     void tearDown() {
 
         actionHistoryRepository.deleteAll();
-        permissionRepository.deleteAll();
-        roleRepository.deleteAll();
         userRepository.deleteAll();
+        roleRepository.deleteAll();
+        permissionRepository.deleteAll();
+
+
     }
 
     @Test

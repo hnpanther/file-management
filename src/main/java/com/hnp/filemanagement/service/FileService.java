@@ -278,9 +278,11 @@ public class FileService {
 
         fileInfo.setLastVersion(fileDetails.getVersion());
         fileInfo.getFileDetailsList().add(fileDetails);
-        fileInfoRepository.save(fileInfo);
+//        fileInfoRepository.save(fileInfo);
 
-//        fileDetailsRepository.save(fileDetails);
+
+        fileDetailsRepository.save(fileDetails);
+        entityManager.flush();
 
         actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetails.getId(), ActionEnum.CREATE, principalId,
                 "CREATE NEW FILE_DETAILS", "CREATE NEW FILE_DETAILS");
