@@ -130,10 +130,11 @@ class UserServiceTest extends MySqlSupport {
 
     @AfterEach
     void tearDown() {
+        // Delete the owning sides first: user owns user_role, role owns permission_role.
         actionHistoryRepository.deleteAll();
         userRepository.deleteAll();
-        permissionRepository.deleteAll();
         roleRepository.deleteAll();
+        permissionRepository.deleteAll();
     }
 
     @Test

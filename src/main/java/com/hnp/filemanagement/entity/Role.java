@@ -20,7 +20,8 @@ public class Role {
     @Column(name = "role_name", nullable = false, unique = true)
     private String roleName;
 
-    @ManyToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL, mappedBy = "roles")
+    // No cascade: this is the inverse side. Deleting a role must not delete its users.
+    @ManyToMany(fetch = FetchType.LAZY, mappedBy = "roles")
     private List<User> users = new ArrayList<>();
 
     @ManyToMany(fetch = FetchType.EAGER,

@@ -24,6 +24,8 @@ public class Permission {
     @Column(name = "description")
     private String description;
 
-    @ManyToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL, mappedBy = "permissions")
+    // No cascade: this is the inverse side. Removing a permission must never remove the roles
+    // that reference it, and persisting one must never persist them.
+    @ManyToMany(fetch = FetchType.LAZY, mappedBy = "permissions")
     private List<Role> roles = new ArrayList<>();
 }
