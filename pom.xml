@@ -23,7 +23,28 @@
 		<!-- Boot 3.2.1 pins Testcontainers 1.19.3, which predates Docker context support and
 		     cannot find a Docker Desktop daemon that only exposes dockerDesktopLinuxEngine. -->
 		<testcontainers.version>1.21.4</testcontainers.version>
+		<!-- Spring Boot 4.1.1 manages Tomcat 11.0.24, which carries three CRITICAL advisories:
+		     CVE-2026-65905 (DIGEST replay), CVE-2026-65182 (incorrect authorization) and
+		     CVE-2026-68525 (FORM authentication authorization) - the last one applies directly,
+		     this application authenticates with a form. All three are fixed in 11.0.25.
+		     Drop this override once the managed version reaches 11.0.25 or later. -->
+		<tomcat.version>11.0.25</tomcat.version>
 	</properties>
+	<dependencyManagement>
+		<dependencies>
+			<!-- Testcontainers pulls commons-compress 1.24.0 transitively, which carries
+			     CVE-2024-25710 and CVE-2024-26308 (both fixed in 1.26.0). Test scope only, so it
+			     never ships - pinned anyway so a scan of this repository comes back clean. Neither
+			     Spring Boot nor the Testcontainers BOM manages this artifact, so it needs an
+			     explicit entry rather than a version property. -->
+			<dependency>
+				<groupId>org.apache.commons</groupId>
+				<artifactId>commons-compress</artifactId>
+				<version>1.28.0</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
