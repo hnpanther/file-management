@@ -1,173 +1,97 @@
 <!DOCTYPE html>
-<html lang="en" dir="rtl"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>لیست فایل ها</title>
-
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
-
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{file.list.pageTitle}">مدیریت فایل‌ها | سامانه مدیریت اسناد</title>
 </head>
 <body>
+<div th:replace="~{navbar.html :: navbar}"></div>
 
-<div th:insert="~{navbar.html :: navbar}"></div>
-
-<div class="container-fluid">
-    <div class="row flex-lg-nowrap">
-
-
-        <div class="col">
-            <div class="e-tabs mb-3 px-3">
-                <ul class="nav nav-tabs">
-                    <li class="nav-item"><a class="nav-link active" href="#">فایل ها</a></li>
-                </ul>
-            </div>
-
-            <div class="row flex-lg-nowrap">
-                <div class="col mb-3">
-
-                    <div class="e-panel card">
-                        <div class="card-body">
-                            <div sec:authorize="hasAuthority('CREATE_FILE_PAGE') || hasAuthority('ADMIN')" class="card-title">
-                                <a class="btn btn-success btn-block" type="button" style="width: 30%;" th:href="@{/files/create}">ایجاد فایل جدید</a>
-                            </div>
-                            <div class="e-table">
-                                <div class="table-responsive table-lg mt-3">
-                                    <table class="table table-bordered">
-                                        <thead>
-                                        <tr>
-                                            <th class="max-width">شناسه</th>
-                                            <th class="max-width">عنوان فایل</th>
-                                            <th class="max-width">توضیحات</th>
-                                            <th class="max-width">دسته بندی اصلی</th>
-                                            <th class="max-width">دسته بندی فرعی</th>
-                                            <th class="max-width">تگ</th>
-                                            <th>عملیات</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody>
-                                        <tr th:each="file: ${files}">
-
-                                            <td class="text-nowrap align-middle" th:text="${file.getId()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${file.getFileName()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${file.getDescription()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${file.getFileCategoryDisplayName()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${file.getFileSubCategoryNameDescription()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${file.getTagName() + '-' + file.getTagDescription()}"></td>
-                                            <td class="text-center align-middle">
-                                                <div class="btn-group align-top">
-                                                    <a class="btn btn-sm btn-outline-secondary badge" type="button"
-                                                       th:href="@{'/files/file-info/' + ${file.getId()}}">مشاهده
-                                                    </a>
-                                                </div>
-                                            </td>
-                                        </tr>
-
-
-                                        </tbody>
-                                    </table>
-                                </div>
-                                    <ul class="pagination mt-3 mb-0">
-                                        <li th:if="${pageNumber > 1}" class="page-item disabled"><a th:href="@{/files/file-info(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}">قبلی</a></li>
-
-                                        <li th:if="${pageNumber > 1}" class="page-item"><a th:text="${pageNumber-1}" th:href="@{/files/file-info(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}" class="page-link"></a></li>
-
-                                        <li class="page-item active"><a th:text="${pageNumber}" href="#" class="page-link"></a></li>
-
-                                        <li th:if="${(pageNumber) < totalPages}" class="page-item"><a th:text="${pageNumber+1}" th:href="@{/files/file-info(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}" class="page-link"></a></li>
-                                        <li th:if="${(pageNumber) < totalPages}" class="page-item">...</a></li>
-                                        <li th:if="${(pageNumber) < totalPages}" class="page-item"><a th:href="@{/files/file-info(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}">بعدی</a></li>
-
-                                    </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-12 col-lg-2 mb-2">
-                    <div class="card">
-                        <div class="card-body">
-
-                            <hr class="my-3">
-
-                            <div>
-
-                                <div class="form-group">
-                                    <label>جستجو:</label>
-                                    <div><input class="form-control w-100" type="text" placeholder="" th:value="${search}" id="search"></div>
-                                </div>
-                                <!--                                <div class="form-check">-->
-                                <!--                                    <input class="form-check-input" type="radio" name="stateRadio" id="exampleRadios1" value="3" th:checked="${stateFilter==3}">-->
-                                <!--                                    <label class="form-check-label" for="exampleRadios1">-->
-                                <!--                                        تمام درخواست-->
-                                <!--                                    </label>-->
-                                <!--                                </div>-->
-                                <!--                                <div class="form-check">-->
-                                <!--                                    <input class="form-check-input" type="radio" name="stateRadio" id="exampleRadios2" value="0" th:checked="${stateFilter==0}">-->
-                                <!--                                    <label class="form-check-label" for="exampleRadios2">-->
-                                <!--                                        ذخیره شده-->
-                                <!--                                    </label>-->
-                                <!--                                </div>-->
-
-                            </div>
-
-                            <hr>
-                            <div class="text-center px-xl-3">
-                                <button class="btn btn-success btn-block" type="button" onclick="search()">جستجو</button>
-                            </div>
-                            <hr>
-                            <div class="text-center px-xl-3">
-                                <button class="btn btn-success btn-block" type="button" onclick="reload()">بارگزاری مجدد</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div>
+            <div class="page-kicker" th:text="#{file.list.kicker}">مدیریت محتوا</div>
+            <h1 th:text="#{file.list.heading}">فایل‌ها</h1>
+            <p class="page-description" th:text="#{file.list.description}">فایل‌های ثبت‌شده را پیدا کنید و اطلاعات، نسخه‌ها و فرمت‌های آن‌ها را مدیریت کنید.</p>
         </div>
+        <a sec:authorize="hasAuthority('CREATE_FILE_PAGE') || hasAuthority('ADMIN')"
+           class="btn btn-primary" th:href="@{/files/create}" th:text="#{nav.files.upload}">بارگذاری فایل جدید</a>
+    </header>
 
+    <section class="card" aria-labelledby="managed-files-table-title">
+        <div class="card-body">
+            <h2 id="managed-files-table-title" class="sr-only" th:text="#{nav.files.list}">فهرست فایل‌ها</h2>
+            <div class="toolbar">
+                <form class="search-form" method="get" th:action="@{/files/file-info}" role="search">
+                    <label class="sr-only" for="search" th:text="#{file.list.searchLabel}">جستجو در فایل‌ها</label>
+                    <input class="form-control" type="search" name="search" id="search" th:value="${search}"
+                           th:placeholder="#{placeholder.searchFiles}" autocomplete="off">
+                    <input type="hidden" name="page-size" th:value="${pageSize}">
+                    <button class="btn btn-primary" type="submit" th:text="#{action.search}">جستجو</button>
+                    <a class="btn btn-outline-secondary" th:href="@{/files/file-info}" th:text="#{action.clear}">پاک کردن</a>
+                </form>
+            </div>
 
-    </div>
-</div>
+            <div th:if="${#lists.isEmpty(files)}" class="empty-state empty-state-panel" role="status">
+                <strong th:text="#{message.noFilesFound}">فایلی پیدا نشد</strong>
+                عبارت جستجو را تغییر دهید یا یک فایل جدید بارگذاری کنید.
+            </div>
 
-<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
-<script th:src="@{/webjars/bootstrap/4.5.0/js/bootstrap.bundle.js}"></script>
+            <div th:unless="${#lists.isEmpty(files)}" class="table-responsive">
+                <table class="table">
+                    <caption class="sr-only" th:text="#{file.list.tableCaption}">فایل‌های ثبت‌شده در سامانه</caption>
+                    <thead>
+                    <tr>
+                        <th scope="col" th:text="#{field.id}">شناسه</th>
+                        <th scope="col" th:text="#{field.fileTitle}">عنوان فایل</th>
+                        <th scope="col" th:text="#{field.description}">توضیحات</th>
+                        <th scope="col" th:text="#{field.category}">دسته‌بندی اصلی</th>
+                        <th scope="col" th:text="#{field.subCategory}">زیردسته‌بندی</th>
+                        <th scope="col" th:text="#{field.tag}">برچسب</th>
+                        <th scope="col" th:text="#{field.actions}">عملیات</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="file: ${files}">
+                        <td class="text-nowrap" th:text="${file.getId()}"></td>
+                        <td class="technical" th:text="${file.getFileName()}"></td>
+                        <td th:text="${file.getDescription()}"></td>
+                        <td th:text="${file.getFileCategoryDisplayName()}"></td>
+                        <td th:text="${file.getFileSubCategoryNameDescription()}"></td>
+                        <td th:text="${file.getTagName() + ' — ' + file.getTagDescription()}"></td>
+                        <td>
+                            <a class="btn btn-sm btn-outline-secondary"
+                               th:href="@{'/files/file-info/' + ${file.getId()}}" th:text="#{action.viewAndManage}">مشاهده و مدیریت</a>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
 
-<script>
+            <nav th:if="${totalPages > 1}" class="mt-3" th:aria-label="#{aria.filesPagination}">
+                <ul class="pagination mb-0">
+                    <li th:if="${pageNumber > 1}" class="page-item">
+                        <a class="page-link" th:href="@{/files/file-info(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}" th:text="#{action.previous}">قبلی</a>
+                    </li>
+                    <li th:if="${pageNumber > 1}" class="page-item">
+                        <a class="page-link" th:text="${pageNumber-1}" th:href="@{/files/file-info(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}"></a>
+                    </li>
+                    <li class="page-item active" aria-current="page"><span class="page-link" th:text="${pageNumber}"></span></li>
+                    <li th:if="${pageNumber < totalPages}" class="page-item">
+                        <a class="page-link" th:text="${pageNumber+1}" th:href="@{/files/file-info(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}"></a>
+                    </li>
+                    <li th:if="${pageNumber < totalPages}" class="page-item">
+                        <a class="page-link" th:href="@{/files/file-info(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}" th:text="#{action.next}">بعدی</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </section>
+</main>
 
-    function search() {
-
-        // let pageNumber = [[${pageNumber}]];
-        // let pageSize = [[${pageSize}]];
-        // let oldSearch = /*[[${oldSearch}]]*/ '';
-
-
-        let input;
-        input = document.getElementById("search").value;
-        // let params = (new URL(document.location)).searchParams;
-        // let pageNumber = params.get("page-number");
-        // let pageSize = params.get("page-size");
-        // let search = params.get("search-filter");
-        // let filterState = $('input[name="stateRadio"]:checked').val();
-
-        let loc = window.location;
-        let newUrl = loc.protocol + "//" + loc.host + loc.pathname+ "?";
-        newUrl += "search=" + input;
-        window.location = newUrl;
-        // if (input !== "") {
-        //     newUrl += "search=" + input;
-        //     window.location = newUrl;
-        // }
-
-
-    }
-
-    function reload() {
-        let loc = window.location;
-        window.location = loc.protocol + "//" + loc.host + loc.pathname;
-    }
-
-</script>
-
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
 </body>
+</html>

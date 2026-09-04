@@ -47,5 +47,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     @Query("SELECT COUNT(f.id) FROM FileInfo f WHERE f.mainTagFile.id = (:mainTagFileId)")
     Integer countFileWithTagId(int mainTagFileId);
 
+    // Tree view: the files filed under one main tag.
+    List<FileInfo> findByMainTagFileIdOrderByFileNameAsc(int mainTagFileId);
+
 
 }

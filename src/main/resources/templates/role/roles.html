@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="en" dir="rtl"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>لیست نقش ها</title>
+    <title th:text="#{role.list.pageTitle}">لیست نقش ها</title>
 
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
 
 </head>
 <body>
 
-<div th:insert="~{navbar.html :: navbar}"></div>
+<div th:replace="~{navbar.html :: navbar}"></div>
 
 <div class="container-fluid">
     <div class="row flex-lg-nowrap">
@@ -21,7 +21,7 @@
         <div class="col">
             <div class="e-tabs mb-3 px-3">
                 <ul class="nav nav-tabs">
-                    <li class="nav-item"><a class="nav-link active" href="#">نقش ها</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="#" th:text="#{field.roles}">نقش ها</a></li>
                 </ul>
             </div>
 
@@ -31,7 +31,7 @@
                     <div class="e-panel card">
                         <div class="card-body">
                             <div class="card-title">
-                                <a class="btn btn-success btn-block" type="button" style="width: 30%;" th:href="@{/roles/create}">ایجاد
+                                <a class="btn btn-success" type="button" th:href="@{/roles/create}" th:text="#{role.createButton}">ایجاد
                                     نقش جدید
                                 </a>
                             </div>
@@ -40,9 +40,9 @@
                                     <table class="table table-bordered">
                                         <thead>
                                         <tr>
-                                            <th class="max-width">شناسه</th>
-                                            <th class="max-width">عنوان نقش</th>
-                                            <th>عملیات</th>
+                                            <th class="max-width" th:text="#{field.id}">شناسه</th>
+                                            <th class="max-width" th:text="#{field.roleTitle}">عنوان نقش</th>
+                                            <th th:text="#{field.actions}">عملیات</th>
                                         </tr>
                                         </thead>
                                         <tbody>
@@ -53,7 +53,7 @@
                                             <td class="text-center align-middle">
                                                 <div class="btn-group align-top">
                                                     <a class="btn btn-sm btn-outline-secondary badge" type="button"
-                                                       th:href="@{'/roles/' + ${r.id}}">مشاهده
+                                                       th:href="@{'/roles/' + ${r.id}}" th:text="#{action.view}">مشاهده
                                                     </a>
                                                 </div>
                                             </td>
@@ -65,7 +65,7 @@
                                 </div>
 <!--                                <div class="d-flex justify-content-center">-->
 <!--                                    <ul class="pagination mt-3 mb-0">-->
-<!--                                        <li th:if="${pageNumber > 1}" class="page-item disabled"><a th:href="@{/sport/requests/manage(page-number=${pageNumber-1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}">قبلی</a></li>-->
+<!--                                        <li th:if="${pageNumber > 1}" class="page-item disabled"><a th:href="@{/sport/requests/manage(page-number=${pageNumber-1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}" th:text="#{action.previous}">قبلی</a></li>-->
 
 <!--                                        <li th:if="${pageNumber > 1}" class="page-item"><a th:text="${pageNumber-1}" th:href="@{/sport/requests/manage(page-number=${pageNumber-1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}" class="page-link"></a></li>-->
 
@@ -73,7 +73,7 @@
 
 <!--                                        <li th:if="${(pageSize * pageNumber) < totalRequestNumber}" class="page-item"><a th:text="${pageNumber+1}" th:href="@{/sport/requests/manage(page-number=${pageNumber+1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}" class="page-link"></a></li>-->
 <!--                                        <li th:if="${(pageSize * pageNumber) < totalRequestNumber}" class="page-item">...</a></li>-->
-<!--                                        <li th:if="${(pageSize * pageNumber) < totalRequestNumber}" class="page-item"><a th:href="@{/sport/requests/manage(page-number=${pageNumber+1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}">بعدی</a></li>-->
+<!--                                        <li th:if="${(pageSize * pageNumber) < totalRequestNumber}" class="page-item"><a th:href="@{/sport/requests/manage(page-number=${pageNumber+1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}" th:text="#{action.next}">بعدی</a></li>-->
 
 <!--                                    </ul>-->
 <!--                                </div>-->
@@ -89,7 +89,6 @@
     </div>
 </div>
 
-<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
-<script th:src="@{/webjars/bootstrap/4.5.0/js/bootstrap.bundle.js}"></script>
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
 
 </body>

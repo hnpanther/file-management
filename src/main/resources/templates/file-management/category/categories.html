@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="en" dir="rtl"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>لیست دسته بندی ها</title>
+    <title th:text="#{category.list.pageTitle}">لیست دسته بندی ها</title>
 
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
 
 </head>
 <body>
 
-<div th:insert="~{navbar.html :: navbar}"></div>
+<div th:replace="~{navbar.html :: navbar}"></div>
 
 <div class="container-fluid">
     <div class="row flex-lg-nowrap">
@@ -21,7 +21,7 @@
         <div class="col">
             <div class="e-tabs mb-3 px-3">
                 <ul class="nav nav-tabs">
-                    <li class="nav-item"><a class="nav-link active" href="#">دسته بندی ها</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="#" th:text="#{category.list.heading}">دسته بندی ها</a></li>
                 </ul>
             </div>
 
@@ -31,7 +31,7 @@
                     <div class="e-panel card">
                         <div class="card-body">
                             <div sec:authorize="hasAuthority('CREATE_FILE_CATEGORY_PAGE') || hasAuthority('ADMIN')" class="card-title">
-                                <a class="btn btn-success btn-block" type="button" style="width: 30%;" th:href="@{/file-categories/create}">ایجاد
+                                <a class="btn btn-success" type="button" th:href="@{/file-categories/create}" th:text="#{category.createButton}">ایجاد
                                     دسته بندی جدید
                                 </a>
                             </div>
@@ -40,11 +40,11 @@
                                     <table class="table table-bordered">
                                         <thead>
                                         <tr>
-                                            <th class="max-width">شناسه</th>
-                                            <th class="max-width">عنوان دسته بندی(انگلیسی)</th>
-                                            <th class="max-width">نام دسته بندی(فارسی)</th>
-                                            <th class="max-width">عنوان تگ</th>
-                                            <th>عملیات</th>
+                                            <th class="max-width" th:text="#{field.id}">شناسه</th>
+                                            <th class="max-width" th:text="#{field.categoryNameEn}">عنوان دسته بندی(انگلیسی)</th>
+                                            <th class="max-width" th:text="#{field.categoryNameFa}">نام دسته بندی(فارسی)</th>
+                                            <th class="max-width" th:text="#{field.tagTitle}">عنوان تگ</th>
+                                            <th th:text="#{field.actions}">عملیات</th>
                                         </tr>
                                         </thead>
                                         <tbody>
@@ -57,7 +57,7 @@
                                             <td class="text-center align-middle">
                                                 <div class="btn-group align-top">
                                                     <a class="btn btn-sm btn-outline-secondary badge" type="button"
-                                                       th:href="@{'/file-categories/' + ${f.getId()}}">مشاهده
+                                                       th:href="@{'/file-categories/' + ${f.getId()}}" th:text="#{action.view}">مشاهده
                                                     </a>
                                                 </div>
                                             </td>
@@ -69,7 +69,7 @@
                                 </div>
                                 <div class="d-flex justify-content-center">
                                     <ul class="pagination mt-3 mb-0">
-                                        <li th:if="${pageNumber > 1}" class="page-item disabled"><a th:href="@{/file-categories(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}">قبلی</a></li>
+                                        <li th:if="${pageNumber > 1}" class="page-item disabled"><a th:href="@{/file-categories(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}" th:text="#{action.previous}">قبلی</a></li>
 
                                         <li th:if="${pageNumber > 1}" class="page-item"><a th:text="${pageNumber-1}" th:href="@{/file-categories(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}" class="page-link"></a></li>
 
@@ -77,7 +77,7 @@
 
                                         <li th:if="${(pageNumber) < totalPages}" class="page-item"><a th:text="${pageNumber+1}" th:href="@{/file-categories(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}" class="page-link"></a></li>
                                         <li th:if="${(pageNumber) < totalPages}" class="page-item">...</a></li>
-                                        <li th:if="${(pageNumber) < totalPages}" class="page-item"><a th:href="@{/file-categories(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}">بعدی</a></li>
+                                        <li th:if="${(pageNumber) < totalPages}" class="page-item"><a th:href="@{/file-categories(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}" th:text="#{action.next}">بعدی</a></li>
 
                                     </ul>
                                 </div>
@@ -95,8 +95,8 @@
                             <div>
 
                                 <div class="form-group">
-                                    <label>جستجو:</label>
-                                    <div><input class="form-control w-100" type="text" placeholder="" th:value="${search}" id="search"></div>
+                                    <label th:text="#{field.searchLabel}">جستجو:</label>
+                                    <div><input class="form-control w-100" type="search" th:placeholder="#{placeholder.searchTerm}" th:value="${search}" id="search" autocomplete="off"></div>
                                 </div>
                                 <!--                                <div class="form-check">-->
                                 <!--                                    <input class="form-check-input" type="radio" name="stateRadio" id="exampleRadios1" value="3" th:checked="${stateFilter==3}">-->
@@ -115,11 +115,11 @@
 
                             <hr>
                             <div class="text-center px-xl-3">
-                                <button class="btn btn-success btn-block" type="button" onclick="search()">جستجو</button>
+                                <button class="btn btn-success btn-block" type="button" onclick="search()" th:text="#{action.search}">جستجو</button>
                             </div>
                             <hr>
                             <div class="text-center px-xl-3">
-                                <button class="btn btn-success btn-block" type="button" onclick="reload()">بارگزاری مجدد</button>
+                                <button class="btn btn-outline-secondary btn-block" type="button" onclick="reload()" th:text="#{action.clearSearch}">پاک کردن جستجو</button>
                             </div>
                         </div>
                     </div>
@@ -132,8 +132,7 @@
     </div>
 </div>
 
-<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
-<script th:src="@{/webjars/bootstrap/4.5.0/js/bootstrap.bundle.js}"></script>
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
 
 
 <script>
@@ -155,7 +154,7 @@
 
         let loc = window.location;
         let newUrl = loc.protocol + "//" + loc.host + loc.pathname+ "?";
-        newUrl += "search=" + input;
+        newUrl += "search=" + encodeURIComponent(input.trim());
         window.location = newUrl;
         // if (input !== "") {
         //     newUrl += "search=" + input;

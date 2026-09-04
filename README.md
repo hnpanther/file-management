@@ -88,8 +88,13 @@ startup.
 ./mvnw clean package
 ```
 
-Produces `target/file-management.war`, deployable to an external Tomcat. (Moving to an executable
-JAR and a container image is [Phase 1](docs/roadmap.md#phase-1--platform-upgrade).)
+Produces `target/file-management.jar`, a self-contained executable:
+
+```bash
+java -jar target/file-management.jar
+```
+
+(A container image is still [Phase 1](docs/roadmap.md#phase-1--platform-upgrade).)
 
 ## Running the tests
 

@@ -1,20 +1,20 @@
 <!DOCTYPE html>
-<html lang="en"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title th:if="${#strings.equals(pageType, 'create')}">اسناد-ایجاد نقش </title>
-    <title th:if="${#strings.equals(pageType, 'update')}">اسناد-ویرایش نقش </title>
+    <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{role.create.pageTitle}">ایجاد نقش | سامانه مدیریت اسناد</title>
+    <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{role.edit.pageTitle}">ویرایش نقش | سامانه مدیریت اسناد</title>
 
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
 
 
 </head>
 <body>
 
-<div th:insert="~{navbar.html :: navbar}"></div>
+<div th:replace="~{navbar.html :: navbar}"></div>
 
 <div class="container">
 
@@ -22,8 +22,8 @@
         <fieldset>
 
             <!-- Form Name -->
-            <legend th:if="${#strings.equals(pageType, 'create')}">ایجاد نقش جدید</legend>
-            <legend th:if="${#strings.equals(pageType, 'update')}">ویرایش نقش</legend>
+            <legend th:if="${#strings.equals(pageType, 'create')}" th:text="#{role.create.heading}">ایجاد نقش جدید</legend>
+            <legend th:if="${#strings.equals(pageType, 'update')}" th:text="#{role.edit.heading}">ویرایش نقش</legend>
 
             <!-- Text input-->
             <input th:field="*{id}" type="hidden" required>
@@ -31,7 +31,7 @@
 
 
             <div class="form-group">
-                <label class="col-md-4 control-label">عنوان نقش</label>
+                <label class="col-md-4 control-label" th:text="#{field.roleTitle}">عنوان نقش</label>
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
@@ -41,7 +41,7 @@
             </div>
 
             <div th:if="${#strings.equals(pageType, 'update')}" class="form-group">
-                <label class="col-md-4 control-label">مجوزها</label>
+                <label class="col-md-4 control-label" th:text="#{field.permissions}">مجوزها</label>
                 <div class="col-md-4 inputGroupContainer">
                     <div th:each="p: ${permissions}" class="input-group">
                         <div  class="form-check">
@@ -76,8 +76,7 @@
     <a th:href="@{'/roles'}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست نقش ها</a>
 </div>
 
-<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
-<script th:src="@{/webjars/bootstrap/4.5.0/js/bootstrap.bundle.js}"></script>
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
 
 </body>
 </html>

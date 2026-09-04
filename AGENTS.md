@@ -19,8 +19,9 @@ fine-grained per-endpoint permissions, not roles. Package root `com.hnp.filemana
 ## Commands
 
 ```bash
-./mvnw verify                 # build + all 87 tests; needs only a Docker daemon
-./mvnw clean package          # build → target/file-management.war
+./mvnw verify                 # build + all tests; needs only a Docker daemon (no Node)
+npm run build:css             # only if you edited src/main/frontend/app.css
+./mvnw clean package          # build → target/file-management.jar (executable)
 ./mvnw spring-boot:run        # run on :8122
 ./mvnw test -Dtest=FileServiceTest
 docker compose up -d          # MySQL for running the application (NOT for tests)
@@ -78,6 +79,10 @@ block. Match it in new handlers in existing files — it is scheduled for replac
 ([issue 25](docs/issues.md#25-sixty-copies-of-the-same-logging-preamble--s3)), but a half-converted
 file is worse than a consistent one.
 
+**The app shell.** `templates/navbar.html :: navbar` emits the fixed top bar *and* the sidebar.
+Pages just insert it and need no wrapper; `app.css` offsets `<body>` via `body:has(.app-sidebar)`.
+Primary navigation belongs in the sidebar, not the top bar.
+
 **Naming.** Directory names (category, sub-category) must contain no `.`, no space, no `/`.
 File names must contain exactly one `.`, no space, no `/`. Enforced in both `ValidationUtil` and
 `FileStorageFileSystemService` — keep the two in agreement.
@@ -104,6 +109,20 @@ File names must contain exactly one `.`, no space, no `/`. Enforced in both `Val
   with hundreds of `cannot find symbol`. Do not remove it.
 * **A `@Component` is constructed whether or not its feature is enabled.** Give every `@Value`
   placeholder for an optional feature a default, or the app will not start without it.
+* **`data-bs-theme` cascades to descendants.** A Bootstrap 5.3 dropdown inside a dark region
+  inherits `--bs-dropdown-bg: #212529`; if the stylesheet also paints items with the dark body
+  text colour the menu is black on black. Restate the `--bs-dropdown-*` variables on the menu
+  rather than colouring individual items.
+* **The UI is Tailwind + Alpine, not Bootstrap.** `data-bs-*` attributes do nothing. Page
+  bodies are still Bootstrap 3-era markup kept alive by a compatibility layer in
+  `src/main/frontend/app.css`; convert them to utilities and delete the matching block.
+* **Never load an asset from `/webjars/`.** Everything lives under `static/vendor/` or
+  `static/css/`, because a partly populated `~/.m2` serves 404s that reach the browser as
+  `Unexpected token '<'`. See [docs/ui.md](docs/ui.md).
+* **The build must never need Node.** `static/css/app.css` is generated and committed; rebuild it
+  with `npm run build:css` and commit both files together.
+* **Inline `<script>` needing Thymeleaf values must set `th:inline="javascript"`**, and the
+  expression must not be wrapped in your own quotes - inlining supplies them.
 
 ## Database changes
 

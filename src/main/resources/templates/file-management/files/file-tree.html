@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{tree.pageTitle}">درخت فایل‌ها | سامانه مدیریت اسناد</title>
+</head>
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{tree.kicker}">مرور ساختار</div>
+        <h1 th:text="#{tree.heading}">درخت فایل‌ها</h1>
+        <p class="page-description" th:text="#{tree.description}">
+            ساختار دسته‌بندی‌ها، برچسب‌ها و نسخه‌های هر فایل را مرور کنید.
+        </p>
+    </header>
+
+    <section class="card" aria-labelledby="tree-title">
+        <div class="card-body">
+
+            <div x-data="fileTree()" x-init="init()">
+
+                <div class="mb-4 flex flex-wrap items-center gap-2 border-b border-ink-100 pb-3">
+                    <button type="button" class="btn btn-secondary btn-sm" @click="collapseAll()">
+                        <i class="bi bi-chevron-double-up" aria-hidden="true"></i>
+                        <span th:text="#{tree.collapseAll}">بستن همه</span>
+                    </button>
+                    <h2 id="tree-title" class="sr-only" th:text="#{tree.heading}">درخت فایل‌ها</h2>
+
+                    <span class="ms-auto inline-flex items-center gap-1.5 rounded-[var(--radius-control)]
+                                 bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                        <i class="bi bi-eye" aria-hidden="true"></i>
+                        <span th:text="#{tree.readOnlyNotice}">فعلاً فقط نمایشی</span>
+                    </span>
+                </div>
+
+                <p class="empty-state" x-show="rows.length === 0 && !loading" x-cloak
+                   th:text="#{tree.empty}">هنوز دسته‌بندی‌ای ساخته نشده است.</p>
+
+                <p class="py-2 text-xs text-red-600" x-show="error" x-cloak x-text="error"></p>
+
+                <!--
+                  The tree is held as a flat list of visible rows, each carrying its depth.
+                  Opening a folder splices its children in after it; closing removes every
+                  following row that is deeper. That keeps the markup to one loop, supports any
+                  depth, and gives drag-and-drop a single ordered list to work against later.
+                -->
+                <ul class="app-tree" role="tree" :aria-busy="loading">
+                    <template x-for="row in rows" :key="row.key">
+                        <li role="treeitem"
+                            :aria-expanded="row.expandable ? (row.open ? 'true' : 'false') : null"
+                            :aria-level="row.depth + 1">
+
+                            <div class="app-tree-row" :class="row.open && 'bg-ink-50'"
+                                 :style="'padding-inline-start:' + (0.375 + row.depth * 1.15) + 'rem'">
+
+                                <button type="button" class="app-tree-twisty"
+                                        :class="!row.expandable && 'is-leaf'"
+                                        :disabled="!row.expandable"
+                                        :aria-label="row.open ? TREE.collapse : TREE.expand"
+                                        :style="row.open ? 'transform:rotate(-90deg)' : ''"
+                                        @click="toggle(row)"></button>
+
+                                <i class="app-tree-icon bi" :class="row.icon" aria-hidden="true"></i>
+
+                                <span class="app-tree-label">
+                                    <span class="technical" x-text="row.name"></span>
+                                    <span class="text-ink-400" x-show="row.title && row.title !== row.name">
+                                        &nbsp;—&nbsp;<span x-text="row.title"></span>
+                                    </span>
+                                </span>
+
+                                <span class="text-xs text-ink-400" x-show="row.note" x-text="row.note"></span>
+
+                                <span class="app-tree-badge" x-show="row.childCount !== null && row.childCount > 0"
+                                      x-text="row.childCount"></span>
+
+                                <a class="text-ink-400 hover:text-brand-600" x-show="row.href" :href="row.href"
+                                   :title="TREE.openFile">
+                                    <i class="bi bi-box-arrow-up-left text-xs" aria-hidden="true"></i>
+                                </a>
+                            </div>
+                        </li>
+                    </template>
+                </ul>
+
+                <p class="mt-4 border-t border-ink-100 pt-3 text-xs text-ink-500"
+                   th:text="#{tree.futureNote}">
+                    در آینده جابه‌جایی فایل‌ها با کشیدن و رها کردن در همین درخت انجام خواهد شد.
+                </p>
+            </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+
+<script th:inline="javascript">
+    /* Attribute bindings cannot use [[...]] inlining, so the copy is handed to Alpine here. */
+    const TREE = {
+        expand:     [[#{tree.expand}]],
+        collapse:   [[#{tree.collapse}]],
+        openFile:   [[#{tree.openFile}]],
+        loadFailed: [[#{tree.loadFailed}]]
+    };
+    const TREE_ROOTS = /*[[${roots}]]*/ [];
+
+    function fileTree() {
+        return {
+            rows: [],
+            loading: false,
+            error: "",
+
+            init() {
+                this.rows = TREE_ROOTS.map(n => this.decorate(n, 0));
+            },
+
+            decorate(node, depth) {
+                return Object.assign({}, node, {
+                    depth: depth,
+                    open: false,
+                    loaded: false,
+                    key: node.type + "-" + node.id + "-" + depth + "-" + Math.random().toString(36).slice(2, 8)
+                });
+            },
+
+            indexOf(row) {
+                return this.rows.indexOf(row);
+            },
+
+            async toggle(row) {
+                if (!row.expandable) {
+                    return;
+                }
+                if (row.open) {
+                    this.close(row);
+                    return;
+                }
+                row.open = true;
+                if (!row.loaded) {
+                    await this.load(row);
+                } else {
+                    // children were removed on close; fetch again rather than cache stale data
+                    await this.load(row);
+                }
+            },
+
+            close(row) {
+                row.open = false;
+                const start = this.indexOf(row) + 1;
+                let end = start;
+                while (end < this.rows.length && this.rows[end].depth > row.depth) {
+                    end++;
+                }
+                this.rows.splice(start, end - start);
+            },
+
+            async load(row) {
+                this.loading = true;
+                this.error = "";
+                try {
+                    const url = "/resource/files/tree/children?type=" + encodeURIComponent(row.type)
+                        + "&id=" + encodeURIComponent(row.id);
+                    const response = await fetch(url, {
+                        headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                        credentials: "same-origin"
+                    });
+                    if (!response.ok) {
+                        throw new Error("HTTP " + response.status);
+                    }
+                    const children = await response.json();
+                    const decorated = children.map(c => this.decorate(c, row.depth + 1));
+                    this.rows.splice(this.indexOf(row) + 1, 0, ...decorated);
+                    row.loaded = true;
+                } catch (e) {
+                    row.open = false;
+                    this.error = TREE.loadFailed;
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            collapseAll() {
+                this.rows = TREE_ROOTS.map(n => this.decorate(n, 0));
+                this.error = "";
+            }
+        };
+    }
+</script>
+</body>
+</html>

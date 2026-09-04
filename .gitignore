@@ -43,3 +43,7 @@ src/main/resources/application-local.properties
 
 ### logs
 logs/
+
+### frontend build (generated CSS is committed; its toolchain is not)
+node_modules/
+package-lock.json

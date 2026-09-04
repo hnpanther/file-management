@@ -17,9 +17,9 @@ download and delete.
 |---|---|---|
 | Language | Java | 21 |
 | Framework | Spring Boot | **3.2.1** (see [issues.md](issues.md) — the 3.5.5 bump was lost in a merge) |
-| Packaging | WAR + `SpringBootServletInitializer` | deployable to an external Tomcat |
+| Packaging | Executable JAR (embedded Tomcat) | `java -jar target/file-management.jar` |
 | View layer | Thymeleaf + `thymeleaf-extras-springsecurity6` | |
-| Client assets | WebJars: Bootstrap 4.5.0, jQuery 3.7.1, select2 4.0.13 | |
+| Client assets | WebJars: Bootstrap 5.3.8, jQuery 4.0.0, Select2 4.1.0; local Vazirmatn 33.003 | |
 | Persistence | Spring Data JPA / Hibernate | |
 | Database | MySQL (`mysql-connector-j`) | |
 | Schema | Flyway (`flyway-core` + `flyway-mysql`) | |

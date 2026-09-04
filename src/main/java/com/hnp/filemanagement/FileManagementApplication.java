@@ -15,8 +15,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,7 +24,7 @@ import java.util.List;
 import java.util.Optional;
 
 @SpringBootApplication
-public class FileManagementApplication extends SpringBootServletInitializer {
+public class FileManagementApplication {
 
 	Logger logger = LoggerFactory.getLogger(FileManagementApplication.class);
 
@@ -42,11 +40,6 @@ public class FileManagementApplication extends SpringBootServletInitializer {
 		return new BCryptPasswordEncoder();
 	}
 
-
-	@Override
-	protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {
-		return builder.sources(FileManagementApplication.class);
-	}
 
 	@Bean
 	public CommandLineRunner runner(

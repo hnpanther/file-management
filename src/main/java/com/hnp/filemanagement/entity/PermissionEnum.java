@@ -26,6 +26,8 @@ public enum PermissionEnum {
     SAVE_NEW_FILE,
     //@GetMapping("public-files")
     PUBLIC_FILE_PAGE,
+    //@GetMapping("tree")
+    FILE_TREE_PAGE,
     //@GetMapping("file-info/{id}")
     FILE_INFO_PAGE,
     //@GetMapping("public-download/{id}")
@@ -141,6 +143,9 @@ public enum PermissionEnum {
 
     // @PutMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/change-state/{newState}")
     REST_CHANGE_STATE_FILE_DETAILS,
+
+    //@GetMapping("tree")
+    REST_GET_FILE_TREE,
 
     // ===================================================================================================
 

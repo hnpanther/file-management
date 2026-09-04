@@ -1,32 +1,25 @@
 <!DOCTYPE html>
-<html lang="en"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title th:if="${#strings.equals(pageType, 'format')}">ایجاد فرمت جدید</title>
-    <title th:if="${#strings.equals(pageType, 'version')}">ایجاد ورژن جدید</title>
+    <title th:if="${#strings.equals(pageType, 'format')}" th:text="#{fileDetails.createFormat}">ایجاد فرمت جدید</title>
+    <title th:if="${#strings.equals(pageType, 'version')}" th:text="#{fileDetails.createVersion}">ایجاد نسخهٔ جدید</title>
 
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
-    <link rel="stylesheet" th:href="@{/webjars/select2/4.0.13/css/select2.min.css}"/>
+    <th:block th:replace="~{fragments.html :: head-assets-select}"></th:block>
 
-    <style>
-        label {
-            float: right
-        }
-
-    </style>
 </head>
 <body>
 
-<div th:insert="~{navbar.html :: navbar}"></div>
+<div th:replace="~{navbar.html :: navbar}"></div>
 
 
 <h2></h2>
-<h2 th:if="${#strings.equals(pageType, 'format')}" class="text-center" dir="rtl">ایجاد فرمت جدید </h2>
-<h2 th:if="${#strings.equals(pageType, 'version')}" class="text-center" dir="rtl">ایجاد ورژن جدید</h2>
-<h3 class="text-center" dir="rtl">عنوان فایل باید دقیقا مشابه با فایل قبلی باشد</h3>
+<h2 th:if="${#strings.equals(pageType, 'format')}" class="text-center" dir="rtl" th:text="#{fileDetails.createFormat}">ایجاد فرمت جدید </h2>
+<h2 th:if="${#strings.equals(pageType, 'version')}" class="text-center" th:text="#{fileDetails.createVersion}">ایجاد نسخهٔ جدید</h2>
+<p class="text-center text-muted" th:text="#{fileDetails.sameNameHint}">نام فایل باید دقیقاً با فایل قبلی یکسان باشد.</p>
 <div class="container">
     <form enctype="multipart/form-data" th:action="@{'/files/file-info/' + ${file.getFileId()} + '/file-details'}" method="post" id="fileForm" th:object="${file}">
 
@@ -41,27 +34,29 @@
 
 
             <div class="form-group col-md-6">
-                <label>توضیحات</label>
+                <label th:text="#{field.description}">توضیحات</label>
                 <input dir="rtl" type="text" class="form-control" th:field="*{fileDetailsDescription}" required>
             </div>
 
             <div class="form-group col-md-6">
-                <label>عنوان فایل</label>
+                <label th:text="#{field.fileTitle}">عنوان فایل</label>
                 <input dir="rtl" type="text" class="form-control" th:field="*{fileName}" readonly>
             </div>
 
             <div class="form-group col-md-6" style="text-align: right">
-                <label dir="rtl" for="multipartFile">انتخاب فایل(فرمت های مجاز: txt-pdf-jpg-xlsx-docx)-حداکثر حجم 20MB</label>
-                <input type="file" class="form-control-file" name="multipartFile" id="multipartFile" accept=".jpg,.xlsx,.docx,.pdf,.txt">
+                <label for="multipartFile" th:text="#{field.chooseFile}">فایل موردنظر</label>
+                <input type="file" class="form-control-file" name="multipartFile" id="multipartFile"
+                       accept=".jpg,.xlsx,.docx,.pdf,.txt" required>
+                <small class="form-text">فرمت‌های مجاز: <span class="technical" dir="ltr">JPG, PDF, TXT, XLSX, DOCX</span>؛ حداکثر حجم ۲۰ مگابایت.</small>
             </div>
 
             <div th:if="${#strings.equals(pageType, 'format')}" class="form-group col-md-6">
-                <label>ورژن</label>
+                <label th:text="#{field.version}">نسخه</label>
                 <input name="version" dir="rtl" type="text" class="form-control" th:value="${lastVersion}" readonly>
             </div>
 
             <div th:if="${#strings.equals(pageType, 'version')}" class="form-group col-md-6">
-                <label>ورژن جدید</label>
+                <label th:text="#{file.newVersion}">نسخهٔ جدید</label>
                 <input name="version" dir="rtl" type="text" class="form-control" th:value="${lastVersion + 1}" readonly>
             </div>
 
@@ -84,16 +79,14 @@
              th:text="${message}"><i class="glyphicon glyphicon-thumbs-up"></i>
         </div>
 
-        <button type="submit" class="btn btn-primary">ذخیره</button>
+        <button type="submit" class="btn btn-primary" th:text="#{action.save}">ذخیره</button>
     </form>
     <hr>
     <a th:href="@{'/files/file-info/' + ${file.getFileId()}}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت</a>
 </div>
 
 
-<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
-<script th:src="@{/webjars/bootstrap/4.5.0/js/bootstrap.bundle.js}"></script>
-<script th:src="@{/webjars/select2/4.0.13/js/select2.min.js}"></script>
+<th:block th:replace="~{fragments.html :: scripts-select}"></th:block>
 <script>
 
 

@@ -19,6 +19,11 @@ public interface MainTagFileRepository extends JpaRepository<MainTagFile, Intege
 
     Optional<MainTagFile> findByIdOrTagName(int id, String tagName);
 
+    // Tree view: children of a sub-category, and the count shown on the parent node.
+    List<MainTagFile> findByFileSubCategoryIdOrderByTagNameAsc(int fileSubCategoryId);
+
+    int countByFileSubCategoryId(int fileSubCategoryId);
+
 
     @Query("""
     SELECT m FROM MainTagFile m 

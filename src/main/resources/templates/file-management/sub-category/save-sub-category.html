@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
 <head>
@@ -7,27 +7,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <meta th:name="_csrf" th:content="${_csrf.token}"/>
     <meta th:name="_csrf_header" th:content="${_csrf.headerName}"/>
-    <title th:if="${#strings.equals(pageType, 'create')}">ساخت زیر دسته بندی</title>
-    <title th:if="${#strings.equals(pageType, 'update')}">ویرایش زیر دسته بندی</title>
+    <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{subCategory.create.pageTitle}">ساخت زیر دسته بندی</title>
+    <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{subCategory.edit.heading}">ویرایش زیر دسته بندی</title>
 
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
-    <link rel="stylesheet" th:href="@{/webjars/select2/4.0.13/css/select2.min.css}"/>
+    <th:block th:replace="~{fragments.html :: head-assets-select}"></th:block>
 
-    <style>
-        label {
-            float: right
-        }
-
-    </style>
 </head>
 <body>
 
-<div th:insert="~{navbar.html :: navbar}"></div>
+<div th:replace="~{navbar.html :: navbar}"></div>
 
 
 <h2></h2>
-<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl">ایجاد زیر دسته بندی جدید</h2>
-<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl">ویرایش زیر دسته بندی</h2>
+<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl" th:text="#{subCategory.create.heading}">ایجاد زیر دسته بندی جدید</h2>
+<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl" th:text="#{subCategory.edit.heading}">ویرایش زیر دسته بندی</h2>
 <div class="container">
     <form th:action="@{ ${#strings.equals(pageType, 'create') ? '/file-sub-categories' : '/file-sub-categories/' + fileSubCategory.getId()}  }" method="post" id="categoryForm" th:object="${fileSubCategory}">
 
@@ -39,17 +32,17 @@
         <div class="form-row">
 
             <div class="form-group col-md-6">
-                <label>نام زیر دسته بندی(فارسی)</label>
+                <label th:text="#{field.subCategoryNameFa}">نام زیر دسته بندی(فارسی)</label>
                 <input dir="rtl" type="text" class="form-control" th:field="*{subCategoryNameDescription}" required>
             </div>
 
             <div class="form-group col-md-6">
-                <label>عنوان زیر دسته بندی(به انگلیسی بدون فاصله)</label>
+                <label th:text="#{subCategory.nameEnHint}">عنوان زیر دسته بندی(به انگلیسی بدون فاصله)</label>
                 <input dir="rtl" type="text" class="form-control" th:field="*{subCategoryName}" required th:readonly="${#strings.equals(pageType, 'update')}">
             </div>
 
             <div class="form-group col-md-6">
-                <label>انتخاب دسته بندی اصلی</label>
+                <label th:text="#{select.category}">انتخاب دسته بندی اصلی</label>
                 <select class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
                     <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getDisplayName()}" th:selected="${f.getId() == fileSubCategory.getFileCategoryId()}"></option>
                 </select>
@@ -68,7 +61,7 @@
              th:text="${message}"><i class="glyphicon glyphicon-thumbs-up"></i>
         </div>
 
-        <button type="submit" class="btn btn-primary">ذخیره</button>
+        <button type="submit" class="btn btn-primary" th:text="#{action.save}">ذخیره</button>
     </form>
     <hr>
     <a th:if="${#strings.equals(pageType, 'update')}" sec:authorize="hasAuthority('REST_DELETE_FILE_SUB_CATEGORY') || hasAuthority('ADMIN')" th:onclick="deleteSubCategory()" class="btn btn-danger"> <i class="fa fa-arrow-circle-o-left"></i>حذف</a>
@@ -77,10 +70,8 @@
 </div>
 
 
-<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
-<script th:src="@{/webjars/bootstrap/4.5.0/js/bootstrap.bundle.js}"></script>
-<script th:src="@{/webjars/select2/4.0.13/js/select2.min.js}"></script>
-<script>
+<th:block th:replace="~{fragments.html :: scripts-select}"></th:block>
+<script th:inline="javascript">
 
     $(document).ready(function () {
         $('.fileCategoryId').select2({
@@ -94,10 +85,10 @@
     });
 
     function deleteSubCategory() {
-        if(confirm("آیا از حذف اطمینان دارید؟")) {
+        if(confirm([[#{js.confirmDelete}]])) {
             let token = $("meta[name='_csrf']").attr("content");
             let headerToken = $("meta[name='_csrf_header']").attr("content");
-            let contextPath = "[[@{/}]]";
+            let contextPath = [[@{/}]];
             $.ajax({
                 url: contextPath + "resource/file-sub-categories/" + $(".subCategoryId").val(),
                 type: "DELETE",
@@ -108,13 +99,13 @@
                 },
                 complete: function (xhr, status) {
                     if(xhr.status === 200) {
-                        alert("حذف با موفقیت انجام شد.");
+                        alert([[#{js.deleted}]]);
                         let currentLocation = window.location;
                         let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "file-sub-categories";
                         window.location.replace(newUrl);
                     } else {
                         // alert(xhr.responseText);
-                        alert('امکان حذف وجود ندارد. مطمئن شوید تگ اصلی مرتبط با این آیتم وجود نداشته باشد.');
+                        alert([[#{js.cannotDeleteMainTag}]]);
                     }
                 }
             });

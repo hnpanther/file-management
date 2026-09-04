@@ -1,19 +1,19 @@
 <!DOCTYPE html>
-<html lang="en"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>اسناد-نقش های کاربر </title>
+    <title th:text="#{user.roles.pageTitle}">نقش‌های کاربر | سامانه مدیریت اسناد</title>
 
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
 
 
 </head>
 <body>
 
-<div th:insert="~{navbar.html :: navbar}"></div>
+<div th:replace="~{navbar.html :: navbar}"></div>
 
 <div class="container">
 
@@ -21,14 +21,14 @@
         <fieldset>
 
             <!-- Form Name -->
-            <legend>نقش های کاربر</legend>
+            <legend th:text="#{field.userRoles}">نقش های کاربر</legend>
 
             <!-- Text input-->
             <input th:field="*{id}" type="hidden" required>
 
 
             <div class="form-group">
-                <label class="col-md-4 control-label">نام کاربری</label>
+                <label class="col-md-4 control-label" th:text="#{field.username}">نام کاربری</label>
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
@@ -38,7 +38,7 @@
             </div>
 
             <div class="form-group">
-                <label class="col-md-4 control-label">نقش ها</label>
+                <label class="col-md-4 control-label" th:text="#{field.roles}">نقش ها</label>
                 <div class="col-md-4 inputGroupContainer">
                     <div th:each="r: ${roles}" class="input-group">
                         <div  class="form-check">
@@ -73,8 +73,7 @@
     <a th:href="@{'/users/' + ${user.getId()}}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست کاربران</a>
 </div>
 
-<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
-<script th:src="@{/webjars/bootstrap/4.5.0/js/bootstrap.bundle.js}"></script>
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
 
 </body>
 </html>

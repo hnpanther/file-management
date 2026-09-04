@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.controller;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
+import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,6 +35,17 @@ public class HomeController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "HomeController.class", logMessage);
 
-        return "redirect:/files/public-files";
+        if(userDetails == null) {
+            return "redirect:/files/public-files";
+        }
+
+        // Signed-in staff land on the working screen; everyone else on the public library. Without
+        // this check a user who only holds PUBLIC_FILE_PAGE would be redirected straight into a
+        // 403 after logging in.
+        boolean canBrowseAllFiles = userDetails.getPermissions() != null && userDetails.getPermissions().stream()
+                .anyMatch(permission -> permission == PermissionEnum.ADMIN
+                        || permission == PermissionEnum.GET_ALL_FILE_INFO_PAGE);
+
+        return canBrowseAllFiles ? "redirect:/files/file-info" : "redirect:/files/public-files";
     }
 }

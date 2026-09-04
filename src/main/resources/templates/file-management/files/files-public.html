@@ -1,185 +1,100 @@
 <!DOCTYPE html>
-<html lang="en" dir="rtl"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>لیست فایل های عمومی</title>
-
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
-
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{publicFiles.pageTitle}">فایل‌های عمومی | سامانه مدیریت اسناد</title>
 </head>
 <body>
+<div th:replace="~{navbar.html :: navbar}"></div>
 
-<div th:insert="~{navbar.html :: navbar}"></div>
-
-<div class="container-fluid">
-    <div class="row flex-lg-nowrap">
-
-
-        <div class="col">
-            <div class="e-tabs mb-3 px-3">
-                <ul class="nav nav-tabs">
-                    <li class="nav-item"><a class="nav-link active" href="#">فایل های عمومی</a></li>
-                </ul>
-            </div>
-
-            <div class="row flex-lg-nowrap">
-                <div class="col mb-3">
-
-                    <div class="e-panel card">
-                        <div class="card-body">
-                            <div class="card-title">
-<!--                                <a class="btn btn-success btn-block" type="button" style="width: 30%;" th:href="">ایجاد فایل جدید</a>-->
-                            </div>
-                            <div class="e-table">
-                                <div class="table-responsive table-lg mt-3">
-                                    <table class="table table-bordered">
-                                        <thead>
-                                        <tr>
-                                            <th class="max-width">عنوان فایل</th>
-                                            <th class="max-width">File</th>
-                                            <th class="max-width">دسته بندی اصلی</th>
-                                            <th class="max-width">دسته بندی فرعی</th>
-                                            <th class="max-width">تگ فایل</th>
-                                            <th class="max-width">حجم فایل(MB)</th>
-                                            <th class="max-width">نسخه</th>
-                                            <th>عملیات</th>
-                                            <th>عملیات</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody>
-                                        <tr th:each="file: ${files}">
-
-                                            <td class="text-nowrap align-middle" th:text="${file.getFileInfoName()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${file.getFileName()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${file.getCategoryNameDescription()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${file.getSubCategoryNameDescription()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${file.getTagDescription()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${file.getSize() / (1024*1024)}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${file.getVersion()}"></td>
-                                            <td class="text-center align-middle">
-                                                <div class="btn-group align-top">
-                                                    <a class="btn btn-sm btn-outline-secondary badge" target="_blank" type="button"
-                                                       th:href="@{'/files/public-download/' + ${file.getId()}}">دانلود
-                                                    </a>
-                                                </div>
-                                            </td>
-                                            <td class="text-center align-middle">
-                                                <div class="btn-group align-top">
-                                                    <a class="btn btn-sm btn-outline-secondary badge" target="_blank" type="button"
-                                                       th:href="@{'/files/public-download/' + ${file.getId()} + '?inline=1'}">نمایش
-                                                    </a>
-                                                </div>
-                                            </td>
-                                        </tr>
-
-
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <ul class="pagination mt-3 mb-0">
-                                    <li th:if="${pageNumber > 1}" class="page-item disabled"><a th:href="@{/files/public-files(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}">قبلی</a></li>
-
-                                    <li th:if="${pageNumber > 1}" class="page-item"><a th:text="${pageNumber-1}" th:href="@{/files/public-files(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}" class="page-link"></a></li>
-
-                                    <li class="page-item active"><a th:text="${pageNumber}" href="#" class="page-link"></a></li>
-
-                                    <li th:if="${(pageNumber) < totalPages}" class="page-item"><a th:text="${pageNumber+1}" th:href="@{/files/public-files(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}" class="page-link"></a></li>
-                                    <li th:if="${(pageNumber) < totalPages}" class="page-item">...</a></li>
-                                    <li th:if="${(pageNumber) < totalPages}" class="page-item"><a th:href="@{/files/public-files(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}">بعدی</a></li>
-
-                                </ul>
-
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-12 col-lg-2 mb-2">
-                    <div class="card">
-                        <div class="card-body">
-
-                            <hr class="my-3">
-
-                            <div>
-
-                                <div class="form-group">
-                                    <label>جستجو:</label>
-                                    <div><input class="form-control w-100" type="text" placeholder="" th:value="${search}" id="search"></div>
-                                </div>
-                                <!--                                <div class="form-check">-->
-                                <!--                                    <input class="form-check-input" type="radio" name="stateRadio" id="exampleRadios1" value="3" th:checked="${stateFilter==3}">-->
-                                <!--                                    <label class="form-check-label" for="exampleRadios1">-->
-                                <!--                                        تمام درخواست-->
-                                <!--                                    </label>-->
-                                <!--                                </div>-->
-                                <!--                                <div class="form-check">-->
-                                <!--                                    <input class="form-check-input" type="radio" name="stateRadio" id="exampleRadios2" value="0" th:checked="${stateFilter==0}">-->
-                                <!--                                    <label class="form-check-label" for="exampleRadios2">-->
-                                <!--                                        ذخیره شده-->
-                                <!--                                    </label>-->
-                                <!--                                </div>-->
-
-                            </div>
-
-                            <hr>
-                            <div class="text-center px-xl-3">
-                                <button class="btn btn-success btn-block" type="button" onclick="search()">جستجو</button>
-                            </div>
-                            <hr>
-                            <div class="text-center px-xl-3">
-                                <button class="btn btn-success btn-block" type="button" onclick="reload()">بارگزاری مجدد</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div>
+            <div class="page-kicker" th:text="#{publicFiles.kicker}">کتابخانهٔ عمومی</div>
+            <h1 th:text="#{nav.publicFiles}">فایل‌های عمومی</h1>
+            <p class="page-description" th:text="#{publicFiles.description}">فایل موردنظر را جستجو کنید یا مستقیماً نسخهٔ دلخواه را ببینید و دانلود کنید.</p>
         </div>
+    </header>
 
+    <section class="card" aria-labelledby="public-files-table-title">
+        <div class="card-body">
+            <h2 id="public-files-table-title" class="sr-only" th:text="#{publicFiles.tableTitle}">فهرست فایل‌های عمومی</h2>
+            <div class="toolbar">
+                <form class="search-form" method="get" th:action="@{/files/public-files}" role="search">
+                    <label class="sr-only" for="search" th:text="#{publicFiles.searchLabel}">جستجو در فایل‌های عمومی</label>
+                    <input class="form-control" type="search" name="search" id="search" th:value="${search}"
+                           th:placeholder="#{placeholder.searchPublicFiles}" autocomplete="off">
+                    <input type="hidden" name="page-size" th:value="${pageSize}">
+                    <button class="btn btn-primary" type="submit" th:text="#{action.search}">جستجو</button>
+                    <a class="btn btn-outline-secondary" th:href="@{/files/public-files}" th:text="#{action.clear}">پاک کردن</a>
+                </form>
+            </div>
 
-    </div>
-</div>
+            <div th:if="${#lists.isEmpty(files)}" class="empty-state empty-state-panel" role="status">
+                <strong th:text="#{message.noFilesFound}">فایلی پیدا نشد</strong>
+                عبارت جستجو را تغییر دهید یا جستجو را پاک کنید.
+            </div>
 
-<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
-<script th:src="@{/webjars/bootstrap/4.5.0/js/bootstrap.bundle.js}"></script>
+            <div th:unless="${#lists.isEmpty(files)}" class="table-responsive">
+                <table class="table">
+                    <caption class="sr-only" th:text="#{publicFiles.tableCaption}">فایل‌های عمومی قابل مشاهده و دانلود</caption>
+                    <thead>
+                    <tr>
+                        <th scope="col" th:text="#{field.title}">عنوان</th>
+                        <th scope="col" th:text="#{field.fileName}">نام فایل</th>
+                        <th scope="col" th:text="#{field.category}">دسته‌بندی اصلی</th>
+                        <th scope="col" th:text="#{field.subCategory}">زیردسته‌بندی</th>
+                        <th scope="col" th:text="#{field.tag}">برچسب</th>
+                        <th scope="col" th:text="#{field.size}">حجم</th>
+                        <th scope="col" th:text="#{field.version}">نسخه</th>
+                        <th scope="col" th:text="#{field.actions}">عملیات</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="file: ${files}">
+                        <td th:text="${file.getFileInfoName()}"></td>
+                        <td class="technical" th:text="${file.getFileName()}"></td>
+                        <td th:text="${file.getCategoryNameDescription()}"></td>
+                        <td th:text="${file.getSubCategoryNameDescription()}"></td>
+                        <td th:text="${file.getTagDescription()}"></td>
+                        <td class="text-nowrap" th:text="#{unit.megabytes(${#numbers.formatDecimal(file.getSize() / (1024.0 * 1024.0), 1, 2)})}"></td>
+                        <td class="text-nowrap" th:text="${file.getVersion()}"></td>
+                        <td>
+                            <div class="btn-group" role="group" th:aria-label="#{aria.fileActions}">
+                                <a class="btn btn-sm btn-primary" target="_blank"
+                                   th:href="@{'/files/public-download/' + ${file.getId()}}" th:text="#{action.download}">دانلود</a>
+                                <a class="btn btn-sm btn-outline-secondary" target="_blank"
+                                   th:href="@{'/files/public-download/' + ${file.getId()} + '?inline=1'}" th:text="#{action.preview}">پیش‌نمایش</a>
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
 
-<script>
+            <nav th:if="${totalPages > 1}" class="mt-3" th:aria-label="#{aria.publicFilesPagination}">
+                <ul class="pagination mb-0">
+                    <li th:if="${pageNumber > 1}" class="page-item">
+                        <a class="page-link" th:href="@{/files/public-files(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}" th:text="#{action.previous}">قبلی</a>
+                    </li>
+                    <li th:if="${pageNumber > 1}" class="page-item">
+                        <a class="page-link" th:text="${pageNumber-1}" th:href="@{/files/public-files(page-number=${pageNumber-2}, page-size=${pageSize}, search=${search})}"></a>
+                    </li>
+                    <li class="page-item active" aria-current="page"><span class="page-link" th:text="${pageNumber}"></span></li>
+                    <li th:if="${pageNumber < totalPages}" class="page-item">
+                        <a class="page-link" th:text="${pageNumber+1}" th:href="@{/files/public-files(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}"></a>
+                    </li>
+                    <li th:if="${pageNumber < totalPages}" class="page-item">
+                        <a class="page-link" th:href="@{/files/public-files(page-number=${pageNumber}, page-size=${pageSize}, search=${search})}" th:text="#{action.next}">بعدی</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </section>
+</main>
 
-    function search() {
-
-        // let pageNumber = [[${pageNumber}]];
-        // let pageSize = [[${pageSize}]];
-        // let oldSearch = /*[[${oldSearch}]]*/ '';
-
-
-        let input;
-        input = document.getElementById("search").value;
-        // let params = (new URL(document.location)).searchParams;
-        // let pageNumber = params.get("page-number");
-        // let pageSize = params.get("page-size");
-        // let search = params.get("search-filter");
-        // let filterState = $('input[name="stateRadio"]:checked').val();
-
-        let loc = window.location;
-        let newUrl = loc.protocol + "//" + loc.host + loc.pathname+ "?";
-        newUrl += "search=" + input;
-        window.location = newUrl;
-        // if (input !== "") {
-        //     newUrl += "search=" + input;
-        //     window.location = newUrl;
-        // }
-
-
-    }
-
-    function reload() {
-        let loc = window.location;
-        window.location = loc.protocol + "//" + loc.host + loc.pathname;
-    }
-
-</script>
-
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
 </body>
+</html>

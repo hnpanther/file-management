@@ -1,20 +1,20 @@
 <!DOCTYPE html>
-<html lang="en"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title th:if="${#strings.equals(pageType, 'create')}">اسناد-ایجاد کابر جدید </title>
-    <title th:if="${#strings.equals(pageType, 'update')}">اسناد-ویرایش اطلاعات کاربر </title>
+    <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{user.create.pageTitle}">ایجاد کاربر جدید | سامانه مدیریت اسناد</title>
+    <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{user.edit.pageTitle}">ویرایش کاربر | سامانه مدیریت اسناد</title>
 
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
 
 
 </head>
 <body>
 
-<div th:insert="~{navbar.html :: navbar}"></div>
+<div th:replace="~{navbar.html :: navbar}"></div>
 
 <div class="container">
 
@@ -22,29 +22,29 @@
         <fieldset>
 
             <!-- Form Name -->
-            <legend th:if="${#strings.equals(pageType, 'create')}">ایجاد کاربر جدید</legend>
-            <legend th:if="${#strings.equals(pageType, 'update')}">ویرایش اطلاعات کاربر </legend>
+            <legend th:if="${#strings.equals(pageType, 'create')}" th:text="#{user.create.heading}">ایجاد کاربر جدید</legend>
+            <legend th:if="${#strings.equals(pageType, 'update')}" th:text="#{user.edit.heading}">ویرایش اطلاعات کاربر </legend>
 
             <!-- Text input-->
 
             <input th:field="*{id}" type="hidden">
 
             <div class="form-group">
-                <label class="col-md-4 control-label">کد پرسنلی</label>
+                <label class="col-md-4 control-label" th:text="#{field.personnelCode}">کد پرسنلی</label>
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{personelCode}" placeholder="کد پرسنلی" class="form-control"  type="text" required>
+                        <input th:field="*{personelCode}" th:placeholder="#{field.personnelCode}" class="form-control"  type="text" required>
                     </div>
                 </div>
             </div>
 
             <div class="form-group">
-                <label class="col-md-4 control-label">نام کاربری</label>
+                <label class="col-md-4 control-label" th:text="#{field.username}">نام کاربری</label>
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{username}" placeholder="نام کاربری" class="form-control"  type="text" required>
+                        <input th:field="*{username}" th:placeholder="#{field.username}" class="form-control"  type="text" required>
                     </div>
                 </div>
             </div>
@@ -54,11 +54,11 @@
 
 
             <div class="form-group">
-                <label class="col-md-4 control-label">نام</label>
+                <label class="col-md-4 control-label" th:text="#{field.firstName}">نام</label>
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{firstName}"  placeholder="نام" class="form-control"  type="text" required>
+                        <input th:field="*{firstName}"  th:placeholder="#{field.firstName}" class="form-control"  type="text" required>
                     </div>
                 </div>
             </div>
@@ -66,11 +66,11 @@
             <!-- Text input-->
 
             <div class="form-group">
-                <label class="col-md-4 control-label" >نام خانوادگی</label>
+                <label class="col-md-4 control-label"  th:text="#{field.lastName}">نام خانوادگی</label>
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{lastName}" placeholder="نام خانوادگی" class="form-control"  type="text" required>
+                        <input th:field="*{lastName}" th:placeholder="#{field.lastName}" class="form-control"  type="text" required>
                     </div>
                 </div>
             </div>
@@ -79,11 +79,11 @@
 
 
             <div class="form-group">
-                <label class="col-md-4 control-label">کد ملی</label>
+                <label class="col-md-4 control-label" th:text="#{field.nationalCode}">کد ملی</label>
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{nationalCode}" placeholder="کد ملی" class="form-control"  type="text" required>
+                        <input th:field="*{nationalCode}" th:placeholder="#{field.nationalCode}" class="form-control"  type="text" required>
                     </div>
                 </div>
             </div>
@@ -92,11 +92,11 @@
 
 
             <div th:if="${#strings.equals(pageType, 'create')}" class="form-group">
-                <label class="col-md-4 control-label">رمز عبور</label>
+                <label class="col-md-4 control-label" th:text="#{field.password}">رمز عبور</label>
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{password}" placeholder="رمز عبور" class="form-control"  type="password" required>
+                        <input th:field="*{password}" th:placeholder="#{field.password}" class="form-control"  type="password" required>
                     </div>
                 </div>
             </div>
@@ -104,11 +104,11 @@
 
 
             <div class="form-group">
-                <label class="col-md-4 control-label">شماره تلفن همراه</label>
+                <label class="col-md-4 control-label" th:text="#{field.phone}">شماره تلفن همراه</label>
                 <div class="col-md-4 inputGroupContainer">
                     <div class="input-group">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{phoneNumber}" placeholder="شماره تلفن همراه" class="form-control"  type="text" required>
+                        <input th:field="*{phoneNumber}" th:placeholder="#{field.phone}" class="form-control"  type="text" required>
                     </div>
                 </div>
             </div>
@@ -136,8 +136,7 @@
 
 </div>
 
-<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
-<script th:src="@{/webjars/bootstrap/4.5.0/js/bootstrap.bundle.js}"></script>
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
 
 <script>
     $('#userForm').on('submit', function() {

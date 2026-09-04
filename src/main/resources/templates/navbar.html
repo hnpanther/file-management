@@ -1,53 +1,187 @@
 <!DOCTYPE html>
-<html lang="en" dir="rtl"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 <body>
+<!--
+  Application shell: a thin top bar for identity and the account menu, plus a persistent sidebar
+  that holds primary navigation and will host the file tree.
 
-<nav dir="rtl" th:fragment="navbar" class="navbar navbar-expand-lg navbar-light bg-light">
-    <a class="navbar-brand" th:href="@{/files/public-files}">فایل ها</a>
-    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-        <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="navbarNav">
-        <ul class="navbar-nav">
-            <li sec:authorize="isAuthenticated()" class="nav-item active">
-                <a class="nav-link" th:href="@{'/users/' + ${#authentication.principal.id}}">پروفایل <span class="sr-only">(current)</span></a>
-            </li>
-            <li sec:authorize="hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('ADMIN')" class="nav-item">
-                <a class="nav-link" th:href="@{/roles}">نقش ها</a>
-            </li>
-            <li sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('ADMIN')" class="nav-item">
-                <a class="nav-link" th:href="@{/users}">کابران</a>
-            </li>
-            <li sec:authorize="hasAuthority('GET_ALL_GENERAL_TAG_PAGE') || hasAuthority('ADMIN')" class="nav-item">
-                <a class="nav-link" th:href="@{/general-tags}">تگ های عمومی</a>
-            </li>
-            <li sec:authorize="hasAuthority('GET_ALL_FILE_CATEGORY_PAGE') || hasAuthority('ADMIN')" class="nav-item">
-                <a class="nav-link" th:href="@{/file-categories}">دسته بندی ها</a>
-            </li>
-            <li sec:authorize="hasAuthority('GET_ALL_SUB_CATEGORY_PAGE') || hasAuthority('ADMIN')" class="nav-item">
-                <a class="nav-link" th:href="@{/file-sub-categories}">دسته بندی های جزئی</a>
-            </li>
-            <li sec:authorize="hasAuthority('GET_ALL_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')" class="nav-item">
-                <a class="nav-link" th:href="@{/main-tags}">تگ های اصلی</a>
-            </li>
-            <li sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('ADMIN')" class="nav-item">
-                <a class="nav-link" th:href="@{/files/file-info}">فایل ها</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" th:href="@{/files/public-files}">فایل های عمومی</a>
-            </li>
-            <li sec:authorize="isAuthenticated()" class="nav-item">
-                <a class="nav-link" th:href="@{/logout}">خروج</a>
-            </li>
+  Pages insert it with <div th:replace="~{navbar.html :: navbar}"></div> and need no wrapper of
+  their own: the fragment opens the flex layout and closes it in the matching `navbar-end`
+  fragment... except it does not - Thymeleaf fragments must be balanced - so instead the sidebar
+  is fixed and app.css offsets the page. See docs/ui.md.
 
+  Behaviour is Alpine: `drawer` controls the mobile sidebar, `menu` the account dropdown.
+  All copy comes from messages.properties.
+-->
+<th:block th:fragment="navbar">
+<div x-data="{ drawer: false }" @keydown.escape.window="drawer = false">
 
+    <header class="fixed inset-x-0 top-0 z-40 flex h-[var(--spacing-topbar)] items-center gap-3
+                   border-b border-brand-800 bg-brand-700 px-3 text-white sm:px-4">
 
+        <button type="button"
+                class="inline-flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-control)]
+                       border border-white/25 text-white/90 hover:bg-white/10 lg:hidden"
+                @click="drawer = true" :aria-expanded="drawer" aria-controls="app-sidebar"
+                th:aria-label="#{nav.aria.open}">
+            <i class="bi bi-list text-lg" aria-hidden="true"></i>
+        </button>
 
-        </ul>
-    </div>
-</nav>
+        <a th:href="@{/}" th:aria-label="#{app.home.aria}"
+           class="flex min-w-0 items-center gap-2.5 text-white hover:text-white">
+            <span class="grid size-8 shrink-0 place-items-center rounded-[var(--radius-control)]
+                         bg-white text-brand-700" aria-hidden="true">
+                <i class="bi bi-folder-fill text-base"></i>
+            </span>
+            <span class="flex min-w-0 flex-col leading-tight">
+                <span class="truncate text-sm font-semibold" th:text="#{app.name}">سامانه مدیریت اسناد</span>
+                <span class="hidden truncate text-[0.7rem] text-white/70 sm:block"
+                      th:text="#{app.tagline}">دسترسی سریع و امن به فایل‌ها</span>
+            </span>
+        </a>
 
+        <div class="ms-auto flex items-center gap-2">
+            <div sec:authorize="isAuthenticated()" class="relative" x-data="{ menu: false }"
+                 @click.outside="menu = false" @keydown.escape="menu = false">
+                <button type="button" @click="menu = !menu" :aria-expanded="menu"
+                        class="flex max-w-[13rem] items-center gap-2 rounded-[var(--radius-control)]
+                               border border-white/20 bg-white/10 px-2 py-1.5 text-sm font-semibold
+                               text-white hover:bg-white/20">
+                    <span class="grid size-6 shrink-0 place-items-center rounded-full bg-white text-xs
+                                 font-extrabold text-brand-700" aria-hidden="true"
+                          th:text="${#strings.substring(#authentication.principal.username, 0, 1)}">A</span>
+                    <span class="technical hidden truncate sm:block"
+                          th:text="${#authentication.principal.username}">username</span>
+                    <i class="bi bi-chevron-down text-[0.7rem] opacity-75" aria-hidden="true"></i>
+                </button>
+
+                <div x-show="menu" x-cloak x-transition.opacity.duration.120ms
+                     class="absolute end-0 z-50 mt-1.5 w-52 overflow-hidden rounded-[var(--radius-card)]
+                            border border-ink-200 bg-white p-1 shadow-[var(--shadow-pop)]">
+                    <a th:href="@{'/users/' + ${#authentication.principal.id}}"
+                       class="flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2
+                              text-sm text-ink-700 hover:bg-ink-50 hover:text-ink-900">
+                        <i class="bi bi-person text-ink-400" aria-hidden="true"></i>
+                        <span th:text="#{nav.account.profile}">پروفایل من</span>
+                    </a>
+                    <div class="my-1 h-px bg-ink-100"></div>
+                    <a th:href="@{/logout}"
+                       class="flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2
+                              text-sm text-red-600 hover:bg-red-50">
+                        <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+                        <span th:text="#{nav.account.logout}">خروج از سامانه</span>
+                    </a>
+                </div>
+            </div>
+
+            <a sec:authorize="isAnonymous()" th:href="@{/login}"
+               class="rounded-[var(--radius-control)] bg-white px-3 py-1.5 text-sm font-semibold
+                      text-brand-700 hover:bg-brand-50"
+               th:text="#{nav.account.login}">ورود به سامانه</a>
+        </div>
+    </header>
+
+    <!-- backdrop, mobile only -->
+    <div x-show="drawer" x-cloak x-transition.opacity
+         class="fixed inset-0 z-40 bg-ink-900/40 lg:hidden" @click="drawer = false" aria-hidden="true"></div>
+
+    <aside id="app-sidebar" th:aria-label="#{nav.aria.main}"
+           class="fixed bottom-0 start-0 top-[var(--spacing-topbar)] z-50 flex w-[var(--spacing-sidebar)]
+                  flex-col overflow-y-auto overscroll-contain border-e border-ink-200 bg-white
+                  transition-transform duration-200 ease-out lg:z-30"
+           :class="drawer ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'">
+
+        <div class="flex items-center justify-between border-b border-ink-100 px-3 py-2 lg:hidden">
+            <span class="text-sm font-semibold text-ink-700" th:text="#{nav.title}">فهرست ناوبری</span>
+            <button type="button" @click="drawer = false" th:aria-label="#{nav.close}"
+                    class="grid size-8 place-items-center rounded-[var(--radius-control)] text-ink-500 hover:bg-ink-100">
+                <i class="bi bi-x-lg text-sm" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <nav class="flex flex-col gap-5 p-3">
+
+            <ul class="flex flex-col gap-0.5">
+                <li>
+                    <a th:href="@{/files/public-files}" class="app-nav-link">
+                        <i class="bi bi-folder2-open app-nav-icon" aria-hidden="true"></i>
+                        <span th:text="#{nav.publicFiles}">فایل‌های عمومی</span>
+                    </a>
+                </li>
+            </ul>
+
+            <section sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('CREATE_FILE_PAGE') || hasAuthority('FILE_TREE_PAGE') || hasAuthority('ADMIN')"
+                     class="flex flex-col gap-0.5">
+                <h3 class="app-nav-heading" th:text="#{nav.section.files}">مدیریت فایل‌ها</h3>
+                <a sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/files/file-info}" class="app-nav-link">
+                    <i class="bi bi-files app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.files.list}">فهرست فایل‌ها</span>
+                </a>
+                <a sec:authorize="hasAuthority('FILE_TREE_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/files/tree}" class="app-nav-link">
+                    <i class="bi bi-diagram-2 app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.files.tree}">درخت فایل‌ها</span>
+                </a>
+                <a sec:authorize="hasAuthority('CREATE_FILE_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/files/create}" class="app-nav-link">
+                    <i class="bi bi-cloud-arrow-up app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.files.upload}">بارگذاری فایل جدید</span>
+                </a>
+            </section>
+
+            <section sec:authorize="hasAuthority('GET_ALL_GENERAL_TAG_PAGE') || hasAuthority('GET_ALL_FILE_CATEGORY_PAGE') || hasAuthority('GET_ALL_SUB_CATEGORY_PAGE') || hasAuthority('GET_ALL_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')"
+                     class="flex flex-col gap-0.5">
+                <h3 class="app-nav-heading" th:text="#{nav.section.taxonomy}">دسته‌بندی و برچسب‌ها</h3>
+                <a sec:authorize="hasAuthority('GET_ALL_GENERAL_TAG_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/general-tags}" class="app-nav-link">
+                    <i class="bi bi-bookmarks app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.taxonomy.generalTags}">برچسب‌های عمومی</span>
+                </a>
+                <a sec:authorize="hasAuthority('GET_ALL_FILE_CATEGORY_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/file-categories}" class="app-nav-link">
+                    <i class="bi bi-folder app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.taxonomy.categories}">دسته‌بندی‌های اصلی</span>
+                </a>
+                <a sec:authorize="hasAuthority('GET_ALL_SUB_CATEGORY_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/file-sub-categories}" class="app-nav-link">
+                    <i class="bi bi-diagram-3 app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.taxonomy.subCategories}">زیردسته‌بندی‌ها</span>
+                </a>
+                <a sec:authorize="hasAuthority('GET_ALL_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/main-tags}" class="app-nav-link">
+                    <i class="bi bi-tags app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.taxonomy.mainTags}">برچسب‌های فایل</span>
+                </a>
+            </section>
+
+            <section sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('ADMIN')"
+                     class="flex flex-col gap-0.5">
+                <h3 class="app-nav-heading" th:text="#{nav.section.access}">کاربران و دسترسی‌ها</h3>
+                <a sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/users}" class="app-nav-link">
+                    <i class="bi bi-people app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.access.users}">کاربران</span>
+                </a>
+                <a sec:authorize="hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/roles}" class="app-nav-link">
+                    <i class="bi bi-shield-check app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.access.roles}">نقش‌ها و مجوزها</span>
+                </a>
+            </section>
+
+            <div sec:authorize="isAuthenticated()" class="mt-auto border-t border-ink-100 pt-3">
+                <a th:href="@{/logout}" class="app-nav-link text-ink-500 hover:bg-red-50 hover:text-red-600">
+                    <i class="bi bi-box-arrow-right app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.account.logout}">خروج از سامانه</span>
+                </a>
+            </div>
+        </nav>
+    </aside>
+</div>
+</th:block>
 </body>
 </html>

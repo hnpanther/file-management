@@ -336,6 +336,9 @@ values at startup — a missing `base-dir` fails at first upload, not at boot.
 
 ### 28. WAR packaging for an external Tomcat — **S2**
 
+> **Resolved.** `<packaging>jar</packaging>`, `SpringBootServletInitializer` removed. The build
+> now produces an executable `target/file-management.jar`. A container image is still open.
+
 `<packaging>war</packaging>` + `SpringBootServletInitializer` + a fixed `finalName`. Workable for the
 current deployment, awkward for containers, and it rules out the executable-jar layered-image build
 that the rest of the roadmap assumes.

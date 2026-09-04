@@ -15,7 +15,13 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
+import org.springframework.security.web.savedrequest.RequestCache;
+import org.springframework.security.web.util.matcher.AndRequestMatcher;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
@@ -115,6 +121,8 @@ public class SecurityConfig {
                             auth.requestMatchers("/webjars/**").permitAll();
                             auth.requestMatchers("/css/**").permitAll();
                             auth.requestMatchers("/js/**").permitAll();
+                            // vendored third-party assets - stylesheets, scripts and the icon font
+                            auth.requestMatchers("/vendor/**").permitAll();
                             auth.requestMatchers("/public-pages/**").permitAll();
 
                             auth.anyRequest().authenticated();
@@ -122,18 +130,60 @@ public class SecurityConfig {
                 )
                 .formLogin(form -> form
                         .loginPage("/login")
+                        // "/" decides where a signed-in user actually belongs; see HomeController.
+                        // Not alwaysUse, so a saved request still wins over the default target.
+                        .defaultSuccessUrl("/")
+                        .failureUrl("/login?error")
                         .permitAll())
                 .logout(
                         logout -> logout
                                 .logoutRequestMatcher(new AntPathRequestMatcher("/logout"))
+                                .logoutSuccessUrl("/login?logout")
+                                .invalidateHttpSession(true)
+                                .clearAuthentication(true)
+                                .deleteCookies("JSESSIONID")
                                 .permitAll()
                 )
+                .requestCache(cache -> cache.requestCache(pageOnlyRequestCache()))
+                .exceptionHandling(ex -> ex.accessDeniedPage("/access-denied"))
                 .authenticationManager(authenticationManager)
                 .build();
 
 
     }
 
+
+
+    /**
+     * Spring Security replays whatever request triggered the login prompt. Left unfiltered that can
+     * be an AJAX call, a stylesheet or a JSON endpoint, and the user lands on raw JSON or a 404
+     * after signing in. Only remember real page navigations; everything else falls through to the
+     * form-login default target ("/").
+     */
+    private RequestCache pageOnlyRequestCache() {
+        RequestMatcher pageNavigation = new AndRequestMatcher(
+                new AntPathRequestMatcher("/**", "GET"),
+                new NegatedRequestMatcher(new OrRequestMatcher(
+                        new AntPathRequestMatcher("/api/**"),
+                        new AntPathRequestMatcher("/resource/**"),
+                        new AntPathRequestMatcher("/vendor/**"),
+                        new AntPathRequestMatcher("/css/**"),
+                        new AntPathRequestMatcher("/js/**"),
+                        new AntPathRequestMatcher("/public-pages/**"),
+                        new AntPathRequestMatcher("/favicon.ico"),
+                        new AntPathRequestMatcher("/login"),
+                        new AntPathRequestMatcher("/logout"))),
+                // jQuery sets this on every $.ajax call, so it rules out the UI's own REST traffic.
+                request -> !"XMLHttpRequest".equals(request.getHeader("X-Requested-With")),
+                request -> {
+                    String accept = request.getHeader("Accept");
+                    return accept == null || accept.contains("text/html");
+                });
+
+        HttpSessionRequestCache requestCache = new HttpSessionRequestCache();
+        requestCache.setRequestMatcher(pageNavigation);
+        return requestCache;
+    }
 
     @Bean
     @Order(1)

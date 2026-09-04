@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<!--
+  Shared head and script blocks.
+
+  Every asset is served from static/vendor/ or static/css/ - files that live in the source tree.
+  Nothing here depends on Maven resolving a WebJar at runtime: an IDE or CI with a partly
+  populated ~/.m2 used to serve 404s for every asset, which reached the browser as
+  "Unexpected token '<'" on an unstyled page. See docs/ui.md.
+
+  Styling is Tailwind, compiled from src/main/frontend/app.css into static/css/app.css and
+  committed, so the Maven build needs no Node. Behaviour is Alpine.js.
+
+  jQuery and Select2 remain only for the page AJAX and dependent dropdowns that have not been
+  converted to fetch + Alpine yet.
+-->
+<head>
+    <th:block th:fragment="head-assets">
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="color-scheme" content="light">
+        <meta name="_csrf" th:content="${_csrf} != null ? ${_csrf.token} : ''">
+        <meta name="_csrf_header" th:content="${_csrf} != null ? ${_csrf.headerName} : ''">
+        <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
+        <link rel="stylesheet" th:href="@{/css/app.css}">
+    </th:block>
+
+    <th:block th:fragment="head-assets-select">
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="color-scheme" content="light">
+        <meta name="_csrf" th:content="${_csrf} != null ? ${_csrf.token} : ''">
+        <meta name="_csrf_header" th:content="${_csrf} != null ? ${_csrf.headerName} : ''">
+        <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
+        <link rel="stylesheet" th:href="@{/vendor/select2/select2.min.css}">
+        <link rel="stylesheet" th:href="@{/css/app.css}">
+    </th:block>
+</head>
+<body>
+<th:block th:fragment="scripts">
+    <script th:src="@{/vendor/alpine/alpine.min.js}" defer></script>
+    <script th:src="@{/vendor/jquery/jquery.min.js}"></script>
+    <script th:src="@{/js/app.js}"></script>
+</th:block>
+
+<th:block th:fragment="scripts-select">
+    <script th:src="@{/vendor/alpine/alpine.min.js}" defer></script>
+    <script th:src="@{/vendor/jquery/jquery.min.js}"></script>
+    <script th:src="@{/vendor/select2/select2.min.js}"></script>
+    <script th:src="@{/js/app.js}"></script>
+</th:block>
+</body>
+</html>

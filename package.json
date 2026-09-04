@@ -1,0 +1,14 @@
+{
+  "name": "file-management-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stylesheet build for the file-management Thymeleaf UI. Node is a development-time tool only: the generated CSS is committed, so `./mvnw package` and the running application never need it.",
+  "scripts": {
+    "build:css": "tailwindcss -i src/main/frontend/app.css -o src/main/resources/static/css/app.css --minify",
+    "watch:css": "tailwindcss -i src/main/frontend/app.css -o src/main/resources/static/css/app.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "tailwindcss": "4.3.3"
+  }
+}

@@ -1,66 +1,66 @@
 <!DOCTYPE html>
-<html lang="en"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
-
-    <title>ورود</title>
-
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: royalblue;
-            height: 100vh;
-        }
-        #login .container #login-row #login-column #login-box {
-            margin-top: 120px;
-            max-width: 600px;
-            height: 320px;
-            border: 1px solid #9C9C9C;
-            background-color: #EAEAEA;
-        }
-        #login .container #login-row #login-column #login-box #login-form {
-            padding: 20px;
-        }
-        #login .container #login-row #login-column #login-box #login-form #register-link {
-            margin-top: -85px;
-        }
-    </style>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{login.pageTitle(#{app.name})}">ورود | سامانه مدیریت اسناد</title>
 </head>
+<body class="auth-page">
+<main class="auth-shell">
+    <section class="auth-form-panel" aria-labelledby="login-title">
+        <div class="auth-form-inner">
+            <a class="auth-public-link" th:href="@{/files/public-files}" th:text="#{login.publicFilesLink}">فایل‌های عمومی</a>
 
+            <div class="auth-form-heading">
+                <span class="auth-eyebrow" th:text="#{login.eyebrow}">ورود کاربران</span>
+                <h1 id="login-title" class="auth-title" th:text="#{login.title}">ورود به سامانه</h1>
+                <p class="auth-subtitle" th:text="#{login.subtitle}">نام کاربری و رمز عبور خود را وارد کنید.</p>
+            </div>
 
-<body>
-<div id="login">
-    <h3 class="text-center text-white pt-5">صفحه ورود</h3>
-    <div class="container">
-        <div id="login-row" class="row justify-content-center align-items-center">
-            <div id="login-column" class="col-md-6">
-                <div id="login-box" class="col-md-12">
-                    <form id="login-form" class="form" th:action="@{/login}" method="post">
-                        <h3 class="text-center text-info">ورود</h3>
-                        <div class="form-group">
-                            <label dir="rtl" for="username" class="text-info">نام کاربری:</label><br>
-                            <input type="text" name="username" id="username" class="form-control">
-                        </div>
-                        <div class="form-group">
-                            <label dir="rtl" for="password" class="text-info">رمز عبور:</label><br>
-                            <input type="password" name="password" id="password" class="form-control">
-                        </div>
-                        <div class="form-group">
-                            <div th:if="${param.error}" class="alert alert-error">
-                                نام کاربری یا رمز عبور اشتباه میباشد
-                            </div>
-                            <div th:if="${param.logout}" class="alert alert-success">
-                                با موفقیت خارج شدید
-                            </div>
-                            <input type="submit" name="submit" class="btn btn-info btn-md" value="وورد">
-                        </div>
-                    </form>
+            <div th:if="${param.error}" class="alert alert-warning" role="alert" th:text="#{login.error}">
+                نام کاربری یا رمز عبور صحیح نیست.
+            </div>
+            <div th:if="${param.logout}" class="alert alert-success" role="status" th:text="#{login.loggedOut}">
+                با موفقیت از سامانه خارج شدید.
+            </div>
+
+            <form id="login-form" class="auth-form" th:action="@{/login}" method="post">
+                <div class="form-group">
+                    <label for="username" th:text="#{login.username}">نام کاربری</label>
+                    <input type="text" name="username" id="username" class="form-control" autocomplete="username"
+                           inputmode="text" autofocus required>
                 </div>
+                <div class="form-group">
+                    <label for="password" th:text="#{login.password}">رمز عبور</label>
+                    <input type="password" name="password" id="password" class="form-control"
+                           autocomplete="current-password" required>
+                </div>
+                <button type="submit" class="btn btn-primary" th:text="#{login.submit}">ورود</button>
+            </form>
+        </div>
+    </section>
+
+    <aside class="auth-intro" th:aria-label="#{login.intro.aria}">
+        <div class="auth-brand">
+            <span class="brand-mark" aria-hidden="true"><i class="bi bi-folder-fill"></i></span>
+            <div>
+                <strong th:text="#{app.name}">سامانه مدیریت اسناد</strong>
+                <div th:text="#{login.intro.subtitle}">فضای داخلی نگهداری و دسترسی به فایل‌ها</div>
             </div>
         </div>
-    </div>
-</div>
+
+        <div class="auth-intro-copy">
+            <span class="auth-intro-kicker" th:text="#{login.intro.kicker}">همه‌چیز در جای درست</span>
+            <h2 th:text="#{login.intro.headline}">فایل‌ها و نسخه‌ها را سریع پیدا و مدیریت کنید.</h2>
+            <ul class="auth-points">
+                <li th:text="#{login.intro.point1}">دسته‌بندی و برچسب‌گذاری روشن</li>
+                <li th:text="#{login.intro.point2}">مدیریت نسخه‌های هر فایل</li>
+                <li th:text="#{login.intro.point3}">دسترسی بر پایهٔ مجوزهای سازمانی</li>
+            </ul>
+        </div>
+    </aside>
+</main>
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
 </body>
+</html>

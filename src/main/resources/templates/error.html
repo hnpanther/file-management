@@ -1,18 +1,19 @@
 <!DOCTYPE html>
-<html lang="en" dir="rtl"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
-
-    <title>اسناد-خطا</title>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{error.pageTitle(#{app.name})}">خطا | سامانه مدیریت اسناد</title>
 </head>
-<body>
-
-
-<div th:insert="~{navbar.html :: navbar}"></div>
-<h3>مشکلی پیش آمده. لطفا مجددا تلاش کنید. در صورت بروز مجدد مشکل با مدیر سیستم تماس بگیرید. </h3>
-<a href="/">برگشت</a>
-<p th:text="${message}"></p>
+<body class="error-page">
+<main class="error-card" aria-labelledby="error-title">
+    <span class="error-code" aria-hidden="true"><i class="bi bi-exclamation-triangle"></i></span>
+    <h1 id="error-title" class="error-title" th:text="#{error.title}">در انجام درخواست مشکلی پیش آمد</h1>
+    <p class="error-subtitle" th:text="#{error.subtitle}">لطفاً دوباره تلاش کنید. اگر مشکل ادامه داشت، با مدیر سامانه تماس بگیرید.</p>
+    <p th:if="${message}" th:text="${message}" class="error-detail" role="alert"></p>
+    <a th:href="@{/}" class="btn btn-primary" th:text="#{error.backHome}">بازگشت به صفحهٔ اصلی</a>
+</main>
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
 </body>
 </html>

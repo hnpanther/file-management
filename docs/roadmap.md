@@ -10,6 +10,7 @@ what came before.
 | 2 | Architectural restructuring | 1 | |
 | 3 | PostgreSQL migration | 1, partly 2 | |
 | 4 | S3-compatible storage alongside the filesystem | 2, 3 | |
+| 5 | Folder tree: read-only view, then drag-and-drop, then one `folder` table | 3, 4 | view **done** |
 
 Phase 0 is not one of the four stated goals, but every later phase is a large refactor of code that
 currently has **no** automated verification (issues 36–38). Doing it first is what makes the rest
@@ -120,7 +121,8 @@ build between them tells you which hop broke what.
 5. Clean up every deprecation warning the hops surfaced.
 6. Add `spring-boot-starter-actuator` (issue 41) and `springdoc-openapi-starter-webmvc-ui` 3.1.0
    (issue 42) while the dependency tree is already being touched.
-7. Switch `war` → `jar` (issue 28) and build a container image.
+7. ~~Switch `war` → `jar` (issue 28)~~ — **done ahead of this phase**; the container image is
+   still outstanding.
 
 **Done when:** `./mvnw verify` is green on Spring Boot 4.1.1 / Java 25 with zero deprecation
 warnings, and `/actuator/health` reports the database.
@@ -318,3 +320,70 @@ Nothing in this roadmap is finished until, for every phase:
 * no secret is committed;
 * `/actuator/health` reflects the real state of the database and the blob store;
 * the phase's entries in [issues.md](issues.md) are struck off, and any newly discovered ones added.
+
+---
+
+## Phase 5 — From taxonomy to a real folder tree
+
+The read-only tree at `/files/tree` is the first step of this phase and is already in place.
+
+### What the storage model actually is today
+
+Verified against the code and the disk, not the documentation:
+
+| Level | Directory on disk? | Where |
+|---|---|---|
+| General tag | **no** — it labels a category | — |
+| Category | yes | `FileCategoryService.createCategory` → `createDirectory(name, false)` |
+| Sub-category | yes | `FileSubCategoryService.createFileSubCategory` → `createDirectory(cat/sub, true)` |
+| **Main tag** | **no** — metadata only | `MainTagFileService` has no storage dependency at all |
+| File (`FileInfo`) | yes | created lazily by `FileStorageFileSystemService.save` |
+| Version | yes | `v1`, `v2`, … |
+
+So the path is `{base}/{Category}/{SubCategory}/{FileName}/v{n}/{file}.{ext}` — a main tag never
+appears in it, even though every file must have one.
+
+### 5.1 The tree view — done
+
+`FileTreeService` + `FileTreeResource` + `/files/tree`. It presents category, sub-category **and
+main tag** as folders, so the view already speaks the target model. Levels load on demand, which
+matters because every `@ManyToOne` here is `EAGER`.
+
+Read-only on purpose: no move, rename or delete. `FILE_TREE_PAGE` and `REST_GET_FILE_TREE` gate it.
+
+### 5.2 Drag and drop (next)
+
+Needs a *move* operation, which the current storage port cannot express: `FileStorageService` is
+path-shaped (`address`, `version`, `extension`) and has no `move`. Do this **after** the
+`BlobStore` port from [target-architecture.md](target-architecture.md#the-storage-port), where a
+move is a key change plus a database update, and on S3 a server-side copy then delete.
+
+Order:
+1. `BlobStore.move(from, to)` on the port and both adapters.
+2. `PUT /resource/files/tree/move` — validates the target accepts the node type, moves bytes and
+   row in one transaction, writes an `ActionHistory` row.
+3. Alpine drag handlers on the existing flat row list — it is already an ordered list with a
+   `depth` on every row, which is what a drop target needs.
+
+### 5.3 Collapsing the taxonomy into folders (the real change)
+
+Target: one `folder` table, self-referencing, replacing category, sub-category and main tag.
+
+```
+folder(id, parent_id, name, name_description, general_tag_id, path, created_*, ...)
+file_info(folder_id, ...)   -- instead of file_sub_category_id + main_tag_file_id
+```
+
+* A general tag stays a label, on a folder rather than on a category.
+* Depth becomes unbounded, which is the point.
+* Migration: create `folder`; insert one row per category, one per sub-category (parent = its
+  category), one per main tag (parent = its sub-category); repoint `file_info.folder_id`; keep the
+  old tables for one release behind a read-only view.
+* On disk, a main tag currently has **no** directory, so the migration has to create one and move
+  each file's directory into it — this is the only step that touches bytes, and it must be
+  checksum-verified the same way the S3 migration is.
+* `FileTreeService` collapses to a single recursive query on `folder`; the view does not change,
+  which is why it was built this way.
+
+**Do not start 5.3 before Phase 3 (PostgreSQL, with `checksum_sha256` backfilled) and Phase 4's
+`BlobStore`.** Moving bytes without checksums and without a storage port is how a file gets lost.

@@ -1,31 +1,24 @@
 <!DOCTYPE html>
-<html lang="en"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title th:if="${#strings.equals(pageType, 'create')}">ایجاد فایل</title>
-    <title th:if="${#strings.equals(pageType, 'update')}">ویرایش ویرایش</title>
+    <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{file.create.pageTitle}">ایجاد فایل</title>
+    <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{file.edit.pageTitle}">ویرایش فایل</title>
 
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
-    <link rel="stylesheet" th:href="@{/webjars/select2/4.0.13/css/select2.min.css}"/>
+    <th:block th:replace="~{fragments.html :: head-assets-select}"></th:block>
 
-    <style>
-        label {
-            float: right
-        }
-
-    </style>
 </head>
 <body>
 
-<div th:insert="~{navbar.html :: navbar}"></div>
+<div th:replace="~{navbar.html :: navbar}"></div>
 
 
 <h2></h2>
-<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl">ایجاد فایل </h2>
-<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl">ویرایش فایل</h2>
+<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl" th:text="#{file.create.pageTitle}">ایجاد فایل </h2>
+<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl" th:text="#{file.edit.heading}">ویرایش فایل</h2>
 <div class="container">
     <form enctype="multipart/form-data" th:action="@{ ${#strings.equals(pageType, 'create') ? '/files' : '/files/' + file.getId()}  }" method="post" id="fileForm" th:object="${file}">
 
@@ -37,18 +30,18 @@
         <div class="form-row">
 
             <div class="form-group col-md-6">
-                <label>توضیحات</label>
+                <label th:text="#{field.description}">توضیحات</label>
                 <input dir="rtl" type="text" class="form-control" th:field="*{description}" required>
             </div>
 
             <div class="form-group col-md-6">
-                <label>عنوان فایل</label>
+                <label th:text="#{field.fileTitle}">عنوان فایل</label>
                 <input dir="rtl" type="text" class="form-control" th:field="*{fileName}" readonly>
             </div>
 
 
             <div class="form-group col-md-6">
-                <label>انتخاب زیر دسته بندی </label>
+                <label th:text="#{select.subCategory}">انتخاب زیر دسته بندی </label>
                 <select onclick="changeSubCategory()" onchange="changeSubCategory()" class="form-control fileSubCategoryId" name="fileSubCategoryId" id="fileSubCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
 
                 </select>
@@ -56,19 +49,21 @@
 
 
             <div class="form-group col-md-6">
-                <label>انتخاب دسته بندی اصلی</label>
+                <label th:text="#{select.category}">انتخاب دسته بندی اصلی</label>
                 <select onchange="changeMainCategory()" class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
                     <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getDisplayName()}" th:selected="${f.getId() == file.getFileCategoryId()}"></option>
                 </select>
             </div>
 
             <div class="form-group col-md-6" style="text-align: right">
-                <label dir="rtl" for="multipartFile">انتخاب فایل(فرمت های مجاز: txt-pdf-jpg-xlsx-docx)-حداکثر حجم 20MB</label>
-                <input type="file" class="form-control-file" name="multipartFile" id="multipartFile" accept=".jpg,.xlsx,.docx,.pdf,.txt,.png,.mp4,.pptx,.mp3">
+                <label for="multipartFile" th:text="#{field.chooseFile}">فایل موردنظر</label>
+                <input type="file" class="form-control-file" name="multipartFile" id="multipartFile"
+                       accept=".jpg,.xlsx,.docx,.pdf,.txt,.png,.mp4,.pptx,.mp3" required>
+                <small class="form-text">فرمت‌های مجاز: <span class="technical" dir="ltr">JPG, PNG, PDF, TXT, XLSX, DOCX, PPTX, MP4, MP3</span>؛ حداکثر حجم ۲۰ مگابایت.</small>
             </div>
 
             <div class="form-group col-md-6">
-                <label>انتخاب تگ </label>
+                <label th:text="#{select.tag}">انتخاب تگ </label>
                 <select class="form-control mainTagFileId" name="mainTagFileId" id="mainTagFileId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
 
                 </select>
@@ -91,17 +86,15 @@
              th:text="${message}"><i class="glyphicon glyphicon-thumbs-up"></i>
         </div>
 
-        <button type="submit" class="btn btn-primary">ذخیره</button>
+        <button type="submit" class="btn btn-primary" th:text="#{action.save}">ذخیره</button>
     </form>
     <hr>
     <a th:href="@{/files/file-info}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست فایل ها</a>
 </div>
 
 
-<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
-<script th:src="@{/webjars/bootstrap/4.5.0/js/bootstrap.bundle.js}"></script>
-<script th:src="@{/webjars/select2/4.0.13/js/select2.min.js}"></script>
-<script>
+<th:block th:replace="~{fragments.html :: scripts-select}"></th:block>
+<script th:inline="javascript">
 
     let check1 = 0;
     let check2 = 0;
@@ -128,7 +121,7 @@
         let file_input = $(this).find('input[name="multipartFile"]')[0];
         let sizeFile = file_input.files[0].size;
         if((sizeFile/(1024*1024)) > (20)) {
-            alert('حجم فایل بیش از حد مجاز میباشد');
+            alert([[#{js.fileTooLarge}]]);
             return false;
         } else {
             return true;
@@ -147,7 +140,7 @@
             }
             let token = $("meta[name='_csrf']").attr("content");
             let headerToken = $("meta[name='_csrf_header']").attr("content");
-            let contextPath = "[[@{/}]]";
+            let contextPath = [[@{/}]];
             $.ajax({
                 type: 'GET',
                 url: contextPath + 'resource/file-categories/' + fileCategoryId + '/sub-categories',
@@ -180,7 +173,7 @@
             }
             let token = $("meta[name='_csrf']").attr("content");
             let headerToken = $("meta[name='_csrf_header']").attr("content");
-            let contextPath = "[[@{/}]]";
+            let contextPath = [[@{/}]];
             $.ajax({
                 type: 'GET',
                 url: contextPath + 'resource/file-sub-categories/' + fileSubCategoryId + '/main-tags',

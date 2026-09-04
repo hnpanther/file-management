@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"
+<html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
 <head>
@@ -7,26 +7,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <meta th:name="_csrf" th:content="${_csrf.token}"/>
     <meta th:name="_csrf_header" th:content="${_csrf.headerName}"/>
-    <title th:if="${#strings.equals(pageType, 'create')}">ساخت دسته بندی جدید</title>
-    <title th:if="${#strings.equals(pageType, 'update')}">ویرایش دسته بندی</title>
+    <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{category.create.pageTitle}">ساخت دسته بندی جدید</title>
+    <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{category.edit.heading}">ویرایش دسته بندی</title>
 
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/4.5.0/css/bootstrap.min.css}"/>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
 
-    <style>
-        label {
-            float: right
-        }
-
-    </style>
 </head>
 <body>
 
-<div th:insert="~{navbar.html :: navbar}"></div>
+<div th:replace="~{navbar.html :: navbar}"></div>
 
 
 <h2></h2>
-<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl">ایجاد دسته بندی جدید</h2>
-<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl">ویرایش دسته بندی</h2>
+<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl" th:text="#{category.create.heading}">ایجاد دسته بندی جدید</h2>
+<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl" th:text="#{category.edit.heading}">ویرایش دسته بندی</h2>
 <div class="container">
     <form th:action="@{ ${#strings.equals(pageType, 'create') ? '/file-categories' : '/file-categories/' + fileCategory.getId()}  }" method="post" id="categoryForm" th:object="${fileCategory}">
 
@@ -38,17 +32,17 @@
         <div class="form-row">
 
             <div class="form-group col-md-6">
-                <label>نام دسته بندی(فارسی)</label>
+                <label th:text="#{field.categoryNameFa}">نام دسته بندی(فارسی)</label>
                 <input dir="rtl" type="text" class="form-control" th:field="*{categoryNameDescription}" required>
             </div>
 
             <div class="form-group col-md-6">
-                <label>عنوان دسته بندی(به انگلیسی بدون فاصله)</label>
+                <label th:text="#{category.nameEnHint}">عنوان دسته بندی(به انگلیسی بدون فاصله)</label>
                 <input dir="rtl" type="text" class="form-control" th:field="*{categoryName}" required th:readonly="${#strings.equals(pageType, 'update')}">
             </div>
 
             <div class="form-group col-md-6">
-                <label>انتخاب تگ عمومی</label>
+                <label th:text="#{select.generalTag}">انتخاب تگ عمومی</label>
                 <select class="form-control generalTagId" name="generalTagId" id="generalTagId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
                     <option th:each="g: ${generalTags}" th:value="${g.getId()}" th:text="${g.getTagName() + ' - ' + g.getTagNameDescription()}" th:selected="${g.getId() == fileCategory.getGeneralTagId()}"></option>
                 </select>
@@ -67,7 +61,7 @@
              th:text="${message}"><i class="glyphicon glyphicon-thumbs-up"></i>
         </div>
 
-        <button type="submit" class="btn btn-primary">ذخیره</button>
+        <button type="submit" class="btn btn-primary" th:text="#{action.save}">ذخیره</button>
     </form>
     <hr>
     <a th:if="${#strings.equals(pageType, 'update')}" sec:authorize="hasAuthority('REST_DELETE_FILE_CATEGORY') || hasAuthority('ADMIN')" th:onclick="deleteCategory()" class="btn btn-danger"> <i class="fa fa-arrow-circle-o-left"></i>حذف</a>
@@ -76,10 +70,9 @@
 </div>
 
 
-<script th:src="@{/webjars/jquery/3.7.1/jquery.min.js}"></script>
-<script th:src="@{/webjars/bootstrap/4.5.0/js/bootstrap.bundle.js}"></script>
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
 
-<script>
+<script th:inline="javascript">
 
     $('#categoryForm').on('submit', function() {
 
@@ -87,10 +80,10 @@
     });
 
     function deleteCategory() {
-        if(confirm("آیا از حذف اطمینان دارید؟")) {
+        if(confirm([[#{js.confirmDelete}]])) {
             let token = $("meta[name='_csrf']").attr("content");
             let headerToken = $("meta[name='_csrf_header']").attr("content");
-            let contextPath = "[[@{/}]]";
+            let contextPath = [[@{/}]];
             $.ajax({
                 url: contextPath + "resource/file-categories/" + $(".fileCategoryId").val(),
                 type: "DELETE",
@@ -101,13 +94,13 @@
                 },
                 complete: function (xhr, status) {
                     if(xhr.status === 200) {
-                        alert("حذف با موفقیت انجام شد.");
+                        alert([[#{js.deleted}]]);
                         let currentLocation = window.location;
                         let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "file-categories";
                         window.location.replace(newUrl);
                     } else {
                         // alert(xhr.responseText);
-                        alert('امکان حذف وجود ندارد. مطمئن شوید تگ اصلی مرتبط با این آیتم وجود نداشته باشد.');
+                        alert([[#{js.cannotDeleteMainTag}]]);
                     }
                 }
             });

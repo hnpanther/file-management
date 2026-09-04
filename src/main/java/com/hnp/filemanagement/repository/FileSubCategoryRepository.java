@@ -18,6 +18,11 @@ public interface FileSubCategoryRepository extends JpaRepository<FileSubCategory
 
     Optional<FileSubCategory> findByIdOrSubCategoryName(int id, String subCategoryName);
 
+    // Tree view: children of a category, and the count shown on the parent node.
+    List<FileSubCategory> findByFileCategoryIdOrderBySubCategoryNameAsc(int fileCategoryId);
+
+    int countByFileCategoryId(int fileCategoryId);
+
 
     @Query("SELECT f FROM FileSubCategory f LEFT JOIN FETCH f.mainTagFiles WHERE f.id = (:id)")
     Optional<FileSubCategory> findByIdAndFetchMainTag(int id);

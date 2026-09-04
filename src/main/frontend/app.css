@@ -1,0 +1,396 @@
+/*
+ * Design system for the file-management UI.
+ *
+ * Build:  npm run build:css   ->  src/main/resources/static/css/app.css (committed)
+ * Node is a development-time tool only; the Maven build and the running application never need it.
+ *
+ * The page templates are Bootstrap 3-era markup. Rather than rewrite 24 templates at once, the
+ * component layer below re-implements the class names they already use on top of Tailwind, so the
+ * whole application adopts this design immediately. Page bodies are then converted to plain
+ * utilities one at a time, and each block here disappears as its last consumer does.
+ */
+
+@import "tailwindcss";
+
+@source "../resources/templates/**/*.html";
+@source "../resources/static/js/**/*.js";
+
+/* ------------------------------------------------------------------ design tokens */
+@theme {
+    --font-sans: "Vazirmatn", Tahoma, "Segoe UI", system-ui, sans-serif;
+
+    /* Brand: a single restrained green. Used for primary actions, active state and the top bar -
+       never for surfaces. */
+    --color-brand-50:  #eef6f1;
+    --color-brand-100: #d6ebde;
+    --color-brand-200: #aed8be;
+    --color-brand-300: #7dbd97;
+    --color-brand-400: #479a6d;
+    --color-brand-500: #167c4a;
+    --color-brand-600: #0f6b3f;
+    --color-brand-700: #0b5532;
+    --color-brand-800: #094428;
+    --color-brand-900: #073520;
+
+    /* Neutrals carry the interface. */
+    --color-ink-50:  #f7f8f9;
+    --color-ink-100: #eef0f2;
+    --color-ink-200: #e2e5e9;
+    --color-ink-300: #cbd1d8;
+    --color-ink-400: #98a2ae;
+    --color-ink-500: #6b7684;
+    --color-ink-600: #4d5761;
+    --color-ink-700: #364049;
+    --color-ink-800: #232b33;
+    --color-ink-900: #141a20;
+
+    --color-canvas: #f5f6f8;
+
+    --radius-card: 0.5rem;
+    --radius-control: 0.375rem;
+
+    --shadow-panel: 0 1px 2px rgb(20 26 32 / 0.06), 0 1px 3px rgb(20 26 32 / 0.08);
+    --shadow-pop: 0 8px 24px rgb(20 26 32 / 0.12), 0 2px 6px rgb(20 26 32 / 0.08);
+
+    --spacing-topbar: 3.25rem;
+    --spacing-sidebar: 16rem;
+}
+
+/* ------------------------------------------------------------------ base */
+@font-face {
+    font-family: "Vazirmatn";
+    src: url("fonts/vazirmatn/Vazirmatn-Variable.woff2") format("woff2-variations");
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+}
+
+@layer base {
+    html {
+        direction: rtl;
+        font-size: 16px;
+        scroll-behavior: smooth;
+    }
+
+    body {
+        margin: 0;
+        min-height: 100vh;
+        background-color: var(--color-canvas);
+        color: var(--color-ink-800);
+        font-family: var(--font-sans);
+        font-size: 0.9375rem;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        margin: 0;
+        font-weight: 600;
+        line-height: 1.3;
+        color: var(--color-ink-900);
+    }
+
+    a { color: var(--color-brand-600); text-decoration: none; }
+    a:hover { color: var(--color-brand-700); }
+
+    :focus-visible {
+        outline: 2px solid var(--color-brand-500);
+        outline-offset: 2px;
+    }
+
+    /* Mixed Persian/Latin values - file names, usernames, hashes - must not be reordered. */
+    .technical { unicode-bidi: plaintext; }
+
+    /* Legacy Bootstrap 3 / Font Awesome icon markup with no stylesheet behind it. The buttons
+       carrying these all have visible text, so hide the empty elements until the markup is
+       cleaned out of the templates. */
+    .glyphicon, .fa { display: none !important; }
+}
+
+@layer components {
+
+    /* ---------------------------------------------------------- layout */
+    .container      { @apply mx-auto w-full max-w-[80rem] px-4; }
+    .container-fluid{ @apply mx-auto w-full max-w-[100rem] px-4; }
+    .row            { @apply flex flex-wrap -mx-2; }
+    .row > *        { @apply px-2; }
+    .col            { @apply min-w-0 flex-1; }
+    .col-12         { @apply w-full; }
+    .col-sm-3       { @apply w-full sm:w-1/4; }
+    .col-sm-9       { @apply w-full sm:w-3/4; }
+    .col-sm-12      { @apply w-full; }
+    .col-md-3       { @apply w-full md:w-1/4; }
+    .col-md-4       { @apply w-full md:w-1/3; }
+    .col-md-6       { @apply w-full md:w-1/2; }
+    .col-md-8       { @apply w-full md:w-2/3; }
+    .col-lg-2       { @apply w-full lg:w-[15rem] lg:flex-none; }
+    .col-lg-3       { @apply w-full lg:w-[18rem] lg:flex-none; }
+    .flex-lg-nowrap { @apply lg:flex-nowrap; }
+    .gutters-sm     { @apply -mx-1.5; }
+    .gutters-sm > * { @apply px-1.5; }
+
+    /* ---------------------------------------------------------- surfaces */
+    .card,
+    .e-panel,
+    .well {
+        @apply rounded-[var(--radius-card)] border border-ink-200 bg-white;
+    }
+    .card-body  { @apply p-5; }
+    .well       { @apply p-4; }
+    .card-title { @apply mb-4 flex flex-wrap items-center justify-between gap-3; }
+
+    /* The list pages wrap their heading in a fake tab strip. */
+    .e-tabs           { @apply mb-4; }
+    .e-tabs .nav-tabs { @apply border-0; }
+    .e-tabs .nav-link,
+    .e-tabs .nav-link.active {
+        @apply pointer-events-none border-0 bg-transparent p-0 text-xl font-semibold text-ink-900;
+    }
+
+    .page-header      { @apply mb-5; }
+    .page-kicker      { @apply mb-1 text-xs font-semibold text-brand-600; }
+    .page-header h1   { @apply text-xl font-semibold; }
+    .page-description { @apply mt-1 text-sm text-ink-500; }
+    .toolbar          { @apply mb-4 flex flex-wrap items-center gap-2; }
+    .search-form      { @apply flex flex-1 flex-wrap items-center gap-2; }
+
+    .empty-state       { @apply py-10 text-center text-sm text-ink-500; }
+    .empty-state strong{ @apply block text-base font-semibold text-ink-700; }
+    .empty-state-panel { @apply rounded-[var(--radius-card)] border border-dashed border-ink-300 bg-ink-50; }
+
+    /* ---------------------------------------------------------- tables */
+    .table-responsive {
+        @apply w-full overflow-x-auto rounded-[var(--radius-card)] border border-ink-200 bg-white;
+    }
+    .table { @apply w-full min-w-[46rem] border-collapse text-sm; }
+    .table th,
+    .table td {
+        @apply border-0 px-3 py-2.5 text-start align-middle;
+        unicode-bidi: plaintext;
+    }
+    .table thead th {
+        @apply sticky top-0 z-1 border-b border-ink-200 bg-ink-50 text-xs font-semibold whitespace-nowrap text-ink-500;
+    }
+    .table tbody tr        { @apply border-b border-ink-100 transition-colors last:border-0; }
+    .table tbody tr:hover  { @apply bg-ink-50; }
+    .table td:first-child  { @apply text-ink-500 tabular-nums; }
+    .table-bordered, .table-lg, .e-table, .max-width { /* legacy no-ops */ }
+
+    /* ---------------------------------------------------------- forms */
+    .form-group     { @apply mb-4; }
+    .control-label,
+    .form-group > label,
+    .form-check-label { @apply mb-1.5 block text-sm font-medium text-ink-700; }
+    .form-check-label { @apply mb-0 inline-block font-normal; }
+
+    .form-control,
+    .form-control-file,
+    select,
+    textarea {
+        @apply block w-full rounded-[var(--radius-control)] border border-ink-300 bg-white px-3 py-2
+               text-sm text-ink-900 transition-colors placeholder:text-ink-400
+               focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
+               disabled:cursor-not-allowed disabled:bg-ink-100 disabled:text-ink-500;
+        min-height: 2.375rem;
+    }
+    .form-control-file { @apply p-1.5; }
+
+    .form-row          { @apply flex flex-wrap -mx-2; }
+    .form-row > *      { @apply px-2; }
+    .form-horizontal   { @apply block; }
+    .inputGroupContainer,
+    .input-group       { @apply relative flex w-full; }
+    .input-group-addon { @apply hidden; }
+
+    .form-check       { @apply mb-2 flex items-center gap-2; }
+    .form-check-input { @apply size-4 shrink-0 rounded-sm border-ink-300 text-brand-600 accent-[var(--color-brand-600)]; }
+    .form-text,
+    .field-hint       { @apply mt-1.5 block text-xs text-ink-500; }
+
+    /* ---------------------------------------------------------- buttons */
+    .btn {
+        @apply inline-flex min-h-[2.375rem] cursor-pointer items-center justify-center gap-2
+               rounded-[var(--radius-control)] border border-transparent px-3.5 py-2 text-sm
+               font-semibold whitespace-nowrap transition-colors select-none
+               disabled:cursor-not-allowed disabled:opacity-60;
+    }
+    .btn-primary,
+    .btn-success   { @apply bg-brand-600 text-white hover:bg-brand-700; }
+    .btn-secondary,
+    .btn-outline-secondary,
+    .btn-info      { @apply border-ink-300 bg-white text-ink-700 hover:bg-ink-50 hover:text-ink-900; }
+    .btn-danger    { @apply bg-red-600 text-white hover:bg-red-700; }
+    .btn-warning   { @apply bg-amber-500 text-white hover:bg-amber-600; }
+    .btn-sm        { @apply min-h-[2rem] px-2.5 py-1 text-xs; }
+    .btn-block     { @apply flex w-full; }
+    .btn-group     { @apply inline-flex flex-wrap items-center gap-1.5; }
+
+    /* ---------------------------------------------------------- feedback */
+    .alert         { @apply mb-4 rounded-[var(--radius-control)] border px-3.5 py-2.5 text-sm; }
+    .alert-success { @apply border-brand-200 bg-brand-50 text-brand-800; }
+    .alert-warning { @apply border-amber-200 bg-amber-50 text-amber-900; }
+    .alert-error,
+    .alert-danger  { @apply border-red-200 bg-red-50 text-red-800; }
+
+    .badge {
+        @apply inline-flex items-center rounded-full border border-ink-200 bg-ink-50
+               px-2 py-0.5 text-xs font-medium text-ink-600;
+    }
+    .badge-secondary { @apply border-ink-200 bg-ink-100 text-ink-700; }
+
+    /* ---------------------------------------------------------- pagination */
+    .pagination { @apply flex flex-wrap items-center justify-center gap-1 p-0 list-none; }
+    .page-item  { @apply list-none; }
+    .page-link {
+        @apply inline-flex min-w-[2.25rem] items-center justify-center rounded-[var(--radius-control)]
+               border border-ink-200 bg-white px-2.5 py-1.5 text-sm text-ink-700
+               hover:bg-ink-50 hover:text-ink-900;
+    }
+    .page-item.active .page-link { @apply border-brand-600 bg-brand-600 text-white; }
+    .page-item.disabled .page-link { @apply pointer-events-none opacity-50; }
+
+    .list-group       { @apply flex flex-col; }
+    .list-group-item  { @apply border-b border-ink-100 px-3 py-2.5 text-sm last:border-0; }
+
+    .breadcrumb      { @apply mb-3 flex flex-wrap items-center gap-1.5 p-0 text-xs text-ink-500 list-none; }
+    .breadcrumb-item { @apply flex items-center gap-1.5; }
+
+    /* ---------------------------------------------------------- legacy utility shims */
+    .d-flex        { @apply flex; }
+    .d-lg-none     { @apply lg:hidden; }
+    .flex-column   { @apply flex-col; }
+    .flex-wrap     { @apply flex-wrap; }
+    .flex-sm-row   { @apply sm:flex-row; }
+    .align-items-center     { @apply items-center; }
+    .justify-content-center { @apply justify-center; }
+    .justify-content-between{ @apply justify-between; }
+    .text-center   { @apply text-center; }
+    .text-sm-start { @apply sm:text-start; }
+    .text-sm-end   { @apply sm:text-end; }
+    .text-nowrap   { @apply whitespace-nowrap; }
+    .align-middle  { @apply align-middle; }
+    .align-top     { @apply align-top; }
+    .text-secondary,
+    .text-muted    { @apply text-ink-500; }
+    .font-size-sm  { @apply text-sm; }
+    .w-100         { @apply w-full; }
+    .sr-only {
+        @apply absolute h-px w-px overflow-hidden whitespace-nowrap;
+        clip-path: inset(50%);
+    }
+
+    .mb-0 { @apply mb-0; }  .mb-1 { @apply mb-1; }  .mb-2 { @apply mb-2; }  .mb-3 { @apply mb-4; }
+    .mt-3 { @apply mt-4; }  .my-3 { @apply my-4; }  .pt-3 { @apply pt-4; }  .pb-1 { @apply pb-1; }
+    .px-3 { @apply px-4; }  .px-xl-3 { @apply xl:px-4; }
+    .mb-sm-0 { @apply sm:mb-0; } .pt-sm-2 { @apply sm:pt-2; }
+}
+
+/* ------------------------------------------------------------------ application shell */
+@layer components {
+    /* Alpine hides these until it initialises; without the rule they flash on load. */
+    [x-cloak] { display: none !important; }
+
+    /* The shell is fixed, so the page is offset instead. Scoped with :has so the standalone
+       login and error screens stay full-bleed without needing a body class. */
+    body:has(#app-sidebar) { padding-block-start: var(--spacing-topbar); }
+    @media (width >= 64rem) {
+        body:has(#app-sidebar) { padding-inline-start: var(--spacing-sidebar); }
+    }
+
+    .app-nav-link {
+        @apply flex min-h-[2.375rem] items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2
+               text-sm font-medium text-ink-700 transition-colors
+               hover:bg-ink-50 hover:text-ink-900;
+    }
+    .app-nav-link.active { @apply bg-brand-50 font-semibold text-brand-700; }
+    .app-nav-icon        { @apply flex w-5 shrink-0 justify-center text-base text-ink-400; }
+    .app-nav-link.active .app-nav-icon { @apply text-brand-600; }
+    .app-nav-heading     { @apply px-2.5 pb-0.5 text-[0.7rem] font-semibold tracking-wide text-ink-400; }
+    .app-content         { @apply mx-auto w-full max-w-[100rem]; }
+
+    /* Page shells put their content straight in the body, so give it breathing room. */
+    body:has(#app-sidebar) > .container,
+    body:has(#app-sidebar) > .container-fluid,
+    body:has(#app-sidebar) > main { @apply py-6; }
+
+    /* ------------------------------------------------------------ login */
+    .auth-page  { @apply bg-white; }
+    .auth-shell { @apply grid min-h-screen lg:grid-cols-[1fr_1.1fr]; }
+    .auth-form-panel { @apply flex items-center justify-center px-5 py-10 sm:px-10; }
+    .auth-form-inner { @apply w-full max-w-sm; }
+    .auth-public-link{ @apply mb-8 inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-brand-600; }
+    .auth-form-heading { @apply mb-7; }
+    .auth-eyebrow   { @apply mb-1.5 block text-xs font-semibold text-brand-600; }
+    .auth-title     { @apply text-2xl font-bold text-ink-900; }
+    .auth-subtitle  { @apply mt-1.5 text-sm text-ink-500; }
+    .auth-form .btn { @apply mt-1 w-full; }
+
+    .auth-intro {
+        @apply relative hidden flex-col justify-between overflow-hidden bg-brand-700 p-10 text-white lg:flex;
+    }
+    .auth-brand      { @apply relative flex items-center gap-3 text-sm; }
+    .auth-brand .brand-mark {
+        @apply grid size-10 shrink-0 place-items-center rounded-[var(--radius-control)] bg-white
+               text-base font-extrabold text-brand-700;
+    }
+    .auth-brand strong { @apply block text-base font-semibold; }
+    .auth-brand div div { @apply text-xs text-white/70; }
+    .auth-intro-copy   { @apply relative mt-12; }
+    .auth-intro-kicker { @apply mb-2 block text-xs font-semibold text-white/70; }
+    .auth-intro h2     { @apply max-w-md text-3xl font-bold leading-snug text-white; }
+    .auth-points       { @apply mt-7 flex list-none flex-col gap-2.5 p-0 text-sm text-white/85; }
+    .auth-points li    { @apply flex items-center gap-2.5; }
+
+    /* ------------------------------------------------------------ error */
+    .error-page { @apply grid min-h-screen place-items-center p-6; }
+    .error-card { @apply w-full max-w-md rounded-[var(--radius-card)] border border-ink-200 bg-white p-8 text-center; }
+    .error-code { @apply mb-3 inline-grid size-12 place-items-center rounded-full bg-amber-50 text-2xl text-amber-600; }
+    .error-title    { @apply text-lg font-semibold; }
+    .error-subtitle { @apply mt-2 text-sm text-ink-500; }
+    .error-detail   { @apply mt-4 rounded-[var(--radius-control)] bg-ink-50 px-3 py-2 text-xs text-ink-600; }
+    .error-card .btn{ @apply mt-6; }
+
+    /* ------------------------------------------------------------ select2 (until it is replaced) */
+    .select2-container { @apply w-full; }
+    .select2-container--default .select2-selection--single {
+        @apply flex h-[2.375rem] items-center rounded-[var(--radius-control)] border border-ink-300 bg-white px-3;
+    }
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        @apply p-0 text-sm leading-none text-ink-900;
+    }
+    .select2-container--default .select2-selection--single .select2-selection__arrow { @apply h-full; }
+    .select2-dropdown { @apply rounded-[var(--radius-card)] border-ink-200 shadow-[var(--shadow-pop)]; }
+    .select2-results__option { @apply text-sm; }
+    .select2-container--default .select2-results__option--highlighted[aria-selected] {
+        @apply bg-brand-600 text-white;
+    }
+    .select2-search--dropdown .select2-search__field {
+        @apply rounded-[var(--radius-control)] border-ink-300 text-sm;
+    }
+
+    /* ------------------------------------------------------------ tree (for the file manager) */
+    .app-tree            { @apply m-0 list-none p-0; }
+    .app-tree .app-tree  { @apply ms-3.5 border-s border-ink-200 ps-3; }
+    .app-tree-row {
+        @apply flex min-h-[2.125rem] items-center gap-1.5 rounded-[var(--radius-control)] px-1.5 py-1
+               text-sm text-ink-700 hover:bg-ink-50;
+    }
+    .app-tree-row.active { @apply bg-brand-50 font-semibold text-brand-700; }
+    .app-tree-twisty {
+        @apply grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm border-0 bg-transparent
+               p-0 text-ink-400 transition-transform hover:bg-ink-200 hover:text-ink-700;
+    }
+    [aria-expanded="true"] > .app-tree-row > .app-tree-twisty { @apply -rotate-90; }
+    .app-tree-twisty.is-leaf { @apply invisible; }
+    .app-tree-icon  { @apply shrink-0 text-ink-400; }
+    .app-tree-label { @apply min-w-0 flex-1 truncate; }
+    .app-tree-badge {
+        @apply shrink-0 rounded-full border border-ink-200 bg-ink-50 px-1.5 text-[0.7rem]
+               tabular-nums text-ink-500;
+    }
+    .app-tree li[aria-expanded="false"] > .app-tree { @apply hidden; }
+    .app-tree-panel {
+        @apply sticky top-[calc(var(--spacing-topbar)+1rem)] max-h-[calc(100vh-var(--spacing-topbar)-2rem)]
+               overflow-y-auto rounded-[var(--radius-card)] border border-ink-200 bg-white p-3;
+    }
+}
