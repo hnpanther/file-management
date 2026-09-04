@@ -44,6 +44,7 @@ src/main/resources/application-local.properties
 ### logs
 logs/
 
-### frontend build (generated CSS is committed; its toolchain is not)
+### frontend build
+# node_modules is a local toolchain cache; package-lock.json is committed so the CSS can be
+# regenerated from the exact same dependency tree (npm ci).
 node_modules/
-package-lock.json
