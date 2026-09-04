@@ -277,10 +277,14 @@ public class FileService {
         fileDetails.setFileInfo(fileInfo);
 
         fileInfo.setLastVersion(fileDetails.getVersion());
-        fileInfo.getFileDetailsList().add(fileDetails);
-        fileInfoRepository.save(fileInfo);
 
-//        fileDetailsRepository.save(fileDetails);
+        // fileInfo is managed in this transaction, so the version change is flushed by the dirty
+        // check - it needs no save(). The child is persisted directly rather than through the
+        // cascade: save() on a managed parent is a merge, and merging a parent whose collection
+        // holds a transient child inserts a copy of it. Persisting here also assigns the generated
+        // id that the audit row below needs.
+        fileDetailsRepository.save(fileDetails);
+        fileInfo.getFileDetailsList().add(fileDetails);
 
         actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetails.getId(), ActionEnum.CREATE, principalId,
                 "CREATE NEW FILE_DETAILS", "CREATE NEW FILE_DETAILS");
