@@ -6,11 +6,16 @@ what came before.
 | Phase | Goal | Depends on | Status |
 |---|---|---|---|
 | 0 | Safety net — CI, smoke test, containerised dev environment | — | **done** |
-| 1 | Spring Boot 4.1.1 + Java 25 | 0 | next |
+| 1 | Spring Boot 4.1.1, **staying on Java 21** | 0 | next |
 | 2 | Architectural restructuring | 1 | |
 | 3 | PostgreSQL migration | 1, partly 2 | |
 | 4 | S3-compatible storage alongside the filesystem | 2, 3 | |
-| 5 | Folder tree: read-only view, then drag-and-drop, then one `folder` table | 3, 4 | view **done** |
+| 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done** |
+| 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | planned |
+
+**Already done, outside a phase:** the Active Directory connection is documented with a worked
+example in `application.properties` - domain, URL, the `login_type` gate, and why the two
+properties default to empty rather than being absent.
 
 Phase 0 is not one of the four stated goals, but every later phase is a large refactor of code that
 currently has **no** automated verification (issues 36–38). Doing it first is what makes the rest
@@ -64,12 +69,16 @@ rotated, and the `Admin`/`admin` bootstrap account is unchanged. Both are operat
 
 ## Phase 1 — Platform upgrade
 
-**Target: Spring Boot 4.1.1 on Java 25.**
+**Target: Spring Boot 4.1.1, staying on Java 21.**
 
 Verified against Maven Central at the time of writing — 4.1.1 is the latest stable release
 (4.2.0-M1 is a milestone and is not a candidate). It brings Spring Framework 7.0.9,
 Spring Security 7.1.1, Hibernate 7.4.5, Flyway 12.4.0, Jackson 3.1.5, Tomcat 11.0.24 and
-JUnit 6.0.3. Java 25 is already installed on the development machine (Temurin 25.0.3).
+JUnit 6.0.3.
+
+Spring Boot 4.1.1 declares `java.version` **17** as its baseline, so Java 21 is fully supported.
+There is no reason to move the language level in the same change as the framework: keep Java 21,
+and raise it later, on its own, if something actually needs it.
 
 This is a **three-major-step jump** from the actual 3.2.1 in `pom.xml` — not the one-step jump the
 commit log implies. Treat it as such.
@@ -93,7 +102,7 @@ build between them tells you which hop broke what.
 </parent>
 
 <properties>
-  <java.version>25</java.version>
+  <java.version>21</java.version>   <!-- unchanged -->
 </properties>
 ```
 
@@ -109,22 +118,21 @@ build between them tells you which hop broke what.
 | **Servlet 6.1 / Tomcat 11** | `SpringBootServletInitializer` still exists, but external-Tomcat deployment now requires Tomcat 11 | `FileManagementApplication` |
 | **JUnit 6** | `junit-jupiter` 6.0.x; `@ExtendWith(SpringExtension.class)` is unchanged but assertions and lifecycle APIs shifted | all tests |
 | **Flyway 12** | `flyway-mysql` still required as an explicit dependency | `pom.xml` |
-| **Java 25** | Lombok must be on a version that supports the Java 25 class-file format | `pom.xml` |
+| **Lombok** | Already pinned to 1.18.48 with an explicit `annotationProcessorPaths` entry, because JDK 23+ dropped implicit annotation processing. Keep both when the parent moves. | `pom.xml` |
 
 ### 1.4 Order of operations within the phase
 
 1. Fix issue 2 (`@Data` on entities) — do this **before** upgrading, on 3.2.1, where the behaviour
    is understood.
 2. 3.2.1 → 3.5.16. Green build.
-3. Java 21 → 25. Green build.
-4. 3.5.16 → 4.1.1. Green build.
+3. 3.5.16 → 4.1.1. Green build. The language level does not move.
 5. Clean up every deprecation warning the hops surfaced.
 6. Add `spring-boot-starter-actuator` (issue 41) and `springdoc-openapi-starter-webmvc-ui` 3.1.0
    (issue 42) while the dependency tree is already being touched.
 7. ~~Switch `war` → `jar` (issue 28)~~ — **done ahead of this phase**; the container image is
    still outstanding.
 
-**Done when:** `./mvnw verify` is green on Spring Boot 4.1.1 / Java 25 with zero deprecation
+**Done when:** `./mvnw verify` is green on Spring Boot 4.1.1 / Java 21 with zero deprecation
 warnings, and `/actuator/health` reports the database.
 
 ---
@@ -311,18 +319,6 @@ served by pre-signed URL, and every legacy row has been migrated and checksum-ve
 
 ---
 
-## Cross-cutting acceptance criteria
-
-Nothing in this roadmap is finished until, for every phase:
-
-* `./mvnw verify` is green in CI with no hand-provisioned infrastructure;
-* the smoke test proves the context starts;
-* no secret is committed;
-* `/actuator/health` reflects the real state of the database and the blob store;
-* the phase's entries in [issues.md](issues.md) are struck off, and any newly discovered ones added.
-
----
-
 ## Phase 5 — From taxonomy to a real folder tree
 
 The read-only tree at `/files/tree` is the first step of this phase and is already in place.
@@ -365,25 +361,260 @@ Order:
 3. Alpine drag handlers on the existing flat row list — it is already an ordered list with a
    `depth` on every row, which is what a drop target needs.
 
-### 5.3 Collapsing the taxonomy into folders (the real change)
+### 5.3 Collapsing the taxonomy into folders
 
-Target: one `folder` table, self-referencing, replacing category, sub-category and main tag.
+Moved to [Phase 6](#phase-6--two-tier-authorization-endpoint-permissions-and-folder-access), which
+owns the `folder` table: the same change serves both the tree and folder-level access control, and
+splitting it across two phases would have produced two designs for one table.
 
+### 5.4 Known gap in the current view
+
+A node whose `childCount` is zero is rendered with a disabled twisty and no explanation: clicking it
+does nothing, so a branch that is simply empty is indistinguishable from a tree that is broken. On
+data with empty categories or tags this reads as "the tree does not work"
+([issue 50](issues.md#50-an-empty-branch-in-the-file-tree-looks-like-a-broken-one--s3)).
+
+Fix with the rest of the tree work: keep such a node expandable, and on open render an inline
+"empty folder" row rather than silently doing nothing.
+
+## Phase 6 — Two-tier authorization: endpoint permissions and folder access
+
+The target is two independent questions, asked in this order:
+
+1. **May this user perform this operation at all?** — the existing `PermissionEnum` per endpoint.
+2. **May this user touch *this* folder?** — new, and inherited down the tree.
+
+Both must pass. They are separate because "may upload a file" and "may upload *here*" are
+different facts, and today only the first exists: anyone holding `DOWNLOAD_FILE` can download
+every file in the system ([issue 14](issues.md#14-no-resource-level-authorization--s1)).
+
+### 6.0 Why this needs a folder table first
+
+Folder access cannot be granted against category / sub-category / main tag: they are three separate
+tables with a fixed depth, and a main tag is not even a directory. A grant has to name *one* kind of
+thing and inherit down an arbitrary depth.
+
+**Do not wait for the byte migration.** Build `folder` as a mirror of the existing taxonomy, keep
+the taxonomy authoritative, and put the ACL on the mirror. Making `folder` authoritative and moving
+bytes is a separate, later step that carries all the risk.
+
+### 6.1 Choosing how to store the tree
+
+The access patterns decide this, so they come first:
+
+| Pattern | Frequency | Where |
+|---|---|---|
+| Children of one node | every folder opened | tree view |
+| **Every descendant of a set of nodes** | **every list, every request** | folder ACL filtering |
+| Ancestors of one node (breadcrumb) | per page | detail pages |
+| Move a subtree | rare, interactive | drag-and-drop |
+| Depth of a node | rendering | tree view |
+
+The second row dominates: once folder access exists, *every* file list, search and tree call has to
+be restricted to the descendants of the user's granted folders. That query has to be indexable.
+
+| Model | Descendants | Move | Cost |
+|---|---|---|---|
+| Adjacency list (`parent_id`) alone | recursive CTE per query | one row update | descendant filtering is a CTE inside every list query |
+| **Materialised path** | `path LIKE '/1/7/%'` — one index range scan | update the subtree's paths | a denormalised column to keep correct |
+| Closure table | plain join | delete + insert `subtree × depth` rows | a second table, and the most write complexity |
+| Nested sets | `BETWEEN lft AND rgt` | renumbers a large part of the table | wrong choice as soon as drag-and-drop exists |
+
+**Decision: adjacency list as the source of truth, materialised path as a derived index.**
+
+`parent_id` carries the foreign key and the structural truth - it cannot drift, and it is what
+renders one level. `path` exists purely so descendant filtering is a prefix scan instead of a CTE
+in every query. Nested sets are ruled out by drag-and-drop; a closure table is defensible but buys
+little here, because the tree is shallow and the extra table has to be maintained anyway.
+
+Details that matter and are easy to get wrong:
+
+* **Build the path from ids, not names.** `/1/7/22/` and not `/Home/MainCat/SubCat/`. A rename then
+  costs nothing, and only a move rewrites paths.
+* **Leading *and* trailing slash.** `/1/7/%` must not match `/1/70/…`; with the trailing slash the
+  next character after `/1/7` is `/`, so it cannot.
+* **MySQL index limit.** `VARCHAR(1000)` in `utf8mb4` is 4000 bytes and exceeds the 3072-byte index
+  limit. The path only ever holds digits and slashes, so declare it
+  `VARCHAR(1000) CHARACTER SET ascii` and the whole column indexes cleanly.
+* **PostgreSQL collation.** A prefix `LIKE` only uses a B-tree index under a non-C collation if the
+  index is declared with `varchar_pattern_ops`. Miss this in Phase 3 and every ACL query silently
+  becomes a sequential scan. (`ltree` is the nicer native option but adds an extension dependency;
+  decide in Phase 3, not now.)
+* **A move is one statement**, and it must run in the same transaction as the `parent_id` change:
+
+```sql
+UPDATE folder
+   SET path = :newParentPath || id || '/'            -- for the moved node
+ WHERE id = :id;
+UPDATE folder                                        -- and its subtree
+   SET path = :newPrefix || SUBSTRING(path, LENGTH(:oldPrefix) + 1)
+ WHERE path LIKE :oldPrefix || '%';
 ```
-folder(id, parent_id, name, name_description, general_tag_id, path, created_*, ...)
-file_info(folder_id, ...)   -- instead of file_sub_category_id + main_tag_file_id
+
+* `path` is derived, so add a reconciliation query that recomputes it from `parent_id` and reports
+  rows that disagree. Run it in a test and expose it to an admin endpoint.
+
+### 6.2 The table
+
+```sql
+CREATE TABLE folder (
+    id             INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+    parent_id      INT NULL,
+    name           VARCHAR(100) NOT NULL,   -- directory-safe: no '.', ' ' or '/'
+    display_name   VARCHAR(200) NOT NULL,   -- the Persian label
+    path           VARCHAR(1000) CHARACTER SET ascii NOT NULL,  -- '/1/7/22/'
+    depth          INT NOT NULL,            -- derived, kept for cheap ordering
+    kind           VARCHAR(30) NOT NULL,    -- ROOT | CATEGORY | SUB_CATEGORY | TAG | USER_HOME
+    owner_user_id  INT NULL,                -- set on a personal home folder
+    general_tag_id INT NULL,                -- a general tag stays a label, now on a folder
+
+    -- only while the taxonomy is still authoritative; dropped in 6.6
+    source_type    VARCHAR(20) NULL,        -- CATEGORY | SUB_CATEGORY | MAIN_TAG
+    source_id      INT NULL,
+
+    enabled INT NOT NULL, state INT NOT NULL,
+    created_at DATETIME NOT NULL, created_by INT NOT NULL,
+    updated_at DATETIME NULL,    updated_by INT NULL,
+
+    CONSTRAINT fk_folder_parent FOREIGN KEY (parent_id) REFERENCES folder (id),
+    CONSTRAINT uq_folder_sibling_name UNIQUE (parent_id, name),
+    CONSTRAINT uq_folder_source UNIQUE (source_type, source_id)
+);
+CREATE INDEX idx_folder_path   ON folder (path);
+CREATE INDEX idx_folder_parent ON folder (parent_id);
 ```
 
-* A general tag stays a label, on a folder rather than on a category.
-* Depth becomes unbounded, which is the point.
-* Migration: create `folder`; insert one row per category, one per sub-category (parent = its
-  category), one per main tag (parent = its sub-category); repoint `file_info.folder_id`; keep the
-  old tables for one release behind a read-only view.
-* On disk, a main tag currently has **no** directory, so the migration has to create one and move
-  each file's directory into it — this is the only step that touches bytes, and it must be
-  checksum-verified the same way the S3 migration is.
-* `FileTreeService` collapses to a single recursive query on `folder`; the view does not change,
-  which is why it was built this way.
+`file_info` gains a nullable `folder_id` alongside its existing `file_sub_category_id` and
+`main_tag_file_id`, written in parallel and only made authoritative in 6.6.
 
-**Do not start 5.3 before Phase 3 (PostgreSQL, with `checksum_sha256` backfilled) and Phase 4's
-`BlobStore`.** Moving bytes without checksums and without a storage port is how a file gets lost.
+`uq_folder_source` is what makes the backfill idempotent and the mirror verifiable: exactly one
+folder row per legacy entity, so a reconciliation query is a full outer join, not a guess.
+
+### 6.3 Two blockers to clear before the backfill
+
+Both were found in the current schema and will make `uq_folder_sibling_name` fail:
+
+1. **`main_tag_file.tag_name` has `@Column(unique = true)` on the entity but no unique constraint in
+   the database.** `V1.0__Initial_Setup.sql` declares none, and `ddl-auto=validate` does not check
+   unique constraints - so duplicate tag names can already exist. Same class as
+   [issue 33](issues.md#33-schema-and-entity-mappings-disagree--s2).
+2. **`file_sub_category.sub_category_name` uniqueness lives only in application code**
+   (`FileSubCategoryService.checkDuplicate`), per category. Any row inserted another way bypasses it.
+
+So the migration starts with a **pre-flight report**, not with `CREATE TABLE`:
+
+```sql
+SELECT tag_name, COUNT(*) FROM main_tag_file GROUP BY tag_name HAVING COUNT(*) > 1;
+SELECT file_category_id, sub_category_name, COUNT(*) FROM file_sub_category
+ GROUP BY file_category_id, sub_category_name HAVING COUNT(*) > 1;
+```
+
+If either returns rows, they are resolved by hand first. Then add the missing unique constraints to
+the legacy tables in the same migration, so the problem cannot come back while both structures are
+live.
+
+### 6.4 Running it in parallel
+
+The taxonomy stays authoritative. `folder` is a mirror, written in the same transaction as its
+source, and read only by the new tree and ACL code.
+
+| | Writes `folder` | Reads `folder` |
+|---|---|---|
+| `FileCategoryService` create / update / delete | yes | no |
+| `FileSubCategoryService` create / update / delete | yes | no |
+| `MainTagFileService` create / update / delete | yes | no |
+| `UserService.createUser` | yes - creates `Home/{username}` | no |
+| `FileTreeService` | no | **yes** |
+| Folder ACL | no | **yes** |
+| Everything else (upload, download, lists, search) | no | no |
+
+Rules that keep this honest:
+
+* **One writer.** A single `FolderMirrorService` owns every write to `folder`; the three taxonomy
+  services call it. Nothing else touches the table, so there is one place to audit.
+* **Same transaction.** A mirror write that can fail independently is a mirror that drifts.
+* **Reconciliation is a test, not a hope.** A test asserts that the mirror and the taxonomy describe
+  the same tree - same count, same parentage, same names, and every `path` recomputable from
+  `parent_id`. It runs on every build, against the Testcontainers database.
+* **Rollback is `DROP TABLE folder`.** Nothing operational depends on it until 6.6, which is the
+  whole point of building it this way.
+
+Known risk: anything that writes the taxonomy without going through those services bypasses the
+mirror - a raw `JdbcClient` DAO, a Flyway data migration, or someone using a repository directly.
+The reconciliation test is what catches it; keep it running.
+
+### 6.5 Granting access
+
+```sql
+CREATE TABLE role_folder (role_id INT, folder_id INT, PRIMARY KEY (role_id, folder_id));
+CREATE TABLE user_folder (user_id INT, folder_id INT, PRIMARY KEY (user_id, folder_id));
+```
+
+A role therefore carries **both** a set of permissions (`permission_role`, exists) and a set of
+folders (`role_folder`, new). A user gets folders from their roles plus any direct grant.
+
+A grant on a folder covers everything beneath it. There is no deny rule and no per-folder verb:
+one grant, inherited. Adding "read vs write per folder" later means a column on these tables, not
+a new model - but do not add it before something actually needs it.
+
+### 6.6 Enforcing it
+
+Resolve the user's granted path prefixes **once per request** and cache them on the authentication:
+
+```java
+record FolderAccess(boolean unrestricted, List<String> grantedPaths) { }
+```
+
+* `ADMIN` authority sets `unrestricted = true` and **the folder check is skipped entirely** - no
+  `role_folder` rows are needed for the admin role, and no query is issued.
+* Otherwise `grantedPaths` is the set of `folder.path` values from `user_folder` and `role_folder`,
+  reduced to remove any path that is already covered by a shorter one.
+
+Two enforcement shapes, and the second is the one that is usually forgotten:
+
+| Case | How |
+|---|---|
+| Single item ("open folder 22", "download file 9") | `AccessPolicy.requireAccess(principal, folderId)` **inside the domain service**, never in the controller |
+| Lists (tree children, file list, search) | push the prefixes into the query: `AND (f.path LIKE :p0 OR f.path LIKE :p1 ...)`. Never fetch then filter in Java - the paging counts come out wrong |
+
+`FileTreeService` is the first consumer: `getRoots()` returns the granted folders rather than all
+categories, and `getChildren` checks the parent before it queries.
+
+### 6.7 `Home`, per-user folders, and the two system roles
+
+* One `ROOT` folder named `Home`, created by a migration, `parent_id = NULL`.
+* `UserService.createUser` also creates `Home/{username}` with `kind = USER_HOME`,
+  `owner_user_id = <the new user>`, and inserts a `user_folder` grant - all in the **same
+  transaction** as the user, so a half-provisioned user cannot exist.
+* Two system roles, marked `is_system` so the UI refuses to delete them:
+  * `ADMIN` - every permission, and `unrestricted` folder access by definition.
+  * `USER` - the permissions needed to upload into and read one's own folder
+    (`CREATE_FILE_PAGE`, `SAVE_NEW_FILE`, `FILE_TREE_PAGE`, `DOWNLOAD_FILE`, `ACCESS_HOME`,
+    `REST_GET_FILE_TREE`), and **no** `role_folder` rows - a plain user reaches exactly the
+    folders granted to them personally.
+
+Existing users need a backfill migration that creates the missing home folders and grants.
+
+### 6.8 Making `folder` authoritative (last, and the only risky step)
+
+Drop `file_sub_category_id` / `main_tag_file_id` from `file_info`, retire the three taxonomy tables
+and the `source_type` / `source_id` columns, and give every folder a real directory - a main tag has
+none today, so each file's directory has to move into a newly created one.
+
+**This is the only step that moves bytes.** It runs after Phase 3 has backfilled `checksum_sha256`
+and Phase 4 has introduced `BlobStore`, and every file is verified by checksum on both sides.
+
+
+---
+
+## Cross-cutting acceptance criteria
+
+Nothing in this roadmap is finished until, for every phase:
+
+* `./mvnw verify` is green in CI with no hand-provisioned infrastructure;
+* the smoke test proves the context starts;
+* no secret is committed;
+* `/actuator/health` reflects the real state of the database and the blob store;
+* the phase's entries in [issues.md](issues.md) are struck off, and any newly discovered ones added.
+
+---

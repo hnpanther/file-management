@@ -546,3 +546,13 @@ so any deployment that omitted the two LDAP properties failed at startup with
 `Could not resolve placeholder`, not with anything that named Active Directory.
 
 Nothing caught it because no test had ever loaded the full application context — see issue 36.
+
+### 50. An empty branch in the file tree looks like a broken one — **S3**
+
+`FileTreeService` sets `expandable = childCount > 0`, and the view renders a non-expandable node
+with a disabled twisty. Clicking it does nothing and says nothing, so a category with no
+sub-categories, or a tag with no files, is indistinguishable from a tree that has stopped working.
+On a data set where most branches are empty the whole view reads as broken.
+
+Fix: keep the node expandable, and on open render an inline empty-folder row. The child count stays
+useful as a badge, but it must not be what decides whether the control responds.
