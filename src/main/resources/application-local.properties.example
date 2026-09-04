@@ -1,0 +1,14 @@
+# Copy to application-local.properties (gitignored) and run with:
+#
+#   ./mvnw spring-boot:run -Dspring-boot.run.profiles=prod,local
+#
+# Anything here overrides application.properties. Never commit the real file.
+
+spring.datasource.url=jdbc:mysql://localhost:3306/file_management
+spring.datasource.username=file_management
+spring.datasource.password=change-me
+
+file.management.base-dir=./TempFiles/files/main/
+filemanagement.log.path=./logs
+
+filemanagement.auth.ldap.activedirectory.enabled=false

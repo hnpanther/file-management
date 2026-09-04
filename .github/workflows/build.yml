@@ -1,0 +1,58 @@
+name: build
+
+on:
+  push:
+    branches: [ main, redesign-arch ]
+  pull_request:
+    branches: [ main, redesign-arch ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 21 is what pom.xml targets today. 25 is where roadmap Phase 1 is going, and building
+        # it here means the upgrade does not discover toolchain problems for the first time on
+        # the day it lands.
+        java: [ 21, 25 ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: temurin
+          cache: maven
+
+      # The suite starts its own MySQL through Testcontainers; ubuntu-latest runners already
+      # have a working Docker daemon, so nothing else has to be provisioned.
+      - name: Build and test
+        run: ./mvnw -B --no-transfer-progress verify
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-jdk${{ matrix.java }}
+          path: target/surefire-reports/
+          retention-days: 7
+
+  dependency-review:
+    name: dependency review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

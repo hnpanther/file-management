@@ -20,10 +20,10 @@ public class ActiveDirectoryCustomAuthenticationProvider implements Authenticati
 
     Logger logger = LoggerFactory.getLogger(ActiveDirectoryCustomAuthenticationProvider.class);
 
-    @Value("${filemanagement.auth.ldap.activedirectory.domain}")
+    @Value("${filemanagement.auth.ldap.activedirectory.domain:}")
     private String domain;
 
-    @Value("${filemanagement.auth.ldap.activedirectory.url}")
+    @Value("${filemanagement.auth.ldap.activedirectory.url:}")
     private String url;
 
     @Value("${filemanagement.auth.ldap.activedirectory.enabled:false}")

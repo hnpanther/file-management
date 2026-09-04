@@ -1,0 +1,39 @@
+# Local development dependencies.
+#
+#   docker compose up -d
+#
+# The test suite does NOT use this - it starts its own throwaway MySQL through Testcontainers
+# (see src/test/java/com/hnp/filemanagement/support/MySqlSupport.java). This file is only for
+# running the application itself against something persistent.
+#
+# PostgreSQL replaces MySQL here in roadmap Phase 3, and MinIO joins it in Phase 4.
+
+services:
+  mysql:
+    image: mysql:8.0.36
+    container_name: file-management-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: file_management
+      MYSQL_USER: file_management
+      MYSQL_PASSWORD: ${FILEMANAGEMENT_DB_PASSWORD:-file_management}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # Match Linux production behaviour on every host: table names stay case-sensitive, so a
+      # query that misspells a table fails here rather than in production. This is exactly the
+      # class of bug that hid in MainTagFileDAO ('file_Info') until the suite ran on Linux.
+      - --lower-case-table-names=0
+    ports:
+      - "${FILEMANAGEMENT_DB_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mysql-data:

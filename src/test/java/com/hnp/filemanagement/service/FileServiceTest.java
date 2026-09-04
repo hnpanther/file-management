@@ -1,5 +1,7 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.support.MySqlSupport;
+
 import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FileUploadDTO;
@@ -37,7 +39,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-class FileServiceTest {
+class FileServiceTest extends MySqlSupport {
 
     Logger logger = LoggerFactory.getLogger(FileSubCategoryServiceTest.class);
 

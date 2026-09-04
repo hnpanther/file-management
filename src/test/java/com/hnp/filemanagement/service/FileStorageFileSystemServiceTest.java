@@ -1,5 +1,7 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.support.StorageRootSupport;
+
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -11,7 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.mock.web.MockMultipartFile;
@@ -30,8 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(SpringExtension.class)
 @TestPropertySource("classpath:application.properties")
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-class FileStorageFileSystemServiceTest {
+class FileStorageFileSystemServiceTest extends StorageRootSupport {
 
     Logger logger = LoggerFactory.getLogger(FileStorageFileSystemServiceTest.class);
 

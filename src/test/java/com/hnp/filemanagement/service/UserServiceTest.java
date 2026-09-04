@@ -1,5 +1,7 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.support.MySqlSupport;
+
 import com.hnp.filemanagement.dto.RoleDTO;
 import com.hnp.filemanagement.dto.UserDTO;
 import com.hnp.filemanagement.entity.Permission;
@@ -31,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-class UserServiceTest {
+class UserServiceTest extends MySqlSupport {
 
 
 

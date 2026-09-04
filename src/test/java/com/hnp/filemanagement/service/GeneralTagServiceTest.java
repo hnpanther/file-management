@@ -1,5 +1,7 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.support.MySqlSupport;
+
 import com.hnp.filemanagement.dto.ActionHistoryDTO;
 import com.hnp.filemanagement.dto.GeneralTagDTO;
 import com.hnp.filemanagement.entity.*;
@@ -29,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-class GeneralTagServiceTest {
+class GeneralTagServiceTest extends MySqlSupport {
 
     Logger logger = LoggerFactory.getLogger(FileCategoryServiceTest.class);
 

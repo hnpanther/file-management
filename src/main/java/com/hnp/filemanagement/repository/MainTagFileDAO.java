@@ -26,10 +26,10 @@ public class MainTagFileDAO {
 
     public boolean isDeletable(int mainTagFileId) {
 
-//        int count = jdbcClient.sql("SELECT COUNT(fi.id) FROM file_Info fi JOIN main_tag_file mtf ON fi.main_tag_file_id = mtf.id WHERE mtf.id= ?")
+//        int count = jdbcClient.sql("SELECT COUNT(fi.id) FROM file_info fi JOIN main_tag_file mtf ON fi.main_tag_file_id = mtf.id WHERE mtf.id= ?")
 //                .param(mainTagFileId)
 //                .query(Integer.class).single();
-        int count = jdbcClient.sql("SELECT COUNT(fi.id) FROM file_Info fi JOIN main_tag_file mtf ON fi.main_tag_file_id = mtf.id WHERE mtf.id= (:id)")
+        int count = jdbcClient.sql("SELECT COUNT(fi.id) FROM file_info fi JOIN main_tag_file mtf ON fi.main_tag_file_id = mtf.id WHERE mtf.id= (:id)")
                 .param("id", mainTagFileId)
                 .query(Integer.class).single();
         logger.debug("number of file with tag id=" + mainTagFileId + " => " + count);
