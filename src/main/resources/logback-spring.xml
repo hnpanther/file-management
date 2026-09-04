@@ -1,64 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 
-
-
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
-    <!-- Setting up log path and log file name -->
-<!-- Sourced from the Spring environment so it can be set per deployment
-         (filemanagement.log.path / FILEMANAGEMENT_LOG_PATH) instead of being a Windows path
-         baked into the build. -->
+    <!-- Sourced from the Spring environment so it can be set per deployment
+         (filemanagement.log.path / FILEMANAGEMENT_LOG_PATH) instead of being a path baked
+         into the build. -->
     <springProperty scope="context" name="LOG_PATH" source="filemanagement.log.path" defaultValue="./logs"/>
-    <property name="LOG_FILE_NAME" value="app_log" />
+    <property name="LOG_FILE_NAME" value="app_log"/>
 
-    <!-- Setting up logging pattern for console logging -->
-    <appender name="CONSOLE"
-              class="ch.qos.logback.core.ConsoleAppender">
-        <layout class="ch.qos.logback.classic.PatternLayout">
-            <Pattern>
-<!--                %white(%d{ISO8601}) %highlight(%-5level) [%yellow(%t)] : %msg%n%throwable-->
-                <pattern>${CONSOLE_LOG_PATTERN}</pattern>
-                <charset>utf8</charset>
-            </Pattern>
-        </layout>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <!-- An <encoder>, not a <layout>: a ConsoleAppender no longer accepts a layout as a
+             sub-component, and the nested <charset> was being ignored. -->
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
     </appender>
 
-
-
-    <!-- Setting the filename and logging pattern for log file -->
-    <appender name="LogFile"
-              class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <appender name="LogFile" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_PATH}/${LOG_FILE_NAME}.log</file>
-        <encoder
-                class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
-<!--            <Pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level : %msg%n</Pattern>-->
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <pattern>${FILE_LOG_PATTERN}</pattern>
-            <charset>utf8</charset>
+            <charset>UTF-8</charset>
         </encoder>
 
-        <!-- Setting up a rolling policy with rolling done
-              daily and when file size is 10MB-->
-        <rollingPolicy
-                class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_PATH}/archived/${LOG_FILE_NAME}-%d{yyyy-MM-dd}.%i.log
-            </fileNamePattern>
-            <timeBasedFileNamingAndTriggeringPolicy
-                    class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
-                <maxHistory>10</maxHistory>
-                <maxFileSize>10MB</maxFileSize>
-            </timeBasedFileNamingAndTriggeringPolicy>
+        <!-- SizeAndTimeBasedRollingPolicy, not the deprecated SizeAndTimeBasedFNATP nested inside
+             a TimeBasedRollingPolicy. In that older shape maxHistory sat where logback ignores it,
+             so archived logs were never deleted and the disk filled up unbounded.
+             Rolls daily, and sooner if the file passes maxFileSize. -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/archived/${LOG_FILE_NAME}-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+            <maxHistory>10</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
         </rollingPolicy>
     </appender>
 
-    <!-- Logging at INFO level -->
     <root level="info">
-        <appender-ref ref="LogFile" />
-        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="LogFile"/>
+        <appender-ref ref="CONSOLE"/>
     </root>
 
     <logger name="com.hnp.filemanagement" level="debug"/>
-
-
 
 </configuration>

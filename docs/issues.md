@@ -556,3 +556,73 @@ On a data set where most branches are empty the whole view reads as broken.
 
 Fix: keep the node expandable, and on open render an inline empty-folder row. The child count stays
 useful as a badge, but it must not be what decides whether the control responds.
+
+---
+
+## Found during the Spring Boot 4 upgrade
+
+Each was exposed by a version hop, which is why the upgrade was done in two steps rather than one.
+
+### 51. `cascade = ALL` on the inverse side of a many-to-many — **S1**
+
+`Permission.roles` and `Role.users` were both `@ManyToMany(mappedBy = ..., cascade = CascadeType.ALL)`.
+On the inverse side that means **deleting a permission cascades a remove to every role that holds
+it, and deleting a role cascades a remove to every user who has it**. Nothing in production deletes
+roles or permissions, so the data loss never happened - but it was one call away.
+
+Hibernate 6.6 made this visible: `RoleServiceTest.tearDown` began failing with
+`TransientObjectException`, because the stricter flush checks would no longer tolerate a managed
+entity referencing a removed one through a cascading collection.
+
+Fixed by removing the cascade from both inverse sides, and by deleting in foreign-key order in the
+tests (`user` owns `user_role`, `role` owns `permission_role`).
+
+### 52. A generated id was read before the cascade had assigned it — **S1**
+
+`FileService.createNewVersionFileDetails` added a new `FileDetails` to the parent's collection,
+called `fileInfoRepository.save(fileInfo)`, and then passed `fileDetails.getId()` to the audit log.
+The cascade only inserts the child at flush, so on Hibernate 6.6 the id was still `null` and the
+call threw `NullPointerException` - meaning **creating a new version of a file failed outright**.
+
+The first attempt at a fix made it worse and is worth recording: adding an explicit
+`fileDetailsRepository.save(fileDetails)` *after* `save(fileInfo)` produced a duplicate row. The
+parent is already managed there, so `save()` is a `merge()`, and merging a managed parent whose
+collection holds a transient child inserts a **copy** of the child - two rows, and a unique-key
+violation on `hash_id`.
+
+Fixed by persisting the child directly and not re-saving the managed parent at all: its
+`lastVersion` change is picked up by the dirty check.
+
+### 53. Spring Boot 4 splits auto-configuration into per-technology modules — **S1** (build)
+
+`flyway-core` on the classpath no longer brings Flyway's auto-configuration: that lives in
+`org.springframework.boot:spring-boot-flyway`. Without it the migrations never ran, and Hibernate's
+`ddl-auto=validate` failed the whole context with `missing table [action_history]` - 87 tests
+erroring from one root cause.
+
+The test slices moved the same way, both artifact and package:
+
+| Annotation | Was | Now | Module |
+|---|---|---|---|
+| `@DataJpaTest` | `…boot.test.autoconfigure.orm.jpa` | `…boot.data.jpa.test.autoconfigure` | `spring-boot-data-jpa-test` |
+| `@AutoConfigureTestDatabase` | `…boot.test.autoconfigure.jdbc` | `…boot.jdbc.test.autoconfigure` | `spring-boot-jdbc-test` |
+| `@AutoConfigureMockMvc` | `…boot.test.autoconfigure.web.servlet` | `…boot.webmvc.test.autoconfigure` | `spring-boot-webmvc-test` |
+
+### 54. Spring Security 7 removals — **S1** (build)
+
+* `DaoAuthenticationProvider` lost its no-arg constructor and `setUserDetailsService`; the
+  `UserDetailsService` is now a constructor argument.
+* `AntPathRequestMatcher` is gone. Replaced by
+  `PathPatternRequestMatcher.pathPattern(...)`, which also takes an `HttpMethod` overload.
+* The entry point now issues a **context-relative** redirect to the login page (`/login`) where
+  Spring Security 6 issued an absolute one (`http://localhost/login`). Better behaviour behind a
+  reverse proxy, but anything asserting the absolute form breaks.
+
+### 55. The logback configuration silently never deleted old logs — **S2**
+
+`maxHistory` sat inside a `SizeAndTimeBasedFNATP` nested in a `TimeBasedRollingPolicy`, where
+logback ignores it - so archives accumulated without limit. The console appender also used a
+`<layout>`, which a `ConsoleAppender` no longer accepts, and its `<charset>` was discarded.
+
+Rewritten to a single `SizeAndTimeBasedRollingPolicy` with `maxFileSize`, `maxHistory` and
+`totalSizeCap`, and an `<encoder>` on the console. Startup is now free of logback warnings.

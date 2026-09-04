@@ -18,7 +18,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.savedrequest.RequestCache;
 import org.springframework.security.web.util.matcher.AndRequestMatcher;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
@@ -49,9 +50,10 @@ public class SecurityConfig {
 
     @Bean
     public DaoAuthenticationProvider daoAuthenticationProvider() {
-        DaoAuthenticationProvider daoAuthenticationProvider = new DaoAuthenticationProvider();
+        // Spring Security 7 removed the no-arg constructor and the setUserDetailsService setter:
+        // the UserDetailsService is now mandatory and supplied at construction.
+        DaoAuthenticationProvider daoAuthenticationProvider = new DaoAuthenticationProvider(userDetailsService);
         daoAuthenticationProvider.setPasswordEncoder(passwordEncoder);
-        daoAuthenticationProvider.setUserDetailsService(userDetailsService);
         return daoAuthenticationProvider;
     }
 
@@ -137,7 +139,7 @@ public class SecurityConfig {
                         .permitAll())
                 .logout(
                         logout -> logout
-                                .logoutRequestMatcher(new AntPathRequestMatcher("/logout"))
+                                .logoutRequestMatcher(PathPatternRequestMatcher.pathPattern("/logout"))
                                 .logoutSuccessUrl("/login?logout")
                                 .invalidateHttpSession(true)
                                 .clearAuthentication(true)
@@ -162,17 +164,17 @@ public class SecurityConfig {
      */
     private RequestCache pageOnlyRequestCache() {
         RequestMatcher pageNavigation = new AndRequestMatcher(
-                new AntPathRequestMatcher("/**", "GET"),
+                PathPatternRequestMatcher.pathPattern(HttpMethod.GET, "/**"),
                 new NegatedRequestMatcher(new OrRequestMatcher(
-                        new AntPathRequestMatcher("/api/**"),
-                        new AntPathRequestMatcher("/resource/**"),
-                        new AntPathRequestMatcher("/vendor/**"),
-                        new AntPathRequestMatcher("/css/**"),
-                        new AntPathRequestMatcher("/js/**"),
-                        new AntPathRequestMatcher("/public-pages/**"),
-                        new AntPathRequestMatcher("/favicon.ico"),
-                        new AntPathRequestMatcher("/login"),
-                        new AntPathRequestMatcher("/logout"))),
+                        PathPatternRequestMatcher.pathPattern("/api/**"),
+                        PathPatternRequestMatcher.pathPattern("/resource/**"),
+                        PathPatternRequestMatcher.pathPattern("/vendor/**"),
+                        PathPatternRequestMatcher.pathPattern("/css/**"),
+                        PathPatternRequestMatcher.pathPattern("/js/**"),
+                        PathPatternRequestMatcher.pathPattern("/public-pages/**"),
+                        PathPatternRequestMatcher.pathPattern("/favicon.ico"),
+                        PathPatternRequestMatcher.pathPattern("/login"),
+                        PathPatternRequestMatcher.pathPattern("/logout"))),
                 // jQuery sets this on every $.ajax call, so it rules out the UI's own REST traffic.
                 request -> !"XMLHttpRequest".equals(request.getHeader("X-Requested-With")),
                 request -> {

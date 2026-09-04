@@ -16,7 +16,7 @@ download and delete.
 | Concern | Choice | Version |
 |---|---|---|
 | Language | Java | 21 |
-| Framework | Spring Boot | **3.2.1** (see [issues.md](issues.md) — the 3.5.5 bump was lost in a merge) |
+| Framework | Spring Boot | 4.1.1 (Framework 7.0.9, Security 7.1.1, Hibernate 7.4.5, Jackson 3) |
 | Packaging | Executable JAR (embedded Tomcat) | `java -jar target/file-management.jar` |
 | View layer | Thymeleaf + `thymeleaf-extras-springsecurity6` | |
 | Client assets | WebJars: Bootstrap 5.3.8, jQuery 4.0.0, Select2 4.1.0; local Vazirmatn 33.003 | |

@@ -23,8 +23,7 @@ Files are stored on the local filesystem; metadata lives in MySQL. A small REST 
 
 ## Requirements
 
-* **Java 21 or 25** — the build targets 21; 25 works and is where
-  [Phase 1](docs/roadmap.md#phase-1--platform-upgrade) is heading
+* **Java 21** — the build targets 21 on Spring Boot 4.1.1
 * **Docker** — required to run the tests, optional for running the application
 * **MySQL 8** to run the application (being migrated to PostgreSQL). `compose.yaml` provides one
 * Maven — use the bundled wrapper, no local install needed
