@@ -3,200 +3,224 @@
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <th:block th:replace="~{fragments.html :: head-assets-select}"></th:block>
     <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{file.create.pageTitle}">ایجاد فایل</title>
     <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{file.edit.pageTitle}">ویرایش فایل</title>
-
-    <th:block th:replace="~{fragments.html :: head-assets-select}"></th:block>
-
 </head>
 <body>
-
 <div th:replace="~{navbar.html :: navbar}"></div>
 
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{file.form.kicker}">اطلاعات فایل</div>
+        <h1 th:if="${#strings.equals(pageType, 'create')}" th:text="#{file.create.pageTitle}">ایجاد فایل</h1>
+        <h1 th:if="${#strings.equals(pageType, 'update')}" th:text="#{file.edit.heading}">ویرایش فایل</h1>
+        <p class="page-description"
+           th:text="${#strings.equals(pageType, 'create')} ? #{file.create.description} : #{file.edit.description}">
+            مشخصات فایل را تکمیل کنید.
+        </p>
+    </header>
 
-<h2></h2>
-<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl" th:text="#{file.create.pageTitle}">ایجاد فایل </h2>
-<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl" th:text="#{file.edit.heading}">ویرایش فایل</h2>
-<div class="container">
-    <form enctype="multipart/form-data" th:action="@{ ${#strings.equals(pageType, 'create') ? '/files' : '/files/' + file.getId()}  }" method="post" id="fileForm" th:object="${file}">
+    <section class="card mx-auto max-w-4xl" aria-labelledby="file-form-title">
+        <div class="card-body">
+            <h2 id="file-form-title" class="sr-only"
+                th:text="${#strings.equals(pageType, 'create')} ? #{file.create.pageTitle} : #{file.edit.heading}">
+                اطلاعات فایل
+            </h2>
 
-        <input th:field="*{id}" type="hidden">
+            <form enctype="multipart/form-data"
+                  th:action="@{${#strings.equals(pageType, 'create') ? '/files' : '/files/' + file.getId()}}"
+                  method="post" id="fileForm" th:object="${file}">
 
+                <input th:field="*{id}" type="hidden">
 
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="fileName" th:text="#{field.fileTitle}">عنوان فایل</label>
+                        <input id="fileName" dir="rtl" type="text" class="form-control"
+                               th:field="*{fileName}" required>
+                    </div>
 
+                    <div class="form-group">
+                        <label for="description" th:text="#{field.description}">توضیحات</label>
+                        <input id="description" dir="rtl" type="text" class="form-control"
+                               th:field="*{description}" required>
+                    </div>
 
-        <div class="form-row">
+                    <div class="form-group">
+                        <label for="fileCategoryId" th:text="#{select.category}">انتخاب دسته‌بندی اصلی</label>
+                        <select class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId"
+                                required th:disabled="${#strings.equals(pageType, 'update')}">
+                            <option value=""></option>
+                            <option th:each="f: ${listCategory}" th:value="${f.getId()}"
+                                    th:text="${f.getDisplayName()}"
+                                    th:selected="${f.getId() == file.getFileCategoryId()}"></option>
+                        </select>
+                    </div>
 
-            <div class="form-group col-md-6">
-                <label th:text="#{field.description}">توضیحات</label>
-                <input dir="rtl" type="text" class="form-control" th:field="*{description}" required>
-            </div>
+                    <div class="form-group">
+                        <label for="fileSubCategoryId" th:text="#{select.subCategory}">انتخاب زیردسته‌بندی</label>
+                        <select class="form-control fileSubCategoryId" name="fileSubCategoryId"
+                                id="fileSubCategoryId" required
+                                th:disabled="${#strings.equals(pageType, 'update')}">
+                            <option value=""></option>
+                            <option th:if="${#strings.equals(pageType, 'update')}"
+                                    th:value="${file.getFileSubCategoryId()}"
+                                    th:text="${file.getFileSubCategoryNameDescription()}" selected></option>
+                        </select>
+                    </div>
 
-            <div class="form-group col-md-6">
-                <label th:text="#{field.fileTitle}">عنوان فایل</label>
-                <input dir="rtl" type="text" class="form-control" th:field="*{fileName}" readonly>
-            </div>
+                    <div class="form-group">
+                        <label for="mainTagFileId" th:text="#{select.tag}">انتخاب برچسب</label>
+                        <select class="form-control mainTagFileId" name="mainTagFileId" id="mainTagFileId"
+                                required th:disabled="${#strings.equals(pageType, 'update')}">
+                            <option value=""></option>
+                            <option th:if="${#strings.equals(pageType, 'update')}"
+                                    th:value="${file.getMainTagFileId()}"
+                                    th:text="${file.getTagDescription()}" selected></option>
+                        </select>
+                    </div>
 
+                    <div th:if="${#strings.equals(pageType, 'create')}" class="form-group">
+                        <label for="multipartFile" th:text="#{field.chooseFile}">فایل موردنظر</label>
+                        <div class="file-picker">
+                            <input type="file" class="file-picker-input" name="multipartFile" id="multipartFile"
+                                   accept=".jpg,.xlsx,.docx,.pdf,.txt,.png,.mp4,.pptx,.mp3" required>
+                            <label for="multipartFile" class="file-picker-button">
+                                <i class="bi bi-paperclip" aria-hidden="true"></i>
+                                <span th:text="#{file.upload.choose}">انتخاب فایل</span>
+                            </label>
+                            <span id="selectedFileName" class="file-picker-name"
+                                  th:text="#{file.upload.none}">فایلی انتخاب نشده است</span>
+                        </div>
+                        <small class="form-text" th:utext="#{file.upload.hint}">
+                            فرمت‌های مجاز و حداکثر حجم فایل
+                        </small>
+                    </div>
+                </div>
 
-            <div class="form-group col-md-6">
-                <label th:text="#{select.subCategory}">انتخاب زیر دسته بندی </label>
-                <select onclick="changeSubCategory()" onchange="changeSubCategory()" class="form-control fileSubCategoryId" name="fileSubCategoryId" id="fileSubCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
+                <div th:if="${showMessage && valid}" class="alert alert-success" role="status"
+                     id="success_message" th:text="${message}"></div>
+                <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert"
+                     id="warning_message" th:text="${message}"></div>
 
-                </select>
-            </div>
-
-
-            <div class="form-group col-md-6">
-                <label th:text="#{select.category}">انتخاب دسته بندی اصلی</label>
-                <select onchange="changeMainCategory()" class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
-                    <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getDisplayName()}" th:selected="${f.getId() == file.getFileCategoryId()}"></option>
-                </select>
-            </div>
-
-            <div class="form-group col-md-6" style="text-align: right">
-                <label for="multipartFile" th:text="#{field.chooseFile}">فایل موردنظر</label>
-                <input type="file" class="form-control-file" name="multipartFile" id="multipartFile"
-                       accept=".jpg,.xlsx,.docx,.pdf,.txt,.png,.mp4,.pptx,.mp3" required>
-                <small class="form-text">فرمت‌های مجاز: <span class="technical" dir="ltr">JPG, PNG, PDF, TXT, XLSX, DOCX, PPTX, MP4, MP3</span>؛ حداکثر حجم ۲۰ مگابایت.</small>
-            </div>
-
-            <div class="form-group col-md-6">
-                <label th:text="#{select.tag}">انتخاب تگ </label>
-                <select class="form-control mainTagFileId" name="mainTagFileId" id="mainTagFileId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
-
-                </select>
-            </div>
-
-
-
-
-
-
-
+                <div class="form-actions">
+                    <a th:href="@{/files/file-info}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        <span th:text="#{action.backToFiles}">بازگشت به فهرست فایل‌ها</span>
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
+                    </button>
+                </div>
+            </form>
         </div>
-
-
-        <!-- Success message -->
-        <div th:if="${showMessage && valid}" class="alert alert-success" role="alert" id="success_message"><i
-                class="glyphicon glyphicon-thumbs-up" th:text="${message}"></i>
-        </div>
-        <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert" id="warning_message"
-             th:text="${message}"><i class="glyphicon glyphicon-thumbs-up"></i>
-        </div>
-
-        <button type="submit" class="btn btn-primary" th:text="#{action.save}">ذخیره</button>
-    </form>
-    <hr>
-    <a th:href="@{/files/file-info}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست فایل ها</a>
-</div>
-
+    </section>
+</main>
 
 <th:block th:replace="~{fragments.html :: scripts-select}"></th:block>
 <script th:inline="javascript">
+    const FILE_FORM_CREATE_MODE = [[${#strings.equals(pageType, 'create')}]];
+    const FILE_FORM_COPY = {
+        category: [[#{select.category}]],
+        subCategory: [[#{select.subCategory}]],
+        tag: [[#{select.tag}]]
+    };
 
-    let check1 = 0;
-    let check2 = 0;
+    $(function () {
+        const category = $("#fileCategoryId");
+        const subCategory = $("#fileSubCategoryId");
+        const tag = $("#mainTagFileId");
+        const fileInput = $("#multipartFile");
 
-    $(document).ready(function () {
-        $('.fileCategoryId').select2({
-            width: '100%'
-        });
+        category.select2({ width: "100%", dir: "rtl", placeholder: FILE_FORM_COPY.category });
+        subCategory.select2({ width: "100%", dir: "rtl", placeholder: FILE_FORM_COPY.subCategory });
+        tag.select2({ width: "100%", dir: "rtl", placeholder: FILE_FORM_COPY.tag });
 
-        $('.fileSubCategoryId').select2({
-            width: '100%'
-        });
-
-        $('.mainTagFileId').select2({
-            width: '100%'
-        });
-
-        $('.fileCategoryId').val(null).trigger('change');
-
-
-    })
-
-    $('#fileForm').on('submit', function() {
-        let file_input = $(this).find('input[name="multipartFile"]')[0];
-        let sizeFile = file_input.files[0].size;
-        if((sizeFile/(1024*1024)) > (20)) {
-            alert([[#{js.fileTooLarge}]]);
-            return false;
-        } else {
-            return true;
+        if (FILE_FORM_CREATE_MODE) {
+            category.val(null).trigger("change.select2");
+            subCategory.val(null).trigger("change.select2");
+            tag.val(null).trigger("change.select2");
         }
+
+        category.on("change", function () {
+            loadSubCategories(category.val(), subCategory, tag);
+        });
+        subCategory.on("change", function () {
+            loadTags(subCategory.val(), tag);
+        });
+        fileInput.on("change", function () {
+            const selectedName = this.files && this.files.length ? this.files[0].name : [[#{file.upload.none}]];
+            $("#selectedFileName").text(selectedName);
+        });
     });
 
-    function changeMainCategory() {
-        check2 = 0;
-        $('.fileSubCategoryId').val(null).trigger('change');
-        $('.mainTagFileId').val(null).trigger('change');
-        if(check1 !== 0) {
-            var select = $('.fileSubCategoryId');
-            let fileCategoryId = $('#fileCategoryId').val();
-            if(fileCategoryId === null) {
-                fileCategoryId = -1;
-            }
-            let token = $("meta[name='_csrf']").attr("content");
-            let headerToken = $("meta[name='_csrf_header']").attr("content");
-            let contextPath = [[@{/}]];
-            $.ajax({
-                type: 'GET',
-                url: contextPath + 'resource/file-categories/' + fileCategoryId + '/sub-categories',
-                headers: {
-                    'X-CSRF-TOKEN': token
-                },
-            }).then(function (data) {
-                select.empty().select2({
-                    data: data.results
-                });
-                changeSubCategory();
-            });
-
-
+    function ajaxHeaders() {
+        const csrf = window.appCsrf();
+        const headers = { "X-Requested-With": "XMLHttpRequest" };
+        if (csrf.header && csrf.token) {
+            headers[csrf.header] = csrf.token;
         }
-
-
-        check1 = 1;
+        return headers;
     }
 
-    function changeSubCategory() {
-
-        $('.mainTagFileId').val(null).trigger('change');
-        if(check2 !== 0) {
-
-            var select = $('.mainTagFileId');
-            let fileSubCategoryId = $('#fileSubCategoryId').val();
-            if(fileSubCategoryId === null) {
-                fileSubCategoryId = -1;
-            }
-            let token = $("meta[name='_csrf']").attr("content");
-            let headerToken = $("meta[name='_csrf_header']").attr("content");
-            let contextPath = [[@{/}]];
-            $.ajax({
-                type: 'GET',
-                url: contextPath + 'resource/file-sub-categories/' + fileSubCategoryId + '/main-tags',
-                headers: {
-                    'X-CSRF-TOKEN': token
-                },
-            }).then(function (data) {
-                select.empty().select2({
-                    data: data.results
-                });
-            });
-        } else {
-            check2 = 1;
-        }
-
-
-
-
-
+    function resetSelect(select) {
+        select.empty().append(new Option("", "", true, true)).val(null).trigger("change.select2");
     }
 
+    function loadSubCategories(categoryId, subCategory, tag) {
+        resetSelect(subCategory);
+        resetSelect(tag);
+        if (!categoryId) {
+            return;
+        }
+
+        $.ajax({
+            type: "GET",
+            url: [[@{/resource/file-categories/}]] + categoryId + "/sub-categories",
+            headers: ajaxHeaders()
+        }).then(function (data) {
+            subCategory.select2({
+                width: "100%",
+                dir: "rtl",
+                placeholder: FILE_FORM_COPY.subCategory,
+                data: data.results
+            }).val(null).trigger("change.select2");
+        });
+    }
+
+    function loadTags(subCategoryId, tag) {
+        resetSelect(tag);
+        if (!subCategoryId) {
+            return;
+        }
+
+        $.ajax({
+            type: "GET",
+            url: [[@{/resource/file-sub-categories/}]] + subCategoryId + "/main-tags",
+            headers: ajaxHeaders()
+        }).then(function (data) {
+            tag.select2({
+                width: "100%",
+                dir: "rtl",
+                placeholder: FILE_FORM_COPY.tag,
+                data: data.results
+            }).val(null).trigger("change.select2");
+        });
+    }
+
+    $("#fileForm").on("submit", function () {
+        const fileInput = this.querySelector("input[name='multipartFile']");
+        if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+            return true;
+        }
+        if ((fileInput.files[0].size / (1024 * 1024)) > 20) {
+            alert([[#{js.fileTooLarge}]]);
+            return false;
+        }
+        return true;
+    });
 </script>
-
-
 </body>
 </html>

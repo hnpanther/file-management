@@ -3,154 +3,91 @@
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{user.create.pageTitle}">ایجاد کاربر جدید | سامانه مدیریت اسناد</title>
-    <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{user.edit.pageTitle}">ویرایش کاربر | سامانه مدیریت اسناد</title>
-
     <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
-
-
+    <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{user.create.pageTitle}">ایجاد کاربر جدید</title>
+    <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{user.edit.pageTitle}">ویرایش کاربر</title>
 </head>
 <body>
-
 <div th:replace="~{navbar.html :: navbar}"></div>
 
-<div class="container">
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{user.form.kicker}">مدیریت کاربران</div>
+        <h1 th:if="${#strings.equals(pageType, 'create')}" th:text="#{user.create.heading}">ایجاد کاربر جدید</h1>
+        <h1 th:if="${#strings.equals(pageType, 'update')}" th:text="#{user.edit.heading}">ویرایش اطلاعات کاربر</h1>
+        <p class="page-description" th:text="#{user.form.description}">اطلاعات کاربر را تکمیل کنید.</p>
+    </header>
 
-    <form class="well form-horizontal" th:action="@{ ${#strings.equals(pageType, 'create') ? '/users' : '/users/' + user.getId()}  }" method="post"  id="userForm" th:object="${user}">
-        <fieldset>
+    <section class="card mx-auto max-w-4xl">
+        <div class="card-body">
+            <form th:action="@{${#strings.equals(pageType, 'create') ? '/users' : '/users/' + user.getId()}}"
+                  method="post" id="userForm" th:object="${user}">
+                <input th:field="*{id}" type="hidden">
 
-            <!-- Form Name -->
-            <legend th:if="${#strings.equals(pageType, 'create')}" th:text="#{user.create.heading}">ایجاد کاربر جدید</legend>
-            <legend th:if="${#strings.equals(pageType, 'update')}" th:text="#{user.edit.heading}">ویرایش اطلاعات کاربر </legend>
-
-            <!-- Text input-->
-
-            <input th:field="*{id}" type="hidden">
-
-            <div class="form-group">
-                <label class="col-md-4 control-label" th:text="#{field.personnelCode}">کد پرسنلی</label>
-                <div class="col-md-4 inputGroupContainer">
-                    <div class="input-group">
-                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{personelCode}" th:placeholder="#{field.personnelCode}" class="form-control"  type="text" required>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="personelCode" th:text="#{field.personnelCode}">کد پرسنلی</label>
+                        <input id="personelCode" th:field="*{personelCode}" class="form-control technical"
+                               dir="ltr" type="text" inputmode="numeric" autocomplete="off" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="username" th:text="#{field.username}">نام کاربری</label>
+                        <input id="username" th:field="*{username}" class="form-control technical"
+                               dir="ltr" type="text" autocomplete="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="firstName" th:text="#{field.firstName}">نام</label>
+                        <input id="firstName" th:field="*{firstName}" class="form-control"
+                               dir="rtl" type="text" autocomplete="given-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="lastName" th:text="#{field.lastName}">نام خانوادگی</label>
+                        <input id="lastName" th:field="*{lastName}" class="form-control"
+                               dir="rtl" type="text" autocomplete="family-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="nationalCode" th:text="#{field.nationalCode}">کد ملی</label>
+                        <input id="nationalCode" th:field="*{nationalCode}" class="form-control technical"
+                               dir="ltr" type="text" inputmode="numeric" autocomplete="off" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="phoneNumber" th:text="#{field.phone}">شماره تلفن همراه</label>
+                        <input id="phoneNumber" th:field="*{phoneNumber}" class="form-control technical"
+                               dir="ltr" type="tel" inputmode="tel" autocomplete="tel" required>
+                    </div>
+                    <div th:if="${#strings.equals(pageType, 'create')}" class="form-group md:col-span-2">
+                        <label for="password" th:text="#{field.password}">رمز عبور</label>
+                        <input id="password" th:field="*{password}" class="form-control technical"
+                               dir="ltr" type="password" autocomplete="new-password" required>
                     </div>
                 </div>
-            </div>
 
-            <div class="form-group">
-                <label class="col-md-4 control-label" th:text="#{field.username}">نام کاربری</label>
-                <div class="col-md-4 inputGroupContainer">
-                    <div class="input-group">
-                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{username}" th:placeholder="#{field.username}" class="form-control"  type="text" required>
-                    </div>
+                <div th:if="${showMessage && valid}" class="alert alert-success" role="status"
+                     id="success_message" th:text="#{message.saved}">اطلاعات ذخیره شد.</div>
+                <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert"
+                     id="warning_message" th:text="${message}"></div>
+
+                <div class="form-actions">
+                    <a th:if="${#strings.equals(pageType, 'update')}"
+                       th:href="@{'/users/' + ${user.getId()}}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        <span th:text="#{action.backToProfile}">بازگشت به پروفایل</span>
+                    </a>
+                    <a th:if="${#strings.equals(pageType, 'create')}"
+                       th:href="@{/users}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        <span th:text="#{action.backToUsers}">بازگشت به فهرست کاربران</span>
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
+                    </button>
                 </div>
-            </div>
-
-
-            <!-- Text input-->
-
-
-            <div class="form-group">
-                <label class="col-md-4 control-label" th:text="#{field.firstName}">نام</label>
-                <div class="col-md-4 inputGroupContainer">
-                    <div class="input-group">
-                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{firstName}"  th:placeholder="#{field.firstName}" class="form-control"  type="text" required>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Text input-->
-
-            <div class="form-group">
-                <label class="col-md-4 control-label"  th:text="#{field.lastName}">نام خانوادگی</label>
-                <div class="col-md-4 inputGroupContainer">
-                    <div class="input-group">
-                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{lastName}" th:placeholder="#{field.lastName}" class="form-control"  type="text" required>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Text input-->
-
-
-            <div class="form-group">
-                <label class="col-md-4 control-label" th:text="#{field.nationalCode}">کد ملی</label>
-                <div class="col-md-4 inputGroupContainer">
-                    <div class="input-group">
-                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{nationalCode}" th:placeholder="#{field.nationalCode}" class="form-control"  type="text" required>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Text input-->
-
-
-            <div th:if="${#strings.equals(pageType, 'create')}" class="form-group">
-                <label class="col-md-4 control-label" th:text="#{field.password}">رمز عبور</label>
-                <div class="col-md-4 inputGroupContainer">
-                    <div class="input-group">
-                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{password}" th:placeholder="#{field.password}" class="form-control"  type="password" required>
-                    </div>
-                </div>
-            </div>
-
-
-
-            <div class="form-group">
-                <label class="col-md-4 control-label" th:text="#{field.phone}">شماره تلفن همراه</label>
-                <div class="col-md-4 inputGroupContainer">
-                    <div class="input-group">
-                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{phoneNumber}" th:placeholder="#{field.phone}" class="form-control"  type="text" required>
-                    </div>
-                </div>
-            </div>
-
-
-
-
-            <!-- Success message -->
-            <div th:if="${showMessage && valid}" class="alert alert-success" role="alert" id="success_message"> <i class="glyphicon glyphicon-thumbs-up"></i> اطلاعات با موفقیت ذخیره شد.</div>
-            <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert" id="warning_message" th:text="${message}"> <i class="glyphicon glyphicon-thumbs-up"></i> لطفا اطلاعات را بطور صحیح وارد نمایید.</div>
-
-            <!-- Button -->
-            <div class="form-group">
-                <label class="col-md-4 control-label"></label>
-                <div class="col-md-4">
-                    <button type="submit" class="btn btn-warning" >ذخیره <span class="glyphicon glyphicon-send"></span></button>
-                </div>
-            </div>
-
-        </fieldset>
-    </form>
-    <hr>
-    <a th:if="${#strings.equals(pageType, 'update')}" th:href="@{'/users/' + ${user.getId()}}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به پروفایل</a>
-    <a th:if="${#strings.equals(pageType, 'create')}" th:href="@{'/users'}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست کاربران</a>
-
-</div>
+            </form>
+        </div>
+    </section>
+</main>
 
 <th:block th:replace="~{fragments.html :: scripts}"></th:block>
-
-<script>
-    $('#userForm').on('submit', function() {
-
-
-        return true;
-    });
-
-    $(document).ready(function() {
-
-
-    });
-</script>
-
-
 </body>
 </html>

@@ -272,7 +272,7 @@ class FileStorageFileSystemServiceTest extends StorageRootSupport {
     @Test
     void test() throws IOException {
 //        String newDirectory = "new directory";
-//        fileStorageFileSystemService.createDirectory("سلام دنیای ازاد من کد -21");
+//        fileStorageFileSystemService.createDirectory("sample directory name -21");
 //
 //        Path path = Paths.get(baseDir + newDirectory);
 ////        assertThat(Files.exists(path)).isTrue();

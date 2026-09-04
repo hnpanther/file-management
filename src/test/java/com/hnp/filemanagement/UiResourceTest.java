@@ -141,6 +141,35 @@ class UiResourceTest {
         assertFalse(Pattern.compile("[\\u0600-\\u06ff]").matcher(guide).find());
     }
 
+    @Test
+    void templatesDoNotUseBootstrapWidthUtilityWithTailwindSemantics() throws IOException {
+        for (Path template : htmlFiles(TEMPLATES)) {
+            assertFalse(Pattern.compile("class=\\\"[^\\\"]*\\bw-100\\b").matcher(Files.readString(template)).find(),
+                    () -> template + " uses w-100, which means 25rem in Tailwind rather than 100% width");
+        }
+    }
+
+    @Test
+    void uiRegressionPatternsArePresent() throws IOException {
+        String stylesheet = Files.readString(Path.of("src", "main", "frontend", "app.css"));
+        String roleForm = Files.readString(TEMPLATES.resolve("role/save-role.html"));
+        String fileTree = Files.readString(TEMPLATES.resolve("file-management/files/file-tree.html"));
+        String fileForm = Files.readString(TEMPLATES.resolve("file-management/files/save-file.html"));
+        String userForm = Files.readString(TEMPLATES.resolve("user/save-user.html"));
+        String userRoleForm = Files.readString(TEMPLATES.resolve("user/user-role.html"));
+
+        assertTrue(stylesheet.contains(".table th,") && stylesheet.contains(".table td {"));
+        assertTrue(stylesheet.contains("text-center align-middle"));
+        assertTrue(roleForm.contains("permission-grid"));
+        assertTrue(fileTree.contains("expandRoots"));
+        assertTrue(fileTree.contains("bi-chevron-left"));
+        assertFalse(fileTree.contains("x-init=\"init()\""),
+                "Alpine invokes an init method automatically; x-init would load root children twice");
+        assertTrue(fileForm.contains("file-picker"));
+        assertTrue(userForm.contains("form-grid"));
+        assertTrue(userRoleForm.contains("permission-grid"));
+    }
+
     private List<Path> htmlFiles(Path root) throws IOException {
         try (var files = Files.walk(root)) {
             return files.filter(path -> path.getFileName().toString().endsWith(".html")).toList();

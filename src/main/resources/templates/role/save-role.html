@@ -3,80 +3,84 @@
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{role.create.pageTitle}">ایجاد نقش | سامانه مدیریت اسناد</title>
-    <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{role.edit.pageTitle}">ویرایش نقش | سامانه مدیریت اسناد</title>
-
     <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
-
-
+    <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{role.create.pageTitle}">ایجاد نقش</title>
+    <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{role.edit.pageTitle}">ویرایش نقش</title>
 </head>
 <body>
-
 <div th:replace="~{navbar.html :: navbar}"></div>
 
-<div class="container">
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{role.form.kicker}">مدیریت دسترسی</div>
+        <h1 th:if="${#strings.equals(pageType, 'create')}" th:text="#{role.create.heading}">ایجاد نقش جدید</h1>
+        <h1 th:if="${#strings.equals(pageType, 'update')}" th:text="#{role.edit.heading}">ویرایش نقش</h1>
+        <p class="page-description" th:text="#{role.form.description}">
+            عنوان نقش و مجوزهای قابل استفاده را مدیریت کنید.
+        </p>
+    </header>
 
-    <form class="well form-horizontal" th:action="@{ ${#strings.equals(pageType, 'create') ? '/roles' : '/roles/' + role.getId()}  }" method="post" id="roleForm" th:object="${role}">
-        <fieldset>
+    <section class="card mx-auto max-w-4xl" aria-labelledby="role-form-title">
+        <div class="card-body">
+            <h2 id="role-form-title" class="sr-only"
+                th:text="${#strings.equals(pageType, 'create')} ? #{role.create.heading} : #{role.edit.heading}">
+                اطلاعات نقش
+            </h2>
 
-            <!-- Form Name -->
-            <legend th:if="${#strings.equals(pageType, 'create')}" th:text="#{role.create.heading}">ایجاد نقش جدید</legend>
-            <legend th:if="${#strings.equals(pageType, 'update')}" th:text="#{role.edit.heading}">ویرایش نقش</legend>
+            <form th:action="@{${#strings.equals(pageType, 'create') ? '/roles' : '/roles/' + role.getId()}}"
+                  method="post" id="roleForm" th:object="${role}">
+                <input th:field="*{id}" type="hidden">
+                <input th:field="*{selected}" type="hidden">
 
-            <!-- Text input-->
-            <input th:field="*{id}" type="hidden" required>
-            <input th:field="*{selected}" type="hidden" required>
-
-
-            <div class="form-group">
-                <label class="col-md-4 control-label" th:text="#{field.roleTitle}">عنوان نقش</label>
-                <div class="col-md-4 inputGroupContainer">
-                    <div class="input-group">
-                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input th:field="*{roleName}" class="form-control" type="text" required th:readonly="${#strings.equals(pageType, 'update')}">
-                    </div>
+                <div class="form-group">
+                    <label for="roleName" th:text="#{field.roleTitle}">عنوان نقش</label>
+                    <input id="roleName" th:field="*{roleName}" class="form-control technical"
+                           type="text" required th:readonly="${#strings.equals(pageType, 'update')}">
                 </div>
-            </div>
 
-            <div th:if="${#strings.equals(pageType, 'update')}" class="form-group">
-                <label class="col-md-4 control-label" th:text="#{field.permissions}">مجوزها</label>
-                <div class="col-md-4 inputGroupContainer">
-                    <div th:each="p: ${permissions}" class="input-group">
-                        <div  class="form-check">
-                            <input th:checked="${p.isSelected()}" name="permissionDTOListId" class="form-check-input" type="checkbox" th:value="${p.getId()}">
-                            <label th:text="${p.getPermissionName()} + ' (' + ${p.getDescription} + ')'" class="form-check-label"></label>
-                        </div>
+                <fieldset th:if="${#strings.equals(pageType, 'update')}" class="mt-6">
+                    <legend class="mb-1 text-base font-semibold text-ink-900" th:text="#{field.permissions}">مجوزها</legend>
+                    <p class="mb-4 text-sm text-ink-500" th:text="#{role.permissions.hint}">
+                        مجوزهای این نقش را انتخاب کنید.
+                    </p>
+
+                    <div th:if="${#lists.isEmpty(permissions)}" class="empty-state empty-state-panel"
+                         th:text="#{role.permissions.empty}">مجوزی برای انتخاب وجود ندارد.</div>
+
+                    <div th:unless="${#lists.isEmpty(permissions)}" class="permission-grid">
+                        <label th:each="p: ${permissions}" class="permission-option">
+                            <input th:checked="${p.isSelected()}" name="permissionDTOListId"
+                                   type="checkbox" th:value="${p.getId()}">
+                            <span class="permission-copy">
+                                <span class="permission-name technical" dir="ltr"
+                                      th:text="${p.getPermissionName()}"></span>
+                                <span th:if="${p.getDescription() != null && !#strings.isEmpty(p.getDescription())}"
+                                      class="permission-description" th:text="${p.getDescription()}"></span>
+                            </span>
+                        </label>
                     </div>
-                </div>
-            </div>
+                </fieldset>
 
+                <div th:if="${showMessage && valid}" class="alert alert-success mt-5" role="status"
+                     id="success_message" th:text="#{message.saved}">اطلاعات با موفقیت ذخیره شد.</div>
+                <div th:if="${showMessage && !valid}" class="alert alert-warning mt-5" role="alert"
+                     id="warning_message" th:text="${message}"></div>
 
-
-            <!-- Success message -->
-            <div th:if="${showMessage && valid}" class="alert alert-success" role="alert" id="success_message"><i
-                    class="glyphicon glyphicon-thumbs-up"></i> اطلاعات با موفقیت ذخیره شد.
-            </div>
-            <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert" id="warning_message"
-                 th:text="${message}"><i class="glyphicon glyphicon-thumbs-up"></i>
-            </div>
-
-            <!-- Button -->
-            <div class="form-group">
-                <label class="col-md-4 control-label"></label>
-                <div class="col-md-4">
-                    <button type="submit" class="btn btn-warning">ذخیره <span class="glyphicon glyphicon-send"></span>
+                <div class="form-actions">
+                    <a th:href="@{/roles}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        <span th:text="#{action.backToRoles}">بازگشت به فهرست نقش‌ها</span>
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
                     </button>
                 </div>
-            </div>
-
-        </fieldset>
-    </form>
-    <a th:href="@{'/roles'}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست نقش ها</a>
-</div>
+            </form>
+        </div>
+    </section>
+</main>
 
 <th:block th:replace="~{fragments.html :: scripts}"></th:block>
-
 </body>
 </html>

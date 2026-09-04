@@ -27,3 +27,17 @@ in `docs/ui.md`. `UiResourceTest` checks that every file listed here is present 
 
 jQuery and Select2 are transitional: they exist only for page AJAX and dependent dropdowns that
 have not yet been converted to `fetch` + Alpine. Delete them once the last consumer is gone.
+
+## Security review
+
+The browser distributions were reviewed on 2026-09-04 against their upstream releases and the
+GitHub Advisory Database. jQuery 4.0.0 and Select2 4.1.0 were the latest stable releases, not beta or
+release-candidate builds. No reviewed advisory listed either exact version as affected. In
+particular, the historical jQuery XSS advisory affects npm releases before 3.5.0, and the historical
+Select2 XSS advisory affects releases before 4.0.6. Recheck upstream advisories whenever replacing a
+vendored file; a clean review is a point-in-time result, not a permanent guarantee.
+
+- https://github.com/jquery/jquery/releases
+- https://github.com/select2/select2/releases
+- https://github.com/advisories/GHSA-gxr4-xjj5-5px2
+- https://github.com/advisories/GHSA-rf66-hmqf-q3fc

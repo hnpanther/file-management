@@ -22,9 +22,13 @@
     <section class="card" aria-labelledby="tree-title">
         <div class="card-body">
 
-            <div x-data="fileTree()" x-init="init()">
+            <div x-data="fileTree()">
 
                 <div class="mb-4 flex flex-wrap items-center gap-2 border-b border-ink-100 pb-3">
+                    <button type="button" class="btn btn-secondary btn-sm" @click="expandAll()" :disabled="loading">
+                        <i class="bi bi-chevron-double-down" aria-hidden="true"></i>
+                        <span th:text="#{tree.expandAll}">باز کردن همه</span>
+                    </button>
                     <button type="button" class="btn btn-secondary btn-sm" @click="collapseAll()">
                         <i class="bi bi-chevron-double-up" aria-hidden="true"></i>
                         <span th:text="#{tree.collapseAll}">بستن همه</span>
@@ -60,10 +64,13 @@
 
                                 <button type="button" class="app-tree-twisty"
                                         :class="!row.expandable && 'is-leaf'"
-                                        :disabled="!row.expandable"
+                                        :disabled="!row.expandable || row.loading"
                                         :aria-label="row.open ? TREE.collapse : TREE.expand"
-                                        :style="row.open ? 'transform:rotate(-90deg)' : ''"
-                                        @click="toggle(row)"></button>
+                                        @click="toggle(row)">
+                                    <i class="bi text-[0.7rem]"
+                                       :class="row.loading ? 'bi-arrow-repeat animate-spin' : 'bi-chevron-left'"
+                                       aria-hidden="true"></i>
+                                </button>
 
                                 <i class="app-tree-icon bi" :class="row.icon" aria-hidden="true"></i>
 
@@ -115,8 +122,9 @@
             loading: false,
             error: "",
 
-            init() {
+            async init() {
                 this.rows = TREE_ROOTS.map(n => this.decorate(n, 0));
+                await this.expandRoots();
             },
 
             decorate(node, depth) {
@@ -124,28 +132,47 @@
                     depth: depth,
                     open: false,
                     loaded: false,
+                    loading: false,
                     key: node.type + "-" + node.id + "-" + depth + "-" + Math.random().toString(36).slice(2, 8)
                 });
             },
 
             indexOf(row) {
-                return this.rows.indexOf(row);
+                return this.rows.findIndex(candidate => candidate.type === row.type && candidate.id === row.id);
             },
 
             async toggle(row) {
-                if (!row.expandable) {
+                if (!row.expandable || row.loading) {
                     return;
                 }
                 if (row.open) {
                     this.close(row);
                     return;
                 }
+                await this.open(row);
+            },
+
+            async open(row) {
+                if (!row.expandable || row.open || row.loading) {
+                    return;
+                }
                 row.open = true;
-                if (!row.loaded) {
-                    await this.load(row);
-                } else {
-                    // children were removed on close; fetch again rather than cache stale data
-                    await this.load(row);
+                // Children are fetched again after a close so the read-only view never shows stale data.
+                await this.load(row);
+            },
+
+            async expandRoots() {
+                const roots = this.rows.slice();
+                for (const row of roots) {
+                    await this.open(row);
+                }
+            },
+
+            async expandAll() {
+                let index = 0;
+                while (index < this.rows.length) {
+                    await this.open(this.rows[index]);
+                    index++;
                 }
             },
 
@@ -156,11 +183,12 @@
                 while (end < this.rows.length && this.rows[end].depth > row.depth) {
                     end++;
                 }
-                this.rows.splice(start, end - start);
+                this.rows = [...this.rows.slice(0, start), ...this.rows.slice(end)];
             },
 
             async load(row) {
                 this.loading = true;
+                row.loading = true;
                 this.error = "";
                 try {
                     const url = "/resource/files/tree/children?type=" + encodeURIComponent(row.type)
@@ -174,12 +202,18 @@
                     }
                     const children = await response.json();
                     const decorated = children.map(c => this.decorate(c, row.depth + 1));
-                    this.rows.splice(this.indexOf(row) + 1, 0, ...decorated);
+                    const insertionIndex = this.indexOf(row) + 1;
+                    this.rows = [
+                        ...this.rows.slice(0, insertionIndex),
+                        ...decorated,
+                        ...this.rows.slice(insertionIndex)
+                    ];
                     row.loaded = true;
                 } catch (e) {
                     row.open = false;
                     this.error = TREE.loadFailed;
                 } finally {
+                    row.loading = false;
                     this.loading = false;
                 }
             },

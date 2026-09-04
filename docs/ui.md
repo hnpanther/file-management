@@ -47,6 +47,7 @@ hit twice. Vendored files cannot fail that way. `UiResourceTest` fails the build
 URL reappears or a vendored file goes missing.
 
 Licences and provenance for the vendored files are recorded in `static/vendor/README.md`.
+That inventory also records the date and scope of the latest upstream security review.
 
 ## Styling: Tailwind
 
@@ -143,8 +144,8 @@ xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
 ## Language, typography, and bidirectional text
 
 The user interface is Persian and right-to-left. Prose and form content stay at 16px; interface
-chrome - data tables, navigation, buttons, form controls - drops one step to 14px
-(`--fm-font-ui`), which is how document-management products stay dense without hurting the
+chrome - data tables, navigation, buttons, form controls - drops one step to 14px, which is how
+document-management products stay dense without hurting the
 readability of actual content. Nothing goes below 14px except small-caps section labels and badges. Write concise Persian labels with correct spacing and half-spaces.
 
 Vazirmatn is the base typeface and includes suitable Latin glyphs. Apply the `technical` class to file
@@ -177,20 +178,20 @@ untranslated string, because nothing replaces it; `MessageBundleTest` fails the 
 `MessageBundleTest` also verifies that every `#{key}` used by a template or by Java exists in the
 bundle, and that the bundle decodes as UTF-8.
 
-**Converted so far:** `navbar.html`, `security/login.html`, `error.html`. The remaining templates
-and the Persian literals still inside the controllers are tracked as
-[issue 26](issues.md#26-persian-ui-strings-hardcoded-in-java--s3); extend `EXTERNALISED` in
-`MessageBundleTest` as each one is converted.
+All current user-facing templates are registered in `MessageBundleTest.EXTERNALISED`. Keep that list
+complete when adding a template. Persian literals still inside controllers are tracked as
+[issue 26](issues.md#26-persian-ui-strings-hardcoded-in-java--s3).
 
 ## Design tokens
 
-Colors, corner radii, and shadows are defined in `:root` in `app.css` with the `--fm-` prefix. Deep
-green represents primary actions, a brighter green represents positive emphasis, and red is reserved
-for destructive actions. Do not add arbitrary colors directly to a template; define or reuse a
-semantic token first.
+Colors, corner radii, shadows, and shell dimensions are defined in the Tailwind `@theme` block in
+`src/main/frontend/app.css`. Deep green represents primary actions, a brighter green represents
+positive emphasis, and red is reserved for destructive actions. Reuse the `brand-*`, `ink-*`, and
+semantic state scales instead of adding arbitrary colors to templates.
 
-Spacing follows an approximate 4px rhythm. The default card radius is `0.5rem` (`--fm-radius`),
-controls use `0.375rem` (`--fm-radius-sm`), and primary controls are approximately 44px tall. Define text sizes in `rem` so browser font scaling remains effective.
+Spacing follows an approximate 4px rhythm. The default card radius is `0.5rem` (`--radius-card`),
+controls use `0.375rem` (`--radius-control`), and primary controls are approximately 44px tall.
+Define text sizes in `rem` so browser font scaling remains effective.
 
 ## Page patterns
 
@@ -205,9 +206,13 @@ and group related actions together.
 ### Forms
 
 Place the page title before the form and each label above its control. A placeholder never replaces a
-label. Put naming rules and upload restrictions next to the relevant control with `form-text`. Use one
+label. Forms use `form-grid` for a responsive one/two-column layout and `form-actions` for a consistent
+footer. Put naming rules and upload restrictions next to the relevant control with `form-text`. Use one
 clear primary action such as Save or Upload and a secondary Back action. Success messages use
-`role="status"`; correctable errors use `role="alert"`.
+`role="status"`; correctable errors use `role="alert"`. Long identifier collections, such as role
+permissions, use `permission-grid`; identifiers must be allowed to wrap rather than widening the page.
+File uploads use the `file-picker` pattern so the action and empty state remain Persian instead of
+depending on browser-native English copy.
 
 ### Detail pages
 
@@ -224,7 +229,7 @@ login treatment.
 
 ## Responsive behavior and accessibility
 
-- The sidebar becomes an offcanvas drawer below the Bootstrap `lg` breakpoint and remains keyboard
+- The sidebar becomes an offcanvas drawer below Tailwind's `lg` breakpoint and remains keyboard
   accessible; the top bar stays fixed at every width.
 - Tables scroll horizontally on narrow displays; meaningful column content is not hidden to force a fit.
 - Empty results render outside the wide table so the message remains fully visible on mobile.
@@ -247,15 +252,14 @@ single fragment. Pages insert it and add no wrapper of their own:
 <div th:replace="~{navbar.html :: navbar}"></div>
 ```
 
-`app.css` offsets the page with `body:has(.app-sidebar)`, so a page that does not include the
+`app.css` offsets the page with `body:has(#app-sidebar)`, so a page that does not include the
 fragment (login, error) stays full-bleed automatically. Nothing in a page template needs to know the
 sidebar exists.
 
-- **Top bar** (`.app-topbar`): brand, the sidebar toggle below `lg`, and the account menu. Keep it
+- **Top bar** (the fixed `header` in the fragment): brand, the sidebar toggle below `lg`, and the account menu. Keep it
   thin; it is not a navigation surface.
-- **Sidebar** (`.app-sidebar`): all primary navigation, grouped into `.app-nav-section` blocks with
-  an `.app-nav-heading`. Below the `lg` breakpoint it becomes a Bootstrap offcanvas
-  (`offcanvas-lg offcanvas-start`), which needs no custom JavaScript.
+- **Sidebar** (`#app-sidebar`): all primary navigation, grouped into semantic `section` blocks with
+  an `.app-nav-heading`. Below the `lg` breakpoint Alpine toggles it as a drawer.
 - Active state is applied by `static/js/app.js`, which matches the longest link path against the
   current URL and adds `.active`.
 
@@ -264,10 +268,9 @@ Add a new destination by adding one `.app-nav-link` inside the right section, wr
 
 ### Dropdowns inside the top bar
 
-Bootstrap 5.3 propagates `data-bs-theme` to descendants, so a menu opened inside a dark region
-inherits `--bs-dropdown-bg: #212529`. Combined with an app rule that colors items with the dark body
-text, the menu renders black on black. `.app-topbar .dropdown-menu` therefore restates the
-`--bs-dropdown-*` variables as a light surface. Never fix this by recoloring individual items.
+The account menu is an Alpine disclosure positioned relative to its trigger. Keep `x-cloak`,
+`@click.outside`, and the Escape handler together so it neither flashes during startup nor traps the
+user. The menu is always a white surface even though its trigger sits in the dark top bar.
 
 ## Tree component
 
@@ -291,22 +294,27 @@ deeper. That keeps the template to a single `x-for`, supports any depth without 
 templates, and hands drag-and-drop one ordered list to work against. Indentation comes from
 `padding-inline-start` computed from `depth`, so it flips correctly in RTL.
 
-Children load on demand from `/resource/files/tree/children?type=&id=`. Never load a whole subtree
-eagerly: every `@ManyToOne` in this codebase is `EAGER`, so one node drags in its whole ancestry.
+Children load on demand from `/resource/files/tree/children?type=&id=`. Root categories open one level
+on initial display so the hierarchy and its disclosure controls are immediately discoverable. The
+user can then open a branch or use **Expand all**. Do not build the whole subtree in the controller:
+every `@ManyToOne` in this codebase is `EAGER`, so one node drags in its whole ancestry.
 
-## Bootstrap 4 markup still in the templates
+## Legacy compatibility classes
 
-The pages were written for Bootstrap 4 and are rendered by Bootstrap 5. `btn-block`, `form-row`,
-`sr-only`, `input-group-prepend`, `input-group-addon`, `custom-select` and `badge-secondary` no
-longer exist in Bootstrap 5 and work only because `app.css` shims them. Do not remove those shims
-while the markup still uses them, and prefer Bootstrap 5 classes in anything new.
+Some templates still contain class names inherited from the old Bootstrap UI, including `btn-block`,
+`form-row`, `sr-only`, `input-group-addon`, `col-md-*`, and `badge-secondary`. Bootstrap is not loaded;
+these names work only because the Tailwind component layer implements them. Do not add more legacy
+classes. Convert a page to the explicit Tailwind patterns when editing it, then remove a compatibility
+rule only after its final consumer is gone. Be especially careful with names such as `w-100`: that is
+a real Tailwind spacing utility (25rem), not Bootstrap's `width: 100%` helper.
 
 ## UI change checklist
 
 - The page declares `lang="fa"` and `dir="rtl"`.
 - Navigation changes were made in the sidebar, not the top bar, and carry the matching
   `sec:authorize` expression.
-- Shared fragments load Bootstrap, jQuery, Select2, and the application stylesheet.
+- Shared fragments load the compiled Tailwind stylesheet and only the vendored scripts required by
+  the page; pages with Select2 use the dedicated select fragments.
 - No external `src`, `href`, or `url()` runtime reference was introduced.
 - The page remains usable on mobile, desktop, and at 200% browser text zoom.
 - Relevant empty, error, success, loading, and disabled states were checked.

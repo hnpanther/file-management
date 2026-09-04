@@ -1,182 +1,157 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.w3.org/1999/xhtml">
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.w3.org/1999/xhtml">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <meta th:name="_csrf" th:content="${_csrf.token}"/>
-    <meta th:name="_csrf_header" th:content="${_csrf.headerName}"/>
-    <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{tag.create.pageTitle}">ساخت تگ</title>
-    <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{tag.edit.heading}">ویرایش تگ</title>
-
+    <meta name="_csrf" th:content="${_csrf.token}">
+    <meta name="_csrf_header" th:content="${_csrf.headerName}">
     <th:block th:replace="~{fragments.html :: head-assets-select}"></th:block>
-
+    <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{tag.create.pageTitle}">ساخت برچسب</title>
+    <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{tag.edit.heading}">ویرایش برچسب</title>
 </head>
 <body>
-
 <div th:replace="~{navbar.html :: navbar}"></div>
 
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{mainTag.form.kicker}">برچسب‌گذاری فایل‌ها</div>
+        <h1 th:if="${#strings.equals(pageType, 'create')}" th:text="#{tag.createButton}">ایجاد برچسب جدید</h1>
+        <h1 th:if="${#strings.equals(pageType, 'update')}" th:text="#{tag.edit.heading}">ویرایش برچسب</h1>
+        <p class="page-description" th:text="#{mainTag.form.description}">اطلاعات برچسب را تکمیل کنید.</p>
+    </header>
 
-<h2></h2>
-<h2 th:if="${#strings.equals(pageType, 'create')}" class="text-center" dir="rtl" th:text="#{tag.createButton}">ایجاد تگ جدید</h2>
-<h2 th:if="${#strings.equals(pageType, 'update')}" class="text-center" dir="rtl" th:text="#{tag.edit.heading}">ویرایش تگ</h2>
-<div class="container">
-    <form th:action="@{ ${#strings.equals(pageType, 'create') ? '/main-tags' : '/main-tags/' + mainTag.getId()}  }" method="post" id="categoryForm" th:object="${mainTag}">
+    <section class="card mx-auto max-w-4xl">
+        <div class="card-body">
+            <form th:action="@{${#strings.equals(pageType, 'create') ? '/main-tags' : '/main-tags/' + mainTag.getId()}}"
+                  method="post" id="mainTagForm" th:object="${mainTag}">
+                <input class="mainTagId" th:field="*{id}" type="hidden">
 
-        <input class="mainTagId" th:field="*{id}" type="hidden">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="tagNameDescription" th:text="#{field.tagNameFa}">نام فارسی برچسب</label>
+                        <input id="tagNameDescription" dir="rtl" type="text" class="form-control"
+                               th:field="*{tagNameDescription}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="tagName" th:text="#{mainTag.nameEnHint}">نام فنی انگلیسی</label>
+                        <input id="tagName" dir="ltr" type="text" class="form-control technical"
+                               th:field="*{tagName}" required
+                               th:readonly="${#strings.equals(pageType, 'update')}">
+                    </div>
+                    <div class="form-group">
+                        <label for="fileCategoryId" th:text="#{select.category}">دسته‌بندی اصلی</label>
+                        <select class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required
+                                th:disabled="${#strings.equals(pageType, 'update')}">
+                            <option value=""></option>
+                            <option th:each="f: ${listCategory}" th:value="${f.getId()}"
+                                    th:text="${f.getDisplayName()}"
+                                    th:selected="${f.getId() == mainTag.getFileCategoryId()}"></option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="fileSubCategoryId" th:text="#{select.subCategory}">زیردسته‌بندی</label>
+                        <select class="form-control fileSubCategoryId" name="fileSubCategoryId"
+                                id="fileSubCategoryId" required
+                                th:disabled="${#strings.equals(pageType, 'update')}">
+                            <option value=""></option>
+                            <option th:if="${#strings.equals(pageType, 'update')}"
+                                    th:value="${mainTag.getFileSubCategoryId()}"
+                                    th:text="${mainTag.getFileSubCategoryNameDescription()}" selected></option>
+                        </select>
+                    </div>
+                </div>
 
+                <div th:if="${showMessage && valid}" class="alert alert-success" role="status"
+                     id="success_message" th:text="${message}"></div>
+                <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert"
+                     id="warning_message" th:text="${message}"></div>
 
-
-
-        <div class="form-row">
-
-            <div class="form-group col-md-6">
-                <label th:text="#{field.tagNameFa}">نام تگ(فارسی)</label>
-                <input dir="rtl" type="text" class="form-control" th:field="*{tagNameDescription}" required>
-            </div>
-
-            <div class="form-group col-md-6">
-                <label th:text="#{mainTag.nameEnHint}">نام تگ(به انگلیسی بدون فاصله)</label>
-                <input dir="rtl" type="text" class="form-control" th:field="*{tagName}" required th:readonly="${#strings.equals(pageType, 'update')}">
-            </div>
-
-            <div class="form-group col-md-6">
-                <label th:text="#{select.subCategory}">انتخاب زیر دسته بندی </label>
-                <select class="form-control fileSubCategoryId" name="fileSubCategoryId" id="fileSubCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
-
-                </select>
-            </div>
-
-            <div class="form-group col-md-6">
-                <label th:text="#{select.category}">انتخاب دسته بندی اصلی</label>
-                <select onchange="changeCategory()" class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId" required th:readonly="${#strings.equals(pageType, 'update')}" th:disabled="${#strings.equals(pageType, 'update')}">
-                    <option th:each="f: ${listCategory}" th:value="${f.getId()}" th:text="${f.getDisplayName()}" th:selected="${f.getId() == mainTag.getFileCategoryId()}"></option>
-                </select>
-            </div>
-
-
-
-
-
+                <div class="form-actions form-actions-split">
+                    <div class="form-action-group">
+                        <a th:href="@{/main-tags}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                            <span th:text="#{action.backToMainTags}">بازگشت به فهرست برچسب‌ها</span>
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check2" aria-hidden="true"></i>
+                            <span th:text="#{action.save}">ذخیره</span>
+                        </button>
+                    </div>
+                    <button th:if="${#strings.equals(pageType, 'update')}"
+                            sec:authorize="hasAuthority('REST_DELETE_MAIN_TAG_FILE') || hasAuthority('ADMIN')"
+                            type="button" onclick="deleteTag()" class="btn btn-danger">
+                        <i class="bi bi-trash3" aria-hidden="true"></i>
+                        <span th:text="#{action.delete}">حذف</span>
+                    </button>
+                </div>
+            </form>
         </div>
-
-
-        <!-- Success message -->
-        <div th:if="${showMessage && valid}" class="alert alert-success" role="alert" id="success_message"><i
-                class="glyphicon glyphicon-thumbs-up" th:text="${message}"></i>
-        </div>
-        <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert" id="warning_message"
-             th:text="${message}"><i class="glyphicon glyphicon-thumbs-up"></i>
-        </div>
-
-        <button type="submit" class="btn btn-primary" th:text="#{action.save}">ذخیره</button>
-    </form>
-    <hr>
-    <a th:if="${#strings.equals(pageType, 'update')}" sec:authorize="hasAuthority('REST_DELETE_MAIN_TAG_FILE') || hasAuthority('ADMIN')" th:onclick="deleteTag()" class="btn btn-danger"> <i class="fa fa-arrow-circle-o-left"></i>حذف</a>
-    <hr>
-    <a th:href="@{/main-tags}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت به لیست تگ ها</a>
-</div>
-
+    </section>
+</main>
 
 <th:block th:replace="~{fragments.html :: scripts-select}"></th:block>
 <script th:inline="javascript">
+    const MAIN_TAG_CREATE_MODE = [[${#strings.equals(pageType, 'create')}]];
 
-    let check = 0;
-    $(document).ready(function () {
-        $('.fileCategoryId').select2({
-            width: '100%'
-        });
-
-        $('.fileCategoryId').val(null).trigger('change');
-
-
-        $('.fileSubCategoryId').select2({
-            width: '100%'
-        });
-        // $('.fileSubCategoryId').select2({
-        //     width: '100%',
-        //     ajax: {
-        //
-        //         url: function (params) {
-        //             if (typeof params.term == 'undefined') {
-        //                 params.term = '';
-        //             }
-        //
-        //             let fileCategoryId = $('#fileCategoryId').val();
-        //             if(fileCategoryId === null) {
-        //                 fileCategoryId = -1;
-        //             }
-        //             return '/resource/file-categories/' + fileCategoryId + '/sub-categories';
-        //
-        //         },
-        //         dataType: 'json'
-        //     }
-        // });
-    })
-
-    function changeCategory() {
-        if(check !== 0) {
-            var select = $('.fileSubCategoryId');
-            let fileCategoryId = $('#fileCategoryId').val();
-            if(fileCategoryId === null) {
-                fileCategoryId = -1;
-            }
-            let token = $("meta[name='_csrf']").attr("content");
-            let headerToken = $("meta[name='_csrf_header']").attr("content");
-            let contextPath = [[@{/}]];
-            $.ajax({
-                type: 'GET',
-                url: contextPath + 'resource/file-categories/' + fileCategoryId + '/sub-categories'
-            }).then(function (data) {
-                select.empty().select2({
-                    data: data.results
-                });
-            });
+    $(function () {
+        const category = $("#fileCategoryId");
+        const subCategory = $("#fileSubCategoryId");
+        category.select2({ width: "100%", dir: "rtl", placeholder: [[#{select.category}]] });
+        subCategory.select2({ width: "100%", dir: "rtl", placeholder: [[#{select.subCategory}]] });
+        if (MAIN_TAG_CREATE_MODE) {
+            category.val(null).trigger("change.select2");
+            subCategory.val(null).trigger("change.select2");
         }
-
-
-        check = 1;
-    }
-
-
-    function deleteTag() {
-        if(confirm([[#{js.confirmDelete}]])) {
-            let token = $("meta[name='_csrf']").attr("content");
-            let headerToken = $("meta[name='_csrf_header']").attr("content");
-            let contextPath = [[@{/}]];
-            $.ajax({
-                url: contextPath + "resource/main-tags/" + $(".mainTagId").val(),
-                type: "DELETE",
-                dataType: "json",
-                contentType: "application/json; charset=utf-8",
-                headers: {
-                    'X-CSRF-TOKEN': token
-                },
-                complete: function (xhr, status) {
-                    if(xhr.status === 200) {
-                        alert([[#{js.deleted}]]);
-                        let currentLocation = window.location;
-                        let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "main-tags";
-                        window.location.replace(newUrl);
-                    } else {
-                        // alert(xhr.responseText);
-                        alert([[#{js.cannotDeleteFile}]]);
-                    }
-                }
-            });
-        }
-    }
-
-
-
-    $('#categoryForm').on('submit', function() {
-
-        return true;
+        category.on("change", function () {
+            loadSubCategories(category.val(), subCategory);
+        });
     });
 
+    function loadSubCategories(categoryId, select) {
+        select.empty().append(new Option("", "", true, true)).val(null).trigger("change.select2");
+        if (!categoryId) {
+            return;
+        }
+        $.ajax({
+            type: "GET",
+            url: [[@{/resource/file-categories/}]] + categoryId + "/sub-categories",
+            headers: { "X-Requested-With": "XMLHttpRequest" }
+        }).then(function (data) {
+            select.select2({
+                width: "100%",
+                dir: "rtl",
+                placeholder: [[#{select.subCategory}]],
+                data: data.results
+            }).val(null).trigger("change.select2");
+        });
+    }
+
+    function deleteTag() {
+        if (!confirm([[#{js.confirmDelete}]])) {
+            return;
+        }
+        const csrf = window.appCsrf();
+        const headers = {};
+        if (csrf.header && csrf.token) {
+            headers[csrf.header] = csrf.token;
+        }
+        $.ajax({
+            url: [[@{/resource/main-tags/}]] + $(".mainTagId").val(),
+            type: "DELETE",
+            dataType: "json",
+            contentType: "application/json; charset=utf-8",
+            headers: headers,
+            complete: function (xhr) {
+                if (xhr.status === 200) {
+                    alert([[#{js.deleted}]]);
+                    window.location.replace([[@{/main-tags}]]);
+                } else {
+                    alert([[#{js.cannotDeleteFile}]]);
+                }
+            }
+        });
+    }
 </script>
-
-
 </body>
 </html>

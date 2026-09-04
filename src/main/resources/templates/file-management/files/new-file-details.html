@@ -3,107 +3,104 @@
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
     <title th:if="${#strings.equals(pageType, 'format')}" th:text="#{fileDetails.createFormat}">ایجاد فرمت جدید</title>
     <title th:if="${#strings.equals(pageType, 'version')}" th:text="#{fileDetails.createVersion}">ایجاد نسخهٔ جدید</title>
-
-    <th:block th:replace="~{fragments.html :: head-assets-select}"></th:block>
-
 </head>
 <body>
-
 <div th:replace="~{navbar.html :: navbar}"></div>
 
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{fileDetails.form.kicker}">نسخه‌ها و فرمت‌ها</div>
+        <h1 th:if="${#strings.equals(pageType, 'format')}" th:text="#{fileDetails.createFormat}">ایجاد فرمت جدید</h1>
+        <h1 th:if="${#strings.equals(pageType, 'version')}" th:text="#{fileDetails.createVersion}">ایجاد نسخهٔ جدید</h1>
+        <p class="page-description" th:text="#{fileDetails.form.description}">اطلاعات فایل جدید را تکمیل کنید.</p>
+    </header>
 
-<h2></h2>
-<h2 th:if="${#strings.equals(pageType, 'format')}" class="text-center" dir="rtl" th:text="#{fileDetails.createFormat}">ایجاد فرمت جدید </h2>
-<h2 th:if="${#strings.equals(pageType, 'version')}" class="text-center" th:text="#{fileDetails.createVersion}">ایجاد نسخهٔ جدید</h2>
-<p class="text-center text-muted" th:text="#{fileDetails.sameNameHint}">نام فایل باید دقیقاً با فایل قبلی یکسان باشد.</p>
-<div class="container">
-    <form enctype="multipart/form-data" th:action="@{'/files/file-info/' + ${file.getFileId()} + '/file-details'}" method="post" id="fileForm" th:object="${file}">
-
-        <input th:field="*{fileId}" type="hidden">
-        <input name="type" type="hidden" th:value="*{type}">
-        <input name="fileDetailsId" type="hidden" th:value="*{fileDetailsId}">
-
-
-
-
-        <div class="form-row">
-
-
-            <div class="form-group col-md-6">
-                <label th:text="#{field.description}">توضیحات</label>
-                <input dir="rtl" type="text" class="form-control" th:field="*{fileDetailsDescription}" required>
+    <section class="card mx-auto max-w-4xl">
+        <div class="card-body">
+            <div class="alert border-brand-200 bg-brand-50 text-brand-800" role="note">
+                <i class="bi bi-info-circle ms-1" aria-hidden="true"></i>
+                <span th:text="#{fileDetails.sameNameHint}">نام فایل باید با فایل قبلی یکسان باشد.</span>
             </div>
 
-            <div class="form-group col-md-6">
-                <label th:text="#{field.fileTitle}">عنوان فایل</label>
-                <input dir="rtl" type="text" class="form-control" th:field="*{fileName}" readonly>
-            </div>
+            <form enctype="multipart/form-data"
+                  th:action="@{'/files/file-info/' + ${file.getFileId()} + '/file-details'}"
+                  method="post" id="fileForm" th:object="${file}">
+                <input th:field="*{fileId}" type="hidden">
+                <input name="type" type="hidden" th:value="*{type}">
+                <input name="fileDetailsId" type="hidden" th:value="*{fileDetailsId}">
 
-            <div class="form-group col-md-6" style="text-align: right">
-                <label for="multipartFile" th:text="#{field.chooseFile}">فایل موردنظر</label>
-                <input type="file" class="form-control-file" name="multipartFile" id="multipartFile"
-                       accept=".jpg,.xlsx,.docx,.pdf,.txt" required>
-                <small class="form-text">فرمت‌های مجاز: <span class="technical" dir="ltr">JPG, PDF, TXT, XLSX, DOCX</span>؛ حداکثر حجم ۲۰ مگابایت.</small>
-            </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="fileDetailsDescription" th:text="#{field.description}">توضیحات</label>
+                        <input id="fileDetailsDescription" dir="rtl" type="text" class="form-control"
+                               th:field="*{fileDetailsDescription}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="fileName" th:text="#{field.fileTitle}">عنوان فایل</label>
+                        <input id="fileName" dir="ltr" type="text" class="form-control technical"
+                               th:field="*{fileName}" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="multipartFile" th:text="#{field.chooseFile}">فایل موردنظر</label>
+                        <div class="file-picker">
+                            <input type="file" class="file-picker-input" name="multipartFile" id="multipartFile"
+                                   accept=".jpg,.xlsx,.docx,.pdf,.txt" required>
+                            <label for="multipartFile" class="file-picker-button">
+                                <i class="bi bi-paperclip" aria-hidden="true"></i>
+                                <span th:text="#{file.upload.choose}">انتخاب فایل</span>
+                            </label>
+                            <span id="selectedFileName" class="file-picker-name"
+                                  th:text="#{file.upload.none}">فایلی انتخاب نشده است</span>
+                        </div>
+                        <small class="form-text" th:utext="#{fileDetails.upload.hint}">فرمت‌ها و حداکثر حجم مجاز</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="version" th:text="${#strings.equals(pageType, 'version')} ? #{file.newVersion} : #{field.version}">نسخه</label>
+                        <input id="version" name="version" dir="ltr" type="text" class="form-control technical"
+                               th:value="${#strings.equals(pageType, 'version') ? lastVersion + 1 : lastVersion}" readonly>
+                    </div>
+                </div>
 
-            <div th:if="${#strings.equals(pageType, 'format')}" class="form-group col-md-6">
-                <label th:text="#{field.version}">نسخه</label>
-                <input name="version" dir="rtl" type="text" class="form-control" th:value="${lastVersion}" readonly>
-            </div>
+                <div th:if="${showMessage && valid}" class="alert alert-success" role="status"
+                     id="success_message" th:text="${message}"></div>
+                <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert"
+                     id="warning_message" th:text="${message}"></div>
 
-            <div th:if="${#strings.equals(pageType, 'version')}" class="form-group col-md-6">
-                <label th:text="#{file.newVersion}">نسخهٔ جدید</label>
-                <input name="version" dir="rtl" type="text" class="form-control" th:value="${lastVersion + 1}" readonly>
-            </div>
-
-
-
-
-
-
-
-
-
+                <div class="form-actions">
+                    <a th:href="@{'/files/file-info/' + ${file.getFileId()}}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        <span th:text="#{action.backToFile}">بازگشت به اطلاعات فایل</span>
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
+                    </button>
+                </div>
+            </form>
         </div>
+    </section>
+</main>
 
-
-        <!-- Success message -->
-        <div th:if="${showMessage && valid}" class="alert alert-success" role="alert" id="success_message"><i
-                class="glyphicon glyphicon-thumbs-up" th:text="${message}"></i>
-        </div>
-        <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert" id="warning_message"
-             th:text="${message}"><i class="glyphicon glyphicon-thumbs-up"></i>
-        </div>
-
-        <button type="submit" class="btn btn-primary" th:text="#{action.save}">ذخیره</button>
-    </form>
-    <hr>
-    <a th:href="@{'/files/file-info/' + ${file.getFileId()}}" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>برگشت</a>
-</div>
-
-
-<th:block th:replace="~{fragments.html :: scripts-select}"></th:block>
-<script>
-
-
-
-    $(document).ready(function () {
-
-
-
-    })
-
-    $('#fileForm').on('submit', function() {
-
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+<script th:inline="javascript">
+    $(function () {
+        $("#multipartFile").on("change", function () {
+            const selectedName = this.files && this.files.length ? this.files[0].name : [[#{file.upload.none}]];
+            $("#selectedFileName").text(selectedName);
+        });
     });
 
-
+    $("#fileForm").on("submit", function () {
+        const fileInput = this.querySelector("input[name='multipartFile']");
+        if (fileInput.files && fileInput.files.length && (fileInput.files[0].size / (1024 * 1024)) > 20) {
+            alert([[#{js.fileTooLarge}]]);
+            return false;
+        }
+        return true;
+    });
 </script>
-
-
 </body>
 </html>
