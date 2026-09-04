@@ -6,7 +6,7 @@ import com.hnp.filemanagement.support.MySqlSupport;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -59,11 +59,16 @@ class AuthenticationRedirectTest extends MySqlSupport {
                 .andExpect(status().isOk());
     }
 
+    /**
+     * Spring Security 7 sends a context-relative redirect here; Spring Security 6 sent the absolute
+     * "http://localhost/login". Relative is the better behaviour behind a reverse proxy, so the
+     * expectation moved rather than the configuration.
+     */
     @Test
     void anonymousRequestForAProtectedPageIsSentToLogin() throws Exception {
         mockMvc.perform(get("/users").accept(MediaType.TEXT_HTML))
                 .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("http://localhost/login"));
+                .andExpect(redirectedUrl("/login"));
     }
 
     // ---------------------------------------------------------------- what gets replayed after login

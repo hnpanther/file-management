@@ -6,7 +6,7 @@ what came before.
 | Phase | Goal | Depends on | Status |
 |---|---|---|---|
 | 0 | Safety net — CI, smoke test, containerised dev environment | — | **done** |
-| 1 | Spring Boot 4.1.1, **staying on Java 21** | 0 | next |
+| 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done** |
 | 2 | Architectural restructuring | 1 | |
 | 3 | PostgreSQL migration | 1, partly 2 | |
 | 4 | S3-compatible storage alongside the filesystem | 2, 3 | |
@@ -67,7 +67,15 @@ rotated, and the `Admin`/`admin` bootstrap account is unchanged. Both are operat
 
 ---
 
-## Phase 1 — Platform upgrade
+## Phase 1 — Platform upgrade — **done**
+
+> Delivered. Spring Boot 4.1.1 on Java 21: Spring Framework 7.0.9, Spring Security 7.1.1,
+> Hibernate 7.4.5, Flyway 12.4.0, Jackson 3.1.5, JUnit 6.0.3, Tomcat 11.0.24. 123 tests green,
+> every route verified in a browser, and an upload and delete driven end to end over HTTP.
+>
+> Done in two hops so each failure could be attributed. What actually broke, and why, is recorded
+> in [issues 51-55](issues.md#51-cascade--all-on-the-inverse-side-of-a-many-to-many--s1).
+
 
 **Target: Spring Boot 4.1.1, staying on Java 21.**
 

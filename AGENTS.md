@@ -39,10 +39,10 @@ change is verified.
 2. **Check which phase you are in.** The roadmap sequences work deliberately — e.g. the `@Data`
    entity fix must land *before* the Spring Boot upgrade, and checksum backfill must land *before*
    the S3 migration.
-3. **Never claim a version that is not in `pom.xml`.** The commit log says Spring Boot 3.5.5; the
-   pom says 3.2.1, because a merge discarded the upgrade
-   ([issue 1](docs/issues.md#1-the-spring-boot-upgrade-was-silently-reverted-by-a-merge--s1)).
-   Read the file.
+3. **Never claim a version that is not in `pom.xml`.** It now says Spring Boot 4.1.1 on Java 21.
+   A merge once discarded an upgrade and left the log claiming a version the build never had
+   ([issue 1](docs/issues.md#1-the-spring-boot-upgrade-was-silently-reverted-by-a-merge--s1)),
+   so read the file rather than the history.
 
 ## Conventions in this codebase
 
