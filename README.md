@@ -25,12 +25,12 @@ go to application.properties and set database properties
 Specify a path for the root of the files. For example in Windows(create files/main dircetory before run)
 
 ```bash
-  file.management.base-dir=D:/files/main/
+  file.management.base-dir=D:\LocalStorage\Project\Data\main
 ```
 
 Specify path for log in logback-spring.xml
 ```bash
-  <property name="LOG_PATH" value="D:/files/logs" />
+  <property name="LOG_PATH" value="D:\LocalStorage\Project\Data\logs" />
 ```
 
 Repeat these steps for application.propertes file in the test directory as well(don't create test directory. it's create and delete automatic in tests)
