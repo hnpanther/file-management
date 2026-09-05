@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,6 +30,14 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     List<Folder> findRoots();
 
     Optional<Folder> findBySourceTypeAndSourceId(FolderSourceType sourceType, Integer sourceId);
+
+    /**
+     * The folders mirroring a whole level of the taxonomy at once.
+     *
+     * <p>Rendering one level of the tree has to ask "may this be shown?" of every child. Asking per
+     * child would put a query on each row of every folder opened; this asks once per level.
+     */
+    List<Folder> findBySourceTypeAndSourceIdIn(FolderSourceType sourceType, Collection<Integer> sourceIds);
 
     Optional<Folder> findByPath(String path);
 

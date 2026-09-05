@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -98,6 +99,38 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
                OR c.categoryNameDescription LIKE CONCAT('%', (:search), '%')
             """)
     Page<FileInfo> search(@Param("search") String search, Pageable pageable);
+
+    /**
+     * The same list, restricted to files filed under one of a set of main tags — folder access
+     * pushed into the query rather than applied to the rows afterwards (roadmap 6.6).
+     *
+     * <p>Filtering the fetched page in Java would be wrong, not merely slower: the page and its
+     * total both come from the database, so removing rows afterwards leaves a pager counting things
+     * the user cannot see, and pages that shrink unpredictably.
+     *
+     * <p>The caller resolves the tag ids from the granted folder paths — one indexed prefix scan per
+     * grant — and must not call this with an empty set, which is not valid SQL for {@code IN}.
+     */
+    @Query("""
+            SELECT f FROM FileInfo f
+            JOIN FETCH f.mainTagFile mt
+            JOIN FETCH mt.fileSubCategory sc
+            JOIN FETCH sc.fileCategory c
+            JOIN FETCH c.generalTag
+            WHERE mt.id IN (:mainTagIds)
+              AND ((:search) IS NULL
+               OR f.fileName LIKE CONCAT('%', (:search), '%')
+               OR f.description LIKE CONCAT('%', (:search), '%')
+               OR mt.tagName LIKE CONCAT('%', (:search), '%')
+               OR mt.description LIKE CONCAT('%', (:search), '%')
+               OR sc.subCategoryName LIKE CONCAT('%', (:search), '%')
+               OR sc.subCategoryNameDescription LIKE CONCAT('%', (:search), '%')
+               OR c.categoryName LIKE CONCAT('%', (:search), '%')
+               OR c.categoryNameDescription LIKE CONCAT('%', (:search), '%'))
+            """)
+    Page<FileInfo> searchWithinTags(@Param("search") String search,
+                                    @Param("mainTagIds") Collection<Integer> mainTagIds,
+                                    Pageable pageable);
 
     /**
      * Tree "find a file" search — see issue 73: two nodes at different depths of the same category

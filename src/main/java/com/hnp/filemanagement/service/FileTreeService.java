@@ -9,9 +9,11 @@ import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.Folder;
+import com.hnp.filemanagement.entity.FolderKind;
 import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.exception.InvalidDataException;
+import org.springframework.security.access.AccessDeniedException;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FileSubCategoryRepository;
@@ -67,44 +69,81 @@ public class FileTreeService {
     }
 
     /**
-     * Top level of the tree for one person.
+     * Top level of the tree for one person: the categories they may either read or walk through.
      *
-     * <p>Unrestricted, that is every category. Restricted, it is the folders granted to them rather
-     * than the categories above those folders — a grant on {@code IMS/DocSystem} does not make
-     * {@code IMS} readable, so a tree that began at the categories and filtered would show nothing
-     * and the granted folder could never be opened (roadmap 6.6).
+     * <p>The tree keeps its real shape whoever is looking at it. A grant can sit in the middle — on
+     * a sub-category, or on a single tag — and the person holding it has no right to the category
+     * above. That category is still shown, because otherwise there would be no way down to the
+     * folder they do have; what it will not show is any of its other branches.
      */
     @Transactional(readOnly = true)
     public List<TreeNodeDTO> getRoots(int principalId) {
         FolderAccess access = folderAccessService.accessFor(principalId);
-        if (access.unrestricted()) {
-            return fileCategoryRepository.findAll().stream()
-                    .sorted(Comparator.comparing(FileCategory::getCategoryName, String.CASE_INSENSITIVE_ORDER))
-                    .map(this::toCategoryNode)
-                    .toList();
-        }
-        return folderAccessService.rootsFor(access).stream()
-                .map(this::toGrantedFolderNode)
-                .flatMap(Optional::stream)
+
+        List<FileCategory> categories = fileCategoryRepository.findAll().stream()
+                .sorted(Comparator.comparing(FileCategory::getCategoryName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+
+        Map<Integer, Folder> folders = folderAccessService.foldersBySourceId(FolderSourceType.CATEGORY,
+                categories.stream().map(FileCategory::getId).toList());
+
+        return categories.stream()
+                .map(category -> Map.entry(category, folders.get(category.getId())))
+                .filter(entry -> entry.getValue() != null && access.visible(entry.getValue().getPath()))
+                .map(entry -> toCategoryNode(entry.getKey(), entry.getValue().getId()))
                 .toList();
     }
 
     /**
-     * Children of one node. {@code type} and {@code id} come straight back from a rendered row —
-     * which is exactly why the check is here: a rendered row is client-supplied, so being able to
-     * see a node's children has to be decided again on every call rather than assumed from how the
-     * caller got the id.
+     * Children of one node.
+     *
+     * <p><b>A node is addressed by its folder id</b>, not by the taxonomy row behind it — the one
+     * exception being a file, which has no folder of its own until roadmap 6.8. That is deliberate
+     * groundwork: the taxonomy is going away and the folder tree is going to be the only structure,
+     * so every id the client holds is already the id that will survive. When files become folders
+     * too, this method loses its last special case and the {@code source_*} columns can go.
+     *
+     * <p>Addressing by folder also makes the access check direct rather than a translation: the id
+     * in the request <em>is</em> the thing being authorised, so there is no step in between where a
+     * taxonomy row and a folder could disagree.
+     *
+     * <p>The check is repeated on every call because a rendered row is client-supplied: having been
+     * given an id once is not evidence of being allowed to use it now.
      */
     @Transactional(readOnly = true)
     public List<TreeNodeDTO> getChildren(NodeType type, int id, int principalId) {
         FolderAccess access = folderAccessService.accessFor(principalId);
-        requireAccessToNode(access, type, id);
 
         return switch (type) {
-            case CATEGORY -> subCategoriesOf(id);
-            case SUB_CATEGORY -> mainTagsOf(id);
-            case MAIN_TAG -> filesOf(id);
-            case FILE -> versionsOf(id);
+            // A category or a sub-category may be opened for navigation alone, so the weaker check
+            // applies - and then its children are filtered, because an ancestor of a grant must
+            // reveal only the branch that leads to it.
+            case CATEGORY -> {
+                Folder folder = requireVisibleFolder(access, id, FolderKind.CATEGORY);
+                yield childNodes(access, FolderSourceType.SUB_CATEGORY,
+                        fileSubCategoryRepository.findByFileCategoryIdOrderBySubCategoryNameAsc(folder.getSourceId()),
+                        FileSubCategory::getId, this::toSubCategoryNode);
+            }
+            case SUB_CATEGORY -> {
+                Folder folder = requireVisibleFolder(access, id, FolderKind.SUB_CATEGORY);
+                yield childNodes(access, FolderSourceType.MAIN_TAG,
+                        mainTagFileRepository.findByFileSubCategoryIdOrderByTagNameAsc(folder.getSourceId()),
+                        MainTagFile::getId, this::toMainTagNode);
+            }
+            // Files are contents, not a route to anywhere, so from here the full check applies.
+            case MAIN_TAG -> {
+                Folder folder = requireVisibleFolder(access, id, FolderKind.TAG);
+                if (!access.allows(folder.getPath())) {
+                    throw new AccessDeniedException("no folder access to folder id=" + id);
+                }
+                yield filesOf(folder.getSourceId());
+            }
+            // The remaining special case: a file is not a folder yet, so it is still addressed by
+            // its own id and authorised through the tag it is filed under.
+            case FILE -> {
+                folderAccessService.requireAccess(access, FolderSourceType.MAIN_TAG, mainTagIdOf(id));
+                yield versionsOf(id);
+            }
             case VERSION -> throw new InvalidDataException(
                     "versions are expanded together with their file; ask for the file instead");
             case FORMAT -> throw new InvalidDataException("a format node is a leaf");
@@ -112,25 +151,43 @@ public class FileTreeService {
     }
 
     /**
-     * Checks the node itself, which is enough for everything below it: a child's path is its
-     * parent's path plus its own id, so if the parent is inside a grant then every descendant is
-     * too. Only the node named in the request can be outside one.
+     * The folder a request named, once it is established that this person may at least walk into it.
      *
-     * <p>A file is the exception, because its id is not a folder id — its access comes from the main
-     * tag it is filed under, and that has to be looked up rather than assumed from how the caller
-     * arrived at the id. A version is expanded together with its file and never reaches here.
+     * <p>The kind is checked against what the caller claimed the node was. They should always agree —
+     * the client is echoing back a row this service rendered — and if they do not, the request is
+     * malformed rather than merely refused.
      */
-    private void requireAccessToNode(FolderAccess access, NodeType type, int id) {
-        if (access.unrestricted()) {
-            return;
+    private Folder requireVisibleFolder(FolderAccess access, int folderId, FolderKind expectedKind) {
+        Folder folder = folderAccessService.requireFolder(folderId);
+        if (folder.getKind() != expectedKind) {
+            throw new InvalidDataException(
+                    "folder id=" + folderId + " is a " + folder.getKind() + ", not a " + expectedKind);
         }
-        switch (type) {
-            case CATEGORY -> folderAccessService.requireAccess(access, FolderSourceType.CATEGORY, id);
-            case SUB_CATEGORY -> folderAccessService.requireAccess(access, FolderSourceType.SUB_CATEGORY, id);
-            case MAIN_TAG -> folderAccessService.requireAccess(access, FolderSourceType.MAIN_TAG, id);
-            case FILE -> folderAccessService.requireAccess(access, FolderSourceType.MAIN_TAG, mainTagIdOf(id));
-            default -> { }
+        if (!access.visible(folder.getPath())) {
+            throw new AccessDeniedException("no folder access to folder id=" + folderId);
         }
+        return folder;
+    }
+
+    /**
+     * Renders one level: each child carries its own folder id, and a child the person may not see is
+     * left out. Both need the level's folders, which is one query for the whole level.
+     */
+    private <T> List<TreeNodeDTO> childNodes(FolderAccess access, FolderSourceType sourceType,
+                                             List<T> children,
+                                             java.util.function.Function<T, Integer> idOf,
+                                             java.util.function.BiFunction<T, Integer, TreeNodeDTO> toNode) {
+        if (children.isEmpty()) {
+            return List.of();
+        }
+        Map<Integer, Folder> folders = folderAccessService.foldersBySourceId(sourceType,
+                children.stream().map(idOf).toList());
+
+        return children.stream()
+                .map(child -> Map.entry(child, folders.get(idOf.apply(child))))
+                .filter(entry -> entry.getValue() != null && access.visible(entry.getValue().getPath()))
+                .map(entry -> toNode.apply(entry.getKey(), entry.getValue().getId()))
+                .toList();
     }
 
     private int mainTagIdOf(int fileInfoId) {
@@ -161,6 +218,7 @@ public class FileTreeService {
                 .filter(fileInfo -> folderAccessService.allows(
                         access, FolderSourceType.MAIN_TAG, fileInfo.getMainTagFile().getId()))
                 .map(this::toSearchHit)
+                .flatMap(Optional::stream)
                 .toList();
     }
 
@@ -180,37 +238,43 @@ public class FileTreeService {
         }
     }
 
-    private TreeSearchHitDTO toSearchHit(FileInfo fileInfo) {
+    /**
+     * A hit carries the <em>folder</em> ids of the branch down to the file, because those are what
+     * the page opens on the way to revealing it — the same ids the tree itself renders.
+     *
+     * <p>Empty when any level of that branch has no mirrored folder. A hit the tree could not
+     * navigate to is of no use to a search whose whole purpose is to navigate there, and one
+     * unmirrored row must not turn the entire search into an error. Drift is caught by the
+     * reconciliation test, which is a better place for it than a user's search box.
+     */
+    private Optional<TreeSearchHitDTO> toSearchHit(FileInfo fileInfo) {
         MainTagFile mainTag = fileInfo.getMainTagFile();
         FileSubCategory subCategory = mainTag.getFileSubCategory();
         FileCategory category = subCategory.getFileCategory();
+
+        Optional<Folder> categoryFolder = folderAccessService.folderOf(FolderSourceType.CATEGORY, category.getId());
+        Optional<Folder> subCategoryFolder =
+                folderAccessService.folderOf(FolderSourceType.SUB_CATEGORY, subCategory.getId());
+        Optional<Folder> tagFolder = folderAccessService.folderOf(FolderSourceType.MAIN_TAG, mainTag.getId());
+
+        if (categoryFolder.isEmpty() || subCategoryFolder.isEmpty() || tagFolder.isEmpty()) {
+            return Optional.empty();
+        }
 
         TreeSearchHitDTO hit = new TreeSearchHitDTO();
         hit.setFileId(fileInfo.getId());
         hit.setFileName(fileInfo.getFileName());
         hit.setFileTitle(fileInfo.getDescription());
-        hit.setCategoryId(category.getId());
+        hit.setCategoryId(categoryFolder.get().getId());
         hit.setCategoryTitle(category.getCategoryNameDescription());
-        hit.setSubCategoryId(subCategory.getId());
+        hit.setSubCategoryId(subCategoryFolder.get().getId());
         hit.setSubCategoryTitle(subCategory.getSubCategoryNameDescription());
-        hit.setMainTagId(mainTag.getId());
+        hit.setMainTagId(tagFolder.get().getId());
         hit.setMainTagTitle(mainTag.getTagNameDescription());
-        return hit;
+        return Optional.of(hit);
     }
 
     // ------------------------------------------------------------------ levels
-
-    private List<TreeNodeDTO> subCategoriesOf(int categoryId) {
-        return fileSubCategoryRepository.findByFileCategoryIdOrderBySubCategoryNameAsc(categoryId).stream()
-                .map(this::toSubCategoryNode)
-                .toList();
-    }
-
-    private List<TreeNodeDTO> mainTagsOf(int subCategoryId) {
-        return mainTagFileRepository.findByFileSubCategoryIdOrderByTagNameAsc(subCategoryId).stream()
-                .map(this::toMainTagNode)
-                .toList();
-    }
 
     private List<TreeNodeDTO> filesOf(int mainTagId) {
         return fileInfoRepository.findByMainTagFileIdOrderByFileNameAsc(mainTagId).stream()
@@ -238,27 +302,11 @@ public class FileTreeService {
     // ------------------------------------------------------------------ mapping
 
     /**
-     * Renders a granted folder as a tree root. The folder mirrors a taxonomy row, and it is that row
-     * the rest of the tree is built from, so the node carries the taxonomy id — opening it then goes
-     * down exactly the path every other node does.
-     *
-     * <p>Empty when the mirrored row has since disappeared, which leaves a stale grant pointing at
-     * nothing. That is a row to clean up rather than a request to fail, so it is dropped from the
-     * listing.
+     * The {@code id} on every folder-backed node is the <em>folder</em> id, which is what the client
+     * sends back. The taxonomy id stays inside this service.
      */
-    private Optional<TreeNodeDTO> toGrantedFolderNode(Folder folder) {
-        if (folder.getSourceType() == null || folder.getSourceId() == null) {
-            return Optional.empty();
-        }
-        return switch (folder.getSourceType()) {
-            case CATEGORY -> fileCategoryRepository.findById(folder.getSourceId()).map(this::toCategoryNode);
-            case SUB_CATEGORY -> fileSubCategoryRepository.findById(folder.getSourceId()).map(this::toSubCategoryNode);
-            case MAIN_TAG -> mainTagFileRepository.findById(folder.getSourceId()).map(this::toMainTagNode);
-        };
-    }
-
-    private TreeNodeDTO toCategoryNode(FileCategory category) {
-        TreeNodeDTO node = base(NodeType.CATEGORY, category.getId(), category.getCategoryName(),
+    private TreeNodeDTO toCategoryNode(FileCategory category, int folderId) {
+        TreeNodeDTO node = base(NodeType.CATEGORY, folderId, category.getCategoryName(),
                 category.getCategoryNameDescription(), "bi-folder-fill");
         node.setNote(category.getGeneralTag() == null ? null
                 : category.getGeneralTag().getTagNameDescription());
@@ -267,17 +315,17 @@ public class FileTreeService {
         return node;
     }
 
-    private TreeNodeDTO toSubCategoryNode(FileSubCategory subCategory) {
-        TreeNodeDTO node = base(NodeType.SUB_CATEGORY, subCategory.getId(), subCategory.getSubCategoryName(),
+    private TreeNodeDTO toSubCategoryNode(FileSubCategory subCategory, int folderId) {
+        TreeNodeDTO node = base(NodeType.SUB_CATEGORY, folderId, subCategory.getSubCategoryName(),
                 subCategory.getSubCategoryNameDescription(), "bi-folder");
         node.setChildCount(mainTagFileRepository.countByFileSubCategoryId(subCategory.getId()));
         node.setExpandable(node.getChildCount() > 0);
         return node;
     }
 
-    private TreeNodeDTO toMainTagNode(MainTagFile mainTag) {
+    private TreeNodeDTO toMainTagNode(MainTagFile mainTag, int folderId) {
         // Shown as a folder even though it creates no directory yet - see the class comment.
-        TreeNodeDTO node = base(NodeType.MAIN_TAG, mainTag.getId(), mainTag.getTagName(),
+        TreeNodeDTO node = base(NodeType.MAIN_TAG, folderId, mainTag.getTagName(),
                 mainTag.getTagNameDescription(), "bi-folder2");
         // COUNT never returns null; the repository signature is int, so no null branch is needed.
         node.setChildCount(fileInfoRepository.countFileWithTagId(mainTag.getId()));

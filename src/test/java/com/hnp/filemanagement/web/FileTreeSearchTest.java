@@ -4,6 +4,7 @@ import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.FileSubCategory;
+import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.GeneralTag;
 import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.PermissionEnum;
@@ -11,9 +12,11 @@ import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FileSubCategoryRepository;
+import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.GeneralTagRepository;
 import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.UserRepository;
+import com.hnp.filemanagement.service.FolderMirrorService;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
@@ -59,11 +62,20 @@ class FileTreeSearchTest extends MySqlSupport {
     private MainTagFileRepository mainTagFileRepository;
     @Autowired
     private FileInfoRepository fileInfoRepository;
+    @Autowired
+    private FolderRepository folderRepository;
+    @Autowired
+    private FolderMirrorService folderMirrorService;
 
     private FileCategory category;
     private FileSubCategory subCategory;
     private MainTagFile mainTag;
     private FileInfo fileInfo;
+
+    /** A hit reports folder ids - the ids the tree itself renders - not taxonomy ids. */
+    private int folderId(FolderSourceType sourceType, int sourceId) {
+        return folderRepository.findBySourceTypeAndSourceId(sourceType, sourceId).orElseThrow().getId();
+    }
 
     private static UserDetailsImpl principal(PermissionEnum... permissions) {
         UserDetailsImpl userDetails = new UserDetailsImpl();
@@ -92,6 +104,10 @@ class FileTreeSearchTest extends MySqlSupport {
         mainTag = mainTagFileRepository.save(
                 TestData.mainTag(creator, subCategory, "HSED" + TestData.nextSequence()));
         fileInfo = fileInfoRepository.save(TestData.fileInfo(creator, mainTag, "WI-HSE-SA" + TestData.nextSequence()));
+
+        // Built through repositories, so nothing mirrored them; the mirror heals the whole
+        // ancestry upwards from the tag, which is what makes the branch addressable by folder id.
+        folderMirrorService.created(mainTag);
     }
 
     @Test
@@ -105,9 +121,9 @@ class FileTreeSearchTest extends MySqlSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)))
                 .andExpect(jsonPath("$[0].fileId").value(fileInfo.getId()))
-                .andExpect(jsonPath("$[0].categoryId").value(category.getId()))
-                .andExpect(jsonPath("$[0].subCategoryId").value(subCategory.getId()))
-                .andExpect(jsonPath("$[0].mainTagId").value(mainTag.getId()))
+                .andExpect(jsonPath("$[0].categoryId").value(folderId(FolderSourceType.CATEGORY, category.getId())))
+                .andExpect(jsonPath("$[0].subCategoryId").value(folderId(FolderSourceType.SUB_CATEGORY, subCategory.getId())))
+                .andExpect(jsonPath("$[0].mainTagId").value(folderId(FolderSourceType.MAIN_TAG, mainTag.getId())))
                 .andExpect(jsonPath("$[0].mainTagTitle").value(mainTag.getTagNameDescription()));
     }
 

@@ -214,7 +214,7 @@ public class FileController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileController.class", logMessage);
 
-        FileInfoDTO fileInfoDTO = fileService.getFileInfoDtoWithFileDetails(fileInfoId);
+        FileInfoDTO fileInfoDTO = fileService.getFileInfoDtoWithFileDetails(fileInfoId, principalId);
         model.addAttribute("file", fileInfoDTO);
         return "file-management/files/file-info-page.html";
     }
@@ -281,7 +281,7 @@ public class FileController {
             pageNumber = 0;
         }
 
-        FileInfoPageDTO fileInfoPageDTO = fileService.getPageFileInfo(pageSize, pageNumber, search);
+        FileInfoPageDTO fileInfoPageDTO = fileService.getPageFileInfo(pageSize, pageNumber, search, principalId);
 
         model.addAttribute("files", fileInfoPageDTO.getFileInfoDTOList());
         model.addAttribute("pageSize", pageSize);
@@ -305,7 +305,7 @@ public class FileController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileController.class", logMessage);
 
-        FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId);
+        FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId, principalId);
         String contentType = fileDownloadDTO.getContentType();
         String header = "attachment; filename=\"" + fileDownloadDTO.getFileName() + "\"";
 
@@ -341,7 +341,7 @@ public class FileController {
         boolean valid = false;
         String message = "";
 
-        FileInfoDTO fileInfoDTO = fileService.getFileInfoDtoWithFileDetails(fileInfoId);
+        FileInfoDTO fileInfoDTO = fileService.getFileInfoDtoWithFileDetails(fileInfoId, principalId);
         int lastVersion = fileService.getLastVersionOfFile(fileInfoId);
         FileUploadDTO fileUploadDTO = new FileUploadDTO();
         fileUploadDTO.setFileName(fileInfoDTO.getFileName());

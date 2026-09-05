@@ -140,7 +140,7 @@ public class FileApi {
         globalGeneralLogging.controllerLogging(userDetails, request, FileApi.class,
                 "download file details id=" + fileDetailsId);
 
-        FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId);
+        FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId, userDetails.getId());
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(fileDownloadDTO.getContentType()))

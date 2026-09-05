@@ -54,12 +54,37 @@ public record FolderAccess(boolean unrestricted, List<String> grantedPaths) {
         return new FolderAccess(false, reduced);
     }
 
-    /** Whether the folder at this path, or anything under it, may be reached. */
+    /**
+     * Whether the contents of the folder at this path may be read — it <em>is</em> a grant, or sits
+     * beneath one.
+     */
     public boolean allows(String path) {
         if (unrestricted) {
             return true;
         }
         return grantedPaths.stream().anyMatch(path::startsWith);
+    }
+
+    /**
+     * Whether this folder is an <em>ancestor</em> of something granted, and so has to be shown even
+     * though nothing in it may be read.
+     *
+     * <p>A grant can sit in the middle of the tree. Someone granted {@code Home/IMS/DocSystem} has no
+     * right to {@code Home/IMS} — but if the tree hid {@code IMS} they could never walk down to the
+     * folder they do have. So an ancestor is rendered as a signpost: it can be opened, and the only
+     * children it reveals are the ones that lead to, or lie inside, a grant. Its own files and its
+     * other branches stay hidden, which is what keeps this from being a way around the grant.
+     */
+    public boolean isOnPathTo(String path) {
+        if (unrestricted) {
+            return true;
+        }
+        return grantedPaths.stream().anyMatch(granted -> granted.startsWith(path) && !granted.equals(path));
+    }
+
+    /** Whether the folder should appear in the tree at all: readable, or a step towards something readable. */
+    public boolean visible(String path) {
+        return allows(path) || isOnPathTo(path);
     }
 
     /** True when this person can reach nothing at all — every list is empty and every open is denied. */
