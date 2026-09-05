@@ -19,6 +19,18 @@ import java.util.List;
 /**
  * Children of one tree node. The page calls this as folders are opened, so a large taxonomy costs
  * one query per opened folder rather than a full walk on page load.
+ *
+ * <p><b>{@code FILE_TREE_PAGE} is accepted here as well as the endpoint's own permission.</b> These
+ * endpoints exist only to fill that one page, and the page is nothing but the tree — so holding the
+ * page permission without this one produced a screen that could never load anything, and said so
+ * with a permission error the account holder could do nothing about. That is a misconfiguration the
+ * model invited rather than a decision anybody made: every grant of {@code FILE_TREE_PAGE} had to be
+ * paired by hand, and twice in a row it was not.
+ *
+ * <p>This does not widen what anyone can see. Which folders answer is decided by
+ * {@code FolderAccessService} inside the service, not by these annotations. The separate
+ * {@code REST_GET_FILE_TREE} and {@code REST_SEARCH_FILE_TREE} constants stay, for granting the data
+ * without the page.
  */
 @RestController
 @RequestMapping("/resource/files/tree")
@@ -33,7 +45,7 @@ public class FileTreeResource {
     }
 
     //REST_GET_FILE_TREE
-    @PreAuthorize("hasAuthority('REST_GET_FILE_TREE') || hasAuthority('ADMIN')")
+    @PreAuthorize("hasAuthority('REST_GET_FILE_TREE') || hasAuthority('FILE_TREE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("children")
     public ResponseEntity<List<TreeNodeDTO>> getChildren(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                                          @RequestParam("type") TreeNodeDTO.NodeType type,
@@ -47,7 +59,7 @@ public class FileTreeResource {
     }
 
     //REST_SEARCH_FILE_TREE
-    @PreAuthorize("hasAuthority('REST_SEARCH_FILE_TREE') || hasAuthority('ADMIN')")
+    @PreAuthorize("hasAuthority('REST_SEARCH_FILE_TREE') || hasAuthority('FILE_TREE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("search")
     public ResponseEntity<List<TreeSearchHitDTO>> search(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                                           @RequestParam("query") String query,

@@ -395,7 +395,8 @@ class FileServiceTest extends MySqlSupport {
     void pagesAndFilters() {
         underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
 
-        FileInfoPageDTO page = underTest.getPageFileInfo(10, 0, "report");
+        // Folder access is off in this suite, so the principal only identifies the caller here.
+        FileInfoPageDTO page = underTest.getPageFileInfo(10, 0, "report", principalId);
 
         assertThat(page.getFileInfoDTOList()).extracting(FileInfoDTO::getFileName).contains("report");
     }

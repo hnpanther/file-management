@@ -11,6 +11,7 @@ import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.FileSubCategory;
+import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
@@ -31,6 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -86,19 +89,22 @@ public class FileService {
     private final FileStorageService fileStorageService;
     private final MainTagFileService mainTagFileService;
     private final ActionHistoryService actionHistoryService;
+    private final FolderAccessService folderAccessService;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileDetailsRepository fileDetailsRepository,
                        UserRepository userRepository,
                        FileStorageService fileStorageService,
                        MainTagFileService mainTagFileService,
-                       ActionHistoryService actionHistoryService) {
+                       ActionHistoryService actionHistoryService,
+                       FolderAccessService folderAccessService) {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
         this.fileStorageService = fileStorageService;
         this.mainTagFileService = mainTagFileService;
         this.actionHistoryService = actionHistoryService;
+        this.folderAccessService = folderAccessService;
     }
 
     // ------------------------------------------------------------------ upload
@@ -438,18 +444,49 @@ public class FileService {
         return toDownload(fileDetails);
     }
 
-    /** The bytes of any version. Requires a permission; the public variant does not. */
-    public FileDownloadDTO downloadFile(int fileDetailsId) {
+    /**
+     * The bytes of any version.
+     *
+     * <p>Two checks, and they are different questions. The {@code DOWNLOAD_FILE} permission on the
+     * endpoint says this principal may download <em>something</em>; the folder check here says they
+     * may download <em>this</em>. Until the second existed, holding the permission was enough to
+     * enumerate ids and pull every file in the system, private ones included
+     * ({@code docs/issues.md}, issue 14).
+     */
+    public FileDownloadDTO downloadFile(int fileDetailsId, int principalId) {
         FileDetails fileDetails = fileDetailsRepository.findByIdWithFileInfo(fileDetailsId).orElseThrow(
                 () -> new ResourceNotFoundException("fileDetails with id=" + fileDetailsId + " not exists")
         );
+
+        folderAccessService.requireAccess(folderAccessService.accessFor(principalId),
+                FolderSourceType.MAIN_TAG, fileDetails.getFileInfo().getMainTagFile().getId());
+
         return toDownload(fileDetails);
     }
 
-    public FileInfoPageDTO getPageFileInfo(int pageSize, int pageNumber, String search) {
+    /**
+     * The file list, restricted to what this person's folder grants reach.
+     *
+     * <p>The restriction goes into the query, never onto the fetched page: the page and its total
+     * both come from the database, so filtering afterwards would leave the pager counting rows the
+     * caller cannot see.
+     */
+    public FileInfoPageDTO getPageFileInfo(int pageSize, int pageNumber, String search, int principalId) {
 
         Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
-        Page<FileInfo> page = fileInfoRepository.search(SearchTerms.blankToNull(search), pageable);
+        Optional<Set<Integer>> readableTags =
+                folderAccessService.readableMainTagIds(folderAccessService.accessFor(principalId));
+
+        Page<FileInfo> page;
+        if (readableTags.isEmpty()) {
+            page = fileInfoRepository.search(SearchTerms.blankToNull(search), pageable);
+        } else if (readableTags.get().isEmpty()) {
+            // Granted nothing: an empty page, without asking the database for `IN ()`.
+            page = Page.empty(pageable);
+        } else {
+            page = fileInfoRepository.searchWithinTags(
+                    SearchTerms.blankToNull(search), readableTags.get(), pageable);
+        }
 
         FileInfoPageDTO pageDTO = new FileInfoPageDTO();
         pageDTO.setFileInfoDTOList(page.getContent().stream()
@@ -482,8 +519,14 @@ public class FileService {
         return !fileInfoRepository.checkExistsFile(fileName, subCategoryId).isEmpty();
     }
 
-    public FileInfoDTO getFileInfoDtoWithFileDetails(int id) {
-        return ModelConverterUtil.convertFileInfoToFileInfoDTO(getFileInfoWithFileDetails(id));
+    /** One file with its versions, for the file page — refused when it is outside the caller's folders. */
+    public FileInfoDTO getFileInfoDtoWithFileDetails(int id, int principalId) {
+        FileInfo fileInfo = getFileInfoWithFileDetails(id);
+
+        folderAccessService.requireAccess(folderAccessService.accessFor(principalId),
+                FolderSourceType.MAIN_TAG, fileInfo.getMainTagFile().getId());
+
+        return ModelConverterUtil.convertFileInfoToFileInfoDTO(fileInfo);
     }
 
     public FileInfoDTO getFileInfoDtoWithFileDetails(int subCategoryId, String fileName) {

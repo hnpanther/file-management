@@ -150,11 +150,20 @@
         collapse:          [[#{tree.collapse}]],
         openFile:          [[#{tree.openFile}]],
         loadFailed:        [[#{tree.loadFailed}]],
+        notPermitted:      [[#{tree.notPermitted}]],
         searchPlaceholder: [[#{tree.searchPlaceholder}]],
         searchFailed:      [[#{tree.searchFailed}]],
         searchEmpty:       [[#{tree.searchEmpty}]]
     };
     const TREE_ROOTS = /*[[${roots}]]*/ [];
+
+    /** Carries the status through, so a refusal can be told apart from a failure. */
+    class TreeRequestError extends Error {
+        constructor(status) {
+            super("HTTP " + status);
+            this.status = status;
+        }
+    }
 
     function fileTree() {
         return {
@@ -261,7 +270,7 @@
                         credentials: "same-origin"
                     });
                     if (!response.ok) {
-                        throw new Error("HTTP " + response.status);
+                        throw new TreeRequestError(response.status);
                     }
                     const children = await response.json();
                     const decorated = children.map(c => this.decorate(c, row.depth + 1));
@@ -277,8 +286,12 @@
                     // branches opening at once (expandRoots, expandAll) a global message alone
                     // does not say which node failed, and a silently re-closed node is
                     // indistinguishable from one that legitimately has nothing under it.
+                    //
+                    // "You may not" and "it broke" are different answers and used to read the same,
+                    // which sent an administrator looking for a bug in the tree when the account was
+                    // simply missing REST_GET_FILE_TREE.
                     row.open = false;
-                    row.error = TREE.loadFailed;
+                    row.error = e.status === 403 ? TREE.notPermitted : TREE.loadFailed;
                 } finally {
                     row.loading = false;
                     // Other branches opened by expandRoots/expandAll may still be in flight;
@@ -307,7 +320,7 @@
                         credentials: "same-origin"
                     });
                     if (!response.ok) {
-                        throw new Error("HTTP " + response.status);
+                        throw new TreeRequestError(response.status);
                     }
                     const hits = await response.json();
                     if (hits.length === 0) {
@@ -315,7 +328,7 @@
                     }
                     this.searchResults = hits;
                 } catch (e) {
-                    this.searchError = TREE.searchFailed;
+                    this.searchError = e.status === 403 ? TREE.notPermitted : TREE.searchFailed;
                 } finally {
                     this.searching = false;
                 }

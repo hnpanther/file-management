@@ -60,6 +60,8 @@ class FolderAccessEnforcementTest extends MySqlSupport {
     private FileSubCategoryService fileSubCategoryService;
     @Autowired
     private MainTagFileService mainTagFileService;
+    @Autowired
+    private FileService fileService;
 
     @Autowired
     private FolderRepository folderRepository;
@@ -148,7 +150,7 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         assertThat(access.unrestricted()).isFalse();
         assertThat(access.isEmpty()).isTrue();
         assertThat(fileTreeService.getRoots(restrictedId)).isEmpty();
-        assertThatThrownBy(() -> fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, restrictedId))
+        assertThatThrownBy(() -> fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, folderIdOf(FolderSourceType.CATEGORY, categoryId), restrictedId))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
@@ -161,44 +163,67 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         assertThat(folderRepository.findFoldersGrantedDirectly(adminId)).isEmpty();
         assertThat(fileTreeService.getRoots(adminId))
                 .extracting(TreeNodeDTO::getId)
-                .contains(categoryId);
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, adminId)).isNotEmpty();
+                .contains(folderIdOf(FolderSourceType.CATEGORY, categoryId));
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, folderIdOf(FolderSourceType.CATEGORY, categoryId), adminId)).isNotEmpty();
     }
 
     // ---------------------------------------------------------------- a grant, and what it reaches
 
     @Test
-    @DisplayName("a grant on a sub-category makes it a root of that person's tree, and opens what is under it")
-    void aGrantReachesDownwards() {
+    @DisplayName("a grant on a sub-category can be walked down to from the category above it")
+    void aMidTreeGrantCanBeNavigatedTo() {
         grantDirectly(restrictedId, FolderSourceType.SUB_CATEGORY, subCategoryId);
 
+        // The category is shown even though nothing in it is readable: without it there would be no
+        // route down to the folder that was actually granted.
         assertThat(fileTreeService.getRoots(restrictedId))
-                .as("the grant itself is the root, not the category above it")
                 .singleElement()
                 .satisfies(node -> {
-                    assertThat(node.getType()).isEqualTo(TreeNodeDTO.NodeType.SUB_CATEGORY);
-                    assertThat(node.getId()).isEqualTo(subCategoryId);
+                    assertThat(node.getType()).isEqualTo(TreeNodeDTO.NodeType.CATEGORY);
+                    assertThat(node.getId()).isEqualTo(folderIdOf(FolderSourceType.CATEGORY, categoryId));
                 });
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.SUB_CATEGORY, subCategoryId, restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, folderIdOf(FolderSourceType.CATEGORY, categoryId), restrictedId))
+                .as("opening it reveals the branch that leads to the grant")
                 .extracting(TreeNodeDTO::getId)
-                .contains(tagId);
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG, tagId, restrictedId))
+                .containsExactly(folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId));
+
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.SUB_CATEGORY, folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId), restrictedId))
+                .extracting(TreeNodeDTO::getId)
+                .contains(folderIdOf(FolderSourceType.MAIN_TAG, tagId));
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG, folderIdOf(FolderSourceType.MAIN_TAG, tagId), restrictedId))
                 .isNotEmpty();
     }
 
     @Test
-    @DisplayName("a grant does not open the category above it")
-    void aGrantDoesNotReachUpwards() {
+    @DisplayName("walking through a category does not reveal its other branches")
+    void navigatingThroughAFolderRevealsOnlyTheRouteToTheGrant() {
+        // A second sub-category under the same category, with nothing granted in it.
+        FileSubCategoryDTO other = new FileSubCategoryDTO();
+        other.setSubCategoryName("other" + TestData.nextSequence());
+        other.setSubCategoryNameDescription(other.getSubCategoryName() + " label");
+        other.setDescription("not granted");
+        other.setFileCategoryId(categoryId);
+        fileSubCategoryService.createFileSubCategory(other, adminId);
+        int otherSubCategoryId = fileSubCategoryRepository.findAll().stream()
+                .filter(sc -> sc.getSubCategoryName().equals(other.getSubCategoryName()))
+                .findFirst().orElseThrow().getId();
+
         grantDirectly(restrictedId, FolderSourceType.SUB_CATEGORY, subCategoryId);
 
-        assertThatThrownBy(() -> fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, restrictedId))
-                .as("the parent of a granted folder is above the grant, not beneath it")
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, folderIdOf(FolderSourceType.CATEGORY, categoryId), restrictedId))
+                .extracting(TreeNodeDTO::getId)
+                .contains(folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId))
+                .doesNotContain(folderIdOf(FolderSourceType.SUB_CATEGORY, otherSubCategoryId));
+
+        assertThatThrownBy(() -> fileTreeService.getChildren(
+                TreeNodeDTO.NodeType.SUB_CATEGORY, folderIdOf(FolderSourceType.SUB_CATEGORY, otherSubCategoryId), restrictedId))
+                .as("and the hidden branch cannot be opened by asking for it directly")
                 .isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
-    @DisplayName("a grant through a role works the same as a direct one")
+    @DisplayName("a grant through a role works the same as a direct one, and on the deepest folder")
     void aGrantThroughARoleCounts() {
         Role role = roleRepository.save(TestData.role("READERS" + TestData.nextSequence()));
         role.getFolders().add(folderOf(FolderSourceType.MAIN_TAG, tagId));
@@ -208,9 +233,26 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         user.getRoles().add(role);
         userRepository.save(user);
 
+        // Granted the tag, three levels down. The tree still starts where it starts for everyone
+        // else - at the category - and the route down to the tag is the only thing it reveals.
         assertThat(fileTreeService.getRoots(restrictedId))
                 .singleElement()
-                .satisfies(node -> assertThat(node.getId()).isEqualTo(tagId));
+                .satisfies(node -> {
+                    assertThat(node.getType()).isEqualTo(TreeNodeDTO.NodeType.CATEGORY);
+                    assertThat(node.getId()).isEqualTo(folderIdOf(FolderSourceType.CATEGORY, categoryId));
+                });
+
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, folderIdOf(FolderSourceType.CATEGORY, categoryId), restrictedId))
+                .extracting(TreeNodeDTO::getId)
+                .containsExactly(folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId));
+
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.SUB_CATEGORY, folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId), restrictedId))
+                .extracting(TreeNodeDTO::getId)
+                .containsExactly(folderIdOf(FolderSourceType.MAIN_TAG, tagId));
+
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG, folderIdOf(FolderSourceType.MAIN_TAG, tagId), restrictedId))
+                .as("and the files in it are readable")
+                .isNotEmpty();
     }
 
     @Test
@@ -224,6 +266,38 @@ class FolderAccessEnforcementTest extends MySqlSupport {
 
         grantDirectly(restrictedId, FolderSourceType.MAIN_TAG, tagId);
         assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.FILE, fileInfoId, restrictedId)).isNotNull();
+    }
+
+    // ---------------------------------------------------------------- the other surfaces
+
+    @Test
+    @DisplayName("the file list shows only files inside the granted folders, and pages on that count")
+    void theFileListIsFilteredInTheQuery() {
+        assertThat(fileService.getPageFileInfo(50, 0, null, restrictedId).getFileInfoDTOList())
+                .as("no grant, no files")
+                .isEmpty();
+
+        assertThat(fileService.getPageFileInfo(50, 0, null, adminId).getFileInfoDTOList())
+                .as("an administrator still sees everything")
+                .isNotEmpty();
+
+        grantDirectly(restrictedId, FolderSourceType.SUB_CATEGORY, subCategoryId);
+
+        assertThat(fileService.getPageFileInfo(50, 0, null, restrictedId).getFileInfoDTOList())
+                .extracting(dto -> dto.getFileName())
+                .contains(fileName);
+    }
+
+    @Test
+    @DisplayName("a file page and a download are refused outside the granted folders")
+    void theFilePageAndDownloadAreRefused() {
+        int fileInfoId = fileInfoRepository.findByMainTagFileIdOrderByFileNameAsc(tagId).getFirst().getId();
+
+        assertThatThrownBy(() -> fileService.getFileInfoDtoWithFileDetails(fileInfoId, restrictedId))
+                .isInstanceOf(AccessDeniedException.class);
+
+        grantDirectly(restrictedId, FolderSourceType.MAIN_TAG, tagId);
+        assertThat(fileService.getFileInfoDtoWithFileDetails(fileInfoId, restrictedId)).isNotNull();
     }
 
     // ---------------------------------------------------------------- search
@@ -251,6 +325,11 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         User user = userRepository.findById(userId).orElseThrow();
         user.getFolders().add(folderOf(sourceType, sourceId));
         userRepository.save(user);
+    }
+
+    /** A node in the tree is addressed by its folder id, so a test has to translate too. */
+    private int folderIdOf(FolderSourceType sourceType, int sourceId) {
+        return folderOf(sourceType, sourceId).getId();
     }
 
     private Folder folderOf(FolderSourceType sourceType, int sourceId) {

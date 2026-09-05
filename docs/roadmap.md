@@ -389,7 +389,8 @@ Fix with the rest of the tree work: keep such a node expandable, and on open ren
 
 > **6.1–6.6 delivered, enforcement off by default.** `folder` exists as a mirror of the taxonomy
 > (`V1.4`), `role_folder` and `user_folder` carry the grants (`V1.5`), the role edit page grants
-> folders to a role, and `FileTreeService` asks both questions.
+> folders to a role, and the tree, the file list, the file page and both download endpoints all ask
+> both questions. Uploading does not yet (issue 76).
 > `filemanagement.folder-access.enabled` is `false` in the shipped configuration: switching it on
 > before any grant exists would empty the tree for every non-administrator, so the order is grant
 > first, check, then enable.
@@ -624,8 +625,24 @@ Two enforcement shapes, and the second is the one that is usually forgotten:
 | Single item ("open folder 22", "download file 9") | `AccessPolicy.requireAccess(principal, folderId)` **inside the domain service**, never in the controller |
 | Lists (tree children, file list, search) | push the prefixes into the query: `AND (f.path LIKE :p0 OR f.path LIKE :p1 ...)`. Never fetch then filter in Java - the paging counts come out wrong |
 
-`FileTreeService` is the first consumer: `getRoots()` returns the granted folders rather than all
-categories, and `getChildren` checks the parent before it queries.
+> **As built:** the list filter is pushed into the query, but as `mt.id IN (:mainTagIds)` rather than
+> a run-time list of `LIKE` predicates. The granted prefixes are turned into the set of readable main
+> tags first — one indexed prefix scan per grant, and grants are few and reduced so none is a prefix
+> of another — which keeps the list query a fixed, readable piece of JPQL instead of one assembled as
+> a string. An empty set short-circuits in Java, because `IN ()` is not valid SQL.
+>
+> The single-item check comes in two strengths, which this table did not anticipate:
+> `requireAccess` for anything that returns content, and `requireVisible` for opening a folder that
+> is merely on the way down to a grant.
+
+`FileTreeService` is the first consumer.
+
+> **Changed in the build:** `getRoots()` does *not* return the granted folders. It returns the
+> categories the person may read **or walk through**, so a grant in the middle of the tree can be
+> navigated down to from the top, exactly as an unrestricted user would reach it. Returning the
+> grants themselves as roots was the first design and it was wrong in practice: it made a granted
+> sub-folder appear at the top level, which is not where it lives, and it gave two different people
+> two differently shaped trees over the same data.
 
 ### 6.7 `Home`, per-user folders, and the two system roles
 
@@ -643,6 +660,24 @@ categories, and `getChildren` checks the parent before it queries.
 Existing users need a backfill migration that creates the missing home folders and grants.
 
 ### 6.8 Making `folder` authoritative (last, and the only risky step)
+
+> **Confirmed as the destination.** The taxonomy — general tag, category, sub-category, main tag —
+> goes away, and the folder tree becomes the only structure. Everything built before then should be
+> shaped so that this is a data migration rather than a rewrite.
+>
+> **Done ahead of the rest: the tree addresses nodes by folder id.**
+> `/resource/files/tree/children?type=CATEGORY&id=26` now names `folder` row 26, not a
+> `file_category` row, and the same is true of every id the page holds and every id a search hit
+> reports. The taxonomy id never leaves `FileTreeService`.
+>
+> Two things fall out of it. The access check stopped being a translation — the id in the request
+> *is* the thing being authorised, so there is no longer a step where a taxonomy row and a folder
+> could disagree. And 6.8 shrinks to dropping the three tables and the two `source_*` columns,
+> rather than changing the endpoint, the DTO, the Alpine component and every access check together.
+>
+> **The one remaining exception is a file**, which has no folder of its own until 6.8 and is still
+> addressed by its `file_info` id, authorised through the tag it is filed under. That is the last
+> special case in `getChildren`, and it disappears when files become folders.
 
 Drop `file_sub_category_id` / `main_tag_file_id` from `file_info`, retire the three taxonomy tables
 and the `source_type` / `source_id` columns, and give every folder a real directory - a main tag has

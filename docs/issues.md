@@ -215,6 +215,11 @@ not on a small render-safe allow-list (PDF, PNG, JPEG, MP4, MP3); add `nosniff` 
 
 ### 14. No resource-level authorization — **S1**
 
+> **Closed for reads by the folder access of roadmap Phase 6**, once
+> `filemanagement.folder-access.enabled` is on: the file list filters in the query, and the file
+> page and both download endpoints check the folder the file is filed under before returning
+> anything. Writing is not covered yet — see [issue 76](#76-a-folder-access-grant-does-not-gate-uploading-into-that-folder--s2).
+
 `FileService.downloadFile(int fileDetailsId)` does `fileDetailsRepository.findById(...)` with **no**
 visibility or ownership check. Any principal holding `DOWNLOAD_FILE` (or `API_DOWNLOAD_FILE`) can
 enumerate `fileDetailsId` and pull every file in the system, including those with `state = -1`
@@ -991,18 +996,38 @@ This has to be decided before 6.7 can land, and it is a product decision as much
 
 Nothing is broken today. `USER_HOME` and `folder.owner_user_id` exist and are unused.
 
-### 75. Folder access is enforced in the tree only — **S2** (in progress)
+### 75. Folder access is enforced in the tree only — **S2**
 
-`FolderAccessService` answers "may this person see this folder", and `FileTreeService` asks it on
-every roots call, every child listing and every search hit. Nothing else does yet: `FileService`,
-`FileApi` and the file-list pages still answer from the taxonomy with no folder check, so
-[issue 14](#14-no-resource-level-authorization--s1) is narrowed rather than closed — a principal
-holding `DOWNLOAD_FILE` can still fetch any file by id, and the tree is simply where they can no
-longer find it.
+> **Closed.** Enforcement now covers the three surfaces that answer with file content:
+> `FileService.getPageFileInfo` pushes the granted tags into the query (never filtering a fetched
+> page, which would leave the pager counting rows the caller cannot see),
+> `getFileInfoDtoWithFileDetails` refuses a file outside the grants, and `downloadFile` checks the
+> tag the version is filed under — through both the UI controller and `FileApi`. With that,
+> [issue 14](#14-no-resource-level-authorization--s1) is closed for every authenticated read path,
+> as long as `filemanagement.folder-access.enabled` is on.
+>
+> Two things are deliberately still outside it. The **public** download path
+> (`downloadPublicFile`, `permitAll`) is unchanged: it already checks that both rows are public, and
+> folder grants describe who may browse the catalogue, not what a published link exposes. And
+> **upload** is still gated by the endpoint permission alone — a principal who may create a file can
+> still create it under any tag they can name. That is the next one to close.
 
-Closing it means calling `FolderAccessService.requireAccess` from `FileService.downloadFile` and
-pushing the granted prefixes into the file-list and public-file queries, which is the "push the
-prefixes into the query" half of roadmap 6.6 and is the next piece of work. It is deliberately not
-done in the same change as the model: enforcement in the download path changes what a live
-integration can fetch, and it should land on its own, with `filemanagement.folder-access.enabled`
-already proven in the tree.
+`FolderAccessService` answers "may this person see this folder". It was first asked only by
+`FileTreeService`, which meant the tree was the one place a restricted user could not find a file —
+while `FileService`, `FileApi` and the file-list page still answered straight from the taxonomy, so
+a principal holding `DOWNLOAD_FILE` could fetch any file by id.
+
+### 76. A folder-access grant does not gate uploading into that folder — **S2**
+
+`FileService.createNewFile` and both "new version" paths check the endpoint permission
+(`SAVE_NEW_FILE`, `API_SAVE_NEW_FILE`) and that the posted category, sub-category and tag describe
+one chain — but never that the caller may write *there*. So with folder access switched on, a user
+granted one department's folder can still upload into any other department by naming its tag on the
+form.
+
+It is the mirror image of [issue 75](#75-folder-access-is-enforced-in-the-tree-only--s2), and the
+fix is the same shape: `requireAccess(access, MAIN_TAG, mainTagFileId)` at the top of the three
+upload paths. Left out of that change because read and write enforcement fail differently — a read
+that is refused shows an empty list, a write that is refused loses whatever the user had typed, so
+the upload form needs to stop offering the tags they cannot use before the service starts refusing
+them.

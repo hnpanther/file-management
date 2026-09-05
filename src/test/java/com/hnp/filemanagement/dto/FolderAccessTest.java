@@ -57,6 +57,34 @@ class FolderAccessTest {
     }
 
     @Test
+    @DisplayName("an ancestor of a grant is visible for navigation, but its contents are not readable")
+    void anAncestorIsASignpostNotAnOpenDoor() {
+        FolderAccess access = FolderAccess.of(List.of("/1/5/26/"));
+
+        // The way down to the grant has to be walkable...
+        assertThat(access.isOnPathTo("/1/")).isTrue();
+        assertThat(access.isOnPathTo("/1/5/")).isTrue();
+        assertThat(access.visible("/1/5/")).isTrue();
+
+        // ...without that making anything in it readable.
+        assertThat(access.allows("/1/5/")).isFalse();
+
+        // And a branch that leads nowhere near the grant stays hidden entirely.
+        assertThat(access.visible("/1/6/")).isFalse();
+        assertThat(access.isOnPathTo("/1/5/27/")).as("a sibling of the grant").isFalse();
+    }
+
+    @Test
+    @DisplayName("the granted folder itself is readable, not merely on the way to something")
+    void theGrantItselfIsNotJustASignpost() {
+        FolderAccess access = FolderAccess.of(List.of("/1/5/26/"));
+
+        assertThat(access.allows("/1/5/26/")).isTrue();
+        assertThat(access.isOnPathTo("/1/5/26/")).as("a folder is not an ancestor of itself").isFalse();
+        assertThat(access.visible("/1/5/26/")).isTrue();
+    }
+
+    @Test
     @DisplayName("an administrator is unrestricted without holding any grant")
     void unrestrictedAllowsEverything() {
         FolderAccess access = FolderAccess.everything();

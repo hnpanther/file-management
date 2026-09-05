@@ -362,17 +362,25 @@ user see *this* folder". Both must pass.
   (`/1/5/26/`), so "is this inside that grant?" is a prefix test and an indexed range scan.
 * `FolderAccessService.accessFor(principalId)` resolves it once per call into a `FolderAccess`; the
   `ADMIN` role is unrestricted and reads no grant rows at all.
-* A restricted person's tree starts at their grants, not at the categories above them — a grant on
-  `IMS/DocSystem` does not make `IMS` readable, so a tree that started at the root and filtered would
-  show nothing.
+* **Readable and traversable are different.** A grant can sit in the middle of the tree, and the
+  holder has no right to the folders above it — but hiding those would leave no route down to what
+  they do have. So an ancestor of a grant is shown and can be opened, revealing only the branch that
+  leads to the grant; its other branches and any file content stay hidden. `allows` answers the
+  first question, `isOnPathTo` the second, and `visible` is their union.
+* Enforcement covers the tree, the file list (pushed into the query, so paging counts stay honest),
+  the file page and both download endpoints. Uploading is not covered yet (issue 76), and the
+  `permitAll` public download is deliberately outside it.
+* **The tree addresses a node by its folder id**, not by the taxonomy row behind it — including the
+  ids a search hit reports. The taxonomy id stays inside `FileTreeService`. A file is the one
+  exception: it has no folder until roadmap 6.8, so it is still addressed by its own id and
+  authorised through its tag.
 
 **It is off by default.** `filemanagement.folder-access.enabled` is `false`, because turning it on
 before any grant exists empties the tree for every non-administrator and there is no screen for
 granting folders yet. With it off, `accessFor` answers "unrestricted" for everyone.
 
-There is still no resource-scoped authorization on the *download* paths: holding `DOWNLOAD_FILE`
-grants download of *every* file, private ones included. Folder access narrows where a file can be
-found, not what can be fetched by id — see issues 14 and 75.
+With the flag off, holding `DOWNLOAD_FILE` still grants download of every file, private ones
+included (issue 14) — the endpoint permission is then the only check there is.
 
 ### Bootstrap
 

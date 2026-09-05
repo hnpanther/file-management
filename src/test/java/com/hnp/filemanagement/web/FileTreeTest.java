@@ -72,17 +72,50 @@ class FileTreeTest extends MySqlSupport {
                 .andExpect(status().isOk());
     }
 
+    /**
+     * A node is addressed by its <em>folder</em> id, so an id that names no folder — or one of the
+     * wrong kind — is a malformed request. What matters here is that the answer is still JSON: this
+     * endpoint is called by the page's own fetch, and an HTML error page reaches it as
+     * {@code Unexpected token '<'}.
+     */
     @Test
-    void theChildrenEndpointAnswersJson() throws Exception {
+    void theChildrenEndpointAnswersJsonEvenWhenTheFolderIdIsWrong() throws Exception {
         mockMvc.perform(get("/resource/files/tree/children")
                         .param("type", "CATEGORY")
-                        .param("id", "1")
+                        .param("id", "999999")
                         .with(user(principal(PermissionEnum.REST_GET_FILE_TREE)))
                         .header("X-Requested-With", "XMLHttpRequest")
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$").isArray());
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    /**
+     * Holding the page permission is enough to fetch what the page displays.
+     *
+     * <p>The two used to be separate, and an account granted only {@code FILE_TREE_PAGE} got a tree
+     * that could never load a branch — it answered every click with a permission error the person
+     * could do nothing about. Which folders come back is still decided by folder access, inside the
+     * service.
+     */
+    @Test
+    void thePagePermissionAloneIsEnoughToLoadTheTree() throws Exception {
+        mockMvc.perform(get("/resource/files/tree/children")
+                        .param("type", "CATEGORY")
+                        .param("id", "999999")
+                        .with(user(principal(PermissionEnum.FILE_TREE_PAGE)))
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+
+        mockMvc.perform(get("/resource/files/tree/search")
+                        .param("query", "anything")
+                        .with(user(principal(PermissionEnum.FILE_TREE_PAGE)))
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
     }
 
     @Test
