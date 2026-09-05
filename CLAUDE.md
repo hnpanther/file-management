@@ -50,6 +50,18 @@ Four things, all required (details in [AGENTS.md](AGENTS.md#conventions-in-this-
 3. an `actionHistoryService.saveActionHistory(...)` call for any mutation;
 4. the `globalGeneralLogging.controllerLogging(...)` preamble, matching the surrounding file.
 
+## Running the application
+
+If you start it to check something, **stop it before you finish**. `spring-boot:run` holds port
+8122 until the process dies, and the next attempt to start it fails with a port conflict whose
+error message says nothing about the real cause. The commands are in
+[AGENTS.md](AGENTS.md#commands); the rule is part of the
+[definition of done](AGENTS.md#definition-of-done).
+
+Note also that the application talks to a **real** MySQL on `localhost:3306` (the tests do not —
+they start their own through Testcontainers). Anything you do while it is running is done to real
+data.
+
 ## Scope discipline
 
 This repository has a lot of visible debt and an explicit plan for it. When asked to make a change:
