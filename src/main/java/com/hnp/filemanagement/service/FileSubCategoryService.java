@@ -47,19 +47,22 @@ public class FileSubCategoryService {
     private final FileCategoryService fileCategoryService;
     private final FileStorageService fileStorageService;
     private final ActionHistoryService actionHistoryService;
+    private final FolderMirrorService folderMirrorService;
 
     public FileSubCategoryService(FileSubCategoryRepository fileSubCategoryRepository,
                                   MainTagFileRepository mainTagFileRepository,
                                   UserRepository userRepository,
                                   FileCategoryService fileCategoryService,
                                   FileStorageService fileStorageService,
-                                  ActionHistoryService actionHistoryService) {
+                                  ActionHistoryService actionHistoryService,
+                                  FolderMirrorService folderMirrorService) {
         this.fileSubCategoryRepository = fileSubCategoryRepository;
         this.mainTagFileRepository = mainTagFileRepository;
         this.userRepository = userRepository;
         this.fileCategoryService = fileCategoryService;
         this.fileStorageService = fileStorageService;
         this.actionHistoryService = actionHistoryService;
+        this.folderMirrorService = folderMirrorService;
     }
 
     @Transactional
@@ -88,6 +91,9 @@ public class FileSubCategoryService {
         fileSubCategory.setFileCategory(fileCategory);
 
         fileSubCategoryRepository.save(fileSubCategory);
+
+        // Same transaction as the row it mirrors - see FolderMirrorService.
+        folderMirrorService.created(fileSubCategory);
 
         actionHistoryService.saveActionHistory(EntityEnum.FileSubCategory, fileSubCategory.getId(), ActionEnum.CREATE,
                 principalId, "CREATE NEW FILE_SUB_CATEGORY", "CREATE NEW FILE_SUB_CATEGORY");
@@ -119,6 +125,8 @@ public class FileSubCategoryService {
         fileSubCategory.setDescription(fileSubCategoryDTO.getDescription());
         fileSubCategory.setUpdatedBy(userRepository.getReferenceById(principalId));
 
+        folderMirrorService.renamed(fileSubCategory);
+
         actionHistoryService.saveActionHistory(EntityEnum.FileSubCategory, fileSubCategory.getId(),
                 ActionEnum.UPDATE_VALUES, principalId, "UPDATE FILE_SUB_CATEGORY", "UPDATE FILE_SUB_CATEGORY");
     }
@@ -135,6 +143,7 @@ public class FileSubCategoryService {
 
         String relativePath = fileSubCategory.getRelativePath();
         fileSubCategoryRepository.delete(fileSubCategory);
+        folderMirrorService.deletedSubCategory(subCategoryId);
 
         actionHistoryService.saveActionHistory(EntityEnum.FileSubCategory, subCategoryId, ActionEnum.DELETE,
                 principalId, "DELETE FILE_SUB_CATEGORY", "DELETE FILE_SUB_CATEGORY");

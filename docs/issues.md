@@ -847,3 +847,162 @@ Every "is this a duplicate?" in the services was a `SELECT` followed by an `INSE
 concurrent requests can both pass. For a category or a sub-category that also means two rows
 claiming one directory on disk. Migration `V1.3` adds the four composite unique constraints; the
 in-code checks stay, because they are what turns a violation into a readable 409 rather than a 500.
+
+---
+
+## Found while investigating the file tree (Phase 5)
+
+Reported as: on real data, opening the tree gets heavy as the taxonomy grows, and a file that
+provably exists in the database does not appear under its tag. Verified against a live instance
+(`docker` MySQL, app on `:8122`) and the current data: category `IMS` (id 5, "سیستم مدیریت
+یکپارچه") → sub-category `IMS_Document_System` (id 35, "سیستم مستندات IMS") → tag `HR` (id 146,
+"منابع انسانی و پشتیبانی") — the exact path reported — has 49 `file_info` rows correctly linked
+(`main_tag_file_id = 146`, all `state = 0`, `enabled = 1`). `FileTreeService.filesOf` and
+`countFileWithTagId` both query unconditionally on `main_tag_file.id`, so the data is intact and
+the row count the server would report matches the row count it would list. The defect is client-side.
+
+### 71. The tree's "expand" paths fetch one node at a time with no cap, and no level paginates — **S2**
+
+> **Partly fixed.** `expandRoots()` now fires all root categories concurrently
+> (`Promise.all`) instead of one `await` per category, and `expandAll()` stops at the main-tag
+> level instead of also opening every file and fetching every file's version list — on the
+> taxonomy checked above that was the difference between a few dozen requests and one per file.
+> **Still open:** none of `subCategoriesOf` / `mainTagsOf` / `filesOf` paginate, so a single very
+> large node (a tag with hundreds of files) still returns and renders everything at once. Worth
+> revisiting if a tag's file count grows much past what was measured here.
+
+`file-tree.html`'s `init()` calls `expandRoots()`, which `await`s `open()` on every root category
+**serially** on every page load — one HTTP round trip per category before the page is idle.
+`expandAll()` did the same for the *entire* tree: as each node opens, its children are spliced into
+`rows` and the same `while (index < this.rows.length)` loop walks over them too, so it issued one
+sequential `fetch()` per category, sub-category, main tag, file **and** version in the whole
+taxonomy. On the current data that is not a small number: category 5 alone has 29 sub-categories,
+sub-category 35 alone has 29 main tags, and tag 146 alone has 49 files — and every one of those 49
+files would also have had its own version list fetched. This is the "gets heavy once there are a lot
+of files" report.
+
+### 72. A tree node's `id` is unique only within its own type, and the client used to index rows by `{type, id}` alone — **S3** (latent)
+
+> **Fixed.** `file-tree.html`'s `indexOf(row)` now matches on `row.key` — the string `decorate()`
+> already generates once per rendered row with a random suffix — instead of `{type, id}`, so it can
+> no longer resolve to the wrong row regardless of what a future node type reuses as `id`.
+>
+> **Correction after re-reading the code:** this was not actually reachable today. `VERSION` rows
+> are the only ones with a non-unique `id` (`FileTreeService.toVersionNode` uses the raw version
+> number, and every file's first version is `1`), but a `VERSION` row is never `expandable`, and
+> `open()`/`toggle()` refuse to act on a non-expandable row — so `indexOf` was never actually called
+> with a `VERSION` row as the argument, and this was not the cause of the reported missing file. It
+> is fixed anyway as a latent fragility (the same pattern would misbehave the moment any non-leaf
+> node reused an `id` across parents), but the missing-file report itself is better explained by
+> issue 71: a failed `load()` during a bulk expand silently re-closed the node
+> (`row.open = false` in the `catch`) with only a page-level banner to say so, which a per-row
+> `row.error` (added with this fix) now makes visible on the exact node that failed.
+
+`TreeNodeDTO.id`'s own doc comment says "identifier **within its own type**" (`dto/TreeNodeDTO.java`).
+That holds for `CATEGORY`/`SUB_CATEGORY`/`MAIN_TAG`/`FILE`, whose `id` is the entity's database
+primary key and therefore globally unique — but `FileTreeService.toVersionNode` gives a `VERSION`
+node the raw version number (`1`, `2`, …) as its `id`, and every file's first version is `1`.
+`file-tree.html`'s `indexOf(row)` — used by `open`, `close` and `load` to find where a row sits in
+the flat `rows` array and where to splice its children in or out — matched on
+`candidate.type === row.type && candidate.id === row.id` alone, with no reference to which parent
+the row belongs to.
+
+### 73. Main tags under `IMS_Document_System` reuse the exact names of unrelated sibling sub-categories — **S2**
+
+> **Partly fixed: candidate (a).** `/files/tree` now has a search box
+> (`FileTreeService.search`, `GET /resource/files/tree/search`, permission
+> `REST_SEARCH_FILE_TREE`) that matches a file by exact id or a fragment of its name/description
+> and returns the full chain of ids and titles down to it (`TreeSearchHitDTO`). Picking a result
+> opens category → sub-category → main tag in turn and scrolls to and highlights the file row, so
+> finding a file no longer depends on recognising which of several identically-labelled branches
+> holds it. Covered by `web/FileTreeSearchTest` against real fixtures (a main tag named `HSED`
+> mirroring the reported shape), including that a Persian-numeral query is treated as text rather
+> than crashing the id parse. **Not done:** (b) and (c) — the tree still gives no visual cue that
+> two nodes share a label, and the `IMS_Document_System` tag names themselves are untouched. Worth
+> revisiting once it is clear whether search alone resolves the confusion in practice.
+>
+> A new permission constant means existing roles that already had `REST_GET_FILE_TREE` do **not**
+> automatically get `REST_SEARCH_FILE_TREE` — `FileManagementApplication`'s seeding only inserts
+> the row, it does not grant it to any role. Grant it through the roles admin page to whichever
+> roles should see the search box (`ADMIN` is unaffected: its `@PreAuthorize` bypass is unconditional).
+
+The user reported a second "missing" file after 71/72 (`file_info` id 1578) and it is the same
+shape as the first, not a regression: `file_info.id = 1578` has `main_tag_file_id = 136`
+("HSED"/"HSED"), which sits under sub-category 35, `IMS_Document_System`. `file_category` `IMS`
+(id 5) *also* has a direct sub-category 8, also named "HSED" — a different node entirely, with its
+own unrelated tags (`ConsultingCenter`, `Safety`, …). Whoever opens sub-category 8's "HSED" looking
+for this file will not find it there; it is three levels deeper, under `IMS_Document_System > HSED`.
+
+This is not a one-off. Query:
+
+```sql
+SELECT COUNT(*) FROM main_tag_file mt
+JOIN file_sub_category sc ON TRIM(sc.sub_category_name_description) = TRIM(mt.tag_name_description);
+```
+
+returns **20** — and sub-category 35 has only 30 main tags in total. `IMS_Document_System` was
+evidently built as one tag per department, reusing each department's existing sub-category name
+verbatim, so most of its tags are same-labelled twins of an unrelated, shallower branch in the same
+tree (the first report — tag 146 "منابع انسانی و پشتیبانی" vs. sub-category 14 "HumanResource" — is
+one of these 20 pairs too).
+
+Nothing in `FileTreeService` or `file-tree.html` drops or misplaces these rows — both reported files
+are returned correctly by the same query used to build their tag's badge count (verified directly
+against the database, see the note at the top of this section). The tree renders exactly what is
+asked of it; the ambiguity is that two different nodes in the same tree carry the identical label, and
+a label is the only thing the current UI gives a user to navigate by.
+
+Fix direction: this needs a decision, not just a patch. Candidates: (a) a "find in tree" search that
+jumps straight to a file by id/name/description regardless of which of several identically-labelled
+branches holds it; (b) visually distinguishing a main tag whose label collides with another node
+elsewhere in the tree (e.g. a note showing its full path); (c) a data fix that renames the
+`IMS_Document_System` tags so they read as "IMS document — HSED" rather than bare "HSED". (a) helps
+regardless of which of (b)/(c) is also done, and does not require touching the existing taxonomy data.
+
+---
+
+## Found while building the folder mirror (Phase 6)
+
+### 74. Usernames are not directory-safe, but are destined to become folder names — **S3**
+
+Roadmap 6.7 gives every user a `Home/{username}` folder, and roadmap 6.8 turns every folder into a
+real directory. `folder.name` is therefore declared directory-safe — no `.`, no space, no `/`, the
+rule `ValidationUtil.checkCorrectDirectoryName` applies to categories and sub-categories.
+
+`UserService.createUser` applies no such rule to a username, and six of the eight usernames in this
+installation contain a dot:
+
+```
+f.zakeri  h.mirzaeizadeh  a.mahmoodi  s.naseri  h.nikouei  moj.tavakkoli
+```
+
+So the user-home folders were **not** created in `V1.5`: the rows would have violated the column's
+documented contract on the day they were written, and every one of them would have needed renaming
+at 6.8. They would also have been useless in the meantime — a file hangs off a main tag, not a
+folder, so nothing could be filed in a home folder until 6.8 anyway.
+
+This has to be decided before 6.7 can land, and it is a product decision as much as a technical one:
+
+* constrain usernames going forward and migrate the existing six (they are login names, so renaming
+  them is not free); or
+* give `folder` a separate directory-safe `slug`, derived from the name and unique among siblings,
+  and let `name` hold whatever the source says. This is the smaller change and it also covers the
+  Persian category labels if folders ever take those.
+
+Nothing is broken today. `USER_HOME` and `folder.owner_user_id` exist and are unused.
+
+### 75. Folder access is enforced in the tree only — **S2** (in progress)
+
+`FolderAccessService` answers "may this person see this folder", and `FileTreeService` asks it on
+every roots call, every child listing and every search hit. Nothing else does yet: `FileService`,
+`FileApi` and the file-list pages still answer from the taxonomy with no folder check, so
+[issue 14](#14-no-resource-level-authorization--s1) is narrowed rather than closed — a principal
+holding `DOWNLOAD_FILE` can still fetch any file by id, and the tree is simply where they can no
+longer find it.
+
+Closing it means calling `FolderAccessService.requireAccess` from `FileService.downloadFile` and
+pushing the granted prefixes into the file-list and public-file queries, which is the "push the
+prefixes into the query" half of roadmap 6.6 and is the next piece of work. It is deliberately not
+done in the same change as the model: enforcement in the download path changes what a live
+integration can fetch, and it should land on its own, with `filemanagement.folder-access.enabled`
+already proven in the tree.

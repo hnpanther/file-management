@@ -11,7 +11,7 @@ what came before.
 | 3 | PostgreSQL migration | 1, partly 2 | |
 | 4 | S3-compatible storage alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done** |
-| 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | planned |
+| 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | mirror + grants **done**, off by default |
 
 **Already done, outside a phase:** the Active Directory connection is documented with a worked
 example in `application.properties` - domain, URL, the `login_type` gate, and why the two
@@ -387,6 +387,39 @@ Fix with the rest of the tree work: keep such a node expandable, and on open ren
 
 ## Phase 6 — Two-tier authorization: endpoint permissions and folder access
 
+> **6.1–6.6 delivered, enforcement off by default.** `folder` exists as a mirror of the taxonomy
+> (`V1.4`), `role_folder` and `user_folder` carry the grants (`V1.5`), the role edit page grants
+> folders to a role, and `FileTreeService` asks both questions.
+> `filemanagement.folder-access.enabled` is `false` in the shipped configuration: switching it on
+> before any grant exists would empty the tree for every non-administrator, so the order is grant
+> first, check, then enable.
+>
+> What the plan below said, and what was actually built where they differ:
+>
+> * **`folder.created_by` is nullable.** The sketch had it `NOT NULL`, but the backfill has no
+>   principal — and on a fresh database the `user` table is still empty when Flyway runs. NULL means
+>   "created by a migration".
+> * **The mirror is self-healing.** 6.4 accepted that a taxonomy row written straight through a
+>   repository has no folder, and left the reconciliation test to catch it. That is still true, but
+>   `FolderMirrorService` now also creates any missing ancestor on the spot rather than failing —
+>   most existing service tests build fixtures exactly that way, and a mirror that can fail the thing
+>   it mirrors is worse than one that converges.
+> * **No `Home/{username}` folders yet** (6.7). They could hold nothing — a file hangs off a main
+>   tag, not a folder, until 6.8 — and six of the eight usernames in this installation contain a dot,
+>   which `folder.name` is documented not to allow. `USER_HOME` and `owner_user_id` stay for 6.8.
+>   See [issue 74](issues.md#74-usernames-are-not-directory-safe-but-are-destined-to-become-folder-names--s3).
+> * **Granting is in the UI**, as a "دسترسی پوشه‌ها" section on the role edit page rather than a
+>   screen of its own: a role already carries what its holder may do, and where belongs beside it.
+>   The whole tree is rendered as one indented checkbox list — it is a couple of hundred rows, and
+>   the rows come back ordered by `path`, so an ancestor is always above its children. A folder
+>   reached through an ancestor is marked "از پوشهٔ بالاتر" rather than offered as another box to
+>   tick, because a grant already covers everything beneath it.
+> * **No `is_system` flag on roles** (6.7). Still open, as is granting to an individual user —
+>   `user_folder` exists and is enforced, but only roles can be granted from the UI.
+>
+> Verified against the real database: the backfill produced 1 root, 4/4 categories, 34/34
+> sub-categories and 148/148 main tags, with no path, depth or parentage disagreeing.
+
 The target is two independent questions, asked in this order:
 
 1. **May this user perform this operation at all?** — the existing `PermissionEnum` per endpoint.
@@ -498,16 +531,22 @@ CREATE INDEX idx_folder_parent ON folder (parent_id);
 `uq_folder_source` is what makes the backfill idempotent and the mirror verifiable: exactly one
 folder row per legacy entity, so a reconciliation query is a full outer join, not a guess.
 
-### 6.3 Two blockers to clear before the backfill
+### 6.3 Two blockers to clear before the backfill — **already cleared**
 
-Both were found in the current schema and will make `uq_folder_sibling_name` fail:
+> Both were closed by `V1.3` before this phase started: it added
+> `uq_main_tag_file_name_per_sub_category` and `uq_file_sub_category_name_per_category`. The
+> pre-flight below was run anyway, against the real data, and found nothing to resolve — no duplicate
+> sibling names at any level, and no name containing `.`, ` ` or `/`, including main tag names, which
+> nothing had ever validated.
 
-1. **`main_tag_file.tag_name` has `@Column(unique = true)` on the entity but no unique constraint in
-   the database.** `V1.0__Initial_Setup.sql` declares none, and `ddl-auto=validate` does not check
-   unique constraints - so duplicate tag names can already exist. Same class as
+Both were found in the current schema and would have made `uq_folder_sibling_name` fail:
+
+1. **`main_tag_file.tag_name` had `@Column(unique = true)` on the entity but no unique constraint in
+   the database.** `V1.0__Initial_Setup.sql` declared none, and `ddl-auto=validate` does not check
+   unique constraints - so duplicate tag names could already exist. Same class as
    [issue 33](issues.md#33-schema-and-entity-mappings-disagree--s2).
-2. **`file_sub_category.sub_category_name` uniqueness lives only in application code**
-   (`FileSubCategoryService.checkDuplicate`), per category. Any row inserted another way bypasses it.
+2. **`file_sub_category.sub_category_name` uniqueness lived only in application code**
+   (`FileSubCategoryService.checkDuplicate`), per category. Any row inserted another way bypassed it.
 
 So the migration starts with a **pre-flight report**, not with `CREATE TABLE`:
 

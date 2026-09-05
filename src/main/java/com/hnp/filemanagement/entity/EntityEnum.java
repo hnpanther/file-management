@@ -13,7 +13,8 @@ public enum EntityEnum {
     User("user"),
     ActionHistory("action_history"),
     UserRole("user_role"),
-    PermissionRole("permission_role")
+    PermissionRole("permission_role"),
+    RoleFolder("role_folder")
     ;
 
 

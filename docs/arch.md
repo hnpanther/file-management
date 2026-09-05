@@ -76,6 +76,34 @@ GeneralTag ──1:N──> FileCategory ──1:N──> FileSubCategory ──
 row, so the physical location is recorded in three places: the two path columns and the directory
 structure itself.
 
+### The folder mirror
+
+Alongside the taxonomy, and derived from it, is a single tree in `folder` (migration `V1.4`):
+
+```
+Home ──> {category} ──> {sub-category} ──> {main tag}
+ ROOT      CATEGORY       SUB_CATEGORY        TAG
+```
+
+It exists because folder-level access cannot be granted against three separate tables at a fixed
+depth — one of which is not even a directory. One table means one kind of grant, inherited down an
+arbitrary depth.
+
+* **The taxonomy stays authoritative.** Every folder row is written by `FolderMirrorService`, in the
+  same transaction as the category, sub-category or main tag it reflects, and read only by the
+  folder-access code. Rolling the whole thing back is `DROP TABLE folder`.
+* **`parent_id` is the structure; `path` is a derived index.** `path` is a materialised path of ids
+  with a leading and trailing slash (`/1/5/26/`), built from ids so a rename costs nothing, and
+  carrying the trailing slash so `/1/7/` cannot match `/1/70/`. It exists so "every descendant of
+  these folders" is a prefix scan rather than a recursive query.
+* **`source_type` + `source_id`** point back at the mirrored row, unique together, which is what makes
+  the backfill re-runnable and reconciliation a join. Both columns disappear when `folder` becomes
+  authoritative (roadmap 6.8).
+* **It self-heals.** A taxonomy row written straight through a repository has no folder; rather than
+  fail the next legitimate write, the missing ancestry is created on the spot.
+  `FolderMirrorReconciliationTest` is what proves the mirror describes the *whole* taxonomy, and it
+  runs on every build.
+
 ### How the entities are mapped
 
 Four rules hold across every entity, and each replaced something that was actively wrong.
@@ -322,8 +350,29 @@ Authorities are **not** roles — they are `PermissionEnum` constants, one per h
 any role is named `ADMIN`, additionally grants the synthetic `ADMIN` authority. Every handler
 carries `@PreAuthorize("hasAuthority('X') || hasAuthority('ADMIN')")`.
 
-There is no resource-scoped authorization: holding `DOWNLOAD_FILE` grants download of *every*
-file, private ones included.
+### Folder access — the second question
+
+Since Phase 6 there is a second, independent question: not "may this user list folders" but "may this
+user see *this* folder". Both must pass.
+
+* `folder` mirrors the taxonomy as one tree — `Home` → category → sub-category → main tag — written
+  only by `FolderMirrorService`, always in the same transaction as the row it mirrors.
+* A grant is a row in `role_folder` or `user_folder` naming a folder, and it covers everything
+  beneath that folder. `folder.path` is a materialised path of ids with a leading and trailing slash
+  (`/1/5/26/`), so "is this inside that grant?" is a prefix test and an indexed range scan.
+* `FolderAccessService.accessFor(principalId)` resolves it once per call into a `FolderAccess`; the
+  `ADMIN` role is unrestricted and reads no grant rows at all.
+* A restricted person's tree starts at their grants, not at the categories above them — a grant on
+  `IMS/DocSystem` does not make `IMS` readable, so a tree that started at the root and filtered would
+  show nothing.
+
+**It is off by default.** `filemanagement.folder-access.enabled` is `false`, because turning it on
+before any grant exists empties the tree for every non-administrator and there is no screen for
+granting folders yet. With it off, `accessFor` answers "unrestricted" for everyone.
+
+There is still no resource-scoped authorization on the *download* paths: holding `DOWNLOAD_FILE`
+grants download of *every* file, private ones included. Folder access narrows where a file can be
+found, not what can be fetched by id — see issues 14 and 75.
 
 ### Bootstrap
 
@@ -393,6 +442,8 @@ Flyway migrations in `src/main/resources/db/migration`:
 | `V1.1__Add_LoginType_To_User.sql` | `user.login_type INT NOT NULL DEFAULT 0 AFTER updated_at` |
 | `V1.2__Add_Action_History_Table.sql` | `action_history` |
 | `V1.3__Add_Uniqueness_And_Indexes.sql` | the composite unique constraints the services check in Java, and indexes on the filtered columns |
+| `V1.4__Add_Folder_Mirror.sql` | `folder`, plus the backfill that mirrors every category, sub-category and main tag into it |
+| `V1.5__Add_Folder_Grants.sql` | `role_folder`, `user_folder` |
 
 `V1.3` turns four rules that lived only in application code into constraints: a sub-category name is
 unique per category, a main-tag name per sub-category, a file name per sub-category, and a
@@ -437,7 +488,7 @@ Note the two different prefixes (`file.management.*` and `filemanagement.*`) and
 
 ## 12. Tests
 
-`./mvnw test` runs 237 tests and needs only a working Docker daemon: `MySqlSupport` starts one
+`./mvnw test` runs 263 tests and needs only a working Docker daemon: `MySqlSupport` starts one
 MySQL 8.0.36 container per JVM, and `StorageRootSupport` gives each test a clean storage root.
 
 Four kinds, and the kind is the point — each answers something the others cannot.

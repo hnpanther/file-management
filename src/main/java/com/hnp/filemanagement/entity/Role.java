@@ -48,4 +48,23 @@ public class Role extends AbstractEntity {
             inverseJoinColumns = @JoinColumn(name = "permission_id")
     )
     private Set<Permission> permissions = new LinkedHashSet<>();
+
+    /**
+     * The folders this role reaches, each grant covering everything beneath it — the second half of
+     * the two-tier model (roadmap 6.5). A role therefore carries both a set of permissions, which say
+     * what its holders may <em>do</em>, and a set of folders, which say <em>where</em>.
+     *
+     * <p>No {@code REMOVE} in the cascade, deliberately: cascading a remove from the inverse side of
+     * a many-to-many is what made deleting a permission delete every role that held it
+     * ({@code docs/issues.md}, issue 51). The join rows are cleaned up by {@code ON DELETE CASCADE}
+     * in the schema instead.
+     */
+    @ManyToMany(fetch = FetchType.LAZY,
+            cascade = {CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH})
+    @JoinTable(
+            name = "role_folder",
+            joinColumns = @JoinColumn(name = "role_id"),
+            inverseJoinColumns = @JoinColumn(name = "folder_id")
+    )
+    private Set<Folder> folders = new LinkedHashSet<>();
 }

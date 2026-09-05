@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "file-management",
+      "runtimeExecutable": ".\\mvnw.cmd",
+      "runtimeArgs": ["spring-boot:run"],
+      "port": 8122
+    }
+  ]
+}

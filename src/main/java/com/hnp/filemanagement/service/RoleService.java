@@ -1,14 +1,17 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.dto.FolderGrantDTO;
 import com.hnp.filemanagement.dto.PermissionDTO;
 import com.hnp.filemanagement.dto.RoleDTO;
 import com.hnp.filemanagement.entity.ActionEnum;
 import com.hnp.filemanagement.entity.EntityEnum;
+import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.Permission;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.PermissionRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
@@ -45,13 +48,16 @@ public class RoleService {
 
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
+    private final FolderRepository folderRepository;
     private final ActionHistoryService actionHistoryService;
 
     public RoleService(RoleRepository roleRepository,
                        PermissionRepository permissionRepository,
+                       FolderRepository folderRepository,
                        ActionHistoryService actionHistoryService) {
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
+        this.folderRepository = folderRepository;
         this.actionHistoryService = actionHistoryService;
     }
 
@@ -94,6 +100,74 @@ public class RoleService {
 
         actionHistoryService.saveActionHistory(EntityEnum.PermissionRole, role.getId(), ActionEnum.UPDATE_VALUES,
                 principalId, "UPDATE PERMISSION_ROLE", "UPDATE PERMISSION_ROLE");
+    }
+
+    /**
+     * The whole folder tree, with this role's grants marked — what the edit page renders
+     * (roadmap 6.5).
+     *
+     * <p>Two different marks, because they answer different questions. {@code granted} is "there is
+     * a row for exactly this folder", which is what a checkbox writes. {@code covered} is "an
+     * ancestor is granted, so this role already reaches it" — a grant covers everything beneath it,
+     * so without that mark the page would show an unticked box beside a folder the role can plainly
+     * see, and an administrator would tick it for no reason.
+     */
+    public List<FolderGrantDTO> getFolderTreeForRole(int roleId) {
+        Role role = roleRepository.findByIdWithFolders(roleId).orElseThrow(
+                () -> new ResourceNotFoundException("role with id=" + roleId + " doesn't exists")
+        );
+
+        Set<Integer> grantedIds = role.getFolders().stream().map(Folder::getId).collect(Collectors.toSet());
+        List<String> grantedPaths = role.getFolders().stream().map(Folder::getPath).toList();
+
+        return folderRepository.findAllByOrderByPathAsc().stream()
+                .map(folder -> toGrantDto(folder, grantedIds, grantedPaths))
+                .toList();
+    }
+
+    private FolderGrantDTO toGrantDto(Folder folder, Set<Integer> grantedIds, List<String> grantedPaths) {
+        FolderGrantDTO dto = new FolderGrantDTO();
+        dto.setId(folder.getId());
+        dto.setName(folder.getName());
+        dto.setDisplayName(folder.getDisplayName());
+        dto.setDepth(folder.getDepth());
+        dto.setKind(folder.getKind().name());
+        dto.setGranted(grantedIds.contains(folder.getId()));
+        // Strictly an ancestor: a folder does not cover itself, or every grant would read as inherited.
+        dto.setCovered(grantedPaths.stream()
+                .anyMatch(granted -> folder.getPath().startsWith(granted) && !folder.getPath().equals(granted)));
+        return dto;
+    }
+
+    /**
+     * Replaces this role's folder grants with exactly the folders named.
+     *
+     * <p>The page posts the complete selection, so a folder missing from the list is a removal
+     * rather than an omission — the same contract {@link #updatePermissionsOfRole} has. Unlike that
+     * method a null list is accepted and means "none": a browser leaves a checkbox group out of the
+     * request entirely when nothing in it is ticked, and taking every folder away from a role has to
+     * be possible.
+     */
+    @Transactional
+    public void updateFoldersOfRole(int roleId, List<Integer> folderIds, int principalId) {
+
+        Role role = roleRepository.findByIdWithFolders(roleId).orElseThrow(
+                () -> new ResourceNotFoundException("role with id=" + roleId + " doesn't exists")
+        );
+
+        Set<Integer> requested = folderIds == null ? Set.of() : new LinkedHashSet<>(folderIds);
+        Set<Folder> folders = requested.isEmpty()
+                ? new LinkedHashSet<>()
+                : new LinkedHashSet<>(folderRepository.findAllById(requested));
+
+        if (folders.size() != requested.size()) {
+            throw new InvalidDataException("folder list for update folders of role holds an id that does not exist");
+        }
+
+        role.setFolders(folders);
+
+        actionHistoryService.saveActionHistory(EntityEnum.RoleFolder, role.getId(), ActionEnum.UPDATE_VALUES,
+                principalId, "UPDATE ROLE_FOLDER", "UPDATE ROLE_FOLDER, folders=" + requested.size());
     }
 
     /** The roles named by a set of ids, for assigning them to a user. */

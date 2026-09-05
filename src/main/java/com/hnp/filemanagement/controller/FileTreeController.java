@@ -43,7 +43,7 @@ public class FileTreeController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileTreeController.class", logMessage);
 
-        List<TreeNodeDTO> roots = fileTreeService.getRoots();
+        List<TreeNodeDTO> roots = fileTreeService.getRoots(principalId);
         model.addAttribute("roots", roots);
 
         return "file-management/files/file-tree.html";

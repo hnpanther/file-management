@@ -140,10 +140,9 @@ public class RoleController {
         RoleDTO roleDTO = roleService.getRoleDtoById(roleId);
         List<PermissionDTO> permissionDTOList = roleService.getAllPermissionsOfRoleWithSelected(roleId);
 
-
-
         model.addAttribute("role", roleDTO);
         model.addAttribute("permissions", permissionDTOList);
+        model.addAttribute("folders", roleService.getFolderTreeForRole(roleId));
         model.addAttribute("showMessage", false);
         model.addAttribute("valid", false);
         model.addAttribute("message", "");
@@ -177,6 +176,8 @@ public class RoleController {
             try {
                 roleService.updatePermissionsOfRole(roleDTO.getId(),
                         roleDTO.getPermissionDTOListId(), principalId);
+                // What the role may do, and where - the two halves of the same form.
+                roleService.updateFoldersOfRole(roleDTO.getId(), roleDTO.getFolderIds(), principalId);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (ResourceNotFoundException e) {
@@ -194,8 +195,8 @@ public class RoleController {
 
         List<PermissionDTO> permissionDTOList = roleService.getAllPermissionsOfRoleWithSelected(roleDTO.getId());
 
-
         model.addAttribute("permissions", permissionDTOList);
+        model.addAttribute("folders", roleService.getFolderTreeForRole(roleDTO.getId()));
         model.addAttribute("role", roleDTO);
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);

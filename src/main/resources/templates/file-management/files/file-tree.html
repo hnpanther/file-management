@@ -42,6 +42,41 @@
                     </span>
                 </div>
 
+                <!--
+                  A label alone does not tell two identically-named branches apart (issue 73 -
+                  a main tag can carry the exact name of an unrelated sub-category elsewhere in
+                  the same category), so this finds a file by id or name and opens a path straight
+                  to it instead of asking the user to guess which same-looking folder holds it.
+                -->
+                <form class="mb-4 flex flex-wrap items-start gap-2" @submit.prevent="runSearch()">
+                    <input type="search" x-model="searchQuery" :placeholder="TREE.searchPlaceholder"
+                           class="form-control min-w-64 flex-1" />
+                    <button type="submit" class="btn btn-secondary btn-sm" :disabled="searching">
+                        <i class="bi text-[0.9rem]" :class="searching ? 'bi-arrow-repeat animate-spin' : 'bi-search'"
+                           aria-hidden="true"></i>
+                        <span th:text="#{tree.searchButton}">جست‌وجو</span>
+                    </button>
+                </form>
+
+                <p class="py-1 text-xs text-red-600" x-show="searchError" x-cloak x-text="searchError"></p>
+
+                <div class="mb-4 rounded-[var(--radius-card)] border border-ink-200" x-show="searchResults.length > 0" x-cloak>
+                    <p class="border-b border-ink-100 px-3 py-2 text-xs text-ink-500" th:text="#{tree.searchHint}">
+                        ممکن است چند شاخه با نام یکسان وجود داشته باشد؛ مسیر کامل هر نتیجه پایین آن نوشته شده است.
+                    </p>
+                    <ul class="m-0 list-none p-0">
+                        <template x-for="hit in searchResults" :key="hit.fileId">
+                            <li class="border-b border-ink-100 px-3 py-2 last:border-0 hover:bg-ink-50">
+                                <button type="button" class="w-full text-start" @click="revealHit(hit)">
+                                    <span class="technical block" x-text="hit.fileName"></span>
+                                    <span class="block text-xs text-ink-400"
+                                          x-text="hit.categoryTitle + ' ◂ ' + hit.subCategoryTitle + ' ◂ ' + hit.mainTagTitle"></span>
+                                </button>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+
                 <p class="empty-state" x-show="rows.length === 0 && !loading" x-cloak
                    th:text="#{tree.empty}">هنوز دسته‌بندی‌ای ساخته نشده است.</p>
 
@@ -55,11 +90,11 @@
                 -->
                 <ul class="app-tree" role="tree" :aria-busy="loading">
                     <template x-for="row in rows" :key="row.key">
-                        <li role="treeitem"
+                        <li role="treeitem" :id="'tree-row-' + row.key"
                             :aria-expanded="row.expandable ? (row.open ? 'true' : 'false') : null"
                             :aria-level="row.depth + 1">
 
-                            <div class="app-tree-row" :class="row.open && 'bg-ink-50'"
+                            <div class="app-tree-row" :class="[row.open && 'bg-ink-50', row.key === highlightKey && 'app-tree-row-highlight']"
                                  :style="'padding-inline-start:' + (0.375 + row.depth * 1.15) + 'rem'">
 
                                 <button type="button" class="app-tree-twisty"
@@ -86,6 +121,8 @@
                                 <span class="app-tree-badge" x-show="row.childCount !== null && row.childCount > 0"
                                       x-text="row.childCount"></span>
 
+                                <span class="text-xs text-red-600" x-show="row.error" x-text="row.error"></span>
+
                                 <a class="text-ink-400 hover:text-brand-600" x-show="row.href" :href="row.href"
                                    :title="TREE.openFile">
                                     <i class="bi bi-box-arrow-up-left text-xs" aria-hidden="true"></i>
@@ -109,10 +146,13 @@
 <script th:inline="javascript">
     /* Attribute bindings cannot use [[...]] inlining, so the copy is handed to Alpine here. */
     const TREE = {
-        expand:     [[#{tree.expand}]],
-        collapse:   [[#{tree.collapse}]],
-        openFile:   [[#{tree.openFile}]],
-        loadFailed: [[#{tree.loadFailed}]]
+        expand:            [[#{tree.expand}]],
+        collapse:          [[#{tree.collapse}]],
+        openFile:          [[#{tree.openFile}]],
+        loadFailed:        [[#{tree.loadFailed}]],
+        searchPlaceholder: [[#{tree.searchPlaceholder}]],
+        searchFailed:      [[#{tree.searchFailed}]],
+        searchEmpty:       [[#{tree.searchEmpty}]]
     };
     const TREE_ROOTS = /*[[${roots}]]*/ [];
 
@@ -121,6 +161,12 @@
             rows: [],
             loading: false,
             error: "",
+
+            searchQuery: "",
+            searchResults: [],
+            searching: false,
+            searchError: "",
+            highlightKey: null,
 
             async init() {
                 this.rows = TREE_ROOTS.map(n => this.decorate(n, 0));
@@ -133,12 +179,19 @@
                     open: false,
                     loaded: false,
                     loading: false,
+                    error: "",
                     key: node.type + "-" + node.id + "-" + depth + "-" + Math.random().toString(36).slice(2, 8)
                 });
             },
 
+            /**
+             * A node's id is only unique within its own type (a v1 of one file and a v1 of
+             * another both carry id=1), so matching on {type, id} alone can resolve to the
+             * wrong row once more than one branch is open. `key` is generated once per row in
+             * `decorate` and never reused, so it is safe to match on regardless of node type.
+             */
             indexOf(row) {
-                return this.rows.findIndex(candidate => candidate.type === row.type && candidate.id === row.id);
+                return this.rows.findIndex(candidate => candidate.key === row.key);
             },
 
             async toggle(row) {
@@ -161,17 +214,27 @@
                 await this.load(row);
             },
 
+            // Root categories load in parallel rather than one at a time - `load()` always
+            // re-resolves its insertion point against the live `rows` array when it resumes,
+            // so concurrent loads cannot clobber each other's splice.
             async expandRoots() {
-                const roots = this.rows.slice();
-                for (const row of roots) {
-                    await this.open(row);
-                }
+                await Promise.all(this.rows.map(row => this.open(row)));
             },
 
+            /**
+             * Opens every folder (category, sub-category, main tag) but stops short of files.
+             * A file's versions are metadata the user asks for one file at a time, not something
+             * a bulk expand should fetch - on real data a single tag can hold dozens of files,
+             * each with its own version list, so also opening every file here turns "expand all"
+             * into one HTTP request per file in the whole taxonomy.
+             */
             async expandAll() {
                 let index = 0;
                 while (index < this.rows.length) {
-                    await this.open(this.rows[index]);
+                    const row = this.rows[index];
+                    if (row.type !== "FILE") {
+                        await this.open(row);
+                    }
                     index++;
                 }
             },
@@ -189,7 +252,7 @@
             async load(row) {
                 this.loading = true;
                 row.loading = true;
-                this.error = "";
+                row.error = "";
                 try {
                     const url = "/resource/files/tree/children?type=" + encodeURIComponent(row.type)
                         + "&id=" + encodeURIComponent(row.id);
@@ -210,17 +273,103 @@
                     ];
                     row.loaded = true;
                 } catch (e) {
+                    // Marked on the row itself, not just the page-level banner: with several
+                    // branches opening at once (expandRoots, expandAll) a global message alone
+                    // does not say which node failed, and a silently re-closed node is
+                    // indistinguishable from one that legitimately has nothing under it.
                     row.open = false;
-                    this.error = TREE.loadFailed;
+                    row.error = TREE.loadFailed;
                 } finally {
                     row.loading = false;
-                    this.loading = false;
+                    // Other branches opened by expandRoots/expandAll may still be in flight;
+                    // only clear the page-level busy state once none of them are.
+                    this.loading = this.rows.some(r => r.loading);
                 }
             },
 
             collapseAll() {
                 this.rows = TREE_ROOTS.map(n => this.decorate(n, 0));
                 this.error = "";
+            },
+
+            async runSearch() {
+                const term = this.searchQuery.trim();
+                this.searchResults = [];
+                this.searchError = "";
+                if (!term) {
+                    return;
+                }
+                this.searching = true;
+                try {
+                    const url = "/resource/files/tree/search?query=" + encodeURIComponent(term);
+                    const response = await fetch(url, {
+                        headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                        credentials: "same-origin"
+                    });
+                    if (!response.ok) {
+                        throw new Error("HTTP " + response.status);
+                    }
+                    const hits = await response.json();
+                    if (hits.length === 0) {
+                        this.searchError = TREE.searchEmpty;
+                    }
+                    this.searchResults = hits;
+                } catch (e) {
+                    this.searchError = TREE.searchFailed;
+                } finally {
+                    this.searching = false;
+                }
+            },
+
+            /**
+             * Opens category -> sub-category -> main tag in turn (each already present as a row,
+             * since categories load at init and every level is fetched by the time its child is
+             * reached) and stops at the file itself - its versions are not needed to show where it
+             * lives. Scrolls the file row into view and flags it for the highlight in app.css.
+             */
+            async revealHit(hit) {
+                this.searchResults = [];
+
+                const category = this.rows.find(r => r.type === "CATEGORY" && r.id === hit.categoryId);
+                if (!category) {
+                    return;
+                }
+                if (!category.open) {
+                    await this.open(category);
+                }
+
+                const subCategory = this.rows.find(r => r.type === "SUB_CATEGORY" && r.id === hit.subCategoryId);
+                if (!subCategory) {
+                    return;
+                }
+                if (!subCategory.open) {
+                    await this.open(subCategory);
+                }
+
+                const mainTag = this.rows.find(r => r.type === "MAIN_TAG" && r.id === hit.mainTagId);
+                if (!mainTag) {
+                    return;
+                }
+                if (!mainTag.open) {
+                    await this.open(mainTag);
+                }
+
+                const file = this.rows.find(r => r.type === "FILE" && r.id === hit.fileId);
+                if (!file) {
+                    return;
+                }
+
+                this.highlightKey = file.key;
+                await this.$nextTick();
+                const rowElement = document.getElementById("tree-row-" + file.key);
+                if (rowElement) {
+                    rowElement.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+                setTimeout(() => {
+                    if (this.highlightKey === file.key) {
+                        this.highlightKey = null;
+                    }
+                }, 2500);
             }
         };
     }
