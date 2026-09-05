@@ -61,6 +61,44 @@
                     </div>
                 </fieldset>
 
+                <!--
+                  Where the role may look, next to what it may do. A grant covers everything beneath
+                  the folder it names, so ticking a parent is enough - a folder already reached that
+                  way is marked "inherited" instead of being offered as another box to tick.
+                -->
+                <fieldset th:if="${#strings.equals(pageType, 'update')}" class="mt-8">
+                    <legend class="mb-1 text-base font-semibold text-ink-900"
+                            th:text="#{field.folderAccess}">دسترسی پوشه‌ها</legend>
+                    <p class="mb-4 text-sm text-ink-500" th:text="#{role.folders.hint}">
+                        هر پوشه‌ای که انتخاب کنید، همهٔ زیرشاخه‌هایش هم در دسترس این نقش قرار می‌گیرد.
+                    </p>
+
+                    <div th:if="${#lists.isEmpty(folders)}" class="empty-state empty-state-panel"
+                         th:text="#{role.folders.empty}">هنوز پوشه‌ای ساخته نشده است.</div>
+
+                    <div th:unless="${#lists.isEmpty(folders)}" class="folder-grant-tree">
+                        <!-- The depth goes in as a plain integer and CSS does the arithmetic: a
+                             Thymeleaf expression doing it would have to format a decimal, and this
+                             page renders under a Persian locale. -->
+                        <label th:each="f: ${folders}" class="folder-grant-option"
+                               th:classappend="${f.covered} ? 'is-covered' : ''"
+                               th:style="|--folder-depth:${f.depth}|">
+                            <input type="checkbox" name="folderIds"
+                                   th:value="${f.getId()}" th:checked="${f.isGranted()}">
+                            <i class="bi shrink-0 text-ink-400"
+                               th:classappend="${f.depth == 0 ? 'bi-house-door' : (f.depth == 1 ? 'bi-folder-fill' : (f.depth == 2 ? 'bi-folder' : 'bi-folder2'))}"
+                               aria-hidden="true"></i>
+                            <span class="folder-grant-copy">
+                                <span class="folder-grant-name" th:text="${f.getDisplayName()}"></span>
+                                <span class="folder-grant-technical technical" dir="ltr"
+                                      th:text="${f.getName()}"></span>
+                            </span>
+                            <span th:if="${f.isCovered()}" class="folder-grant-badge"
+                                  th:text="#{role.folders.inherited}">از پوشهٔ بالاتر</span>
+                        </label>
+                    </div>
+                </fieldset>
+
                 <div th:if="${showMessage && valid}" class="alert alert-success mt-5" role="status"
                      id="success_message" th:text="#{message.saved}">اطلاعات با موفقیت ذخیره شد.</div>
                 <div th:if="${showMessage && !valid}" class="alert alert-warning mt-5" role="alert"

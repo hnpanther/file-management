@@ -345,6 +345,31 @@
         overflow-wrap: anywhere;
     }
 
+    /* ------------------------------------------------- folder grants (role edit, roadmap 6.5) */
+    /* One flat list indented by depth rather than nested lists: the rows come back ordered by
+       path, so an ancestor is always above its children and indentation is the only thing needed
+       to read it as a tree. */
+    .folder-grant-tree {
+        @apply max-h-[28rem] overflow-y-auto rounded-[var(--radius-control)] border border-ink-200
+               bg-white p-1;
+    }
+    .folder-grant-option {
+        @apply flex min-w-0 cursor-pointer items-center gap-2 rounded-[var(--radius-control)] py-1.5 pe-2
+               text-sm transition-colors hover:bg-ink-50;
+        /* --folder-depth is set per row by the template; the indent is CSS's arithmetic to do. */
+        padding-inline-start: calc(0.5rem + var(--folder-depth, 0) * 1.25rem);
+    }
+    .folder-grant-option:has(input:checked) { @apply bg-brand-50 font-semibold text-brand-700; }
+    .folder-grant-option input { @apply size-4 shrink-0 accent-[var(--color-brand-600)]; }
+    /* Already reached through an ancestor - still tickable, but it buys nothing. */
+    .folder-grant-option.is-covered { @apply text-ink-400; }
+    .folder-grant-copy { @apply flex min-w-0 flex-1 items-baseline gap-2; }
+    .folder-grant-name { @apply truncate; }
+    .folder-grant-technical { @apply truncate text-xs text-ink-400; }
+    .folder-grant-badge {
+        @apply shrink-0 rounded-full border border-ink-200 bg-ink-50 px-1.5 text-[0.7rem] text-ink-500;
+    }
+
     /* Forms that have not yet moved to the explicit page/card markup still receive the same
        visual hierarchy and spacing. Keep this selector scoped to direct container children. */
     body:has(#app-sidebar) > h2:empty { display: none; }
@@ -500,6 +525,8 @@
                tabular-nums text-ink-500;
     }
     .app-tree li[aria-expanded="false"] > .app-tree { @apply hidden; }
+    /* Search result landed here - see file-tree.html's revealHit(). Removed by a timeout, not CSS. */
+    .app-tree-row-highlight { @apply bg-amber-100 transition-colors duration-1000; }
     .app-tree-panel {
         @apply sticky top-[calc(var(--spacing-topbar)+1rem)] max-h-[calc(100vh-var(--spacing-topbar)-2rem)]
                overflow-y-auto rounded-[var(--radius-card)] border border-ink-200 bg-white p-3;

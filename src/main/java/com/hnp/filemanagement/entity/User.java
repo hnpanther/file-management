@@ -97,4 +97,21 @@ public class User extends AbstractEntity {
             inverseJoinColumns = @JoinColumn(name = "role_id")
     )
     private Set<Role> roles = new LinkedHashSet<>();
+
+    /**
+     * Folders granted to this person directly, on top of whatever their roles reach (roadmap 6.5).
+     * Each grant covers the whole subtree beneath it.
+     *
+     * <p>Kept out of the login query on purpose. {@code UserRepository.findByUsernameWithRoles}
+     * already fetches two collections; folder access is resolved once per request by
+     * {@code FolderAccessService}, which is a different question asked at a different time.
+     */
+    @ManyToMany(fetch = FetchType.LAZY,
+            cascade = {CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH})
+    @JoinTable(
+            name = "user_folder",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "folder_id")
+    )
+    private Set<Folder> folders = new LinkedHashSet<>();
 }

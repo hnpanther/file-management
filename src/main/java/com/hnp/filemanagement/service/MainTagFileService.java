@@ -49,17 +49,20 @@ public class MainTagFileService {
     private final UserRepository userRepository;
     private final FileSubCategoryService fileSubCategoryService;
     private final ActionHistoryService actionHistoryService;
+    private final FolderMirrorService folderMirrorService;
 
     public MainTagFileService(MainTagFileRepository mainTagFileRepository,
                               FileInfoRepository fileInfoRepository,
                               UserRepository userRepository,
                               FileSubCategoryService fileSubCategoryService,
-                              ActionHistoryService actionHistoryService) {
+                              ActionHistoryService actionHistoryService,
+                              FolderMirrorService folderMirrorService) {
         this.mainTagFileRepository = mainTagFileRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.userRepository = userRepository;
         this.fileSubCategoryService = fileSubCategoryService;
         this.actionHistoryService = actionHistoryService;
+        this.folderMirrorService = folderMirrorService;
     }
 
     @Transactional
@@ -90,6 +93,9 @@ public class MainTagFileService {
         mainTagFile.setCreatedBy(userRepository.getReferenceById(principalId));
 
         mainTagFileRepository.save(mainTagFile);
+
+        // Same transaction as the row it mirrors - see FolderMirrorService.
+        folderMirrorService.created(mainTagFile);
 
         actionHistoryService.saveActionHistory(EntityEnum.MainTagFile, mainTagFile.getId(), ActionEnum.CREATE,
                 principalId, "CREATE NEW MAIN_TAG_FILE", "CREATE NEW MAIN_TAG_FILE");
@@ -142,6 +148,9 @@ public class MainTagFileService {
 
         mainTagFile.setUpdatedBy(userRepository.getReferenceById(principalId));
 
+        // The one level whose directory-safe name can change, so this can move the folder's name.
+        folderMirrorService.renamed(mainTagFile);
+
         actionHistoryService.saveActionHistory(EntityEnum.MainTagFile, mainTagFileDTO.getId(),
                 ActionEnum.UPDATE_VALUES, principalId, "UPDATE MAIN_TAG_FILE", "UPDATE MAIN_TAG_FILE");
     }
@@ -157,6 +166,7 @@ public class MainTagFileService {
         }
 
         mainTagFileRepository.delete(mainTagFile);
+        folderMirrorService.deletedMainTag(mainTagFileId);
 
         actionHistoryService.saveActionHistory(EntityEnum.MainTagFile, mainTagFileId, ActionEnum.DELETE, principalId,
                 "DELETE MAIN_TAG_FILE", "DELETE MAIN_TAG_FILE");

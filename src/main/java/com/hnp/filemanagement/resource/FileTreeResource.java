@@ -2,6 +2,7 @@ package com.hnp.filemanagement.resource;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.TreeNodeDTO;
+import com.hnp.filemanagement.dto.TreeSearchHitDTO;
 import com.hnp.filemanagement.service.FileTreeService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,6 +43,19 @@ public class FileTreeResource {
         globalGeneralLogging.controllerLogging(userDetails, request, FileTreeResource.class,
                 "list tree children of type=" + type + ", id=" + id);
 
-        return ResponseEntity.ok(fileTreeService.getChildren(type, id));
+        return ResponseEntity.ok(fileTreeService.getChildren(type, id, userDetails.getId()));
+    }
+
+    //REST_SEARCH_FILE_TREE
+    @PreAuthorize("hasAuthority('REST_SEARCH_FILE_TREE') || hasAuthority('ADMIN')")
+    @GetMapping("search")
+    public ResponseEntity<List<TreeSearchHitDTO>> search(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                          @RequestParam("query") String query,
+                                                          HttpServletRequest request) {
+
+        globalGeneralLogging.controllerLogging(userDetails, request, FileTreeResource.class,
+                "search tree for query=" + query);
+
+        return ResponseEntity.ok(fileTreeService.search(query, userDetails.getId()));
     }
 }

@@ -23,4 +23,13 @@ public class RoleDTO {
 
     @NotNull(groups = UpdateValidation.class)
     List<Integer> permissionDTOListId;
+
+    /**
+     * The folders this role is granted, posted by the edit page as the complete selection.
+     *
+     * <p>Deliberately not {@code @NotNull}: a browser omits a checkbox group entirely when nothing
+     * in it is ticked, and "this role reaches no folder" is a legitimate thing to save. Null is
+     * therefore read as an empty selection, not as a missing field.
+     */
+    List<Integer> folderIds;
 }

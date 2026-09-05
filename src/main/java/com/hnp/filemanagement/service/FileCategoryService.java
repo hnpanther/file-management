@@ -55,6 +55,7 @@ public class FileCategoryService {
     private final FileStorageService fileStorageService;
     private final GeneralTagService generalTagService;
     private final ActionHistoryService actionHistoryService;
+    private final FolderMirrorService folderMirrorService;
     private final String baseDir;
 
     public FileCategoryService(FileCategoryRepository fileCategoryRepository,
@@ -63,6 +64,7 @@ public class FileCategoryService {
                                FileStorageService fileStorageService,
                                GeneralTagService generalTagService,
                                ActionHistoryService actionHistoryService,
+                               FolderMirrorService folderMirrorService,
                                @Value("${file.management.base-dir}") String baseDir) {
         this.fileCategoryRepository = fileCategoryRepository;
         this.fileSubCategoryRepository = fileSubCategoryRepository;
@@ -70,6 +72,7 @@ public class FileCategoryService {
         this.fileStorageService = fileStorageService;
         this.generalTagService = generalTagService;
         this.actionHistoryService = actionHistoryService;
+        this.folderMirrorService = folderMirrorService;
         this.baseDir = baseDir;
     }
 
@@ -100,6 +103,9 @@ public class FileCategoryService {
         fileCategory.setGeneralTag(generalTag);
 
         fileCategoryRepository.save(fileCategory);
+
+        // Same transaction as the row it mirrors - see FolderMirrorService.
+        folderMirrorService.created(fileCategory);
 
         fileStorageService.createDirectory(fileCategory.getCategoryName(), false);
 
@@ -132,6 +138,8 @@ public class FileCategoryService {
         fileCategory.setCategoryNameDescription(categoryNameDescription);
         fileCategory.setUpdatedBy(userRepository.getReferenceById(principalId));
 
+        folderMirrorService.renamed(fileCategory);
+
         actionHistoryService.saveActionHistory(EntityEnum.FileCategory, fileCategoryId, ActionEnum.UPDATE_VALUES,
                 principalId, "UPDATE FILE_CATEGORY",
                 "Update FileCategory new categoryNameDescription=" + categoryNameDescription);
@@ -156,6 +164,7 @@ public class FileCategoryService {
         }
 
         fileCategoryRepository.delete(fileCategory);
+        folderMirrorService.deletedCategory(id);
         fileStorageService.delete(fileCategory.getCategoryName(), null, 0, "", false);
 
         actionHistoryService.saveActionHistory(EntityEnum.FileCategory, id, ActionEnum.DELETE, principalId,

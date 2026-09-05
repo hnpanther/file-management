@@ -147,6 +147,9 @@ public enum PermissionEnum {
     //@GetMapping("tree")
     REST_GET_FILE_TREE,
 
+    //@GetMapping("search")
+    REST_SEARCH_FILE_TREE,
+
     // ===================================================================================================
 
     // FileSubCategoryResource @RequestMapping("/resource/file-sub-categories") ==========================

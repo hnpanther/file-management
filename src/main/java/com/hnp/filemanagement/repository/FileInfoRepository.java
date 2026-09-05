@@ -99,6 +99,24 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             """)
     Page<FileInfo> search(@Param("search") String search, Pageable pageable);
 
+    /**
+     * Tree "find a file" search — see issue 73: two nodes at different depths of the same category
+     * can carry the identical label, so a label alone cannot find a file or say where it lives. This
+     * matches by exact id (when the query parses as one) or a fragment of the name/description, and
+     * fetches the taxonomy chain needed to build a path down to each match.
+     */
+    @Query("""
+            SELECT f FROM FileInfo f
+            JOIN FETCH f.mainTagFile mt
+            JOIN FETCH mt.fileSubCategory sc
+            JOIN FETCH sc.fileCategory c
+            WHERE (:id IS NOT NULL AND f.id = :id)
+               OR f.fileName LIKE CONCAT('%', :term, '%')
+               OR f.description LIKE CONCAT('%', :term, '%')
+            ORDER BY f.fileName ASC
+            """)
+    List<FileInfo> searchForTree(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
+
     @Query("SELECT f.lastVersion FROM FileInfo f WHERE f.id = :fileInfoId")
     Integer getLastVersionNumberOfFile(@Param("fileInfoId") int fileInfoId);
 
