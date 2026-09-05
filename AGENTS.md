@@ -27,6 +27,20 @@ npm run build:css             # only if you edited src/main/frontend/app.css
 docker compose up -d          # MySQL for running the application (NOT for tests)
 ```
 
+**Always stop the application when you are finished.** `spring-boot:run` holds port 8122 for as
+long as it lives, and the next run — yours or someone else's — fails with a port conflict that
+looks nothing like its cause. Leaving it running against the real database also means a background
+process still holding connections after you have moved on.
+
+```bash
+# Windows / PowerShell
+Get-NetTCPConnection -LocalPort 8122 -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }
+
+# Linux / macOS
+lsof -ti tcp:8122 | xargs -r kill
+```
+
 The tests start their own MySQL through Testcontainers (`support/MySqlSupport`) and use
 `./target/test-storage/` as the storage root (`support/StorageRootSupport`). There is nothing to
 provision. **Run them.** If something prevents you from running them, say so rather than claiming a
@@ -234,6 +248,8 @@ A change is done when:
 * any new endpoint has a `PermissionEnum` constant and a `@PreAuthorize`;
 * any new mutation writes an `ActionHistory` row;
 * any schema change has a migration *and* the matching entity update;
-* no credential, absolute developer path, or `TODO` without an owner was added.
+* no credential, absolute developer path, or `TODO` without an owner was added;
+* **port 8122 is free again** — if you started the application to check something, stop it before
+  you finish, every time.
 
 Report honestly. If the suite did not run, say the suite did not run.

@@ -14,11 +14,14 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.savedrequest.RequestCache;
 import org.springframework.security.web.util.matcher.AndRequestMatcher;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
@@ -30,6 +33,9 @@ import static org.springframework.security.config.Customizer.withDefaults;
 @EnableWebSecurity
 @EnableMethodSecurity(securedEnabled = true, prePostEnabled = true)
 public class SecurityConfig {
+
+    /** Sent with every 401 on the API chain, so a client knows which scheme to retry with. */
+    private static final String BASIC_CHALLENGE = "Basic realm=\"file-management\", charset=\"UTF-8\"";
 
     @Value("${filemanagement.auth.ldap.activedirectory.enabled:false}")
     private boolean activeDirectoryEnabled;
@@ -186,6 +192,26 @@ public class SecurityConfig {
         return requestCache;
     }
 
+    /**
+     * The machine-facing chain: HTTP Basic, stateless, no CSRF and no CORS.
+     *
+     * <p>The explicit {@link org.springframework.security.web.AuthenticationEntryPoint} is the whole
+     * point of the {@code exceptionHandling} block, and it fixes a defect that was invisible from
+     * the browser. {@code BasicAuthenticationEntryPoint} reports a failure with
+     * {@code response.sendError(401)}, and {@code sendError} asks the servlet container for an ERROR
+     * dispatch. That dispatch re-enters the filter chains as a request for {@code /error}, which no
+     * longer matches {@code /api/**} — so the <em>session</em> chain handled it and its form-login
+     * entry point turned the answer into {@code 302 Location: /login}. A caller with a bad password
+     * got a redirect carrying a stale {@code WWW-Authenticate} header.
+     *
+     * <p>That was not merely untidy. {@code GET /login} answers 200, so any client that follows
+     * redirects — Oracle's {@code UTL_HTTP}, which {@code apex_web_service} is built on, follows up
+     * to three by default and re-issues them as GET — would see a final 200 and conclude that its
+     * {@code DELETE} had succeeded when nothing had been deleted.
+     *
+     * <p>Writing the status with {@code setStatus} instead of {@code sendError} skips the error
+     * dispatch entirely, so 401 stays 401.
+     */
     @Bean
     @Order(1)
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity httpSecurity, AuthenticationManager authenticationManager) throws Exception {
@@ -197,9 +223,32 @@ public class SecurityConfig {
                     auth.anyRequest().authenticated();
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .httpBasic(withDefaults())
+                // Both, and they cover different failures. BasicAuthenticationFilter keeps its own
+                // entry point and calls it when a credential is present but wrong;
+                // ExceptionTranslationFilter uses the exceptionHandling one when there is no
+                // credential at all. Setting only the second leaves a wrong password redirecting.
+                .httpBasic(basic -> basic.authenticationEntryPoint(unauthorizedEntryPoint()))
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(unauthorizedEntryPoint())
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                                response.setStatus(HttpStatus.FORBIDDEN.value())))
                 .authenticationManager(authenticationManager)
                 .build();
+    }
+
+    /**
+     * Answers 401 by writing the status directly.
+     *
+     * <p>{@code setStatus} rather than {@code sendError} on purpose: {@code sendError} asks the
+     * container for an ERROR dispatch, and that dispatch re-enters the filter chains as a request
+     * for {@code /error}, which does not match {@code /api/**}. The session chain then took over and
+     * redirected to the login page.
+     */
+    private static AuthenticationEntryPoint unauthorizedEntryPoint() {
+        return (request, response, authenticationException) -> {
+            response.setHeader(HttpHeaders.WWW_AUTHENTICATE, BASIC_CHALLENGE);
+            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+        };
     }
 
 }

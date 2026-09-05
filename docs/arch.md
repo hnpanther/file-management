@@ -263,7 +263,19 @@ source of truth:
 | `BusinessException` | 417 | a rule the caller could not have known from the request alone |
 | — (`AccessDenied`) | 403 | `@PreAuthorize` refused |
 | — (`InvalidRequestBody`) | 400 | the body is not readable JSON |
-| — (`Unexpected`) | 500 | anything else; the message is generic and translated |
+| — (`InvalidParameter`) | 400 | a path variable or query parameter will not convert |
+| — (`Unexpected`) | 500 | anything else; the message is generic |
+
+Authentication is the one answer that does not come from this advice. `/api/**` is HTTP Basic and a
+missing or wrong credential is a **401** carrying `WWW-Authenticate`, produced by an explicit entry
+point on that chain. It used to be `302 Location: /login`: `BasicAuthenticationEntryPoint` reports
+with `sendError`, whose ERROR dispatch re-entered the filter chains as `/error` — which no longer
+matches `/api/**`, so the session chain answered with a redirect. Since `GET /login` returns 200,
+any client that follows redirects could read a final 200 and conclude a failed call had succeeded.
+
+The wording of the generic messages depends on the surface: `/api/**` gets English, because its
+callers are programs, and everything else gets the Persian bundle. A domain exception's own message
+is English on both and is passed through untouched.
 
 A request that accepts `text/html` gets `error.html` at the same status instead of the problem
 document, so a browser navigation still lands on a page.

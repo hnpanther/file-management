@@ -3,6 +3,7 @@ package com.hnp.filemanagement.web;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.support.MySqlSupport;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,6 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -206,6 +208,65 @@ class RestContractTest extends MySqlSupport {
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.title").value("InvalidDataException"));
+    }
+
+    // ---------------------------------------------------------------- the machine-facing surface
+
+    /**
+     * A bad or absent credential on {@code /api/**} must be a clean 401, never a redirect.
+     *
+     * <p>It used to be {@code 302 Location: /login}, because {@code BasicAuthenticationEntryPoint}
+     * reports with {@code sendError} and the resulting ERROR dispatch fell through to the session
+     * chain. {@code GET /login} answers 200, so a client that follows redirects — Oracle's
+     * {@code UTL_HTTP}, which {@code apex_web_service} is built on, follows up to three by default
+     * and re-issues them as GET — would read a final 200 and conclude its DELETE had succeeded.
+     */
+    @Test
+    @DisplayName("an unauthenticated API call is 401 with a challenge, not a redirect to the login page")
+    void anUnauthenticatedApiCallIs401() throws Exception {
+        mockMvc.perform(delete("/api/v1/files/file-info/{id}/file-details/{fdId}", MISSING_ID, MISSING_ID))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", org.hamcrest.Matchers.startsWith("Basic")))
+                .andExpect(header().doesNotExist("Location"));
+    }
+
+    /**
+     * A path variable that will not convert is the caller's mistake, so 400 — it used to be 500.
+     * Oracle APEX reached this by declaring its ids {@code varchar2} rather than {@code number}.
+     */
+    @Test
+    @DisplayName("a non-numeric id is 400, and names the parameter without echoing the value")
+    void aNonNumericIdIs400() throws Exception {
+        mockMvc.perform(delete("/api/v1/files/file-info/{id}/file-details/{fdId}", "abc", "1")
+                        .with(user(principal(PermissionEnum.API_DELETE_FILE_DETAILS))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("InvalidParameter"))
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("fileInfoId")))
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("abc"))));
+    }
+
+    /**
+     * The two surfaces word a generic failure differently on purpose: {@code /api/**} answers
+     * programs and gets English, the pages answer people and keep the Persian bundle. Both used to
+     * get the Persian string.
+     */
+    @Test
+    @DisplayName("the API gets English for a generic failure, the pages keep Persian")
+    void genericMessagesAreEnglishOnlyForTheApi() throws Exception {
+        // Same class of failure on both surfaces; only the wording differs.
+        mockMvc.perform(delete("/api/v1/files/file-info/{id}/file-details/{fdId}", "abc", "1")
+                        .with(user(principal(PermissionEnum.API_DELETE_FILE_DETAILS))))
+                .andExpect(jsonPath("$.detail").value(
+                        org.hamcrest.Matchers.containsString("invalid value for parameter")));
+
+        mockMvc.perform(delete("/resource/files/file-info/{id}", MISSING_ID)
+                        .with(user(principal(PermissionEnum.PUBLIC_FILE_PAGE)))
+                        .with(csrf())
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.detail").value(
+                        org.hamcrest.Matchers.containsString("دسترسی")));
     }
 
     // ---------------------------------------------------------------- a 404 is not an HTML page
