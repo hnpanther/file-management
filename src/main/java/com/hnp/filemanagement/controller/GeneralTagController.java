@@ -19,11 +19,17 @@ import org.springframework.validation.BindingResult;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * The general-tag pages: create, edit, and the paged list.
+ *
+ * <p>General tags are labels only - no directory is created for them - so these pages never touch
+ * storage, which is what makes them the simplest of the four taxonomy screens.
+ */
 @Controller
 @RequestMapping("/general-tags")
 public class GeneralTagController {
 
-    Logger logger = LoggerFactory.getLogger(FileSubCategoryController.class);
+    Logger logger = LoggerFactory.getLogger(GeneralTagController.class);
 
     private final GlobalGeneralLogging globalGeneralLogging;
 
@@ -170,7 +176,7 @@ public class GeneralTagController {
         boolean valid = false;
         String message = "";
 
-        GeneralTagDTO generalTagDTO = generalTagService.getGeneralTagDTOByIdOrTagName(id, null);
+        GeneralTagDTO generalTagDTO = generalTagService.getGeneralTagDtoById(id);
 
         model.addAttribute("generalTag", generalTagDTO);
         model.addAttribute("pageType", "update");

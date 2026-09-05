@@ -1,24 +1,32 @@
 package com.hnp.filemanagement.entity;
 
-import jakarta.persistence.*;
-import lombok.Data;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * A label attached to categories. Alone among the four taxonomy levels it creates no directory, so
+ * nothing about it touches storage.
+ *
+ * <p>{@code tagName} carries a unique constraint in the schema (`uq_general_tag_name`) which the
+ * mapping did not declare — the reverse of {@link MainTagFile}, which declared one the schema does
+ * not have. Both now match the database.
+ */
 @Entity
 @Table(name = "general_tag")
-@Data
-public class GeneralTag {
+@Getter
+@Setter
+public class GeneralTag extends AuditableEntity {
 
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id")
-    private Integer id;
-
-    @Column(name = "tag_name", nullable = false)
+    @Column(name = "tag_name", nullable = false, unique = true)
     private String tagName;
 
     @Column(name = "tag_name_description", nullable = false)
@@ -36,26 +44,10 @@ public class GeneralTag {
     @Column(name = "state", nullable = false)
     private Integer state;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "created_by", nullable = false)
-    private User createdBy;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "updated_by")
-    private User updatedBy;
-
     @OneToMany(
             fetch = FetchType.LAZY,
-            cascade={CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH},
+            cascade = {CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH},
             mappedBy = "generalTag"
     )
     private List<FileCategory> fileCategories = new ArrayList<>();
-
-
 }

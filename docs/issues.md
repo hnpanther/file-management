@@ -50,6 +50,12 @@ The same pattern exists on `FileCategory` ↔ `FileSubCategory` ↔ `MainTagFile
 Fix: replace `@Data` with `@Getter @Setter`, and hand-write `equals`/`hashCode` on the business key
 (or on `id` with the `instanceof` + `Hibernate.getClass` guard), never on the associations.
 
+**Fixed in the architecture pass.** All three methods moved to a `@MappedSuperclass`
+`AbstractEntity` and are `final`: `equals` compares ids through `Hibernate.getClass` so a proxy
+equals its entity, `hashCode` is constant per type so it survives the id being assigned at insert,
+and `toString` prints `Type#id` and can never walk an association. `EntityIdentityTest` covers each
+of the three original failure modes.
+
 ### 3. Storage writes are not atomic with the database — **S1**
 
 `FileService.createNewFile` is `@Transactional`. It persists `FileInfo` + `FileDetails` + two
@@ -146,6 +152,9 @@ private final Logger logger = LoggerFactory.getLogger(RoleService.class);   // i
 Every `UserService` log line is attributed to `RoleService`, which makes log-level configuration and
 grep-based debugging misleading.
 
+**Fixed** in the cleanup pass. `GeneralTagController` had the same defect — its logger named
+`FileSubCategoryController` — and was fixed with it.
+
 ### 10. Duplicated statements that hint at copy-paste bugs — **S3**
 
 * `FileService.createNewFile`: `fileInfo.setDescription(fileInfoDTO.getDescription())` twice in a row.
@@ -154,6 +163,8 @@ grep-based debugging misleading.
 * `FileService.changeFileDetailsState`: the not-found message interpolates the **repository bean**
   (`fileDetailsRepository`) instead of `fileDetailsId`.
 * `PermissionRepository` imports `javax.swing.text.html.Option` — an IDE auto-import accident.
+
+**Fixed** in the cleanup pass, all five.
 
 ---
 
@@ -232,6 +243,16 @@ advices, so the declared contract and the actual contract disagree.
 Fix: a single RFC 9457 `ProblemDetail` handler, an opaque message for unhandled exceptions, and a
 correlation id in the response for log lookup.
 
+**Fixed** in the cleanup pass, except the correlation id. `GlobalApiExceptionHandler` is deleted;
+`GlobalExceptionHandler` is now the only advice, reads the status off the exception's own
+`@ResponseStatus`, returns `ProblemDetail` to non-browsers and `error.html` to browsers, and
+replaces the message with a generic translated one for anything unhandled. A body Jackson cannot
+read is 400 rather than 500. Pinned by `web/RestContractTest`; contract documented in
+[arch.md §6](arch.md#the-rest-contract).
+
+The correlation id is still missing — a 500 tells the user nothing they can quote to an
+administrator. That belongs with the observability work in Phase 2.
+
 ### 16. No path-containment check at the storage boundary — **S2**
 
 `FileStorageFileSystemService` concatenates strings (`baseDir + address + "/" + ...`) and never
@@ -263,6 +284,12 @@ overlapping operations with three different error shapes, three sets of permissi
 contract. Deleting a `FileDetails` is implemented once in the service and exposed twice, with
 different status codes on failure.
 
+**Partly fixed** in the cleanup pass: the two JSON layers now share one contract — same success
+envelope (`ApiResult`), same failure shape (`ProblemDetail`), same status per failure kind — so
+deleting a `FileDetails` answers identically through both. What remains is the duplication itself:
+two permission constants and two handler methods for one operation. Collapsing them is Phase 2
+work, and it needs a decision about whether the pages should call `/api/**` directly.
+
 ### 19. `PermissionEnum` is a hardcoded list of endpoint names — **S2**
 
 ~70 constants, each mirroring one handler method, each referenced from a magic string in
@@ -272,6 +299,10 @@ annotation string and the seed. Renaming one silently orphans the DB row. Nothin
 annotation strings correspond to real enum constants.
 
 ### 20. Every `@ManyToOne` is `EAGER` — **S2**
+
+> **Fixed in the architecture pass.** Every association is `LAZY`, `spring.jpa.open-in-view` is off,
+> and the queries that feed a converter declare their fetch joins. `FileInfoRepositoryTest` asserts
+> with `Hibernate.isInitialized` that the taxonomy chain is resolved and that the audit user is not.
 
 `FileDetails` → `FileInfo` → `MainTagFile` → `FileSubCategory` → `FileCategory` → `GeneralTag`, plus
 `createdBy` and `updatedBy` on every one of them. Loading a single `FileDetails` drags in the whole
@@ -299,6 +330,10 @@ constraint, no DB-level protection against a nonsense value.
 
 ### 23. Services depend on `EntityManager` to fake FK writes — **S3**
 
+> **Fixed in the architecture pass.** `EntityManager` is gone from the service layer;
+> `repository.getReferenceById(id)` does the same thing through the repository, and the one raw
+> `createQuery` call is now `PermissionRepository.findDistinctByRoleIds`.
+
 `entityManager.getReference(User.class, principalId)` appears in six services purely to set
 `createdBy` / `updatedBy` without a `SELECT`. It couples the service layer directly to JPA and
 substitutes for the missing auditing infrastructure.
@@ -307,6 +342,10 @@ Fix: Spring Data JPA auditing (`@CreatedBy`, `@CreatedDate`, `@LastModifiedBy`, 
 with an `AuditorAware`).
 
 ### 24. Timestamps are hand-set `LocalDateTime` — **S2**
+
+> **Fixed in the architecture pass.** `AuditableEntity` writes them with Hibernate's
+> `@CreationTimestamp` and `@UpdateTimestamp`, so an update cannot forget to touch `updated_at` —
+> which several did.
 
 `LocalDateTime.now()` written by hand in every create/update method across every service. No time
 zone: `LocalDateTime` + MySQL `DATETIME` means the value is ambiguous the moment the server moves or
@@ -322,11 +361,23 @@ and `path`, then calls `globalGeneralLogging.controllerLogging(...)`. This is ~3
 duplication that a filter or `@Around` aspect replaces, and it duplicates what `LoggingInterceptor`
 already does.
 
+**Partly fixed** in the cleanup pass. `GlobalGeneralLogging` gained
+`controllerLogging(principal, request, sourceClass, message)`, which does the whole preamble in one
+line, and every handler in `resource/` and `api/` now uses it. The Thymeleaf controllers still carry
+the long form; converting them is worth doing with the aspect, not before it.
+
 ### 26. Persian UI strings hardcoded in Java — **S3**
 
 `"لطفا اطلاعات را بطور صحیح وارد نمایید"`, `"اطلاعات با موفقیت ذخیره شد"` and similar are string
 literals inside controllers and `FileApi`. No `messages.properties`, no `MessageSource`, no locale
 negotiation. The API returns Persian prose to machine clients.
+
+**Narrowed.** `messages.properties` now exists and the templates are fully converted; the API no
+longer returns Persian at all, since `FileApi` throws instead of composing sentences. What remains
+is the Thymeleaf controllers, which still assign Persian literals to the `message` model attribute
+in every `catch`. Converting them means injecting `MessageSource` into eight controllers, which is
+the same edit as the logging-aspect work in [issue 25](#25-sixty-copies-of-the-same-logging-preamble--s3) —
+worth doing in one pass, in Phase 2.
 
 ### 27. No `@ConfigurationProperties` — **S3**
 
@@ -383,6 +434,10 @@ Fix: delete it, or move it to `docs/` clearly marked as a local-development rese
 
 ### 33. Schema and entity mappings disagree — **S2**
 
+> **Fixed in the architecture pass.** The mappings now match the schema in both directions:
+> `GeneralTag.tagName` gained the `unique` the schema has, `MainTagFile.tagName` lost the one it
+> does not, and the `NOT NULL` columns are marked as such.
+
 * `file_category.general_tag_id` is `NOT NULL` in SQL; the entity's `@JoinColumn` omits
   `nullable = false`.
 * `file_details.description` is `NOT NULL` in SQL, but `FileDetails.description` is nullable and
@@ -394,6 +449,9 @@ Fix: delete it, or move it to `docs/` clearly marked as a local-development rese
 insert fails at runtime.
 
 ### 34. No indexes beyond primary, foreign and unique keys — **S2**
+
+> **Fixed in the architecture pass** by migration `V1.3`, which also adds the composite unique
+> constraints the services were checking only in Java.
 
 Nothing on `file_info.file_name`, `file_details(file_info_id, version)`, `file_details.state`,
 `file_info.state`, or `action_history(entity_name, entity_id)` — the last of which is the only access
@@ -626,3 +684,166 @@ logback ignores it - so archives accumulated without limit. The console appender
 
 Rewritten to a single `SizeAndTimeBasedRollingPolicy` with `maxFileSize`, `maxHistory` and
 `totalSizeCap`, and an `<encoder>` on the console. Startup is now free of logback warnings.
+
+---
+
+## Found during the cleanup pass
+
+### 56. `findByIdOrUsername(id, null)` matches on a null username — **S3** (latent)
+
+```java
+Optional<User> findByIdOrUsername(int id, String username);   // UserRepository
+```
+
+is derived to `... WHERE u.id = ? OR u.username = ?`, and JPA renders a null argument as
+`u.username IS NULL`. Every caller that has only an id passes `null` for the name — the test log
+shows it plainly:
+
+```sql
+from user u1_0 where u1_0.id = ? or u1_0.username is null
+```
+
+Today `user.username` is `NOT NULL`, so the second branch never matches and the query is merely
+misleading. It stops being harmless the moment a nullable name column is introduced, or the same
+pattern is copied to one — `findByIdOrCategoryName`, `findByIdOrTagName` and `findByIdOrRoleName`
+are all shaped this way.
+
+Fix: two derived methods, or a `@Query` with an explicit `(:username IS NOT NULL AND ...)` guard.
+Left alone here because changing lookup semantics is not a cleanup, and every one of these methods
+is on a hot path.
+
+### 57. Two "change state" endpoints, two different shapes — **S3**
+
+`PUT /resource/files/file-info/{id}/change-state` takes `{"newState": 0}` in the body.
+`PUT /resource/files/file-info/{id}/file-details/{fdId}/change-state/{newState}` takes it in the
+path. Same operation, same allowed values, two spellings — a client has to learn both.
+
+The path form is what `file-info-page.html` already calls, so unifying them is a breaking change to
+a URL, not a refactor. Do it when the page is rewritten for the tree file manager (Phase 5).
+
+### 58. The API upload answers 200, not 201 — **S3**
+
+`POST /api/v1/files` creates a resource and returns 200 with the created version's DTO. 201 with a
+`Location` header is the correct answer, but `/api/v1` is published and the status is part of its
+contract, so this is a versioning decision rather than a cleanup. Grouped with the API
+documentation work ([issue 42](#42-no-api-documentation--s3)).
+
+### 59. A dead null check on a stream result — **S3**
+
+```java
+List<FileDetails> list = fileDetailsList.stream().filter(...).toList();
+if (list == null || list.size() == 0) {
+    throw new BusinessException("list of same version file is empty!");
+}
+```
+
+in `FileService.deleteFileDetails`. `Stream.toList()` never returns null, so the first half is dead
+and the second would read better as `isEmpty()`. Cosmetic, and inside the most delicate method in
+the codebase — worth doing with the tests that already cover version deletion, not on its own.
+
+---
+
+## Found and fixed in the architecture pass
+
+Each of these was found while reviewing the entity, repository, service and controller layers, and
+fixed in the same pass. They are recorded because a fix is only obvious once the defect is named.
+
+### 60. Deleting the newest version left `lastVersion` pointing at it — **S1**
+
+`FileInfo.lastVersion` is a denormalised `MAX(version)`. Creating a version raised it; deleting one
+never lowered it. Removing the newest version of a file therefore left the column naming a version
+that no longer existed: the next upload of that number was rejected as "wrong version for create new
+version", so the number could never be reused, and the file page displayed a version that was gone.
+
+Fixed with `FileInfoRepository.recalculateLastVersion` — one `UPDATE ... SET lastVersion = (SELECT
+MAX(...))` rather than read-modify-write in Java, so two sessions deleting different versions cannot
+each compute a maximum from a stale snapshot and write it back.
+`FileServiceTest.aFreedVersionNumberCanBeReused` covers the user-visible consequence.
+
+### 61. A validation whose body was commented out — **S2**
+
+```java
+if(!Objects.equals(mainTagFile.getFileSubCategory().getId(), mainTagFileDTO.getFileSubCategoryId())) {
+//    throw new InvalidDataException("invalid subCategoryId=" + mainTagFileDTO);
+}
+```
+
+in `MainTagFileService.updateMainTagFile` — an `if` whose only statement was disabled. A request
+naming a different sub-category was accepted and silently ignored, and the same method never updated
+`tagNameDescription` even though create set it. Both fixed; moving a tag between sub-categories is
+now a 400, because files derive their directory from the sub-category and moving the tag would leave
+the stored bytes where the metadata no longer points.
+
+### 62. Two copies of the login principal builder, already drifted — **S1**
+
+`UserService.createUserDetailsFromUser` and `UserDetailsServiceImpl.loadUserByUsername` built
+`UserDetailsImpl` from the same two calls — but only one granted the synthetic `ADMIN` authority. An
+administrator signing in through Active Directory got it; the same administrator signing in with a
+local password did not. There is now one builder, and each provider only decides whether its
+mechanism is allowed for that user.
+
+The same path also refused a user with no roles: the permission lookup threw
+`ResourceNotFoundException("user don t have any role!")`, which the login translated into
+`UsernameNotFoundException`, so a roleless account was rejected with "username not found". A user
+with no roles now signs in with an empty authority list.
+
+### 63. The bootstrap shipped a known administrator password — **S1** (security)
+
+`FileManagementApplication.initialize` created the `Admin` account with the literal password
+`"admin"`, so every deployment shipped with the same known credentials for an account holding every
+permission. It is now `filemanagement.bootstrap.admin-password`; with nothing configured a random
+password is generated and logged once, at WARN, on the run that creates the account.
+
+### 64. `@Transactional` on a self-invoked method — **S2**
+
+The same bootstrap was annotated `@Transactional` and called on `this` from the
+`CommandLineRunner` lambda. Spring's transaction support is a proxy and a call from inside the bean
+does not pass through it, so the annotation did nothing and the seeding ran as a dozen independent
+transactions — failing halfway left the database half-seeded with no error the next start could
+detect. It is now `DataInitializer`, a bean of its own.
+
+### 65. The profile default carried its own quotes — **S2**
+
+`@Value("${spring.profiles.active:'prod'}")` compared `"'prod'"` to `"prod"`. A deployment that did
+not set the property silently skipped the entire bootstrap; it worked only because
+`application.properties` always set it explicitly. Now read from the `Environment`.
+
+### 66. Duplicate checks read a collection that can be stale — **S2**
+
+`deleteFileCategory` asked `fileCategory.getFileSubCategories().isEmpty()`, and the child listings
+reached the children through the parent the same way. A collection answers from the persistence
+context, which can hand back one initialised earlier in the same transaction when it was empty — so
+a category that had just gained a sub-category looked empty and passed the delete check. All of them
+are now counts and queries against the child table, which is also cheaper.
+
+### 67. Sentinel arguments standing in for "this field did not change" — **S3**
+
+`UserService.updateUser` packed unchanged fields into `""` and `0` and passed all four to
+`existsByUsernameOrPersonelCodeOrNationalCodeOrPhoneNumber`, asking the database "is there a user
+whose username is the empty string, or whose personnel code is zero". It worked because no such row
+exists. It also dereferenced `getPhoneNumber()` on a nullable column, so a user without a phone
+number could not be edited at all.
+
+The same shape appeared in `MainTagFileService` (an empty-string description) and in every
+`findByIdOr<Name>(id, null)`, where Spring Data renders the null as `IS NULL` — asking for role 5 by
+id also asked for "any role whose name is null". All replaced by methods that take one key each.
+
+### 68. The user list page could disagree with its own pager — **S3**
+
+`getAllUserWithSearchPage` and `countAllUserWithSearchPage` each parsed the search term, with
+slightly different rules: the row query blanked an all-whitespace term and the count query did not.
+Two queries deriving their filter independently is a pager that can contradict the list it pages.
+Now one `Page<UserDTO>`.
+
+### 69. A dropdown filled by a paged query — **S3**
+
+Four forms called `getAllFileCategories(defaultElementSize, 0)` to fill the category `<select>`, so
+the list silently truncated once a deployment had more categories than the configured page size —
+and differently depending on the property. Replaced by `getAllFileCategoriesForSelection()`.
+
+### 70. Duplicate rules were checks, not constraints — **S2**
+
+Every "is this a duplicate?" in the services was a `SELECT` followed by an `INSERT`, which two
+concurrent requests can both pass. For a category or a sub-category that also means two rows
+claiming one directory on disk. Migration `V1.3` adds the four composite unique constraints; the
+in-code checks stay, because they are what turns a violation into a readable 409 rather than a 500.

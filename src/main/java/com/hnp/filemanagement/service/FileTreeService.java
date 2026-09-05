@@ -141,8 +141,8 @@ public class FileTreeService {
         // Shown as a folder even though it creates no directory yet - see the class comment.
         TreeNodeDTO node = base(NodeType.MAIN_TAG, mainTag.getId(), mainTag.getTagName(),
                 mainTag.getTagNameDescription(), "bi-folder2");
-        Integer count = fileInfoRepository.countFileWithTagId(mainTag.getId());
-        node.setChildCount(count == null ? 0 : count);
+        // COUNT never returns null; the repository signature is int, so no null branch is needed.
+        node.setChildCount(fileInfoRepository.countFileWithTagId(mainTag.getId()));
         node.setExpandable(node.getChildCount() > 0);
         return node;
     }

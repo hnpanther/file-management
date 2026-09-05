@@ -1,30 +1,43 @@
 package com.hnp.filemanagement.config.security;
 
-import com.hnp.filemanagement.entity.Permission;
-import com.hnp.filemanagement.entity.PermissionEnum;
-import com.hnp.filemanagement.entity.Role;
-import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
-import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.service.UserService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.Optional;
-
+/**
+ * The local-password half of authentication: {@code DaoAuthenticationProvider} asks this for the
+ * principal, then checks the submitted password against the hash on it.
+ *
+ * <p>This class used to build {@link UserDetailsImpl} itself, duplicating
+ * {@code UserService.createUserDetailsFromUser} line for line — and the copies had already drifted.
+ * Only one of them granted the synthetic {@code ADMIN} authority, so an administrator who signed in
+ * through Active Directory got it and the same administrator signing in with a local password did
+ * not. There is now one builder, and this class only decides whether the local path is allowed to
+ * use it.
+ *
+ * <p>The login-type gate is that decision, and it is deliberately not inside the shared builder:
+ * each provider has its own rule, and the value means
+ *
+ * <ul>
+ *   <li>{@code 0} — either mechanism may sign this user in;</li>
+ *   <li>{@code 1} — local password only, which is this provider;</li>
+ *   <li>{@code 2} — Active Directory only, which is not.</li>
+ * </ul>
+ *
+ * <p>A user the gate rejects is reported as {@code UsernameNotFoundException} rather than as a
+ * distinct failure, so an attacker cannot use the difference to learn which accounts exist and how
+ * they authenticate.
+ */
 @Service
 public class UserDetailsServiceImpl implements UserDetailsService {
 
-    private final Logger logger = LoggerFactory.getLogger(UserDetailsServiceImpl.class);
-
+    private static final int LOGIN_TYPE_ANY = 0;
+    private static final int LOGIN_TYPE_LOCAL_ONLY = 1;
 
     private final UserService userService;
-
 
     public UserDetailsServiceImpl(UserService userService) {
         this.userService = userService;
@@ -32,44 +45,17 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-
-
         try {
-            User user = userService.getUserByUsername(username);
+            UserDetailsImpl userDetails = userService.createUserDetailsFromUser(username);
 
-//            logger.debug("login type => " + user.getLoginType());
-            if(user.getLoginType() != 0 && user.getLoginType() != 1) {
+            if (userDetails.getLoginType() != LOGIN_TYPE_ANY
+                    && userDetails.getLoginType() != LOGIN_TYPE_LOCAL_ONLY) {
                 throw new UsernameNotFoundException("username not found, username=" + username);
             }
 
-
-            UserDetailsImpl userDetails = new UserDetailsImpl();
-            userDetails.setId(user.getId());
-            userDetails.setUsername(user.getUsername());
-            userDetails.setPassword(user.getPassword());
-            userDetails.setEnabled(user.getEnabled());
-            userDetails.setState(user.getState());
-            userDetails.setLoginType(user.getLoginType());
-
-            List<Permission> allPermissionsOfUser = userService.getAllPermissionsOfUser(user.getId());
-
-            List<PermissionEnum> list = new java.util.ArrayList<>(allPermissionsOfUser.stream().map(Permission::getPermissionName).toList());
-
-
-            Optional<Role> adminRole = user.getRoles().stream().filter(role -> role.getRoleName().equalsIgnoreCase("ADMIN")).findFirst();
-            if(adminRole.isPresent()) {
-                list.add(PermissionEnum.ADMIN);
-            }
-
-
-            userDetails.setPermissions(list);
-
-
             return userDetails;
         } catch (ResourceNotFoundException e) {
-//            logger.debug("load by username exception", e);
             throw new UsernameNotFoundException("username not found, username=" + username);
         }
-
     }
 }

@@ -1,22 +1,34 @@
 package com.hnp.filemanagement.entity;
 
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
 
-import jakarta.persistence.*;
-import lombok.Data;
-
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * The first real directory level under the storage root.
+ *
+ * <p>Creating one creates a directory, which is why {@code categoryName} is unique across the whole
+ * table rather than per anything — two categories with one name would be one directory.
+ *
+ * <p>No cascade to {@code fileSubCategories}: deleting a category that still has sub-categories
+ * would orphan their directories, so {@code FileCategoryService} refuses instead, and the absence
+ * of {@code CascadeType.REMOVE} here is what makes that refusal the only outcome.
+ */
 @Entity
 @Table(name = "file_category")
-@Data
-public class FileCategory {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id")
-    private Integer id;
+@Getter
+@Setter
+public class FileCategory extends AuditableEntity {
 
     @Column(name = "category_name", nullable = false, unique = true)
     private String categoryName;
@@ -27,6 +39,7 @@ public class FileCategory {
     @Column(name = "description")
     private String description;
 
+    /** Absolute path on disk. Denormalised from {@code base-dir} + name; see issue 35. */
     @Column(name = "path", nullable = false)
     private String path;
 
@@ -39,29 +52,14 @@ public class FileCategory {
     @Column(name = "state", nullable = false)
     private Integer state;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "created_by", nullable = false)
-    private User createdBy;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "updated_by")
-    private User updatedBy;
-
-    @OneToMany(fetch = FetchType.LAZY,
-            cascade={CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH},
+    @OneToMany(
+            fetch = FetchType.LAZY,
+            cascade = {CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH},
             mappedBy = "fileCategory"
     )
     private List<FileSubCategory> fileSubCategories = new ArrayList<>();
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "general_tag_id")
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "general_tag_id", nullable = false)
     private GeneralTag generalTag;
-
-
 }

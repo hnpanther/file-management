@@ -1,26 +1,37 @@
 package com.hnp.filemanagement.resource;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
+import com.hnp.filemanagement.dto.ApiResult;
 import com.hnp.filemanagement.dto.GeneralTagPageDTO;
 import com.hnp.filemanagement.dto.GenericListResponse;
-import com.hnp.filemanagement.exception.DependencyResourceException;
-import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.GeneralTagService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-@RestController()
+/**
+ * General tags as JSON, for the pages' own AJAX.
+ *
+ * <p>A general tag is only a label: unlike a category or a sub-category it creates no directory,
+ * so deleting one is blocked purely by the categories that point at it.
+ *
+ * <p>Failures are not caught here. The domain exceptions carry their own status - a missing tag is
+ * 404, a tag still in use is 409 - and {@code GlobalExceptionHandler} turns them into RFC 9457
+ * problem documents. Catching them locally, as this class used to, flattened every failure to 400
+ * with a hand-written English sentence.
+ */
+@RestController
 @RequestMapping("/resource/general-tags")
 public class GeneralTagResource {
-
 
     private final GlobalGeneralLogging globalGeneralLogging;
     private final GeneralTagService generalTagService;
@@ -33,64 +44,40 @@ public class GeneralTagResource {
         this.generalTagService = generalTagService;
     }
 
-
+    /** Feeds the tag picker on the category form; shaped for Select2's {@code results} contract. */
     //REST_GET_ALL_GENERAL_TAG
     @PreAuthorize("hasAuthority('REST_GET_ALL_GENERAL_TAG') || hasAuthority('ADMIN')")
     @GetMapping
-    public GenericListResponse getAllGeneralTAg(@AuthenticationPrincipal UserDetailsImpl userDetails, HttpServletRequest request) {
+    public GenericListResponse getAllGeneralTags(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                 HttpServletRequest request) {
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "rest request to get all general tags";
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "GeneralTagResource.class", logMessage);
+        globalGeneralLogging.controllerLogging(userDetails, request, GeneralTagResource.class,
+                "list all general tags");
 
+        GeneralTagPageDTO page = generalTagService.getGeneralTagPage(defaultElementSize, 0, null);
 
-        GeneralTagPageDTO generalTagPage = generalTagService.getGeneralTagPage(defaultElementSize, 0, null);
+        List<GenericListResponse.GenericResponse> results = page.getGeneralTagDTOList().stream()
+                .map(tag -> new GenericListResponse.GenericResponse(
+                        tag.getId(), tag.getTagName() + " - " + tag.getTagNameDescription()))
+                .toList();
 
-        List<GenericListResponse.GenericResponse> list = generalTagPage.getGeneralTagDTOList().stream().map(generalTagDTO ->
-                new GenericListResponse.GenericResponse(generalTagDTO.getId(), generalTagDTO.getTagName() + " - " + generalTagDTO.getTagNameDescription())).toList();
-
-        GenericListResponse genericListResponse = new GenericListResponse();
-        genericListResponse.results = list;
-        return genericListResponse;
-
+        GenericListResponse response = new GenericListResponse();
+        response.results = results;
+        return response;
     }
-
 
     //REST_DELETE_GENERAL_TAG
     @PreAuthorize("hasAuthority('REST_DELETE_GENERAL_TAG') || hasAuthority('ADMIN')")
     @DeleteMapping("{id}")
-    public ResponseEntity<String> deleteGeneralTag(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                                   @PathVariable("id") int generalTagId,
-                                                   HttpServletRequest request) {
+    public ApiResult deleteGeneralTag(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                      @PathVariable("id") int generalTagId,
+                                      HttpServletRequest request) {
 
+        globalGeneralLogging.controllerLogging(userDetails, request, GeneralTagResource.class,
+                "delete general tag id=" + generalTagId);
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "rest request to delete general tag with id==" + generalTagId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "GeneralTagResource.class", logMessage);
+        generalTagService.deleteGeneralTag(generalTagId, userDetails.getId());
 
-        try {
-            generalTagService.deleteGeneralTag(generalTagId, principalId);
-        } catch (DependencyResourceException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "GeneralTagResource.class",
-                    "DependencyResourceException" + e.getMessage());
-            return new ResponseEntity<>("can not delete, first delete all related category" + generalTagId, HttpStatus.BAD_REQUEST);
-        } catch (ResourceNotFoundException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "GeneralTagResource.class",
-                    "ResourceNotFoundException" + e.getMessage());
-            return new ResponseEntity<>("general tag file not exists=" + generalTagId, HttpStatus.BAD_REQUEST);
-        }
-
-
-
-        return new ResponseEntity<>("general tag deleted", HttpStatus.OK);
-
+        return ApiResult.deleted("generalTag", generalTagId);
     }
 }

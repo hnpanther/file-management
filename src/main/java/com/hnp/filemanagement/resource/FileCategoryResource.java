@@ -1,94 +1,81 @@
 package com.hnp.filemanagement.resource;
 
-
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
+import com.hnp.filemanagement.dto.ApiResult;
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
 import com.hnp.filemanagement.dto.GenericListResponse;
-import com.hnp.filemanagement.exception.DependencyResourceException;
-import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.FileCategoryService;
-import com.hnp.filemanagement.service.FileSubCategoryService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-@RestController()
+/**
+ * Categories as JSON, for the pages' own AJAX.
+ *
+ * <p>A category is the first real directory under the storage root, so it cannot be deleted while
+ * sub-categories still hang off it.
+ *
+ * <p>Failures are not caught here: 404 for a missing category and 409 for one that still has
+ * sub-categories come from the exceptions themselves, via {@code GlobalExceptionHandler}. The
+ * success body used to say "file sub category deleted" when a *category* was deleted - the kind of
+ * drift a uniform {@link ApiResult} removes.
+ */
+@RestController
 @RequestMapping("/resource/file-categories")
 public class FileCategoryResource {
 
     private final GlobalGeneralLogging globalGeneralLogging;
     private final FileCategoryService fileCategoryService;
-    private final FileSubCategoryService fileSubCategoryService;
 
-    @Value("${filemanagement.default.element-size:50}")
-    private int defaultElementSize;
-
-    public FileCategoryResource(GlobalGeneralLogging globalGeneralLogging, FileCategoryService fileCategoryService, FileSubCategoryService fileSubCategoryService) {
+    public FileCategoryResource(GlobalGeneralLogging globalGeneralLogging,
+                                FileCategoryService fileCategoryService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.fileCategoryService = fileCategoryService;
-        this.fileSubCategoryService = fileSubCategoryService;
     }
 
+    /** Feeds the dependent sub-category dropdown on the file, sub-category and main-tag forms. */
     //REST_GET_ALL_SUB_CATEGORY_OF_CATEGORY
     @PreAuthorize("hasAuthority('REST_GET_ALL_SUB_CATEGORY_OF_CATEGORY') || hasAuthority('ADMIN')")
     @GetMapping("{id}/sub-categories")
-    public GenericListResponse getAllSubCategoryOfCategory(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int id, HttpServletRequest request) {
+    public GenericListResponse getAllSubCategoriesOfCategory(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                             @PathVariable("id") int categoryId,
+                                                             HttpServletRequest request) {
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "rest request to get sub category of file category with id=" + id;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileCategoryResource.class", logMessage);
+        globalGeneralLogging.controllerLogging(userDetails, request, FileCategoryResource.class,
+                "list sub categories of category id=" + categoryId);
 
-        List<FileSubCategoryDTO> fileSubCategoryOfCategory = fileCategoryService.getFileSubCategoryOfCategory(id);
+        List<FileSubCategoryDTO> subCategories = fileCategoryService.getFileSubCategoryOfCategory(categoryId);
 
-        List<GenericListResponse.GenericResponse> list = fileSubCategoryOfCategory.stream()
-                .map(fsc -> new GenericListResponse.GenericResponse(fsc.getId(), fsc.getSubCategoryName() + " - " + fsc.getSubCategoryNameDescription())).toList();
+        List<GenericListResponse.GenericResponse> results = subCategories.stream()
+                .map(sub -> new GenericListResponse.GenericResponse(
+                        sub.getId(), sub.getSubCategoryName() + " - " + sub.getSubCategoryNameDescription()))
+                .toList();
 
-        GenericListResponse genericListResponse = new GenericListResponse();
-        genericListResponse.results = list;
-        return genericListResponse;
+        GenericListResponse response = new GenericListResponse();
+        response.results = results;
+        return response;
     }
-
 
     //REST_DELETE_FILE_CATEGORY
     @PreAuthorize("hasAuthority('REST_DELETE_FILE_CATEGORY') || hasAuthority('ADMIN')")
     @DeleteMapping("{id}")
-    public ResponseEntity<String> deleteFileCategory(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                                     @PathVariable("id") int fileCategoryId,
-                                                     HttpServletRequest request) {
+    public ApiResult deleteFileCategory(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                        @PathVariable("id") int fileCategoryId,
+                                        HttpServletRequest request) {
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "rest request to delete file category with id==" + fileCategoryId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileCategoryResource.class", logMessage);
+        globalGeneralLogging.controllerLogging(userDetails, request, FileCategoryResource.class,
+                "delete file category id=" + fileCategoryId);
 
-        try {
-            fileCategoryService.deleteFileCategory(fileCategoryId, principalId);
-        } catch (DependencyResourceException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "FileCategoryResource.class",
-                    "DependencyResourceException" + e.getMessage());
-            return new ResponseEntity<>("can not delete, first delete all related sub category," + fileCategoryId, HttpStatus.BAD_REQUEST);
-        } catch (ResourceNotFoundException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "FileCategoryResource.class",
-                    "ResourceNotFoundException" + e.getMessage());
-            return new ResponseEntity<>("file category not exists=" + fileCategoryId, HttpStatus.BAD_REQUEST);
-        }
+        fileCategoryService.deleteFileCategory(fileCategoryId, userDetails.getId());
 
-
-        return new ResponseEntity<>("file sub category deleted", HttpStatus.OK);
-
+        return ApiResult.deleted("fileCategory", fileCategoryId);
     }
 }

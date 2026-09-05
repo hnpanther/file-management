@@ -25,6 +25,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * The sub-category pages: create, edit, and the paged list.
+ *
+ * <p>The create form's sub-category field depends on the chosen category, and the dependent
+ * dropdown is filled by {@code FileCategoryResource} rather than rendered server-side.
+ */
 @Controller
 @RequestMapping("file-sub-categories")
 public class FileSubCategoryController {
@@ -61,7 +67,7 @@ public class FileSubCategoryController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileSubCategoryController.class", logMessage);
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
 
 
         FileSubCategoryDTO fileSubCategoryDTO = new FileSubCategoryDTO();
@@ -121,7 +127,7 @@ public class FileSubCategoryController {
         }
 
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
         model.addAttribute("fileSubCategory", fileSubCategoryDTO);
         model.addAttribute("listCategory", allFileCategories);
         model.addAttribute("pageType", "create");
@@ -144,10 +150,10 @@ public class FileSubCategoryController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileSubCategoryController.class", logMessage);
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
 
 
-        FileSubCategoryDTO fileSubCategoryDTO = fileSubCategoryService.getFileSubCategoryDtoByIdOrSubCategoryName(id, null);
+        FileSubCategoryDTO fileSubCategoryDTO = fileSubCategoryService.getFileSubCategoryDtoById(id);
         model.addAttribute("fileSubCategory", fileSubCategoryDTO);
         model.addAttribute("listCategory", allFileCategories);
         model.addAttribute("pageType", "update");
@@ -201,7 +207,7 @@ public class FileSubCategoryController {
         }
 
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
         model.addAttribute("fileSubCategory", fileSubCategoryDTO);
         model.addAttribute("listCategory", allFileCategories);
         model.addAttribute("pageType", "create");

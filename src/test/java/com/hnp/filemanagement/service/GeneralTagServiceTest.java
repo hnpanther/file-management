@@ -1,226 +1,171 @@
 package com.hnp.filemanagement.service;
 
-import com.hnp.filemanagement.support.MySqlSupport;
-
 import com.hnp.filemanagement.dto.ActionHistoryDTO;
 import com.hnp.filemanagement.dto.GeneralTagDTO;
-import com.hnp.filemanagement.entity.*;
+import com.hnp.filemanagement.dto.GeneralTagPageDTO;
+import com.hnp.filemanagement.entity.EntityEnum;
+import com.hnp.filemanagement.entity.FileCategory;
+import com.hnp.filemanagement.entity.GeneralTag;
+import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
-import com.hnp.filemanagement.repository.ActionHistoryRepository;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.GeneralTagRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import jakarta.persistence.EntityManager;
-import org.junit.jupiter.api.AfterEach;
+import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.ServiceIntegrationTest;
+import com.hnp.filemanagement.support.TestData;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.test.annotation.Commit;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+/**
+ * {@link GeneralTagService} against a real database, through the real Spring bean — so the
+ * transaction boundaries on the service are actually in play.
+ */
+@ServiceIntegrationTest
 class GeneralTagServiceTest extends MySqlSupport {
 
-    Logger logger = LoggerFactory.getLogger(FileCategoryServiceTest.class);
-
-
     @Autowired
-    private ActionHistoryRepository actionHistoryRepository;
-
+    private GeneralTagService underTest;
     @Autowired
-    private EntityManager entityManager;
-
+    private ActionHistoryService actionHistoryService;
     @Autowired
     private GeneralTagRepository generalTagRepository;
-
     @Autowired
     private FileCategoryRepository fileCategoryRepository;
-
     @Autowired
     private UserRepository userRepository;
 
-    private ActionHistoryService actionHistoryService;
-
-    private GeneralTagService underTest;
-
-    private int userId = 0;
-
-    int fileCategoryId1 = 0;
-    int genertalTagId1 = 0;
-    int generalTagId2 = 0;
+    private int principalId;
+    private int taggedId;
+    private int untaggedId;
 
     @BeforeEach
     void setUp() {
+        User creator = userRepository.save(TestData.user());
+        principalId = creator.getId();
 
-        actionHistoryService = new ActionHistoryService(entityManager, actionHistoryRepository);
-        underTest = new GeneralTagService(entityManager, generalTagRepository, actionHistoryService);
+        GeneralTag tagged = generalTagRepository.save(TestData.generalTag(creator, "IT" + TestData.nextSequence()));
+        taggedId = tagged.getId();
 
-        User user = new User();
-        user.setUsername("admin");
-        user.setPhoneNumber("09999999999");
-        user.setNationalCode("1111111111");
-        user.setPersonelCode(1111);
-        user.setFirstName("admin");
-        user.setLastName("admin");
-        user.setCreatedAt(LocalDateTime.now());
-        user.setEnabled(1);
-        user.setState(0);
-        user.setPassword("pass");
+        GeneralTag untagged = generalTagRepository.save(
+                TestData.generalTag(creator, "Contract" + TestData.nextSequence()));
+        untaggedId = untagged.getId();
 
-        userRepository.save(user);
-        userId = user.getId();
-
-
-        GeneralTag generalTag1 = new GeneralTag();
-        generalTag1.setTagName("IT");
-        generalTag1.setTagNameDescription("Information Technology");
-        generalTag1.setType(0);
-        generalTag1.setEnabled(1);
-        generalTag1.setState(0);
-        generalTag1.setCreatedAt(LocalDateTime.now());
-        generalTag1.setCreatedBy(user);
-        generalTagRepository.save(generalTag1);
-        genertalTagId1 = generalTag1.getId();
-
-        actionHistoryService.saveActionHistory(EntityEnum.GeneralTag, genertalTagId1, ActionEnum.CREATE, userId,
-                "CREATE NEW GENERAL_TAG", "CREATE NEW GENERAL_TAG");
-
-        GeneralTag generalTag2 = new GeneralTag();
-        generalTag2.setTagName("Contract");
-        generalTag2.setTagNameDescription("Contract");
-        generalTag2.setType(0);
-        generalTag2.setEnabled(1);
-        generalTag2.setState(0);
-        generalTag2.setCreatedAt(LocalDateTime.now());
-        generalTag2.setCreatedBy(user);
-        generalTagRepository.save(generalTag2);
-        generalTagId2 = generalTag2.getId();
-
-        actionHistoryService.saveActionHistory(EntityEnum.GeneralTag, generalTagId2, ActionEnum.CREATE, userId,
-                "CREATE NEW GENERAL_TAG", "CREATE NEW GENERAL_TAG");
-
-
-        FileCategory fileCategory = new FileCategory();
-        fileCategory.setCategoryName("documents");
-        fileCategory.setDescription("documents description");
-        fileCategory.setCategoryNameDescription("description name");
-        fileCategory.setCreatedAt(LocalDateTime.now());
-        fileCategory.setCreatedBy(user);
-        fileCategory.setEnabled(1);
-        fileCategory.setState(0);
-        fileCategory.setPath("baseDir" + fileCategory.getCategoryName());
-        fileCategory.setRelativePath(fileCategory.getCategoryName());
-        fileCategory.setGeneralTag(generalTag1);
-
-        fileCategoryRepository.save(fileCategory);
-
-        fileCategoryId1 = fileCategory.getId();
-
-
-    }
-
-    @AfterEach
-    void tearDown() {
-
-        actionHistoryRepository.deleteAll();
-        fileCategoryRepository.deleteAll();
-        generalTagRepository.deleteAll();
-        userRepository.deleteAll();
+        FileCategory category = TestData.category(creator, tagged, "documents" + TestData.nextSequence());
+        fileCategoryRepository.save(category);
     }
 
     @Test
-    @Commit
-    void getGeneralTagDTOByIdOrTagNameTest() {
-        GeneralTag generalTagByIdOrTagName = underTest.getGeneralTagByIdOrTagName(genertalTagId1, null);
-        assertThat(generalTagByIdOrTagName.getTagName()).isEqualTo("IT");
+    @DisplayName("a tag is found by id")
+    void findsATagById() {
+        GeneralTagDTO tag = underTest.getGeneralTagDtoById(taggedId);
+        assertThat(tag.getId()).isEqualTo(taggedId);
+        assertThat(tag.getTagName()).startsWith("IT");
     }
 
     @Test
-    @Commit
-    void getInvalidGeneralTagDTOByIdOrTagNameTest() {
-        assertThatThrownBy(
-                () -> underTest.getGeneralTagByIdOrTagName(0, null)
-        ).isInstanceOf(ResourceNotFoundException.class);
+    @DisplayName("an id that does not exist is a 404, not an empty result")
+    void missingTagIsNotFound() {
+        assertThatThrownBy(() -> underTest.getGeneralTagDtoById(0))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
-    @Commit
-    void createNewGeneralTagTest() {
-        GeneralTagDTO generalTagDTO = new GeneralTagDTO();
-        generalTagDTO.setTagName("HR");
-        generalTagDTO.setTagNameDescription("HR Desc");
-        underTest.createNewGeneralTag(generalTagDTO, userId);
+    @DisplayName("creating a tag writes the row and one history line")
+    void createsATag() {
+        GeneralTagDTO request = new GeneralTagDTO();
+        request.setTagName("HR" + TestData.nextSequence());
+        request.setTagNameDescription("HR Desc");
 
+        underTest.createNewGeneralTag(request, principalId);
 
-        GeneralTagDTO generalTagDTO1 = underTest.getGeneralTagDTOByIdOrTagName(0, "HR");
-        assertThat(generalTagDTO1.getTagNameDescription()).isEqualTo("HR Desc");
+        GeneralTagDTO created = underTest.getGeneralTagDtoByTagName(request.getTagName());
+        assertThat(created.getTagNameDescription()).isEqualTo("HR Desc");
 
-        List<ActionHistoryDTO> actionHistoriesOfEntity = actionHistoryService.getActionHistoriesOfEntity(generalTagDTO1.getId(), EntityEnum.GeneralTag);
-        assertThat(actionHistoriesOfEntity.size()).isEqualTo(1);
-
-    }
-
-
-    @Test
-    @Commit
-    void createDuplicateNewGeneralTagTest() {
-        GeneralTagDTO generalTagDTO = new GeneralTagDTO();
-        generalTagDTO.setTagName("IT");
-        generalTagDTO.setTagNameDescription("HR Desc");
-
-        assertThatThrownBy(
-                () -> underTest.createNewGeneralTag(generalTagDTO, userId)
-        ).isInstanceOf(DuplicateResourceException.class);
-
-
+        List<ActionHistoryDTO> history =
+                actionHistoryService.getActionHistoriesOfEntity(created.getId(), EntityEnum.GeneralTag);
+        assertThat(history).hasSize(1);
     }
 
     @Test
-    void updateDescriptionTest() {
+    @DisplayName("a duplicate tag name is a 409")
+    void rejectsADuplicateName() {
+        GeneralTagDTO request = new GeneralTagDTO();
+        request.setTagName(generalTagRepository.findById(taggedId).orElseThrow().getTagName());
+        request.setTagNameDescription("whatever");
 
-
-        GeneralTagDTO generalTagDTO = underTest.getGeneralTagDTOByIdOrTagName(genertalTagId1, null);
-        String oldDesc = generalTagDTO.getDescription();
-        generalTagDTO.setDescription("Hello");
-        underTest.updateDescription(generalTagDTO.getId(), "Hello", "", userId);
-
-        GeneralTagDTO updatedGeneralTagDto = underTest.getGeneralTagDTOByIdOrTagName(genertalTagId1, null);
-        assertThat(updatedGeneralTagDto.getTagNameDescription()).isEqualTo("Hello");
-        assertThat(updatedGeneralTagDto.getDescription()).isEqualTo(oldDesc);
-
-    }
-
-
-    @Test
-    void deleteGeneralTagTest() {
-        underTest.deleteGeneralTag(generalTagId2, userId);
-
-        List<ActionHistoryDTO> actionHistoriesOfEntity = actionHistoryService.getActionHistoriesOfEntity(generalTagId2, EntityEnum.GeneralTag);
-        assertThat(actionHistoriesOfEntity.size()).isEqualTo(2);
-
-        assertThatThrownBy(
-                () -> underTest.getGeneralTagByIdOrTagName(generalTagId2, null)
-        ).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> underTest.createNewGeneralTag(request, principalId))
+                .isInstanceOf(DuplicateResourceException.class);
     }
 
     @Test
-    void deleteUndeletableGeneralTagTest() {
+    @DisplayName("update writes both fields and records the change")
+    void updatesDescriptions() {
+        underTest.updateDescription(taggedId, "new name description", "new description", principalId);
 
-        assertThatThrownBy(
-                () -> underTest.deleteGeneralTag(genertalTagId1, userId)
-        ).isInstanceOf(DependencyResourceException.class);
+        GeneralTagDTO updated = underTest.getGeneralTagDtoById(taggedId);
+        assertThat(updated.getTagNameDescription()).isEqualTo("new name description");
+        assertThat(updated.getDescription()).isEqualTo("new description");
+        assertThat(actionHistoryService.getActionHistoriesOfEntity(taggedId, EntityEnum.GeneralTag))
+                .isNotEmpty();
     }
 
+    @Test
+    @DisplayName("an omitted field is left alone rather than blanked")
+    void leavesOmittedFieldsAlone() {
+        String before = underTest.getGeneralTagDtoById(taggedId).getDescription();
+
+        underTest.updateDescription(taggedId, "only the name changed", null, principalId);
+
+        GeneralTagDTO updated = underTest.getGeneralTagDtoById(taggedId);
+        assertThat(updated.getTagNameDescription()).isEqualTo("only the name changed");
+        assertThat(updated.getDescription()).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("a tag no category uses can be deleted")
+    void deletesAnUnusedTag() {
+        underTest.deleteGeneralTag(untaggedId, principalId);
+
+        assertThat(generalTagRepository.findById(untaggedId)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a tag a category still uses is a 409, and survives")
+    void refusesToDeleteATagInUse() {
+        assertThatThrownBy(() -> underTest.deleteGeneralTag(taggedId, principalId))
+                .isInstanceOf(DependencyResourceException.class);
+
+        assertThat(generalTagRepository.findById(taggedId)).isPresent();
+    }
+
+    @Test
+    @DisplayName("deleting a tag that does not exist is a 404, not a silent success")
+    void refusesToDeleteAMissingTag() {
+        assertThatThrownBy(() -> underTest.deleteGeneralTag(0, principalId))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("the page is filtered by the search term, and a blank term matches everything")
+    void pagesAndFilters() {
+        String name = generalTagRepository.findById(taggedId).orElseThrow().getTagName();
+
+        GeneralTagPageDTO filtered = underTest.getGeneralTagPage(10, 0, name);
+        assertThat(filtered.getGeneralTagDTOList())
+                .extracting(GeneralTagDTO::getTagName)
+                .containsExactly(name);
+
+        GeneralTagPageDTO blank = underTest.getGeneralTagPage(10, 0, "   ");
+        assertThat(blank.getGeneralTagDTOList().size()).isGreaterThanOrEqualTo(2);
+    }
 }

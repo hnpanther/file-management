@@ -49,11 +49,10 @@ class FileStorageFileSystemServiceTest extends StorageRootSupport {
 
         underTest = new FileStorageFileSystemService(baseDir);
 
-        // create base directory
-        String directoryPath = baseDir;
-        Path path = Paths.get(directoryPath);
-        logger.info("creating: " + path);
-        Files.createDirectory(path);
+        // The storage root already exists - StorageRootSupport clears and recreates it before every
+        // test, because the code under test creates directories one level at a time and cannot make
+        // a child whose parent is missing.
+        String directoryPath;
 
         // create sub directory
         directoryPath = baseDir + "hello";
