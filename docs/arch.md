@@ -76,6 +76,58 @@ GeneralTag ──1:N──> FileCategory ──1:N──> FileSubCategory ──
 row, so the physical location is recorded in three places: the two path columns and the directory
 structure itself.
 
+### How the entities are mapped
+
+Four rules hold across every entity, and each replaced something that was actively wrong.
+
+**Identity lives in `AbstractEntity`.** Every entity extends it, and it owns the `id` plus `equals`,
+`hashCode` and `toString` — all three `final`. Previously every entity was annotated `@Data`, which
+generated them over *all* fields including the associations:
+
+* `toString()` recursed across `FileInfo` ↔ `FileDetails` until the stack overflowed, so any log
+  line or exception message that touched an entity crashed the request;
+* `equals`/`hashCode` initialised lazy collections just to answer a comparison;
+* `hashCode` included the generated id, which is null before the insert, so an entity put into a
+  `HashSet` before flush could not be found afterwards.
+
+The replacements compare ids (via `Hibernate.getClass`, so a lazy proxy equals its entity), hash on
+the type, and print `Type#id`. `EntityIdentityTest` pins all three down.
+
+**Audit columns live in `AuditableEntity`.** The six domain tables share `created_at`, `updated_at`,
+`created_by`, `updated_by`. The timestamps are written by Hibernate's `@CreationTimestamp` /
+`@UpdateTimestamp`; they used to be set by hand in every service, and an update that forgot the
+second line kept a stale timestamp.
+
+**Every association is `LAZY`.** Loading one `FileInfo` used to load its two users, its
+sub-category, that category, that category's tag, its main tag, *that* tag's sub-category — a join
+across the whole schema for a row on a list page. What a query needs it now fetches explicitly;
+see §"Fetch plans" below.
+
+**Many-to-many collections are `Set`, not `List`.** A `List`-mapped many-to-many is a Hibernate
+*bag*: changing one member deletes every join row for the owner and re-inserts the survivors. It is
+also what makes the login query legal — two `List` collections in one `JOIN FETCH` is
+`MultipleBagFetchException`.
+
+### Fetch plans
+
+With lazy associations, a query states what it needs. Two shapes appear in the repositories:
+
+* fetching `@ManyToOne` chains is free to paginate — one row per entity either way — so
+  `FileInfoRepository.search` returns a `Page` with the whole taxonomy attached;
+* fetching a collection cannot be paginated in SQL, so those queries return a single row
+  (`findByIdAndFetchFileDetails`) and use `DISTINCT`.
+
+`spring.jpa.open-in-view` is **off**. With it on, a lazy association touched during template
+rendering silently issues a query from the view layer, which is an N+1 invisible in the service
+code. With it off, anything a page needs must be fetched inside a `@Transactional` service method —
+which is why no service returns an entity.
+
+**Children are read by query, not through the parent's collection.** `getFileSubCategoryOfCategory`,
+`getMainTagsOfSubCategory`, `getFileCategoryOfGeneralTag` and all three delete checks query the
+child table directly. Reading `parent.getChildren()` answers from the persistence context, which
+can hand back a collection initialised earlier in the same transaction when it was empty — a
+category that had just gained a sub-category looked empty, and the delete check passed.
+
 ### Versions vs. formats
 
 `FileService.createNewFileDetails` branches on `FileUploadDTO.type`:
@@ -140,8 +192,53 @@ There are three parallel HTTP surfaces over the same services:
 | Package | Base path | Returns | Auth | Purpose |
 |---|---|---|---|---|
 | `controller/` | `/files`, `/file-categories`, `/file-sub-categories`, `/main-tags`, `/general-tags`, `/users`, `/roles`, `/` | Thymeleaf view names | form login, session | the UI |
-| `resource/` | `/resource/**` | JSON / plain text | form login, session, CSRF | AJAX called by the pages themselves |
+| `resource/` | `/resource/**` | JSON (`ApiResult` or a DTO) | form login, session, CSRF | AJAX called by the pages themselves |
 | `api/` | `/api/v1/files` | JSON | HTTP Basic, stateless | external integrations |
+
+### The REST contract
+
+Both JSON surfaces answer the same way. This was not true until the cleanup pass: each endpoint
+caught its own exceptions and invented its own wording, so the same failure came back as 400 from
+one path and 404 from another.
+
+**Success** is `ApiResult` for a mutation and a DTO for a lookup:
+
+```json
+{"outcome": "DELETED", "resource": "fileDetails", "id": 41}
+```
+
+`outcome` is one of `CREATED`, `UPDATED`, `DELETED`, `STATE_CHANGED`. The status code carries the
+meaning; the body carries the identity of what changed. Success is always 200 — the pages branch
+only on `xhr.status === 200` and never read the body.
+
+**Failure** is an RFC 9457 problem document, `application/problem+json`:
+
+```json
+{
+  "type": "https://github.com/hnpanther/file-management/blob/main/docs/issues.md#resourcenotfoundexception",
+  "title": "ResourceNotFoundException",
+  "status": 404,
+  "detail": "file info with id=999999 not exists",
+  "path": "/resource/files/file-info/999999"
+}
+```
+
+The status comes from the `@ResponseStatus` on the exception class, so the exception is the single
+source of truth:
+
+| Exception | Status | Means |
+|---|---|---|
+| `ResourceNotFoundException` | 404 | the id does not exist |
+| `DuplicateResourceException` | 409 | something with that name already exists |
+| `DependencyResourceException` | 409 | still referenced — a category with sub-categories, a tag with files |
+| `InvalidDataException` | 400 | a value outside the allowed set, or a missing required field |
+| `BusinessException` | 417 | a rule the caller could not have known from the request alone |
+| — (`AccessDenied`) | 403 | `@PreAuthorize` refused |
+| — (`InvalidRequestBody`) | 400 | the body is not readable JSON |
+| — (`Unexpected`) | 500 | anything else; the message is generic and translated |
+
+A request that accepts `text/html` gets `error.html` at the same status instead of the problem
+document, so a browser navigation still lands on a page.
 
 ### Endpoint inventory
 
@@ -177,6 +274,7 @@ There are three parallel HTTP surfaces over the same services:
 | DELETE, PUT | `/resource/files/file-info/{id}`, `.../change-state` |
 | DELETE, PUT | `/resource/files/file-info/{id}/file-details/{fdId}`, `.../change-state/{newState}` |
 | PUT | `/resource/users/{userId}/change-enabled`, `.../change-login-type/{type}` |
+| GET | `/resource/files/tree/children?type=&id=` |
 
 </details>
 
@@ -248,15 +346,18 @@ aspect, so coverage depends on the author remembering.
 `logback-spring.xml` writes to `D:/files/logs`, rolling daily / 10 MB, keeping 10 files.
 `com.hnp.filemanagement` is at `debug`, root at `info`.
 
-**Exception handling** — two `@ControllerAdvice` beans:
+**Exception handling** — one `@ControllerAdvice`, `GlobalExceptionHandler`. It picks its shape from
+the request: `Accept: text/html` gets `error.html` at the right status, anything else gets an
+RFC 9457 `ProblemDetail`. The status is read off the `@ResponseStatus` annotation on the exception
+class rather than hard-coded in the advice, so adding an exception type does not mean editing the
+advice.
 
-* `GlobalApiExceptionHandler` (`assignableTypes = FileApi.class`) → `ResponseEntity` with the raw
-  exception message as the body.
-* `GlobalExceptionHandler` (global) → `ModelAndView("error.html")`.
+There used to be a second advice scoped to `FileApi` which disagreed with this one — an
+authorization failure was 403 through one path and 400 through the other — and the page controllers
+each caught their own exceptions and flattened them. Both are gone; see §6, "The REST contract".
 
-Custom exceptions also carry `@ResponseStatus` (`BusinessException` → 417, `DuplicateResourceException`
-and `DependencyResourceException` → 409, `InvalidDataException` → 400, `ResourceNotFoundException` → 404),
-which the advices then override.
+The page controllers still catch, and should: they re-render the submitted form with a message
+beside it, which a status code cannot do.
 
 **Mapping** — `ModelConverterUtil` holds ~300 lines of static entity→DTO methods.
 
@@ -291,6 +392,21 @@ Flyway migrations in `src/main/resources/db/migration`:
 | `V1.0__Initial_Setup.sql` | `user`, `role`, `user_role`, `permission`, `permission_role`, `general_tag`, `file_category`, `file_sub_category`, `main_tag_file`, `file_info`, `file_details` |
 | `V1.1__Add_LoginType_To_User.sql` | `user.login_type INT NOT NULL DEFAULT 0 AFTER updated_at` |
 | `V1.2__Add_Action_History_Table.sql` | `action_history` |
+| `V1.3__Add_Uniqueness_And_Indexes.sql` | the composite unique constraints the services check in Java, and indexes on the filtered columns |
+
+`V1.3` turns four rules that lived only in application code into constraints: a sub-category name is
+unique per category, a main-tag name per sub-category, a file name per sub-category, and a
+(version, format) pair per file. Each of those checks was a `SELECT` followed by an `INSERT`, which
+two concurrent requests can both pass — and for a category or a sub-category that also means two
+rows claiming one directory on disk. The in-code checks stay, because they are what turns a
+violation into a readable 409 instead of a 500.
+
+It also declares the indexes the application depends on. MySQL creates one per foreign key,
+PostgreSQL does not, and Phase 3 migrates to PostgreSQL.
+
+If an existing database already holds rows that violate one of these rules the migration fails and
+Flyway stops with nothing half-applied; find them with the matching
+`SELECT ... GROUP BY ... HAVING COUNT(*) > 1` and resolve them first.
 
 All of it is MySQL-specific: `ENGINE = InnoDB`, `DEFAULT CHARSET = utf8mb4 COLLATE utf8mb4_unicode_ci`,
 `AUTO_INCREMENT`, `DATETIME`, `#` line comments, `ADD COLUMN ... AFTER`.
@@ -321,19 +437,57 @@ Note the two different prefixes (`file.management.*` and `filemanagement.*`) and
 
 ## 12. Tests
 
-`src/test/java/.../service/` holds eight service tests. They are **integration** tests:
-`@ExtendWith(SpringExtension.class)`, `@TestPropertySource("classpath:application.properties")`,
-`@AutoConfigureTestDatabase(replace = NONE)` — i.e. they need a live MySQL at
-`localhost:3306/file_management_test` and a writable `D:/files/test/`.
+`./mvnw test` runs 237 tests and needs only a working Docker daemon: `MySqlSupport` starts one
+MySQL 8.0.36 container per JVM, and `StorageRootSupport` gives each test a clean storage root.
 
-`FileManagementApplicationTests` — both `@SpringBootTest` and `@Test` are commented out, so
-nothing verifies that the application context starts.
+Four kinds, and the kind is the point — each answers something the others cannot.
+
+| Kind | How | What only it can answer |
+|---|---|---|
+| **Unit** | plain JUnit, or Mockito with every collaborator mocked | that a guard clause rejects before anything is written: `FileServiceUnitTest` asserts the storage service is never touched on a rejected upload. `EntityIdentityTest` and `ValidationUtilTest` need neither Spring nor Docker |
+| **Repository** | `@DataJpaTest` + real MySQL | that a fetch plan actually resolved (`Hibernate.isInitialized`), that a bulk update reached the database, that a cascade removed what it should, and that the schema enforces its constraints |
+| **Service** | `@ServiceIntegrationTest` — `@SpringBootTest` + `@Transactional` | that the whole path works through the real Spring beans, so the transaction annotations are live |
+| **Web** | `@SpringBootTest` + MockMvc | status codes, response shapes, redirects and authorization, through the real security chain |
+
+Two things about the service tests are deliberate corrections of how they used to work.
+
+**The beans are Spring's, not `new`.** They used to be constructed by hand —
+`new GeneralTagService(entityManager, repository, actionHistoryService)` — which produces an object
+with no proxy, so every `@Transactional` on the class under test was inert. Those tests could not
+have caught a missing transaction boundary, which is precisely the class of bug that turned out to
+be there.
+
+**Each test rolls back.** `@Transactional` on the test class replaces `@Commit` on every method plus
+a hand-written sequence of `deleteAll()` calls in `@AfterEach` — in foreign-key order, so adding a
+table meant editing six teardowns, and a test that failed part-way left rows that broke the next
+class to run. Where a test is about a constraint that only fires at flush time, it flushes
+explicitly.
+
+Fixtures come from `support/TestData`, which sets every `NOT NULL` column to something valid and
+generates the unique ones, so a test overrides only what it is actually about.
+
+| Class | Covers |
+|---|---|
+| `entity/EntityIdentityTest` | `equals` / `hashCode` / `toString`, and both sides of the `FileInfo` ↔ `FileDetails` link |
+| `validation/ValidationUtilTest` | the naming rules, including path traversal |
+| `repository/FileInfoRepositoryTest` | fetch plans, the `lastVersion` recompute, orphan removal, the `V1.3` constraints |
+| `repository/UserRepositoryTest` | the login fetch, permission de-duplication, the search page |
+| `service/FileServiceUnitTest` | the upload guard clauses, and that a rejected request writes nothing |
+| `service/*ServiceTest` (7 classes) | each service end to end against a real database |
+| `web/RestContractTest` | the REST contract of §6 |
+| `web/AuthenticationRedirectTest` | where an anonymous, a signed-in and an unauthorized visitor land |
+| `web/FileTreeTest` | the tree page and its children endpoint |
+| `UiResourceTest` | every asset the templates reference exists locally — no CDN, no network at runtime |
+| `MessageBundleTest` | every `#{...}` key is backed, and no Persian is hardcoded in a template |
+| `DependencyPinTest` | the pinned versions that clear known advisories stay pinned |
+| `FileManagementApplicationTests` | the context starts |
 
 ## 13. Known structural weaknesses
 
 Catalogued in full in [issues.md](issues.md). The ones that shape the architecture:
 
-1. Three HTTP layers, three error shapes, one service layer — no shared contract.
+1. Three HTTP layers over one service layer. The two JSON layers now share one contract (§6); the
+   Thymeleaf layer deliberately does not, because it re-renders forms rather than returning statuses.
 2. `FileStorageService`'s signature is filesystem-shaped, blocking S3.
 3. Storage and database mutations are not atomic in either direction.
 4. `@Table(name = "user")` — a reserved word in PostgreSQL.

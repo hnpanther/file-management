@@ -9,6 +9,10 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
+/**
+ * The application root. Signed in or not, {@code /} lands on the public file list, which is the
+ * only page that renders without a permission.
+ */
 @Controller
 public class HomeController {
 

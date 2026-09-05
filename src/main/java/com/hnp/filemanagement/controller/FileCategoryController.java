@@ -22,9 +22,14 @@ import org.springframework.validation.BindingResult;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
 import java.util.List;
 
+/**
+ * The category pages: create, edit, and the paged list.
+ *
+ * <p>Categories are the first real directory level under the storage root, so the create form is
+ * also the only place a top-level directory comes into existence.
+ */
 @Controller
 @RequestMapping("/file-categories")
 public class FileCategoryController {
@@ -140,7 +145,7 @@ public class FileCategoryController {
         boolean valid = false;
         String message = "";
 
-        FileCategoryDTO fileCategoryDTO = fileCategoryService.getFileCategoryDtoByIdOrCategoryName(categoryId, null);
+        FileCategoryDTO fileCategoryDTO = fileCategoryService.getFileCategoryDtoById(categoryId);
         List<GeneralTagDTO> generalTagDTOList = generalTagService.getGeneralTagPage(defaultElementSize, 0, null).getGeneralTagDTOList();
 
         model.addAttribute("fileCategory", fileCategoryDTO);

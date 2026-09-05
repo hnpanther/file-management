@@ -19,6 +19,25 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
 
+/**
+ * The disk implementation of {@link FileStorageService}, and today the only one.
+ *
+ * <p>Layout under {@code base-dir} is category/sub-category/file-name/, with each revision stored
+ * as {@code <name>-v<version>.<extension>}, so a version is a file name rather than a directory.
+ *
+ * <p>Two properties of this class are worth knowing before changing it:
+ *
+ * <ul>
+ *   <li>{@code base-dir} is concatenated, not resolved, so the configured value must end with a
+ *       separator;</li>
+ *   <li>there is no path-containment check, so a name containing {@code ..} would escape the root.
+ *       {@code checkCorrectFileName} and {@code checkCorrectDirectoryName} are what stand between
+ *       the caller and that, which is why they reject rather than sanitise.</li>
+ * </ul>
+ *
+ * <p>Both are catalogued in {@code docs/issues.md} and fixed in Phase 2 along with the storage
+ * port.
+ */
 @Service("fileSystem")
 @Primary
 public class FileStorageFileSystemService implements FileStorageService {

@@ -39,12 +39,8 @@ public class FileTreeResource {
                                                          @RequestParam("id") int id,
                                                          HttpServletRequest request) {
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request tree children of type=" + type + ", id=" + id;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileTreeResource.class", logMessage);
+        globalGeneralLogging.controllerLogging(userDetails, request, FileTreeResource.class,
+                "list tree children of type=" + type + ", id=" + id);
 
         return ResponseEntity.ok(fileTreeService.getChildren(type, id));
     }

@@ -1,719 +1,492 @@
 package com.hnp.filemanagement.service;
 
-import com.hnp.filemanagement.support.MySqlSupport;
-
 import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
+import com.hnp.filemanagement.dto.FileInfoPageDTO;
 import com.hnp.filemanagement.dto.FileUploadDTO;
-import com.hnp.filemanagement.entity.*;
+import com.hnp.filemanagement.entity.FileCategory;
+import com.hnp.filemanagement.entity.FileDetails;
+import com.hnp.filemanagement.entity.FileInfo;
+import com.hnp.filemanagement.entity.FileSubCategory;
+import com.hnp.filemanagement.entity.GeneralTag;
+import com.hnp.filemanagement.entity.MainTagFile;
+import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
-import com.hnp.filemanagement.repository.*;
+import com.hnp.filemanagement.repository.FileCategoryRepository;
+import com.hnp.filemanagement.repository.FileDetailsRepository;
+import com.hnp.filemanagement.repository.FileInfoRepository;
+import com.hnp.filemanagement.repository.FileSubCategoryRepository;
+import com.hnp.filemanagement.repository.GeneralTagRepository;
+import com.hnp.filemanagement.repository.MainTagFileRepository;
+import com.hnp.filemanagement.repository.UserRepository;
+import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.ServiceIntegrationTest;
+import com.hnp.filemanagement.support.TestData;
 import jakarta.persistence.EntityManager;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.annotation.Commit;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.util.Comparator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+/**
+ * {@link FileService} against a real database and a real storage root — the whole upload, version
+ * and delete pipeline.
+ *
+ * <p>Three of these tests exist because of defects the review found, and they are the ones to keep
+ * an eye on when this class changes:
+ *
+ * <ul>
+ *   <li>{@link #recomputesLastVersionAfterDeletingTheNewestVersion()} — deleting the newest version
+ *       used to leave {@code lastVersion} pointing at a version that no longer existed, which made
+ *       that version number permanently unusable;</li>
+ *   <li>{@link #storesANewVersionWithoutDuplicatingIt()} — saving a managed parent to persist a new
+ *       child is a merge, and merges copy;</li>
+ *   <li>{@link #rejectsAnUnknownUploadType()} — an unrecognised type used to store nothing and
+ *       report success.</li>
+ * </ul>
+ */
+@ServiceIntegrationTest
 class FileServiceTest extends MySqlSupport {
 
-    Logger logger = LoggerFactory.getLogger(FileSubCategoryServiceTest.class);
-
     @Autowired
-    private ActionHistoryRepository actionHistoryRepository;
-    @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private UserRepository userRepository;
-    @Autowired
-    private EntityManager entityManager;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
+    private FileService underTest;
     @Autowired
     private FileInfoRepository fileInfoRepository;
     @Autowired
     private FileDetailsRepository fileDetailsRepository;
     @Autowired
+    private MainTagFileRepository mainTagFileRepository;
+    @Autowired
+    private FileSubCategoryRepository fileSubCategoryRepository;
+    @Autowired
+    private FileCategoryRepository fileCategoryRepository;
+    @Autowired
     private GeneralTagRepository generalTagRepository;
     @Autowired
-    private JdbcClient jdbcClient;
-
-    private MainTagFileDAO mainTagFileDAO;
-
-    private GeneralTagService generalTagService;
+    private UserRepository userRepository;
+    @Autowired
+    private EntityManager entityManager;
 
     @Value("${file.management.base-dir}")
     private String baseDir;
 
-    private FileStorageService fileStorageService;
-
-    private FileCategoryService fileCategoryService;
-
-    private FileSubCategoryService fileSubCategoryService;
-
-    private MainTagFileService mainTagFileService;
-
-    private ActionHistoryService actionHistoryService;
-
-    @Autowired
-    private ResourceLoader resourceLoader;
-
-    private FileService underTest;
-
-    private int userId = 1;
-    private int fileCategoryDocumentId = 0;
-    private int fileCategoryMailId = 0;
-    private int fileSubCategorySubMailId = 0;
-    private int fileSubCategorySubMailId2 = 0;
-    private int mainTagFileContractId = 0;
-    private int mainTagFilePreviewId = 0;
-
-    private int fileInfoId = 0;
-    private int generalTagId1 = 0;
-
-    private int fileDetailsId = 0;
+    private User creator;
+    private int principalId;
+    private int categoryId;
+    private int subCategoryId;
+    private int mainTagId;
+    private String categoryName;
+    private String subCategoryName;
 
     @BeforeEach
-    void setUp() throws IOException {
+    void setUp() throws Exception {
+        creator = userRepository.save(TestData.user());
+        principalId = creator.getId();
 
-        actionHistoryService = new ActionHistoryService(entityManager, actionHistoryRepository);
-        fileStorageService = new FileStorageFileSystemService(baseDir);
-        generalTagService = new GeneralTagService(entityManager, generalTagRepository, actionHistoryService);
-        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService, actionHistoryService);
-        fileSubCategoryService = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, actionHistoryService, baseDir);
-        mainTagFileService = new MainTagFileService(baseDir, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileRepository, mainTagFileDAO, actionHistoryService);
-        mainTagFileDAO = new MainTagFileDAO(entityManager, jdbcClient);
-        underTest = new FileService(baseDir, fileStorageService, entityManager, fileCategoryService, fileSubCategoryService, mainTagFileService,
-                fileInfoRepository, fileDetailsRepository, actionHistoryService);
+        GeneralTag generalTag = generalTagRepository.save(
+                TestData.generalTag(creator, "tag" + TestData.nextSequence()));
 
-        // create base directory
-        String directoryPath = baseDir;
-        Path path = Paths.get(directoryPath);
-        logger.info("creating: " + path);
-        Files.createDirectory(path);
+        FileCategory category = fileCategoryRepository.save(
+                TestData.category(creator, generalTag, "documents" + TestData.nextSequence()));
+        categoryId = category.getId();
+        categoryName = category.getCategoryName();
 
-        User user = new User();
-        user.setUsername("admin");
-        user.setPhoneNumber("09999999999");
-        user.setNationalCode("1111111111");
-        user.setPersonelCode(1111);
-        user.setFirstName("admin");
-        user.setLastName("admin");
-        user.setCreatedAt(LocalDateTime.now());
-        user.setEnabled(1);
-        user.setState(0);
-        user.setPassword("pass");
+        FileSubCategory subCategory = fileSubCategoryRepository.save(
+                TestData.subCategory(creator, category, "invoices" + TestData.nextSequence()));
+        subCategoryId = subCategory.getId();
+        subCategoryName = subCategory.getSubCategoryName();
 
-        userRepository.save(user);
-        userId = user.getId();
+        MainTagFile mainTag = mainTagFileRepository.save(
+                TestData.mainTag(creator, subCategory, "tag" + TestData.nextSequence()));
+        mainTagId = mainTag.getId();
 
-        GeneralTag generalTag1 = new GeneralTag();
-        generalTag1.setTagName("IT");
-        generalTag1.setTagNameDescription("Information Technology");
-        generalTag1.setType(0);
-        generalTag1.setEnabled(1);
-        generalTag1.setState(0);
-        generalTag1.setCreatedAt(LocalDateTime.now());
-        generalTag1.setCreatedBy(user);
-        generalTagRepository.save(generalTag1);
-        generalTagId1 = generalTag1.getId();
-
-        FileCategory fileCategoryDocument = new FileCategory();
-        fileCategoryDocument.setCategoryName("documents");
-        fileCategoryDocument.setDescription("documents description");
-        fileCategoryDocument.setCategoryNameDescription("description name");
-        fileCategoryDocument.setCreatedAt(LocalDateTime.now());
-        fileCategoryDocument.setCreatedBy(user);
-        fileCategoryDocument.setEnabled(1);
-        fileCategoryDocument.setState(0);
-        fileCategoryDocument.setPath(baseDir + fileCategoryDocument.getCategoryName());
-        fileCategoryDocument.setRelativePath(fileCategoryDocument.getCategoryName());
-        fileCategoryDocument.setGeneralTag(generalTag1);
-        fileCategoryRepository.save(fileCategoryDocument);
-        fileCategoryDocumentId = fileCategoryDocument.getId();
-        fileStorageService.createDirectory(fileCategoryDocument.getCategoryName(), false);
-
-        FileCategory fileCategoryMail = new FileCategory();
-        fileCategoryMail.setCategoryName("mail");
-        fileCategoryMail.setDescription("mail description");
-        fileCategoryMail.setCategoryNameDescription("description mail");
-        fileCategoryMail.setCreatedAt(LocalDateTime.now());
-        fileCategoryMail.setCreatedBy(user);
-        fileCategoryMail.setEnabled(1);
-        fileCategoryMail.setState(0);
-        fileCategoryMail.setPath(baseDir + fileCategoryMail.getCategoryName());
-        fileCategoryMail.setRelativePath(fileCategoryMail.getCategoryName());
-        fileCategoryMail.setGeneralTag(generalTag1);
-        fileCategoryRepository.save(fileCategoryMail);
-        fileStorageService.createDirectory(fileCategoryMail.getCategoryName(), false);
-        fileCategoryMailId = fileCategoryMail.getId();
-
-        FileSubCategory fileSubCategorySubMail = new FileSubCategory();
-        fileSubCategorySubMail.setFileCategory(fileCategoryMail);
-        fileSubCategorySubMail.setCreatedBy(user);
-        fileSubCategorySubMail.setSubCategoryName("subMail");
-        fileSubCategorySubMail.setSubCategoryNameDescription("sub .. mail");
-        fileSubCategorySubMail.setDescription("description sub");
-        fileSubCategorySubMail.setPath(baseDir + fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail.getSubCategoryName());
-        fileSubCategorySubMail.setRelativePath(fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail.getSubCategoryName());
-        fileSubCategorySubMail.setCreatedAt(LocalDateTime.now());
-        fileSubCategorySubMail.setEnabled(1);
-        fileSubCategorySubMail.setState(0);
-        fileSubCategoryRepository.save(fileSubCategorySubMail);
-        fileStorageService.createDirectory(fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail.getSubCategoryName(), true);
-        fileSubCategorySubMailId = fileSubCategorySubMail.getId();
-
-        FileSubCategory fileSubCategorySubMail2 = new FileSubCategory();
-        fileSubCategorySubMail2.setFileCategory(fileCategoryMail);
-        fileSubCategorySubMail2.setCreatedBy(user);
-        fileSubCategorySubMail2.setSubCategoryName("subMail2");
-        fileSubCategorySubMail2.setSubCategoryNameDescription("sub .. mail2");
-        fileSubCategorySubMail2.setDescription("description sub");
-        fileSubCategorySubMail2.setPath(baseDir + fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail2.getSubCategoryName());
-        fileSubCategorySubMail2.setRelativePath(fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail2.getSubCategoryName());
-        fileSubCategorySubMail2.setCreatedAt(LocalDateTime.now());
-        fileSubCategorySubMail2.setEnabled(1);
-        fileSubCategorySubMail2.setState(0);
-        fileSubCategoryRepository.save(fileSubCategorySubMail2);
-        fileStorageService.createDirectory(fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail2.getSubCategoryName(), true);
-        fileSubCategorySubMailId2 = fileSubCategorySubMail2.getId();
-
-
-        MainTagFile mainTagFileContract = new MainTagFile();
-        mainTagFileContract.setTagName("contract");
-        mainTagFileContract.setTagNameDescription("contract description");
-        mainTagFileContract.setEnabled(1);
-        mainTagFileContract.setState(0);
-        mainTagFileContract.setCreatedAt(LocalDateTime.now());
-        mainTagFileContract.setCreatedBy(user);
-        mainTagFileContract.setFileSubCategory(fileSubCategorySubMail);
-        mainTagFileContract.setType(0);
-        mainTagFileRepository.save(mainTagFileContract);
-        mainTagFileContractId = mainTagFileContract.getId();
-
-        MainTagFile mainTagFilePreview = new MainTagFile();
-        mainTagFilePreview.setTagName("preview");
-        mainTagFilePreview.setTagNameDescription("preview description");
-        mainTagFilePreview.setEnabled(1);
-        mainTagFilePreview.setState(0);
-        mainTagFilePreview.setCreatedAt(LocalDateTime.now());
-        mainTagFilePreview.setCreatedBy(user);
-        mainTagFilePreview.setFileSubCategory(fileSubCategorySubMail);
-        mainTagFilePreview.setType(0);
-        mainTagFileRepository.save(mainTagFilePreview);
-        mainTagFilePreviewId = mainTagFilePreview.getId();
-
-        // save some file
-        Resource testFile = resourceLoader.getResource("classpath:test.txt");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-        FileInfo fileInfo = new FileInfo();
-        fileInfo.setFileName("test");
-        fileInfo.setCodeName("test");
-        fileInfo.setFileNameDescription("a test file");
-        fileInfo.setFilePath(mainTagFilePreview.getFileSubCategory().getPath() + "/" + "test");
-        fileInfo.setRelativePath(mainTagFilePreview.getFileSubCategory().getRelativePath() + "/" + "test");
-        fileInfo.setEnabled(1);
-        fileInfo.setState(0);
-        fileInfo.setCreatedAt(LocalDateTime.now());
-        fileInfo.setCreatedBy(user);
-        fileInfo.setMainTagFile(mainTagFilePreview);
-        fileInfo.setFileSubCategory(fileSubCategorySubMail);
-
-        FileDetails fileDetails = new FileDetails();
-        fileDetails.setFileName("test.txt");
-        fileDetails.setHashId("test.txt");
-        fileDetails.setFileExtension("txt");
-        fileDetails.setContentType(multipartFile.getContentType());
-        fileDetails.setDescription("....");
-        fileDetails.setFilePath(mainTagFilePreview.getFileSubCategory().getPath() + "/test/v1/" + multipartFile.getOriginalFilename());
-        fileDetails.setRelativePath(mainTagFilePreview.getFileSubCategory().getRelativePath() + "/test/v1/" + multipartFile.getOriginalFilename());
-        fileDetails.setFileSize((int) multipartFile.getSize());
-        fileDetails.setVersion(1);
-        fileDetails.setVersionName("V1");
-        fileDetails.setEnabled(1);
-        fileDetails.setState(0);
-        fileDetails.setCreatedAt(LocalDateTime.now());
-        fileDetails.setCreatedBy(user);
-        fileDetails.setFileInfo(fileInfo);
-
-        fileInfo.getFileDetailsList().add(fileDetails);
-        fileInfo.setLastVersion(1);
-        fileInfoRepository.save(fileInfo);
-        fileInfoId = fileInfo.getId();
-        fileDetailsId = fileDetails.getId();
-
-        String address = mainTagFilePreview.getFileSubCategory().getFileCategory().getCategoryName() + "/" + mainTagFilePreview.getFileSubCategory().getSubCategoryName();
-
-        fileStorageService.save(address, multipartFile, 1, "txt");
-
-
-
-        entityManager.flush();
-        entityManager.clear();
+        // The storage layer writes into an existing category/sub-category directory.
+        Files.createDirectories(Paths.get(baseDir, categoryName, subCategoryName));
     }
 
-    @AfterEach
-    void tearDown() throws IOException {
-        actionHistoryRepository.deleteAll();
-//    -----    fileDetailsRepository.deleteAll();
-        fileInfoRepository.deleteAll();
-        mainTagFileRepository.deleteAll();
-        fileSubCategoryRepository.deleteAll();
-        fileCategoryRepository.deleteAll();
-        generalTagRepository.deleteAll();
-        userRepository.deleteAll();
+    // ---------------------------------------------------------------- new file
 
-        String directoryPath = baseDir;
-        Path pathDirectory = Paths.get(directoryPath);
-        Files.walk(pathDirectory)
-                .sorted(Comparator.reverseOrder())
-                .forEach(path -> {
-                    try {
-                        logger.info("deleting: " + path);
-                        Files.delete(path);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
+    @Test
+    @DisplayName("a new file is stored as version 1, on disk and in the database")
+    void storesANewFile() {
+        FileDetailsDTO stored = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
+
+        assertThat(stored.getVersion()).isEqualTo(1);
+
+        FileInfo fileInfo = fileInfoRepository.findByIdAndFetchFileDetails(stored.getFileInfoId()).orElseThrow();
+        assertThat(fileInfo.getFileName()).isEqualTo("report");
+        assertThat(fileInfo.getLastVersion()).isEqualTo(1);
+        assertThat(fileInfo.getFileDetailsList()).hasSize(1);
+        assertThat(storedFile("report", 1, "txt")).exists();
     }
 
     @Test
-    @Commit
-    void createNewFileTest() throws IOException {
+    @DisplayName("public-file 0 stores the file as private")
+    void storesAPrivateFile() {
+        FileDetailsDTO stored = underTest.createNewFile(uploadRequest("secret.txt"), principalId, 0);
 
-        Resource testFile = resourceLoader.getResource("classpath:test2.txt");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-
-        FileInfoDTO fileInfoDTO = new FileInfoDTO();
-        fileInfoDTO.setFileNameDescription("description....test2");
-        fileInfoDTO.setFileSubCategoryId(fileSubCategorySubMailId);
-        fileInfoDTO.setFileCategoryId(fileCategoryMailId);
-        fileInfoDTO.setMainTagFileId(mainTagFilePreviewId);
-        fileInfoDTO.setMultipartFile(multipartFile);
-        fileInfoDTO.setDescription("test");
-
-
-        FileDetailsDTO createdFile = underTest.createNewFile(fileInfoDTO, userId, 1);
-        String address = baseDir + "mail/subMail/test2/v1/test2.txt";
-        assertThat(Files.exists(Paths.get(address))).isTrue();
-        FileInfoDTO test = underTest.getFileInfoDtoWithFileDetails(fileSubCategorySubMailId, "test");
-        assertThat(test.getId()).isNotNull();
-        assertThat(!test.getFileDetailsDTOS().isEmpty()).isTrue();
-        assertThat(createdFile.getFileInfoId()).isNotNull();
-        assertThat(createdFile.getId()).isNotNull();
-
-
-
+        assertThat(fileInfoRepository.findById(stored.getFileInfoId()).orElseThrow().getState()).isEqualTo(-1);
     }
 
     @Test
-    @Commit
-    void createNewFileDuplicateTest() throws IOException {
+    @DisplayName("a second file with the same name in the same sub-category is a 409")
+    void rejectsADuplicateFileName() {
+        underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
 
-        Resource testFile = resourceLoader.getResource("classpath:test.txt");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-
-        FileInfoDTO fileInfoDTO = new FileInfoDTO();
-        fileInfoDTO.setDescription("description....test2");
-        fileInfoDTO.setFileSubCategoryId(fileSubCategorySubMailId);
-        fileInfoDTO.setFileCategoryId(fileCategoryMailId);
-        fileInfoDTO.setMainTagFileId(mainTagFilePreviewId);
-        fileInfoDTO.setMultipartFile(multipartFile);
-
-
-        assertThatThrownBy(
-                () -> underTest.createNewFile(fileInfoDTO, userId, 1)
-        ).isInstanceOf(DuplicateResourceException.class);
-
-
+        assertThatThrownBy(() -> underTest.createNewFile(uploadRequest("report.txt"), principalId, 1))
+                .isInstanceOf(DuplicateResourceException.class);
     }
 
     @Test
-    @Commit
-    void createNewFileInvalidCategoryTest() throws IOException {
+    @DisplayName("a category that does not match the tag's own chain is a 400")
+    void rejectsAMismatchedCategory() {
+        FileInfoDTO request = uploadRequest("report.txt");
+        request.setFileCategoryId(categoryId + 999);
 
-        Resource testFile = resourceLoader.getResource("classpath:test.txt");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-
-        FileInfoDTO fileInfoDTO = new FileInfoDTO();
-        fileInfoDTO.setDescription("description....test2");
-        fileInfoDTO.setFileSubCategoryId(fileSubCategorySubMailId);
-        fileInfoDTO.setFileCategoryId(fileCategoryDocumentId);
-        fileInfoDTO.setMainTagFileId(mainTagFilePreviewId);
-        fileInfoDTO.setMultipartFile(multipartFile);
-
-
-        assertThatThrownBy(
-                () -> underTest.createNewFile(fileInfoDTO, userId, 1)
-        ).isInstanceOf(InvalidDataException.class);
-
-
+        assertThatThrownBy(() -> underTest.createNewFile(request, principalId, 1))
+                .isInstanceOf(InvalidDataException.class);
     }
 
     @Test
-    @Commit
-    void createNewFileInvalidFileNameTest() throws IOException {
+    @DisplayName("a file name that is not storable is refused before anything is written")
+    void rejectsAnUnstorableFileName() {
+        FileInfoDTO request = uploadRequest("has space.txt");
 
-        Resource testFile = resourceLoader.getResource("classpath:file space.1.txt");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-
-        FileInfoDTO fileInfoDTO = new FileInfoDTO();
-        fileInfoDTO.setDescription("description....test2");
-        fileInfoDTO.setFileSubCategoryId(fileSubCategorySubMailId);
-        fileInfoDTO.setFileCategoryId(fileCategoryMailId);
-        fileInfoDTO.setMainTagFileId(mainTagFilePreviewId);
-        fileInfoDTO.setMultipartFile(multipartFile);
-
-
-        assertThatThrownBy(
-                () -> underTest.createNewFile(fileInfoDTO, userId, 1)
-        ).isInstanceOf(InvalidDataException.class);
-
-
+        assertThatThrownBy(() -> underTest.createNewFile(request, principalId, 1))
+                .isInstanceOf(InvalidDataException.class);
     }
 
+    // ---------------------------------------------------------------- versions and formats
 
-    @Commit
     @Test
-    void updateFileInfoDescriptionTest() {
-        underTest.updateFileInfoDescription(fileInfoId, "updated desc", userId);
+    @DisplayName("a new version is stored once, not twice")
+    void storesANewVersionWithoutDuplicatingIt() {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
 
-        FileInfoDTO fileInfoWithFileDetails = underTest.getFileInfoDtoWithFileDetails(fileInfoId);
-        assertThat(fileInfoWithFileDetails.getDescription()).isEqualTo("updated desc");
-    }
-
-    @Commit
-    @Test
-    void updateFileInfoDescriptionInvalidTest() {
-
-        assertThatThrownBy(
-                () -> underTest.updateFileInfoDescription(0, "updated desc", userId)
-        ).isInstanceOf(ResourceNotFoundException.class);
-    }
-
-
-    @Commit
-    @Test
-    void deleteCompleteFileByIdTest() {
-        FileInfoDTO f = underTest.getFileInfoDtoWithFileDetails(fileInfoId);
-        String address = f.getFilePath();
-        underTest.deleteCompleteFileById(fileInfoId, userId);
-
-
-        assertThat(Files.exists(Paths.get(address))).isFalse();
-        assertThatThrownBy(
-                () -> underTest.getFileInfoWithFileDetails(fileInfoId)
-        ).isInstanceOf(ResourceNotFoundException.class);
-    }
-
-
-    @Commit
-    @Test
-    void getLastVersionOfFileTest() {
-
-        int lastVersionOfFile = underTest.getLastVersionOfFile(fileInfoId);
-        assertThat(lastVersionOfFile).isEqualTo(1);
-    }
-
-    @Commit
-    @Test
-    void getLastVersionOfFileWithInvalidIdTest() {
-
-
-        assertThatThrownBy(
-                () -> underTest.getLastVersionOfFile(0)
-        ).isInstanceOf(ResourceNotFoundException.class);
-
-    }
-
-    @Commit
-    @Test
-    void createNewFileDetailsWithNewVersionTest() throws IOException {
-        FileUploadDTO fileUploadDTO = new FileUploadDTO();
-        Resource testFile = resourceLoader.getResource("classpath:test.txt");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-        fileUploadDTO.setFileDetailsId(fileDetailsId);
-        fileUploadDTO.setFileId(fileInfoId);
-        fileUploadDTO.setFileDetailsDescription("new desc");
-        fileUploadDTO.setMultipartFile(multipartFile);
-        fileUploadDTO.setType("version");
-        fileUploadDTO.setVersion(2);
-        fileUploadDTO.setFileName("test");
-
-        underTest.createNewFileDetails(fileUploadDTO, userId);
-
-
+        underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
         entityManager.flush();
         entityManager.clear();
 
-
-        FileInfo fileInfo = underTest.getFileInfoWithFileDetails(fileInfoId);
-        assertThat(fileInfo.getFileDetailsList().size()).isEqualTo(2);
-        String address = baseDir + "mail/subMail/test/v2/test.txt";
-        assertThat(Files.exists(Paths.get(address))).isTrue();
-
-
-
+        FileInfo fileInfo = fileInfoRepository.findByIdAndFetchFileDetails(fileInfoId).orElseThrow();
+        assertThat(fileInfo.getFileDetailsList()).hasSize(2);
+        assertThat(fileInfo.getLastVersion()).isEqualTo(2);
+        assertThat(storedFile("report", 2, "txt")).exists();
     }
 
-
-    @Commit
     @Test
-    void createNewFileDetailsWithNewInvalidVersionTest() throws IOException {
-        FileUploadDTO fileUploadDTO = new FileUploadDTO();
-        Resource testFile = resourceLoader.getResource("classpath:test.txt");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-        fileUploadDTO.setFileDetailsId(fileDetailsId);
-        fileUploadDTO.setFileId(fileInfoId);
-        fileUploadDTO.setFileDetailsDescription("new desc");
-        fileUploadDTO.setMultipartFile(multipartFile);
-        fileUploadDTO.setType("version");
-        fileUploadDTO.setVersion(3);
-        fileUploadDTO.setFileName("test");
+    @DisplayName("a version that is not exactly the next one is a 400")
+    void rejectsAVersionThatSkipsAhead() {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
 
+        assertThatThrownBy(() ->
+                underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 5), principalId))
+                .isInstanceOf(InvalidDataException.class);
+    }
 
-        assertThatThrownBy(
-                () -> underTest.createNewFileDetails(fileUploadDTO, userId)
-        ).isInstanceOf(InvalidDataException.class);
+    @Test
+    @DisplayName("a version whose file name is not the file's own name is a 400")
+    void rejectsAVersionWithTheWrongName() {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
 
+        FileUploadDTO request = versionRequest(fileInfoId, "different.txt", 2);
 
+        assertThatThrownBy(() -> underTest.createNewFileDetails(request, principalId))
+                .isInstanceOf(InvalidDataException.class);
+    }
+
+    @Test
+    @DisplayName("another format of an existing version keeps the version number and its name")
+    void storesAnotherFormatOfTheSameVersion() {
+        FileDetailsDTO first = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
+
+        FileUploadDTO request = formatRequest(first.getFileInfoId(), first.getId(), "report.pdf", 1);
+        underTest.createNewFileDetails(request, principalId);
         entityManager.flush();
         entityManager.clear();
 
-
-        FileInfo fileInfo = underTest.getFileInfoWithFileDetails(fileInfoId);
-        assertThat(fileInfo.getFileDetailsList().size()).isEqualTo(1);
-        String address = baseDir + "mail/subMail/test/v3/test.txt";
-        assertThat(Files.exists(Paths.get(address))).isFalse();
-
-
-
+        FileInfo fileInfo = fileInfoRepository.findByIdAndFetchFileDetails(first.getFileInfoId()).orElseThrow();
+        assertThat(fileInfo.getFileDetailsList()).hasSize(2);
+        assertThat(fileInfo.getLastVersion()).isEqualTo(1);
+        assertThat(fileInfo.getFileDetailsList())
+                .extracting(FileDetails::getVersionName)
+                .containsOnly("V1");
     }
 
-    @Commit
     @Test
-    void createNewFileDetailsWithNewInvalidFileNameTest() throws IOException {
-        FileUploadDTO fileUploadDTO = new FileUploadDTO();
-        Resource testFile = resourceLoader.getResource("classpath:test.txt");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-        fileUploadDTO.setFileDetailsId(fileDetailsId);
-        fileUploadDTO.setFileId(fileInfoId);
-        fileUploadDTO.setFileDetailsDescription("new desc");
-        fileUploadDTO.setMultipartFile(multipartFile);
-        fileUploadDTO.setType("version");
-        fileUploadDTO.setVersion(2);
-        fileUploadDTO.setFileName("test1");
+    @DisplayName("the same format at the same version twice is a 409")
+    void rejectsADuplicateFormat() {
+        FileDetailsDTO first = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
+        FileUploadDTO request = formatRequest(first.getFileInfoId(), first.getId(), "report.txt", 1);
 
+        assertThatThrownBy(() -> underTest.createNewFileDetails(request, principalId))
+                .isInstanceOf(DuplicateResourceException.class);
+    }
 
-        assertThatThrownBy(
-                () -> underTest.createNewFileDetails(fileUploadDTO, userId)
-        ).isInstanceOf(InvalidDataException.class);
+    @Test
+    @DisplayName("a format at a version that does not exist yet is a 400")
+    void rejectsAFormatForAFutureVersion() {
+        FileDetailsDTO first = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
+        FileUploadDTO request = formatRequest(first.getFileInfoId(), first.getId(), "report.pdf", 3);
 
+        assertThatThrownBy(() -> underTest.createNewFileDetails(request, principalId))
+                .isInstanceOf(InvalidDataException.class);
+    }
 
+    @Test
+    @DisplayName("an upload type the service does not know is a 400, not a silent success")
+    void rejectsAnUnknownUploadType() {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+
+        FileUploadDTO request = versionRequest(fileInfoId, "report.txt", 2);
+        request.setType("whatever");
+
+        assertThatThrownBy(() -> underTest.createNewFileDetails(request, principalId))
+                .isInstanceOf(InvalidDataException.class);
+    }
+
+    // ---------------------------------------------------------------- state and description
+
+    @Test
+    @DisplayName("the description is updated, and an empty one is refused")
+    void updatesTheDescription() {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+
+        underTest.updateFileInfoDescription(fileInfoId, "a new description", principalId);
+        assertThat(fileInfoRepository.findById(fileInfoId).orElseThrow().getDescription())
+                .isEqualTo("a new description");
+
+        assertThatThrownBy(() -> underTest.updateFileInfoDescription(fileInfoId, "", principalId))
+                .isInstanceOf(InvalidDataException.class);
+    }
+
+    @Test
+    @DisplayName("state accepts 0 and -1 and nothing else")
+    void changesState() {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+
+        underTest.changeFileInfoState(fileInfoId, -1, principalId);
+        assertThat(fileInfoRepository.findById(fileInfoId).orElseThrow().getState()).isEqualTo(-1);
+
+        assertThatThrownBy(() -> underTest.changeFileInfoState(fileInfoId, 7, principalId))
+                .isInstanceOf(InvalidDataException.class);
+    }
+
+    // ---------------------------------------------------------------- deletion
+
+    @Test
+    @DisplayName("deleting a file removes every version with it")
+    void deletesAFileAndItsVersions() {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+        underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
+
+        underTest.deleteCompleteFileById(fileInfoId, principalId);
         entityManager.flush();
         entityManager.clear();
 
-
-        FileInfo fileInfo = underTest.getFileInfoWithFileDetails(fileInfoId);
-        assertThat(fileInfo.getFileDetailsList().size()).isEqualTo(1);
-        String address = baseDir + "mail/subMail/test/v2/test.txt";
-        assertThat(Files.exists(Paths.get(address))).isFalse();
-
+        assertThat(fileInfoRepository.findById(fileInfoId)).isEmpty();
+        assertThat(fileDetailsRepository.findMaxVersion(fileInfoId)).isNull();
     }
 
-    @Commit
     @Test
-    void createNewFileDetailsWithDuplicateVersionTest() throws IOException {
-        FileUploadDTO fileUploadDTO = new FileUploadDTO();
-        Resource testFile = resourceLoader.getResource("classpath:test.txt");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-        fileUploadDTO.setFileDetailsId(fileDetailsId);
-        fileUploadDTO.setFileId(fileInfoId);
-        fileUploadDTO.setFileDetailsDescription("new desc");
-        fileUploadDTO.setMultipartFile(multipartFile);
-        fileUploadDTO.setType("version");
-        fileUploadDTO.setVersion(1);
-        fileUploadDTO.setFileName("test");
+    @DisplayName("deleting the only version deletes the file itself")
+    void deletingTheOnlyVersionDeletesTheFile() {
+        FileDetailsDTO only = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
 
-
-
-        assertThatThrownBy(
-                () -> underTest.createNewFileDetails(fileUploadDTO, userId)
-        ).isInstanceOf(InvalidDataException.class);
-
-
+        underTest.deleteFileDetails(only.getFileInfoId(), only.getId(), principalId);
         entityManager.flush();
         entityManager.clear();
 
-
-        FileInfo fileInfo = underTest.getFileInfoWithFileDetails(fileInfoId);
-        assertThat(fileInfo.getFileDetailsList().size()).isEqualTo(1);
-        String address = baseDir + "mail/subMail/test/v2/test.txt";
-        assertThat(Files.exists(Paths.get(address))).isFalse();
-
+        assertThat(fileInfoRepository.findById(only.getFileInfoId())).isEmpty();
     }
 
-    @Commit
     @Test
-    void createNewFileDetailsWithNewFormatTest() throws IOException {
-        FileUploadDTO fileUploadDTO = new FileUploadDTO();
-        Resource testFile = resourceLoader.getResource("classpath:test.jpg");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "image/jpg", testFile.getInputStream());
-        fileUploadDTO.setFileDetailsId(fileDetailsId);
-        fileUploadDTO.setFileId(fileInfoId);
-        fileUploadDTO.setFileDetailsDescription("new desc");
-        fileUploadDTO.setMultipartFile(multipartFile);
-        fileUploadDTO.setType("format");
-        fileUploadDTO.setVersion(1);
-        fileUploadDTO.setFileName("test");
-
-        underTest.createNewFileDetails(fileUploadDTO, userId);
-
-
+    @DisplayName("deleting the newest version lowers lastVersion to the highest that remains")
+    void recomputesLastVersionAfterDeletingTheNewestVersion() {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+        underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
         entityManager.flush();
         entityManager.clear();
 
+        FileInfo withTwo = fileInfoRepository.findByIdAndFetchFileDetails(fileInfoId).orElseThrow();
+        int newestId = withTwo.getFileDetailsList().stream()
+                .filter(fd -> fd.getVersion() == 2).findFirst().orElseThrow().getId();
 
-        FileInfo fileInfo = underTest.getFileInfoWithFileDetails(fileInfoId);
-        assertThat(fileInfo.getFileDetailsList().size()).isEqualTo(2);
-        String address = baseDir + "mail/subMail/test/v1/test.jpg";
-        assertThat(Files.exists(Paths.get(address))).isTrue();
-
-    }
-
-    @Commit
-    @Test
-    void createNewFileDetailsWithDuplicateFormatTest() throws IOException {
-        FileUploadDTO fileUploadDTO = new FileUploadDTO();
-        Resource testFile = resourceLoader.getResource("classpath:test.txt");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-        fileUploadDTO.setFileDetailsId(fileDetailsId);
-        fileUploadDTO.setFileId(fileInfoId);
-        fileUploadDTO.setFileDetailsDescription("new desc");
-        fileUploadDTO.setMultipartFile(multipartFile);
-        fileUploadDTO.setType("format");
-        fileUploadDTO.setVersion(1);
-        fileUploadDTO.setFileName("test");
-
-
-
-        assertThatThrownBy(
-                () -> underTest.createNewFileDetails(fileUploadDTO, userId)
-        ).isInstanceOf(DuplicateResourceException.class);
-
-
-    }
-
-    @Commit
-    @Test
-    void createNewFileDetailsWithInvalidVersionFormatTest() throws IOException {
-        FileUploadDTO fileUploadDTO = new FileUploadDTO();
-        Resource testFile = resourceLoader.getResource("classpath:test.jpg");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "image/jpg", testFile.getInputStream());
-        fileUploadDTO.setFileDetailsId(fileDetailsId);
-        fileUploadDTO.setFileId(fileInfoId);
-        fileUploadDTO.setFileDetailsDescription("new desc");
-        fileUploadDTO.setMultipartFile(multipartFile);
-        fileUploadDTO.setType("format");
-        fileUploadDTO.setVersion(2);
-        fileUploadDTO.setFileName("test");
-
-
-
-        assertThatThrownBy(
-                () -> underTest.createNewFileDetails(fileUploadDTO, userId)
-        ).isInstanceOf(InvalidDataException.class);
-
-
-    }
-
-
-    @Commit
-    @Test
-    void deleteFileDetailsWithMultiFileDetailsExistsTest() throws IOException {
-
-        FileUploadDTO fileUploadDTO = new FileUploadDTO();
-        Resource testFile = resourceLoader.getResource("classpath:test.txt");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
-        fileUploadDTO.setFileDetailsId(fileDetailsId);
-        fileUploadDTO.setFileId(fileInfoId);
-        fileUploadDTO.setFileDetailsDescription("new desc");
-        fileUploadDTO.setMultipartFile(multipartFile);
-        fileUploadDTO.setType("version");
-        fileUploadDTO.setVersion(2);
-        fileUploadDTO.setFileName("test");
-
-        underTest.createNewFileDetails(fileUploadDTO, userId);
-
-
+        underTest.deleteFileDetails(fileInfoId, newestId, principalId);
         entityManager.flush();
         entityManager.clear();
 
-        underTest.deleteFileDetails(fileInfoId, fileDetailsId, userId);
+        FileInfo after = fileInfoRepository.findByIdAndFetchFileDetails(fileInfoId).orElseThrow();
+        assertThat(after.getFileDetailsList()).hasSize(1);
+        assertThat(after.getLastVersion()).isEqualTo(1);
+        assertThat(after.getLastVersion()).isEqualTo(fileDetailsRepository.findMaxVersion(fileInfoId));
+    }
 
+    @Test
+    @DisplayName("the version number freed by a delete can be used again")
+    void aFreedVersionNumberCanBeReused() {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+        underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
         entityManager.flush();
         entityManager.clear();
 
-        FileInfo fileInfoWithFileDetails = underTest.getFileInfoWithFileDetails(fileInfoId);
+        int newestId = fileInfoRepository.findByIdAndFetchFileDetails(fileInfoId).orElseThrow()
+                .getFileDetailsList().stream()
+                .filter(fd -> fd.getVersion() == 2).findFirst().orElseThrow().getId();
+        underTest.deleteFileDetails(fileInfoId, newestId, principalId);
+        entityManager.flush();
+        entityManager.clear();
 
-        assertThat(fileInfoWithFileDetails.getFileDetailsList().size()).isEqualTo(1);
-        assertThat(fileInfoWithFileDetails.getFileDetailsList().get(0).getId()).isNotEqualTo(fileDetailsId);
+        // Before the recompute this threw "wrong version for create new version, last version=2".
+        underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
+        entityManager.flush();
+        entityManager.clear();
 
-
+        assertThat(fileInfoRepository.findById(fileInfoId).orElseThrow().getLastVersion()).isEqualTo(2);
     }
 
-    @Commit
     @Test
-    void deleteFileDetailsWithOneFileDetailsExistsTest() {
+    @DisplayName("a version id that belongs to another file is a 404")
+    void refusesAVersionOfAnotherFile() {
+        FileDetailsDTO first = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
+        FileDetailsDTO second = underTest.createNewFile(uploadRequest("other.txt"), principalId, 1);
 
-
-        underTest.deleteFileDetails(fileInfoId, fileDetailsId, userId);
-
-        assertThatThrownBy(
-                () -> underTest.getFileInfoWithFileDetails(fileInfoId)
-        ).isInstanceOf(ResourceNotFoundException.class);
-
-
+        assertThatThrownBy(() ->
+                underTest.deleteFileDetails(first.getFileInfoId(), second.getId(), principalId))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
+    // ---------------------------------------------------------------- queries
 
-    @Commit
     @Test
-    void countFileWithSameTagTest() {
-        int count1 = underTest.countFileWithSameTag(mainTagFilePreviewId);
-        int count2 = underTest.countFileWithSameTag(mainTagFileContractId);
+    @DisplayName("lastVersion is readable, and a missing file is a 404")
+    void readsTheLastVersion() {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
 
-        assertThat(count1).isEqualTo(1);
-        assertThat(count2).isEqualTo(0);
+        assertThat(underTest.getLastVersionOfFile(fileInfoId)).isEqualTo(1);
+        assertThatThrownBy(() -> underTest.getLastVersionOfFile(0))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
+    @Test
+    @DisplayName("files are counted per main tag")
+    void countsFilesPerTag() {
+        assertThat(underTest.countFileWithSameTag(mainTagId)).isZero();
 
+        underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
 
+        assertThat(underTest.countFileWithSameTag(mainTagId)).isEqualTo(1);
+    }
 
+    @Test
+    @DisplayName("the file page filters on the search term")
+    void pagesAndFilters() {
+        underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
+
+        FileInfoPageDTO page = underTest.getPageFileInfo(10, 0, "report");
+
+        assertThat(page.getFileInfoDTOList()).extracting(FileInfoDTO::getFileName).contains("report");
+    }
+
+    @Test
+    @DisplayName("the public list shows only active versions of active files")
+    void listsOnlyPublicFiles() {
+        FileDetailsDTO shown = underTest.createNewFile(uploadRequest("public.txt"), principalId, 1);
+        FileDetailsDTO hidden = underTest.createNewFile(uploadRequest("private.txt"), principalId, 0);
+        entityManager.flush();
+        entityManager.clear();
+
+        var files = underTest.getPagePublicFiles(50, 0, null).getPublicFileDetailsDTOList();
+
+        assertThat(files).extracting("id").contains(shown.getId()).doesNotContain(hidden.getId());
+    }
+
+    @Test
+    @DisplayName("a private file is not downloadable through the public endpoint")
+    void refusesToServeAPrivateFilePublicly() {
+        FileDetailsDTO hidden = underTest.createNewFile(uploadRequest("private.txt"), principalId, 0);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThatThrownBy(() -> underTest.downloadPublicFile(hidden.getId()))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("a public file is downloadable, with its name and content type")
+    void servesAPublicFile() {
+        FileDetailsDTO shown = underTest.createNewFile(uploadRequest("public.txt"), principalId, 1);
+        entityManager.flush();
+        entityManager.clear();
+
+        var download = underTest.downloadPublicFile(shown.getId());
+
+        assertThat(download.getFileName()).isEqualTo("public.txt");
+        assertThat(download.getResource().exists()).isTrue();
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private FileInfoDTO uploadRequest(String fileName) {
+        FileInfoDTO request = new FileInfoDTO();
+        request.setDescription("description of " + fileName);
+        request.setFileNameDescription(fileName);
+        request.setFileCategoryId(categoryId);
+        request.setFileSubCategoryId(subCategoryId);
+        request.setMainTagFileId(mainTagId);
+        request.setMultipartFile(multipart(fileName));
+        return request;
+    }
+
+    private FileUploadDTO versionRequest(int fileInfoId, String fileName, int version) {
+        FileUploadDTO request = baseUpload(fileInfoId, fileName, version);
+        request.setType("version");
+        return request;
+    }
+
+    private FileUploadDTO formatRequest(int fileInfoId, int sampleFileDetailsId, String fileName, int version) {
+        FileUploadDTO request = baseUpload(fileInfoId, fileName, version);
+        request.setType("format");
+        request.setFileDetailsId(sampleFileDetailsId);
+        return request;
+    }
+
+    private FileUploadDTO baseUpload(int fileInfoId, String fileName, int version) {
+        FileUploadDTO request = new FileUploadDTO();
+        request.setFileId(fileInfoId);
+        request.setFileName(fileName.substring(0, fileName.lastIndexOf('.')));
+        request.setFileNameWithoutExtension(fileName.substring(0, fileName.lastIndexOf('.')));
+        request.setVersion(version);
+        request.setFileDetailsDescription("version " + version + " of " + fileName);
+        request.setMultipartFile(multipart(fileName));
+        return request;
+    }
+
+    private static MultipartFile multipart(String fileName) {
+        return new MockMultipartFile(fileName, fileName, "text/plain",
+                ("contents of " + fileName).getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Where the storage layer puts a revision: {@code <base>/<cat>/<sub>/<name>/v<n>/<name>.<ext>}.
+     *
+     * <p>The version is a directory, not a suffix on the file name — which is why two formats of
+     * one version sit side by side in the same {@code v<n>} directory.
+     */
+    private Path storedFile(String name, int version, String extension) {
+        return Paths.get(baseDir, categoryName, subCategoryName, name, "v" + version,
+                name + "." + extension);
+    }
 }

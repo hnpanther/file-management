@@ -1,355 +1,223 @@
 package com.hnp.filemanagement.service;
 
-import com.hnp.filemanagement.support.MySqlSupport;
-
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryPageDTO;
-import com.hnp.filemanagement.entity.*;
+import com.hnp.filemanagement.entity.EntityEnum;
+import com.hnp.filemanagement.entity.FileCategory;
+import com.hnp.filemanagement.entity.FileSubCategory;
+import com.hnp.filemanagement.entity.GeneralTag;
+import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
-import com.hnp.filemanagement.repository.*;
-import jakarta.persistence.EntityManager;
-import org.junit.jupiter.api.AfterEach;
+import com.hnp.filemanagement.repository.FileCategoryRepository;
+import com.hnp.filemanagement.repository.FileSubCategoryRepository;
+import com.hnp.filemanagement.repository.GeneralTagRepository;
+import com.hnp.filemanagement.repository.MainTagFileRepository;
+import com.hnp.filemanagement.repository.UserRepository;
+import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.ServiceIntegrationTest;
+import com.hnp.filemanagement.support.TestData;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.test.annotation.Commit;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.util.Comparator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+/**
+ * {@link FileSubCategoryService} against a real database and a real storage root.
+ *
+ * <p>The distinguishing rule at this level is that names are unique <em>per category</em>, not
+ * globally — {@link #allowsTheSameNameInAnotherCategory()} is the test that pins it down, and it is
+ * the reason the unique constraint added in {@code V1.3} is a composite one.
+ */
+@ServiceIntegrationTest
 class FileSubCategoryServiceTest extends MySqlSupport {
 
-    Logger logger = LoggerFactory.getLogger(FileSubCategoryServiceTest.class);
-
     @Autowired
-    private ActionHistoryRepository actionHistoryRepository;
+    private FileSubCategoryService underTest;
     @Autowired
-    private FileCategoryRepository fileCategoryRepository;
+    private ActionHistoryService actionHistoryService;
     @Autowired
     private FileSubCategoryRepository fileSubCategoryRepository;
     @Autowired
-    private UserRepository userRepository;
-    @Autowired
-    private EntityManager entityManager;
+    private FileCategoryRepository fileCategoryRepository;
     @Autowired
     private MainTagFileRepository mainTagFileRepository;
+    @Autowired
+    private GeneralTagRepository generalTagRepository;
+    @Autowired
+    private UserRepository userRepository;
 
     @Value("${file.management.base-dir}")
     private String baseDir;
 
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
-
-    private GeneralTagService generalTagService;
-
-    private FileStorageService fileStorageService;
-
-    private FileCategoryService fileCategoryService;
-
-    private ActionHistoryService actionHistoryService;
-
-
-
-    private FileSubCategoryService underTest;
-
-    private int userId = 1;
-    private int fileCategoryDocumentId = 0;
-    private int fileCategoryMailId = 0;
-    private int fileSubCategorySubMailId = 0;
-    private int fileSubCategorySubMailId2 = 0;
-    private int generalTagId1 = 0;
-
+    private int principalId;
+    private int categoryId;
+    private int otherCategoryId;
+    private int emptySubCategoryId;
+    private int subCategoryWithTagsId;
 
     @BeforeEach
-    void setUp() throws IOException {
+    void setUp() {
+        User creator = userRepository.save(TestData.user());
+        principalId = creator.getId();
 
-        actionHistoryService = new ActionHistoryService(entityManager, actionHistoryRepository);
-        generalTagService = new GeneralTagService(entityManager, generalTagRepository, actionHistoryService);
-        fileStorageService = new FileStorageFileSystemService(baseDir);
-        fileCategoryService = new FileCategoryService(fileStorageService, entityManager, fileCategoryRepository, baseDir, generalTagService, actionHistoryService);
-        underTest = new FileSubCategoryService(entityManager, fileCategoryService, fileSubCategoryRepository, fileStorageService, actionHistoryService, baseDir);
+        GeneralTag generalTag = generalTagRepository.save(
+                TestData.generalTag(creator, "tag" + TestData.nextSequence()));
 
+        FileCategory category = fileCategoryRepository.save(
+                TestData.category(creator, generalTag, "documents" + TestData.nextSequence()));
+        categoryId = category.getId();
+        TestData.createStorageDirectory(baseDir, category.getCategoryName());
 
-        // create base directory
-        String directoryPath = baseDir;
-        Path path = Paths.get(directoryPath);
-        logger.info("creating: " + path);
-        Files.createDirectory(path);
+        FileCategory other = fileCategoryRepository.save(
+                TestData.category(creator, generalTag, "archive" + TestData.nextSequence()));
+        otherCategoryId = other.getId();
+        TestData.createStorageDirectory(baseDir, other.getCategoryName());
 
-        User user = new User();
-        user.setUsername("admin");
-        user.setPhoneNumber("09999999999");
-        user.setNationalCode("1111111111");
-        user.setPersonelCode(1111);
-        user.setFirstName("admin");
-        user.setLastName("admin");
-        user.setCreatedAt(LocalDateTime.now());
-        user.setEnabled(1);
-        user.setState(0);
-        user.setPassword("pass");
+        FileSubCategory empty = fileSubCategoryRepository.save(
+                TestData.subCategory(creator, category, "empty" + TestData.nextSequence()));
+        emptySubCategoryId = empty.getId();
+        TestData.createStorageDirectory(baseDir, category.getCategoryName(), empty.getSubCategoryName());
 
-        userRepository.save(user);
-        userId = user.getId();
-
-        GeneralTag generalTag1 = new GeneralTag();
-        generalTag1.setTagName("IT");
-        generalTag1.setTagNameDescription("Information Technology");
-        generalTag1.setType(0);
-        generalTag1.setEnabled(1);
-        generalTag1.setState(0);
-        generalTag1.setCreatedAt(LocalDateTime.now());
-        generalTag1.setCreatedBy(user);
-        generalTagRepository.save(generalTag1);
-        generalTagId1 = generalTag1.getId();
-
-        FileCategory fileCategoryDocument = new FileCategory();
-        fileCategoryDocument.setCategoryName("documents");
-        fileCategoryDocument.setDescription("documents description");
-        fileCategoryDocument.setCategoryNameDescription("description name");
-        fileCategoryDocument.setCreatedAt(LocalDateTime.now());
-        fileCategoryDocument.setCreatedBy(user);
-        fileCategoryDocument.setEnabled(1);
-        fileCategoryDocument.setState(0);
-        fileCategoryDocument.setPath(baseDir + fileCategoryDocument.getCategoryName());
-        fileCategoryDocument.setRelativePath(fileCategoryDocument.getCategoryName());
-        fileCategoryDocument.setGeneralTag(generalTag1);
-        fileCategoryRepository.save(fileCategoryDocument);
-        fileCategoryDocumentId = fileCategoryDocument.getId();
-        fileStorageService.createDirectory(fileCategoryDocument.getCategoryName(), false);
-
-        FileCategory fileCategoryMail = new FileCategory();
-        fileCategoryMail.setCategoryName("mail");
-        fileCategoryMail.setDescription("mail description");
-        fileCategoryMail.setCategoryNameDescription("description mail");
-        fileCategoryMail.setCreatedAt(LocalDateTime.now());
-        fileCategoryMail.setCreatedBy(user);
-        fileCategoryMail.setEnabled(1);
-        fileCategoryMail.setState(0);
-        fileCategoryMail.setPath(baseDir + fileCategoryMail.getCategoryName());
-        fileCategoryMail.setRelativePath(fileCategoryMail.getCategoryName());
-        fileCategoryMail.setGeneralTag(generalTag1);
-        fileCategoryRepository.save(fileCategoryMail);
-        fileStorageService.createDirectory(fileCategoryMail.getCategoryName(), false);
-        fileCategoryMailId = fileCategoryMail.getId();
-
-        FileSubCategory fileSubCategorySubMail = new FileSubCategory();
-        fileSubCategorySubMail.setFileCategory(fileCategoryMail);
-        fileSubCategorySubMail.setCreatedBy(user);
-        fileSubCategorySubMail.setSubCategoryName("subMail");
-        fileSubCategorySubMail.setSubCategoryNameDescription("sub .. mail");
-        fileSubCategorySubMail.setDescription("description sub");
-        fileSubCategorySubMail.setPath(baseDir + fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail.getSubCategoryName());
-        fileSubCategorySubMail.setRelativePath(fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail.getSubCategoryName());
-        fileSubCategorySubMail.setCreatedAt(LocalDateTime.now());
-        fileSubCategorySubMail.setEnabled(1);
-        fileSubCategorySubMail.setState(0);
-        fileSubCategoryRepository.save(fileSubCategorySubMail);
-        fileStorageService.createDirectory(fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail.getSubCategoryName(), true);
-        fileSubCategorySubMailId = fileSubCategorySubMail.getId();
-
-        FileSubCategory fileSubCategorySubMail2 = new FileSubCategory();
-        fileSubCategorySubMail2.setFileCategory(fileCategoryMail);
-        fileSubCategorySubMail2.setCreatedBy(user);
-        fileSubCategorySubMail2.setSubCategoryName("subMail2");
-        fileSubCategorySubMail2.setSubCategoryNameDescription("sub .. mail2");
-        fileSubCategorySubMail2.setDescription("description sub");
-        fileSubCategorySubMail2.setPath(baseDir + fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail2.getSubCategoryName());
-        fileSubCategorySubMail2.setRelativePath(fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail2.getSubCategoryName());
-        fileSubCategorySubMail2.setCreatedAt(LocalDateTime.now());
-        fileSubCategorySubMail2.setEnabled(1);
-        fileSubCategorySubMail2.setState(0);
-        fileSubCategoryRepository.save(fileSubCategorySubMail2);
-        fileStorageService.createDirectory(fileCategoryMail.getCategoryName() + "/" + fileSubCategorySubMail2.getSubCategoryName(), true);
-        fileSubCategorySubMailId2 = fileSubCategorySubMail2.getId();
-
-
-        MainTagFile mainTagFile = new MainTagFile();
-        mainTagFile.setTagName("contract");
-        mainTagFile.setTagNameDescription("test...");
-        mainTagFile.setDescription("contract description");
-        mainTagFile.setType(0);
-        mainTagFile.setEnabled(1);
-        mainTagFile.setState(0);
-        mainTagFile.setCreatedAt(LocalDateTime.now());
-        mainTagFile.setCreatedBy(user);
-        mainTagFile.setFileSubCategory(fileSubCategorySubMail);
-        mainTagFileRepository.save(mainTagFile);
-
-
-        entityManager.flush();
-        entityManager.clear();
-
-
-
-    }
-
-    @AfterEach
-    void tearDown() throws IOException {
-
-        actionHistoryRepository.deleteAll();
-        mainTagFileRepository.deleteAll();
-        fileSubCategoryRepository.deleteAll();
-        fileCategoryRepository.deleteAll();
-        generalTagRepository.deleteAll();
-        userRepository.deleteAll();
-
-        String directoryPath = baseDir;
-        Path pathDirectory = Paths.get(directoryPath);
-        Files.walk(pathDirectory)
-                .sorted(Comparator.reverseOrder())
-                .forEach(path -> {
-                    try {
-                        logger.info("deleting: " + path);
-                        Files.delete(path);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-
+        FileSubCategory withTags = fileSubCategoryRepository.save(
+                TestData.subCategory(creator, category, "tagged" + TestData.nextSequence()));
+        subCategoryWithTagsId = withTags.getId();
+        TestData.createStorageDirectory(baseDir, category.getCategoryName(), withTags.getSubCategoryName());
+        mainTagFileRepository.save(TestData.mainTag(creator, withTags, "tag" + TestData.nextSequence()));
     }
 
     @Test
-    @Commit
-    void createFileSubCategoryTest() {
+    @DisplayName("creating a sub-category writes the row, the directory and the history line")
+    void createsASubCategory() {
+        FileSubCategoryDTO request = request("invoices" + TestData.nextSequence(), categoryId);
 
-        FileSubCategoryDTO fileSubCategoryDTO = new FileSubCategoryDTO();
-        fileSubCategoryDTO.setSubCategoryName("project");
-        fileSubCategoryDTO.setSubCategoryNameDescription("project sub document");
-        fileSubCategoryDTO.setFileCategoryId(fileCategoryDocumentId);
-        fileSubCategoryDTO.setDescription("test project ...");
+        underTest.createFileSubCategory(request, principalId);
 
-        underTest.createFileSubCategory(fileSubCategoryDTO, userId);
-
-
-        FileSubCategory fileSubCategory = underTest.getFileSubCategoryByIdOrSubCategoryName(0, fileSubCategoryDTO.getSubCategoryName());
-
-        assertThat(fileSubCategory.getSubCategoryNameDescription()).isEqualTo("project sub document");
-        logger.debug("created sub directory=" + fileSubCategory.getPath());
-        assertThat(Files.exists(Paths.get(fileSubCategory.getPath()))).isTrue();
-
+        FileSubCategoryDTO created = underTest.getFileSubCategoryDtoBySubCategoryName(request.getSubCategoryName());
+        assertThat(created.getFileCategoryId()).isEqualTo(categoryId);
+        assertThat(actionHistoryService.getActionHistoriesOfEntity(created.getId(), EntityEnum.FileSubCategory))
+                .hasSize(1);
     }
 
     @Test
-    @Commit
-    void createDuplicateFileSubCategoryTest() {
+    @DisplayName("a duplicate name inside the same category is a 409")
+    void rejectsADuplicateNameInTheSameCategory() {
+        String taken = fileSubCategoryRepository.findById(emptySubCategoryId).orElseThrow().getSubCategoryName();
+        FileSubCategoryDTO request = request(taken, categoryId);
 
-        FileSubCategoryDTO fileSubCategoryDTO = new FileSubCategoryDTO();
-        fileSubCategoryDTO.setSubCategoryName("subMail");
-        fileSubCategoryDTO.setSubCategoryNameDescription("project sub document");
-        fileSubCategoryDTO.setFileCategoryId(fileCategoryMailId);
-        fileSubCategoryDTO.setDescription("test project ...");
-
-        assertThatThrownBy(
-                () -> underTest.createFileSubCategory(fileSubCategoryDTO, userId)
-        ).isInstanceOf(DuplicateResourceException.class);
-
-    }
-
-
-    @Test
-    @Commit
-    void createInvalidFileSubCategoryTest() {
-
-        FileSubCategoryDTO fileSubCategoryDTO = new FileSubCategoryDTO();
-        fileSubCategoryDTO.setSubCategoryName("proje/.ct");
-        fileSubCategoryDTO.setSubCategoryNameDescription("project sub document");
-        fileSubCategoryDTO.setFileCategoryId(fileCategoryDocumentId);
-        fileSubCategoryDTO.setDescription("test project ...");
-
-
-
-        assertThatThrownBy(
-                () -> underTest.createFileSubCategory(fileSubCategoryDTO, userId)
-        ).isInstanceOf(BusinessException.class);
-
+        assertThatThrownBy(() -> underTest.createFileSubCategory(request, principalId))
+                .isInstanceOf(DuplicateResourceException.class);
     }
 
     @Test
-    @Commit
-    void updateDuplicateFileSubCategoryTest() {
-        FileSubCategoryDTO fileSubCategoryDTO = underTest.getFileSubCategoryDtoByIdOrSubCategoryName(fileSubCategorySubMailId2, null);
+    @DisplayName("the same name in another category is allowed - the directories do not collide")
+    void allowsTheSameNameInAnotherCategory() {
+        String taken = fileSubCategoryRepository.findById(emptySubCategoryId).orElseThrow().getSubCategoryName();
+        FileSubCategoryDTO request = request(taken, otherCategoryId);
 
-        fileSubCategoryDTO.setSubCategoryNameDescription("sub .. mail");
+        underTest.createFileSubCategory(request, principalId);
 
-        assertThatThrownBy(
-                () -> underTest.updateFileSubCategory(fileSubCategoryDTO, userId)
-        ).isInstanceOf(DuplicateResourceException.class);
+        assertThat(fileSubCategoryRepository.findByFileCategoryIdOrderBySubCategoryNameAsc(otherCategoryId))
+                .extracting(FileSubCategory::getSubCategoryName)
+                .contains(taken);
     }
 
     @Test
-    @Commit
-    void updateFileSubCategoryTest() {
-        FileSubCategoryDTO fileSubCategoryDTO = underTest.getFileSubCategoryDtoByIdOrSubCategoryName(fileSubCategorySubMailId2, null);
+    @DisplayName("a name that cannot be a directory is refused")
+    void rejectsANameThatIsNotADirectoryName() {
+        FileSubCategoryDTO request = request("has a space", categoryId);
 
-        fileSubCategoryDTO.setSubCategoryNameDescription("sub .. mail34");
-
-        underTest.updateFileSubCategory(fileSubCategoryDTO, userId);
-
-        FileSubCategoryDTO updated = underTest.getFileSubCategoryDtoByIdOrSubCategoryName(fileSubCategorySubMailId2, null);
-
-        assertThat(fileSubCategoryDTO.getSubCategoryNameDescription()).isEqualTo("sub .. mail34");
-
+        assertThatThrownBy(() -> underTest.createFileSubCategory(request, principalId))
+                .isInstanceOf(BusinessException.class);
     }
 
     @Test
-    @Commit
-    void getPageFileSubCategoriesTest() {
-        FileSubCategoryPageDTO pageFileSubCategories = underTest.getPageFileSubCategories(1, 0, "");
-        FileSubCategoryPageDTO pageFileSubCategories2 = underTest.getPageFileSubCategories(1, 0, "Mail2");
+    @DisplayName("a category that does not exist is a 404")
+    void rejectsAnUnknownCategory() {
+        FileSubCategoryDTO request = request("orphan" + TestData.nextSequence(), 0);
 
-
-        assertThat(pageFileSubCategories.getTotalPages()).isEqualTo(2);
-        assertThat(pageFileSubCategories.getFileSubCategoryDTOList().size()).isEqualTo(1);
-
-        assertThat(pageFileSubCategories2.getTotalPages()).isEqualTo(1);
-        assertThat(pageFileSubCategories2.getNumberOfElement()).isEqualTo(1);
-    }
-
-
-    @Test
-    @Commit
-    void deleteFileCategoryTest() {
-
-        FileSubCategory fileSubCategory = underTest.getFileSubCategoryByIdOrSubCategoryName(fileSubCategorySubMailId2, null);
-        String path = fileSubCategory.getPath();
-
-        underTest.deleteSubCategory(fileSubCategory.getId(), userId);
-
-
-        assertThat(Files.exists(Path.of(path))).isFalse();
-
-        assertThatThrownBy(
-                () -> underTest.getFileSubCategoryDtoByIdOrSubCategoryName(fileSubCategorySubMailId2, null)
-        ).isInstanceOf(ResourceNotFoundException.class);
-
+        assertThatThrownBy(() -> underTest.createFileSubCategory(request, principalId))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
-    @Commit
-    void deleteUnDeletableFileCategoryTest() {
+    @DisplayName("update writes the description and the human-readable name")
+    void updatesTheSubCategory() {
+        FileSubCategoryDTO request = new FileSubCategoryDTO();
+        request.setId(emptySubCategoryId);
+        request.setSubCategoryNameDescription("a new name");
+        request.setDescription("a new description");
 
-        assertThatThrownBy(
-                () -> underTest.deleteSubCategory(fileSubCategorySubMailId, userId)
-        ).isInstanceOf(DependencyResourceException.class);
+        underTest.updateFileSubCategory(request, principalId);
 
+        FileSubCategoryDTO updated = underTest.getFileSubCategoryDtoById(emptySubCategoryId);
+        assertThat(updated.getSubCategoryNameDescription()).isEqualTo("a new name");
+        assertThat(updated.getDescription()).isEqualTo("a new description");
     }
 
+    @Test
+    @DisplayName("a description another sub-category in the same category uses is a 409")
+    void rejectsADuplicateDescription() {
+        String taken = fileSubCategoryRepository.findById(subCategoryWithTagsId).orElseThrow()
+                .getSubCategoryNameDescription();
 
+        FileSubCategoryDTO request = new FileSubCategoryDTO();
+        request.setId(emptySubCategoryId);
+        request.setSubCategoryNameDescription(taken);
+        request.setDescription("anything");
+
+        assertThatThrownBy(() -> underTest.updateFileSubCategory(request, principalId))
+                .isInstanceOf(DuplicateResourceException.class);
+    }
+
+    @Test
+    @DisplayName("a sub-category with no main tags can be deleted")
+    void deletesAnEmptySubCategory() {
+        underTest.deleteSubCategory(emptySubCategoryId, principalId);
+
+        assertThat(fileSubCategoryRepository.findById(emptySubCategoryId)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a sub-category that still has main tags is a 409, and survives")
+    void refusesToDeleteASubCategoryInUse() {
+        assertThatThrownBy(() -> underTest.deleteSubCategory(subCategoryWithTagsId, principalId))
+                .isInstanceOf(DependencyResourceException.class);
+
+        assertThat(fileSubCategoryRepository.findById(subCategoryWithTagsId)).isPresent();
+    }
+
+    @Test
+    @DisplayName("the page filters on the search term")
+    void pagesAndFilters() {
+        String name = fileSubCategoryRepository.findById(emptySubCategoryId).orElseThrow().getSubCategoryName();
+
+        FileSubCategoryPageDTO page = underTest.getPageFileSubCategories(10, 0, name);
+
+        assertThat(page.getFileSubCategoryDTOList())
+                .extracting(FileSubCategoryDTO::getSubCategoryName)
+                .containsExactly(name);
+    }
+
+    @Test
+    @DisplayName("the main tags of a sub-category feed the dependent dropdown")
+    void listsMainTagsOfASubCategory() {
+        assertThat(underTest.getMainTagsOfSubCategory(subCategoryWithTagsId)).hasSize(1);
+        assertThat(underTest.getMainTagsOfSubCategory(emptySubCategoryId)).isEmpty();
+    }
+
+    private FileSubCategoryDTO request(String name, int categoryId) {
+        FileSubCategoryDTO request = new FileSubCategoryDTO();
+        request.setSubCategoryName(name);
+        request.setSubCategoryNameDescription(name + " description");
+        request.setDescription(name + " long description");
+        request.setFileCategoryId(categoryId);
+        return request;
+    }
 }

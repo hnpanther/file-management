@@ -28,6 +28,18 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * The file pages: upload, the paged list, one file with its versions, the public list, and the two
+ * download endpoints.
+ *
+ * <p>Two downloads exist on purpose. {@code public-download/{id}} serves a file whose own state and
+ * whose parent's state are both active, and is reachable without signing in; the other requires a
+ * permission and serves any version. They must not be merged - the first is the anonymous path.
+ *
+ * <p>Uploading a file that already exists is not an error: depending on what matches, the service
+ * stores a new format of the current version or a new version. The page cannot tell the two apart
+ * and does not need to.
+ */
 @Controller
 @RequestMapping("/files")
 public class FileController {
@@ -70,7 +82,7 @@ public class FileController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileController.class", logMessage);
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
 
         FileInfoDTO fileInfoDTO = new FileInfoDTO();
 
@@ -138,7 +150,7 @@ public class FileController {
 
         }
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
         model.addAttribute("file", fileInfoDTO);
         model.addAttribute("listCategory", allFileCategories);
         model.addAttribute("pageType", "create");

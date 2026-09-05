@@ -25,6 +25,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * The main-tag pages: create, edit, and the paged list.
+ *
+ * <p>A main tag belongs to exactly one sub-category, so the form carries two dependent dropdowns -
+ * category, then sub-category - both filled over AJAX from the {@code /resource/**} endpoints.
+ */
 @Controller
 @RequestMapping("/main-tags")
 public class MainTagFileController {
@@ -66,7 +72,7 @@ public class MainTagFileController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "MainTagFileController.class", logMessage);
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
 
         MainTagFileDTO mainTagFileDTO = new MainTagFileDTO();
         mainTagFileDTO.setFileCategoryId(0);
@@ -131,7 +137,7 @@ public class MainTagFileController {
         }
 
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
         model.addAttribute("mainTag", mainTagFileDTO);
         model.addAttribute("listCategory", allFileCategories);
         model.addAttribute("pageType", "create");
@@ -155,9 +161,9 @@ public class MainTagFileController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "MainTagFileController.class", logMessage);
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
 
-        MainTagFileDTO mainTagFileDTO = mainTagFileService.getMainTagFileDtoByIdOrTagName(id, null);
+        MainTagFileDTO mainTagFileDTO = mainTagFileService.getMainTagFileDtoById(id);
 
         model.addAttribute("mainTag", mainTagFileDTO);
         model.addAttribute("listCategory", allFileCategories);
@@ -212,7 +218,7 @@ public class MainTagFileController {
         }
 
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategories(defaultElementSize, 0);
+        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
         model.addAttribute("mainTag", mainTagFileDTO);
         model.addAttribute("listCategory", allFileCategories);
         model.addAttribute("pageType", "update");

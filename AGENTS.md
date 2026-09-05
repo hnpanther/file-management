@@ -53,17 +53,55 @@ Match what is already there unless the roadmap says to change it.
 `service/`, never in a controller.
 
 **Constructor injection only.** No field `@Autowired`. Every dependency is `private final` and set
-in the constructor.
+in the constructor. Services take repositories, not `EntityManager`; where you need a foreign-key
+reference without loading the row, use `repository.getReferenceById(id)`.
 
-**Entity → DTO** conversion goes through `util/ModelConverterUtil`. Do not return entities from
-controllers.
+**Transactions belong on the service.** Every service is `@Transactional(readOnly = true)` at class
+level, and each mutating method opts in with a bare `@Transactional`. A change and the
+`action_history` row that records it must commit together — `ActionHistoryService.saveActionHistory`
+is `Propagation.MANDATORY`, so calling it outside a transaction fails loudly instead of writing a
+history row that outlives a rolled-back change. Inside a transaction a loaded entity needs no
+`save()`; the dirty check writes it.
+
+**Entity → DTO** conversion goes through `util/ModelConverterUtil`, and it happens **inside the
+service**, in the transaction that loaded the data. `spring.jpa.open-in-view` is off, so an entity
+that reaches a controller is a lazy graph with no persistence context behind it. No service method
+returns an entity; the few that must share one with a sibling service are package-private
+(`getFileCategoryEntity`, `getMainTagFileEntity`, …).
+
+**Entities extend `AbstractEntity`** (id, `equals`, `hashCode`, `toString`) or `AuditableEntity`
+(those four plus the audit columns). Do not add `@Data` to an entity, do not override the three
+`Object` methods — they are `final` for a reason — and do not set `createdAt` / `updatedAt` by hand.
+
+**Every association is `LAZY`, and every query says what it needs.** Add a `JOIN FETCH` to the
+repository method rather than making a mapping eager. Fetching `@ManyToOne` chains paginates
+fine; fetching a collection does not, so those queries return one row.
+
+**Read children by query, not through the parent's collection.** `parent.getChildren()` answers
+from the persistence context and can be stale within a transaction — that is how a delete check on
+a category with sub-categories passed. Use the child repository.
 
 **Validation groups.** `InsertValidation` / `UpdateValidation` / `UpdatePasswordValidation` on the
 DTO fields, activated by `@Validated(InsertValidation.class)` on the handler parameter.
 
-**Exceptions.** Throw the domain exceptions from `exception/`: `ResourceNotFoundException`,
-`DuplicateResourceException`, `InvalidDataException`, `DependencyResourceException`,
-`BusinessException`. The `@ControllerAdvice` beans map them.
+**Exceptions.** Throw the domain exceptions from `exception/`: `ResourceNotFoundException` (404),
+`DuplicateResourceException` (409), `DependencyResourceException` (409), `InvalidDataException`
+(400), `BusinessException` (417). The status lives on the exception class as `@ResponseStatus`, and
+the single `GlobalExceptionHandler` reads it — do not repeat a status in a handler.
+
+**REST handlers do not catch.** A method in `resource/` or `api/` throws and lets the advice answer.
+Catching locally is what used to flatten 404, 409 and 417 into one 400 with the body
+`"invalid data"`. Return `ApiResult.created/updated/deleted/stateChanged(...)` for a mutation and a
+DTO for a lookup; success is 200, because the pages branch only on `xhr.status === 200`. Full
+contract in [arch.md §6](docs/arch.md#the-rest-contract).
+
+**Bind request bodies, never parse them.** Add a small record to `dto/` (see `StateChangeRequest`)
+and take it as `@RequestBody`. `JsonParserFactory` plus `map.get("x").toString()` is how these
+endpoints used to turn a missing field into a 500.
+
+**Log with the request-aware overload.** `globalGeneralLogging.controllerLogging(userDetails,
+request, YourClass.class, "what you are about to do")` replaces the six-line preamble. The old
+five-argument signature is still there for the Thymeleaf controllers; do not use it in new code.
 
 **Every handler needs a permission.** Add a constant to `PermissionEnum`, annotate the handler with
 `@PreAuthorize("hasAuthority('YOUR_CONSTANT') || hasAuthority('ADMIN')")`, and keep the comment above
@@ -74,10 +112,10 @@ automatically on the next `prod` start.
 `actionHistoryService.saveActionHistory(EntityEnum.X, id, ActionEnum.Y, principalId, actionDesc, desc)`
 after the change. It is not automatic.
 
-**Handler preamble.** Existing handlers open with the `globalGeneralLogging.controllerLogging(...)`
-block. Match it in new handlers in existing files — it is scheduled for replacement by an aspect
-([issue 25](docs/issues.md#25-sixty-copies-of-the-same-logging-preamble--s3)), but a half-converted
-file is worse than a consistent one.
+**Handler preamble.** The `resource/` and `api/` packages are converted to the one-line overload
+above. The Thymeleaf controllers still open with the six-line block; match the file you are in —
+a half-converted file is worse than a consistent one — and see
+[issue 25](docs/issues.md#25-sixty-copies-of-the-same-logging-preamble--s3).
 
 **The app shell.** `templates/navbar.html :: navbar` emits the fixed top bar *and* the sidebar.
 Pages just insert it and need no wrapper; `app.css` offsets `<body>` via `body:has(.app-sidebar)`.
@@ -163,6 +201,29 @@ Hibernate will refuse to start on a mismatch.
   Spring Boot upgrade was lost.
 * **Merge carefully.** Verify `pom.xml` after any merge that touches it. See issue 1.
 * Do not commit `.idea/`, `target/`, or anything under `TempFiles/`.
+
+## Tests
+
+Four kinds, and the choice is not stylistic — each answers something the others cannot. The table in
+[arch.md §12](docs/arch.md#12-tests) says which is which. In short:
+
+* **unit** (`*UnitTest`, plain JUnit or Mockito) — guard clauses, pure functions, and *negative*
+  assertions like "a rejected upload never reaches storage". No Spring, no Docker;
+* **repository** (`@DataJpaTest`) — fetch plans, cascades, bulk updates, schema constraints;
+* **service** (`@ServiceIntegrationTest`) — the whole path through the real Spring beans;
+* **web** (`@SpringBootTest` + MockMvc) — statuses, shapes, redirects, authorization.
+
+Rules for new tests:
+
+* **Never construct a service with `new`.** It has no proxy, so its `@Transactional` does nothing
+  and the test cannot fail for a missing transaction boundary. Autowire it.
+* **Do not clean up by hand.** `@ServiceIntegrationTest` and `@DataJpaTest` roll back. A
+  `deleteAll()` teardown has to be maintained in foreign-key order and leaks rows when a test fails
+  part-way.
+* **Build fixtures with `support/TestData`.** It fills every `NOT NULL` column and generates the
+  unique ones; override only what the test is about.
+* **Name what the test proves**, not the method it calls: `refusesToDeleteATagInUse`, not
+  `deleteMainTagFileTest`. Add `@DisplayName` in a sentence.
 
 ## Definition of done
 

@@ -24,6 +24,15 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * The role pages: create, edit and list.
+ *
+ * <p>The edit form renders every permission in the system with a checkbox, so a submission is the
+ * complete set rather than a delta - a permission left unchecked is a removal.
+ *
+ * <p>This controller is mapped per-method rather than at class level; the paths still all begin
+ * with {@code /roles}.
+ */
 @Controller
 public class RoleController {
 
@@ -128,7 +137,7 @@ public class RoleController {
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "RoleController.class", logMessage);
 
-        RoleDTO roleDTO = roleService.getRoleDtoByIdOrRoleName(roleId, null);
+        RoleDTO roleDTO = roleService.getRoleDtoById(roleId);
         List<PermissionDTO> permissionDTOList = roleService.getAllPermissionsOfRoleWithSelected(roleId);
 
 

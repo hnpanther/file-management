@@ -3,7 +3,6 @@ package com.hnp.filemanagement.config.security;
 import com.hnp.filemanagement.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -13,7 +12,6 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.ldap.authentication.ad.ActiveDirectoryLdapAuthenticationProvider;
 import org.springframework.security.ldap.userdetails.LdapUserDetails;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 @Component
 public class ActiveDirectoryCustomAuthenticationProvider implements AuthenticationProvider {

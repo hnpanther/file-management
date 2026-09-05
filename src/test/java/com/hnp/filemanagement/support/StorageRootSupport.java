@@ -35,7 +35,16 @@ public abstract class StorageRootSupport {
 
     @BeforeEach
     void clearStorageRootBeforeTest() {
-        deleteRecursively(Paths.get(storageRoot));
+        Path root = Paths.get(storageRoot);
+        deleteRecursively(root);
+        // Recreated empty, because the storage layer creates directories one level at a time and
+        // refuses to create a child whose parent is missing. Tests used to do this themselves in
+        // their own @BeforeEach, which is why every one of them had to remember to.
+        try {
+            Files.createDirectories(root);
+        } catch (IOException e) {
+            throw new UncheckedIOException("could not create " + root, e);
+        }
     }
 
     @AfterEach

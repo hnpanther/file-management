@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -25,6 +26,15 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * The user pages: create, edit, profile, password change, role assignment and the paged list.
+ *
+ * <p>Password changes are a separate form and a separate service call, so an ordinary edit can
+ * never blank a password by omitting the field.
+ *
+ * <p>The profile page hosts the two state toggles - enabled and login type - which it drives over
+ * AJAX against {@code UserResource} rather than posting the whole form back.
+ */
 @Controller
 @RequestMapping("/users")
 public class UserController {
@@ -132,7 +142,7 @@ public class UserController {
                 request.getMethod() + " " + path, "UserController.class", logMessage);
 
 
-        UserDTO userDTO = userService.getUserDtoByIdOrUsername(userId, null);
+        UserDTO userDTO = userService.getUserDtoById(userId);
         model.addAttribute("user", userDTO);
         model.addAttribute("showMessage", false);
         model.addAttribute("valid", false);
@@ -155,7 +165,7 @@ public class UserController {
                 request.getMethod() + " " + path, "UserController.class", logMessage);
 
 
-        UserDTO userDTO = userService.getUserDtoByIdOrUsername(userId, null);
+        UserDTO userDTO = userService.getUserDtoById(userId);
         model.addAttribute("user", userDTO);
         return "user/user-profile.html";
     }
@@ -172,7 +182,7 @@ public class UserController {
                 request.getMethod() + " " + path, "UserController.class", logMessage);
 
 
-        UserDTO userDTO = userService.getUserDtoByIdOrUsername(userId, null);
+        UserDTO userDTO = userService.getUserDtoById(userId);
         model.addAttribute("user", userDTO);
         model.addAttribute("showMessage", false);
         model.addAttribute("valid", false);
@@ -289,7 +299,7 @@ public class UserController {
                 request.getMethod() + " " + path, "UserController.class", logMessage);
 
 
-        UserDTO userDTO = userService.getUserDtoByIdOrUsername(userId, null);
+        UserDTO userDTO = userService.getUserDtoById(userId);
 
         List<RoleDTO> roleDTOList = userService.getAllRoleDtoOfUserWithSelected(userId);
         model.addAttribute("user", userDTO);
@@ -376,8 +386,11 @@ public class UserController {
         }
 
 
-        List<UserDTO> userDTOS = userService.getAllUserWithSearchPage(search, pageSize, pageNumber);
-        int count = userService.countAllUserWithSearchPage(search);
+        // One query answers both the rows and the total, so the pager can never disagree with the
+        // list it pages - the two used to be separate calls that parsed the search term differently.
+        Page<UserDTO> page = userService.getUserPage(search, pageSize, pageNumber);
+        List<UserDTO> userDTOS = page.getContent();
+        long count = page.getTotalElements();
 
         model.addAttribute("users", userDTOS);
         model.addAttribute("pageSize", pageSize);

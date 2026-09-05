@@ -1,21 +1,33 @@
 package com.hnp.filemanagement.entity;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
 
-import jakarta.persistence.*;
-import lombok.Data;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
-import java.util.ArrayList;
-import java.util.List;
-
+/**
+ * One row per {@link PermissionEnum} constant — the table is a projection of the enum, seeded at
+ * startup by {@code FileManagementApplication.initialize}.
+ *
+ * <p>Stored as {@code EnumType.STRING}, never {@code ORDINAL}: an ordinal mapping would silently
+ * re-point every existing row the moment someone inserted a constant in the middle of the enum.
+ *
+ * <p>{@code roles} is the inverse side and carries no cascade: removing a permission must never
+ * remove the roles that reference it.
+ */
 @Entity
 @Table(name = "permission")
-@Data
-public class Permission {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id")
-    private Integer id;
+@Getter
+@Setter
+public class Permission extends AbstractEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "permission_name", nullable = false, unique = true, columnDefinition = "VARCHAR(100)")
@@ -24,8 +36,6 @@ public class Permission {
     @Column(name = "description")
     private String description;
 
-    // No cascade: this is the inverse side. Removing a permission must never remove the roles
-    // that reference it, and persisting one must never persist them.
     @ManyToMany(fetch = FetchType.LAZY, mappedBy = "permissions")
-    private List<Role> roles = new ArrayList<>();
+    private Set<Role> roles = new LinkedHashSet<>();
 }
