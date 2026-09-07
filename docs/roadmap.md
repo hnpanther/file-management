@@ -1,7 +1,9 @@
 # Roadmap
 
-Four goals, sequenced so that each phase leaves the application working and each depends only on
-what came before.
+This began as four goals — restructuring, PostgreSQL, S3 storage and a folder tree. Phase 0 came
+first to make the rest safe, and Phases 6–8 grew out of the fourth once it became clear what a folder
+tree actually implies. Every phase is sequenced to leave the application working, and to depend only
+on what came before.
 
 | Phase | Goal | Depends on | Status |
 |---|---|---|---|
@@ -13,6 +15,7 @@ what came before.
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done** |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | mirror + grants **done**, off by default |
 | 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | planned |
+| 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -23,9 +26,8 @@ Renumbering instead would break every reference in `docs/`, in issue entries and
 example in `application.properties` - domain, URL, the `login_type` gate, and why the two
 properties default to empty rather than being absent.
 
-Phase 0 is not one of the four stated goals, but every later phase is a large refactor of code that
-currently has **no** automated verification (issues 36–38). Doing it first is what makes the rest
-safe.
+Phase 0 was not one of those goals, but every later phase is a large refactor of code that had **no**
+automated verification at all (issues 36–38). Doing it first is what made the rest safe.
 
 ---
 
@@ -827,13 +829,159 @@ there can no longer be two different "HSED" in two different branches, because a
 
 ### 7.5 What this unblocks
 
-Only once folders are the structure does it make sense to build on top of them: document lifecycle,
-forms and approval workflow all attach to a folder, and building them against the taxonomy first
-would mean writing them twice.
+[Phase 8](#phase-8--ims-controlled-documents-forms-and-approval) — document lifecycle, forms and an
+approval workflow — all attach to a folder. Building them against the taxonomy first would mean
+writing them twice.
 
 **Done when:** a file belongs to a folder and to tags; the four taxonomy tables are gone; a folder can
 be created, renamed, moved and deleted without touching a byte on disk; and the file-name rule,
 the API contract and upload authorisation have all been moved across rather than left behind.
+
+---
+
+## Phase 8 — IMS: controlled documents, forms and approval
+
+A form is filled in, it goes through an approval workflow, and what comes out the other side is a
+controlled document — an آیین‌نامه, a procedure, a work instruction. A form builder defines those
+forms rather than each one being a hand-written page.
+
+### 8.0 The thing to understand before designing anything
+
+**This application already manages controlled documents.** The file names are not names, they are
+document codes:
+
+```
+PR-CLS-LR-001    procedure
+WI-HSE-SA-013    work instruction
+BL-HRM-JC-001    by-law / آیین‌نامه
+```
+
+So an آیین‌نامه is not a new kind of thing. It is a document with a **lifecycle** — draft, under
+review, approved, effective, superseded — living in the same tree, with the same versioning, the
+same folder access control, the same search and the same audit trail as everything else here.
+
+Building it as a parallel world would mean re-implementing all five. Everything below therefore
+attaches to `folder` and to the existing file/version model rather than beside them.
+
+### 8.1 A correction to the obvious framing
+
+"A form for creating an آیین‌نامه" and "a form for editing an آیین‌نامه" should **not** be two form
+definitions. One definition per *document type* is enough; what differs between creating and editing
+is which workflow starts and whether the result is revision 1 or revision n+1. Two definitions means
+two places to maintain the same fields, and by the sixth month they will have drifted and nobody
+will know which is authoritative.
+
+### 8.2 Four things that must stay separate
+
+The common failure in this kind of system is collapsing these into one table:
+
+| | What it is | The rule that matters |
+|---|---|---|
+| **Form definition** | the schema: fields, labels, validation | versioned, and published as a version |
+| **Submission** | one filled-in form | pins the definition *version* it was filled with |
+| **Workflow** | who decides what, and when | definition versioned; instance pins a version |
+| **Controlled document** | the approved output | lives in a folder, has revisions |
+
+### 8.3 The schema
+
+```sql
+form_definition             (id, key, document_type, title, status)
+form_definition_version     (id, definition_id, version, schema_json, published_at, published_by)
+
+form_submission             (id, definition_version_id, folder_id, data_json,
+                             status, created_by, created_at)
+
+workflow_definition_version (id, key, version, definition_json)
+workflow_instance           (id, definition_version_id, subject_type, subject_id,
+                             current_step, status, started_by, started_at, finished_at)
+workflow_task               (id, instance_id, step_key, assignee_role_id, assignee_user_id,
+                             status, decision, comment, acted_by, acted_at, due_at)
+workflow_event              (id, instance_id, from_step, to_step, action, actor_id, at, comment)
+
+controlled_document         (id, folder_id, code, document_type, title, status,
+                             current_revision, effective_from, next_review_at)
+document_revision           (id, document_id, revision, submission_id, workflow_instance_id,
+                             approved_at, approved_by, file_details_id)
+```
+
+`document_revision.file_details_id` is nullable and points at the existing `file_details`: the
+rendered PDF of an approved revision is stored and versioned exactly like every other file, rather
+than through a second storage path.
+
+### 8.4 JSON or relational?
+
+* **Form schema → JSON.** One column, versioned, and no migration for every new field.
+* **Submission data → JSON, plus a few extracted columns** for the handful of values that are
+  actually filtered or reported on.
+* **Never EAV.** An `(entity, attribute, value)` table is the classic trap here: no types, no usable
+  indexes, and every report becomes a self-join per field.
+
+With Hibernate 7 this is `@JdbcTypeCode(SqlTypes.JSON)`. It works on the MySQL 8 in use today and
+gets better, not worse, on the `jsonb` that [Phase 3](#phase-3--postgresql-migration) brings.
+
+### 8.5 Three decisions that are expensive to get wrong
+
+1. **A submission pins the form definition version.** Pointing at the definition instead means that
+   the day a form changes, every document ever filled with the old one renders wrongly. This is the
+   same lesson `file_details.version` already encodes.
+2. **A workflow instance pins the workflow definition version.** Otherwise editing a workflow breaks
+   every case currently in flight, halfway through.
+3. **Validation is server-side, from the same definition the form was rendered from**, and the set of
+   field types is **closed**: text, number, Jalali date, select, multi-select, checkbox, attachment,
+   user picker, folder picker, repeating group. Every new type costs a renderer, a validator and a
+   reporting path — so each one is a decision, not a convenience.
+
+### 8.6 Workflow: an engine, or a state machine of our own?
+
+| Hand-rolled is right when | Flowable / Camunda is right when |
+|---|---|
+| linear, with a few branches | genuine parallel branches, sub-processes |
+| approver chosen by role or by folder | delegation, time-based escalation, timers |
+| — | business users draw the BPMN themselves |
+
+**Hand-rolled, for this application.** A BPMN engine brings dozens of tables and its own identity
+model, and "draft → review → approve → publish" uses almost none of it. Keeping the instance
+separate from the versioned definition is what leaves the door open: that shape translates to BPMN
+later if the need ever arrives.
+
+### 8.7 Authorization: do not invent a third model
+
+The two questions from [Phase 6](#phase-6--two-tier-authorization-endpoint-permissions-and-folder-access)
+already answer most of this. A document lives in a folder, so "who may see this آیین‌نامه" is a
+question that already has an answer.
+
+What is genuinely new is **the right to decide** — being an approver at a step. That is not the right
+to see, and it belongs on `workflow_task`, not on the folder grant.
+
+### 8.8 What not to build
+
+* A free-form drag-and-drop layout designer. Constrain it to a simple multi-column grid; arbitrary
+  layout is unmaintainable to render, and worse to print.
+* Gregorian dates in the interface. Jalali in the UI, `DATE`/UTC in the database.
+* Digital signatures in the first version, unless there is a legal requirement — an approval record
+  with an audit trail satisfies ISO 9001 §7.5 on its own.
+
+### 8.9 Two gaps in the current model that this phase has to close
+
+1. **A document code is only unique per sub-category** (`uq_file_info_name_per_sub_category`), and in
+   [Phase 7](#phase-7--nested-folders-replace-the-taxonomy) that becomes per-folder. A controlled
+   document code must be unique **system-wide** and issued centrally, not typed in as a file name.
+2. **There is no "superseded".** `state` is `0` / `-1` and nothing more. Controlled documents need an
+   effective date, a next-review date, and an obsolete marker so that a withdrawn revision can be
+   told from a current one at a glance.
+
+### 8.10 Order of work
+
+1. `controlled_document` + `document_revision` over the folder tree, with no forms and no workflow —
+   this alone gives the existing documents a code, a revision and a lifecycle, and is the largest
+   gain for the least risk;
+2. the form builder, for **one** document type;
+3. a linear one-step approval workflow;
+4. the remaining document types and multi-step workflows.
+
+**Done when:** a form defined in the builder can be filled in, routed for approval, and — on approval
+— produce a numbered revision of a controlled document that lands in the right folder, is visible to
+exactly the people the folder grants allow, and leaves an audit trail from submission to approval.
 
 ---
 

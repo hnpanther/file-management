@@ -508,7 +508,7 @@ Note the two different prefixes (`file.management.*` and `filemanagement.*`) and
 
 ## 12. Tests
 
-`./mvnw test` runs 263 tests and needs only a working Docker daemon: `MySqlSupport` starts one
+`./mvnw test` runs 285 tests and needs only a working Docker daemon: `MySqlSupport` starts one
 MySQL 8.0.36 container per JVM, and `StorageRootSupport` gives each test a clean storage root.
 
 Four kinds, and the kind is the point — each answers something the others cannot.
