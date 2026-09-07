@@ -8,10 +8,16 @@ what came before.
 | 0 | Safety net — CI, smoke test, containerised dev environment | — | **done** |
 | 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done** |
 | 2 | Architectural restructuring | 1 | |
-| 3 | PostgreSQL migration | 1, partly 2 | |
+| 3 | PostgreSQL migration | 1, partly 2, **and 7** | |
 | 4 | S3-compatible storage alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done** |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | mirror + grants **done**, off by default |
+| 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | planned |
+
+**Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
+is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
+four taxonomy tables are gone means not carrying them into a new schema only to drop them again.
+Renumbering instead would break every reference in `docs/`, in issue entries and in code comments.
 
 **Already done, outside a phase:** the Active Directory connection is documented with a worked
 example in `application.properties` - domain, URL, the `login_type` gate, and why the two
@@ -173,6 +179,12 @@ check that is currently missing (issue 16) and the broken `load` guard (issue 4)
 Write the **storage contract test** now, as an abstract JUnit class. `FilesystemBlobStore` is its
 only subject until Phase 4 adds a second one.
 
+> **Half of this is pulled forward into
+> [Phase 7.1](#71-first-decouple-the-storage-key-from-the-structure)**: the `storage_key` column and
+> the key → path mapping, because folders cannot become the structure while the structure *is* the
+> path on disk. What is left here is the rest of the port — the interface itself, the containment
+> check, the guards and the contract test.
+
 ### 2.3 Domain restructuring
 
 * Re-slice packages by feature (`catalog/`, `file/`, `identity/`, `storage/`, `audit/`, `shared/`).
@@ -201,6 +213,13 @@ enforced in the domain, and the storage contract test green.
 ---
 
 ## Phase 3 — PostgreSQL migration
+
+> **Run [Phase 7](#phase-7--nested-folders-replace-the-taxonomy) first.** This phase's whole strategy
+> is a fresh baseline rather than a portable rewrite (§3.2), and a baseline written while
+> `general_tag`, `file_category`, `file_sub_category` and `main_tag_file` still exist would carry
+> four tables into a new schema for the sole purpose of dropping them shortly after — along with
+> their data migration, their indexes and their foreign keys. Phase 7 also removes the
+> `file_path` / `relative_path` columns this phase would otherwise have to translate.
 
 **Target: PostgreSQL 17** (the driver in the Spring Boot 4.1.1 BOM is `postgresql` 42.7.13).
 
@@ -355,25 +374,33 @@ matters because every `@ManyToOne` here is `EAGER`.
 
 Read-only on purpose: no move, rename or delete. `FILE_TREE_PAGE` and `REST_GET_FILE_TREE` gate it.
 
-### 5.2 Drag and drop (next)
+### 5.2 Drag and drop
+
+> **Unblocked differently than planned.** The premise below was that a move needs a storage port
+> that can express one, because moving a node means moving bytes.
+> [Phase 7.1](#71-first-decouple-the-storage-key-from-the-structure) removes the premise instead: once
+> a stored object is addressed by a key rather than by its place in the tree, a move touches no bytes
+> at all and becomes a `parent_id` change plus the one-statement path rewrite in
+> [6.1](#61-choosing-how-to-store-the-tree). Do 7.1 first; then only steps 2 and 3 below remain, and
+> step 1 is no longer on the critical path.
 
 Needs a *move* operation, which the current storage port cannot express: `FileStorageService` is
-path-shaped (`address`, `version`, `extension`) and has no `move`. Do this **after** the
-`BlobStore` port from [target-architecture.md](target-architecture.md#the-storage-port), where a
-move is a key change plus a database update, and on S3 a server-side copy then delete.
+path-shaped (`address`, `version`, `extension`) and has no `move`.
 
 Order:
-1. `BlobStore.move(from, to)` on the port and both adapters.
-2. `PUT /resource/files/tree/move` — validates the target accepts the node type, moves bytes and
-   row in one transaction, writes an `ActionHistory` row.
+1. ~~`BlobStore.move(from, to)` on the port and both adapters.~~ Replaced by 7.1.
+2. `PUT /resource/files/tree/move` — validates the target accepts the node type, moves the row in one
+   transaction, writes an `ActionHistory` row.
 3. Alpine drag handlers on the existing flat row list — it is already an ordered list with a
    `depth` on every row, which is what a drop target needs.
 
 ### 5.3 Collapsing the taxonomy into folders
 
-Moved to [Phase 6](#phase-6--two-tier-authorization-endpoint-permissions-and-folder-access), which
-owns the `folder` table: the same change serves both the tree and folder-level access control, and
-splitting it across two phases would have produced two designs for one table.
+Split across two phases in the end. [Phase 6](#phase-6--two-tier-authorization-endpoint-permissions-and-folder-access)
+built the `folder` table, because the same table serves both the tree and folder-level access
+control and two designs for one table would have been worse.
+[Phase 7](#phase-7--nested-folders-replace-the-taxonomy) is the collapse itself: folders become
+authoritative, and the four levels become tags.
 
 ### 5.4 Known gap in the current view
 
@@ -680,12 +707,133 @@ Existing users need a backfill migration that creates the missing home folders a
 > special case in `getChildren`, and it disappears when files become folders.
 
 Drop `file_sub_category_id` / `main_tag_file_id` from `file_info`, retire the three taxonomy tables
-and the `source_type` / `source_id` columns, and give every folder a real directory - a main tag has
-none today, so each file's directory has to move into a newly created one.
+and the `source_type` / `source_id` columns.
 
-**This is the only step that moves bytes.** It runs after Phase 3 has backfilled `checksum_sha256`
-and Phase 4 has introduced `BlobStore`, and every file is verified by checksum on both sides.
+> **Superseded by [Phase 7](#phase-7--nested-folders-replace-the-taxonomy)**, which does this and
+> more: the four levels do not merely stop being structure, they become tags. The sketch here also
+> assumed the step must move bytes, "because a main tag has no directory". Phase 7 removes that
+> assumption instead — see [7.1](#71-first-decouple-the-storage-key-from-the-structure).
 
+---
+
+## Phase 7 — Nested folders replace the taxonomy
+
+The four levels — general tag, category, sub-category, main tag — stop being structure. A folder
+tree of arbitrary depth becomes the only structure, and the four levels become **tags**: labels on a
+file, not places to put it.
+
+Two things that are one thing today come apart:
+
+| | today | after |
+|---|---|---|
+| **Where a file is** | category → sub-category → main tag, exactly three levels | one folder, any depth |
+| **What a file is about** | the same three levels | tags, many per file |
+
+Half of this is already built. `folder` exists and mirrors the taxonomy, the tree already addresses
+every node by folder id, and folder access control is already enforced against it (Phase 6). What
+remains is to make `folder` authoritative, attach files to it, and delete the taxonomy.
+
+### 7.0 The decision behind the plan
+
+Should the initial folder tree have the same shape as today's taxonomy?
+
+**Yes.** It already does — that is what the mirror is — and keeping it means the migration changes no
+one's mental model on the day it ships. The four levels are turned into tags *as well*, which is
+strictly redundant at first (a file's folder path already says its category and sub-category), and
+that is accepted on purpose: it preserves every existing way of finding a file while the folder tree
+takes over, and the redundant tags can be pruned later at no risk. Reshaping the tree and cutting the
+taxonomy in the same change would leave nothing recognisable to compare against if something looks
+wrong.
+
+### 7.1 First: decouple the storage key from the structure
+
+**This is the prerequisite, and the single most important step.** Today the structure *is* the path
+on disk:
+
+```
+{base-dir}/{Category}/{SubCategory}/{FileName}/v{n}/{file}.{ext}
+```
+
+With folders of arbitrary depth and drag-and-drop, every folder move would then mean moving bytes on
+disk *and* rewriting the denormalised `file_path` and `relative_path` on two tables. That is exactly
+how files get lost.
+
+So: add `file_details.storage_key`, backfill it to each row's current relative path, and let the
+filesystem adapter map key → path. **No bytes move.** From that point a folder move is a metadata
+change, and three other things fall out of it:
+
+* it is the small, useful half of the `BlobStore` port that [Phase 2](#22-the-storage-port) wants
+  anyway, so it is brought forward rather than duplicated;
+* [Phase 5.2](#52-drag-and-drop) (drag-and-drop) stops being blocked on a storage port that can
+  express a move;
+* **a folder name no longer has to be directory-safe.** It stops being a directory name, so folders
+  can be named in Persian — which `folder.name` cannot allow today, and which is also what stands in
+  the way of [issue 74](issues.md#74-usernames-are-not-directory-safe-but-are-destined-to-become-folder-names--s3).
+
+### 7.2 The steps
+
+Each is independently shippable, and only the fourth cannot be undone.
+
+| # | Step | Migration | Reverting it |
+|---|---|---|---|
+| 0 | `file_details.storage_key`, backfilled from `relative_path`; adapter maps key → path | `V1.6` | an unused column |
+| 1 | `file_info.folder_id`, nullable, backfilled to the folder mirroring the file's main tag; written alongside the old foreign keys | `V1.7` | an unused column |
+| 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under | `V1.8` | `DROP TABLE` |
+| 3 | **Reads move to the folder**: tree, upload, file list, search | — | revert the code |
+| 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` | `V1.9` | ⚠️ **none** |
+| 5 | Folder operations: create, rename, move, delete — and drag-and-drop | `V2.x` | — |
+
+Steps 0–2 only add data and change no behaviour, so they can ship early and sit in production while
+step 3 is written. Step 3 is where the application actually changes. Step 4 should follow only after
+step 3 has run for long enough to trust it, because it is the point of no return: after it,
+`FolderMirrorService`, `FolderMirrorReconciliationTest`, the three taxonomy services and their pages
+are all deleted.
+
+### 7.3 The tag model
+
+```sql
+tag_group (id, name, title)                      -- organisational unit, document type, ...
+tag       (id, group_id NULL, name, title, enabled)
+file_tag  (file_info_id, tag_id, PRIMARY KEY (file_info_id, tag_id))
+```
+
+`tag_group` goes in from the start even if nothing uses it at first: adding it later means migrating
+every tag row, and the four levels being collapsed are visibly of different kinds (a general tag is
+not the same sort of label as a main tag). `general_tag` becomes a `tag_group`.
+
+A tag name is unique across the system, which incidentally closes
+[issue 73](issues.md#73-main-tags-under-ims_document_system-reuse-the-exact-names-of-unrelated-sibling-sub-categories--s2):
+there can no longer be two different "HSED" in two different branches, because a tag is not a place.
+
+### 7.4 What has to be dealt with, and will hurt if it is not
+
+1. **`file_path` and `relative_path` on `file_info` and `file_details`** become lies the first time a
+   folder moves. They are dropped in step 4 or derived from the folder — never left to drift
+   ([issue 35](issues.md#35-paths-are-denormalised-into-three-places--s2)).
+2. **`/api/v1/files` takes a category, a sub-category and a tag.** Step 3 breaks every machine
+   integration. It needs a window where the endpoint accepts both the old triple and a `folderId`,
+   and the old form is removed only once callers have moved.
+3. **File-name uniqueness moves** from "per sub-category" (`uq_file_info_name_per_sub_category`) to
+   "per folder". The existing data may not satisfy the new rule — it needs the same pre-flight query
+   the `folder` backfill got, run before the constraint is added, not after.
+4. **Uploading still does not check folder access**
+   ([issue 76](issues.md#76-a-folder-access-grant-does-not-gate-uploading-into-that-folder--s2)). It
+   has to be closed before folders become the structure, or a user will file documents into a folder
+   they cannot even open.
+5. **Old `action_history` rows** reference `FileCategory`, `FileSubCategory` and `MainTagFile` ids
+   that will no longer exist. Acceptable for a historical log, but it is a decision to take
+   deliberately rather than discover.
+6. **Folder access grants are unaffected** — they name `folder.id` and always have.
+
+### 7.5 What this unblocks
+
+Only once folders are the structure does it make sense to build on top of them: document lifecycle,
+forms and approval workflow all attach to a folder, and building them against the taxonomy first
+would mean writing them twice.
+
+**Done when:** a file belongs to a folder and to tags; the four taxonomy tables are gone; a folder can
+be created, renamed, moved and deleted without touching a byte on disk; and the file-name rule,
+the API contract and upload authorisation have all been moved across rather than left behind.
 
 ---
 
