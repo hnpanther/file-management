@@ -17,6 +17,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.ModelAndView;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -83,7 +84,8 @@ public class GlobalExceptionHandler {
                                HttpServletRequest request) {
 
         log(principal, request, "AccessDeniedException: " + e.getMessage(), HttpStatus.FORBIDDEN);
-        return respond(request, HttpStatus.FORBIDDEN, message("error.accessDenied"), "AccessDenied");
+        return respond(request, HttpStatus.FORBIDDEN,
+                detail(request, "error.accessDenied", "not authorised for this resource"), "AccessDenied");
     }
 
     /**
@@ -99,7 +101,32 @@ public class GlobalExceptionHandler {
         log(principal, request, "HttpMessageNotReadableException: " + e.getMessage(), HttpStatus.BAD_REQUEST);
 
         // The exception message quotes the offending payload, so it is not echoed back.
-        return respond(request, HttpStatus.BAD_REQUEST, message("error.invalidRequestBody"), "InvalidRequestBody");
+        return respond(request, HttpStatus.BAD_REQUEST,
+                detail(request, "error.invalidRequestBody", "request body is not readable"), "InvalidRequestBody");
+    }
+
+    /**
+     * A path variable or query parameter that will not convert - {@code /file-info/abc} where an
+     * {@code int} is declared. That is the caller's mistake, so it is 400.
+     *
+     * <p>Without this it fell through to {@link #uncaughtException} and answered <b>500</b>, telling
+     * an integration that the server had broken when in fact it had been sent nonsense. Oracle APEX
+     * hit exactly this by declaring its ids as {@code varchar2}.
+     *
+     * <p>Only the parameter <em>name</em> is echoed. The offending value came from the caller and
+     * may be anything at all, so it is logged and not reflected.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public Object typeMismatch(MethodArgumentTypeMismatchException e,
+                               @AuthenticationPrincipal UserDetailsImpl principal,
+                               HttpServletRequest request) {
+
+        log(principal, request, "MethodArgumentTypeMismatchException: " + e.getMessage(),
+                HttpStatus.BAD_REQUEST);
+
+        return respond(request, HttpStatus.BAD_REQUEST,
+                detail(request, "error.invalidParameter", "invalid value for parameter '" + e.getName() + "'"),
+                "InvalidParameter");
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
@@ -142,7 +169,8 @@ public class GlobalExceptionHandler {
                 GlobalGeneralLogging.fullPath(request), e);
 
         // Never echo an unexpected exception message: it can carry SQL, paths or ids.
-        return respond(request, HttpStatus.INTERNAL_SERVER_ERROR, message("error.unexpected"), "Unexpected");
+        return respond(request, HttpStatus.INTERNAL_SERVER_ERROR,
+                detail(request, "error.unexpected", "unexpected server error"), "Unexpected");
     }
 
     // ------------------------------------------------------------------ shaping
@@ -187,6 +215,28 @@ public class GlobalExceptionHandler {
                 : principal.getId() + "/" + principal.getUsername();
         logger.warn("user=[{}] {} {} -> {} {}", who, request.getMethod(),
                 GlobalGeneralLogging.fullPath(request), status.value(), what);
+    }
+
+    /**
+     * The wording for a generic failure, chosen by who is asking.
+     *
+     * <p>{@code /api/**} is the machine-facing surface and its callers are programs, so it gets the
+     * English text; everything else is the Persian UI and gets the translated one. Both halves used
+     * to receive the Persian string, so an integration reading a 500 got a sentence in a script it
+     * could not act on - and {@code FileApi}'s own documentation claimed otherwise.
+     *
+     * <p>This only applies to messages this class composes. A domain exception's own message is
+     * already English and is passed through untouched.
+     */
+    private String detail(HttpServletRequest request, String messageCode, String machineText) {
+        return isMachineApi(request) ? machineText : message(messageCode);
+    }
+
+    /** True for the versioned REST surface. The context path is stripped so a deployment under a
+     * prefix still answers the same way. */
+    private static boolean isMachineApi(HttpServletRequest request) {
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        return path.startsWith("/api/");
     }
 
     private String message(String code) {
