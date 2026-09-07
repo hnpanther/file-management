@@ -11,6 +11,7 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 | Is this thing I found already known? | [docs/issues.md](docs/issues.md) — **check before "fixing"** |
 | What is it becoming? | [docs/target-architecture.md](docs/target-architecture.md) |
 | In what order? | [docs/roadmap.md](docs/roadmap.md) |
+| How is it deployed and backed up? | [docs/deployment.md](docs/deployment.md) |
 | How do I work in it? | [AGENTS.md](AGENTS.md) |
 
 ## Verify, don't infer
