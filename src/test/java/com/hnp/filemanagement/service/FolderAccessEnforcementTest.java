@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FileCategoryDTO;
+import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FileSubCategoryDTO;
 import com.hnp.filemanagement.dto.FolderAccess;
 import com.hnp.filemanagement.dto.MainTagFileDTO;
@@ -9,11 +10,14 @@ import com.hnp.filemanagement.dto.TreeSearchHitDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.Folder;
+import com.hnp.filemanagement.entity.FolderPermission;
 import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.GeneralTag;
 import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.Role;
+import com.hnp.filemanagement.entity.RoleFolderGrant;
 import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.entity.UserFolderGrant;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FileSubCategoryRepository;
@@ -30,8 +34,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.TestPropertySource;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -226,7 +232,8 @@ class FolderAccessEnforcementTest extends MySqlSupport {
     @DisplayName("a grant through a role works the same as a direct one, and on the deepest folder")
     void aGrantThroughARoleCounts() {
         Role role = roleRepository.save(TestData.role("READERS" + TestData.nextSequence()));
-        role.getFolders().add(folderOf(FolderSourceType.MAIN_TAG, tagId));
+        role.replaceFolderGrants(List.of(
+                new RoleFolderGrant(role, folderOf(FolderSourceType.MAIN_TAG, tagId), FolderPermission.READ)));
         roleRepository.save(role);
 
         User user = userRepository.findById(restrictedId).orElseThrow();
@@ -300,6 +307,64 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         assertThat(fileService.getFileInfoDtoWithFileDetails(fileInfoId, restrictedId)).isNotNull();
     }
 
+    // ---------------------------------------------------------------- writing (roadmap 9.1)
+
+    /**
+     * Issue 76, closed. Before this, holding {@code SAVE_NEW_FILE} was enough to file a document
+     * under any tag whose id could be typed into the form — including one in a department the
+     * uploader could not open in the tree.
+     */
+    @Test
+    @DisplayName("a read grant does not allow filing a document into the folder")
+    void readingAFolderIsNotPermissionToWriteInIt() {
+        grantDirectly(restrictedId, FolderSourceType.MAIN_TAG, tagId, FolderPermission.READ);
+
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG,
+                folderIdOf(FolderSourceType.MAIN_TAG, tagId), restrictedId))
+                .as("they can read it")
+                .isNotEmpty();
+
+        assertThatThrownBy(() -> fileService.createNewFile(uploadRequest(), restrictedId, 1))
+                .as("but not write into it")
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    @DisplayName("a write grant allows it")
+    void aWriteGrantAllowsFilingADocument() {
+        grantDirectly(restrictedId, FolderSourceType.MAIN_TAG, tagId, FolderPermission.WRITE);
+
+        assertThat(fileService.createNewFile(uploadRequest(), restrictedId, 1)).isNotNull();
+    }
+
+    @Test
+    @DisplayName("a write grant on an ancestor reaches the folders beneath it")
+    void writingIsInheritedDownwards() {
+        grantDirectly(restrictedId, FolderSourceType.CATEGORY, categoryId, FolderPermission.WRITE);
+
+        assertThat(fileService.createNewFile(uploadRequest(), restrictedId, 1)).isNotNull();
+    }
+
+    @Test
+    @DisplayName("no grant at all refuses the upload, as it refuses everything else")
+    void withoutAGrantNothingCanBeWritten() {
+        assertThatThrownBy(() -> fileService.createNewFile(uploadRequest(), restrictedId, 1))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    /** A distinct file name each time, so a test that gets as far as storing does not collide. */
+    private FileInfoDTO uploadRequest() {
+        String name = "upload" + TestData.nextSequence() + ".txt";
+        FileInfoDTO request = new FileInfoDTO();
+        request.setDescription("description of " + name);
+        request.setFileNameDescription(name);
+        request.setFileCategoryId(categoryId);
+        request.setFileSubCategoryId(subCategoryId);
+        request.setMainTagFileId(tagId);
+        request.setMultipartFile(new MockMultipartFile("file", name, "text/plain", "content".getBytes()));
+        return request;
+    }
+
     // ---------------------------------------------------------------- search
 
     @Test
@@ -322,8 +387,15 @@ class FolderAccessEnforcementTest extends MySqlSupport {
     // ---------------------------------------------------------------- helpers
 
     private void grantDirectly(int userId, FolderSourceType sourceType, int sourceId) {
+        grantDirectly(userId, sourceType, sourceId, FolderPermission.READ);
+    }
+
+    private void grantDirectly(int userId, FolderSourceType sourceType, int sourceId,
+                               FolderPermission permission) {
         User user = userRepository.findById(userId).orElseThrow();
-        user.getFolders().add(folderOf(sourceType, sourceId));
+        List<UserFolderGrant> grants = new ArrayList<>(user.getFolderGrants());
+        grants.add(new UserFolderGrant(user, folderOf(sourceType, sourceId), permission));
+        user.replaceFolderGrants(grants);
         userRepository.save(user);
     }
 

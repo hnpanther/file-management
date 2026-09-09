@@ -359,9 +359,26 @@
         /* --folder-depth is set per row by the template; the indent is CSS's arithmetic to do. */
         padding-inline-start: calc(0.5rem + var(--folder-depth, 0) * 1.25rem);
     }
-    .folder-grant-option:has(input:checked) { @apply bg-brand-50 font-semibold text-brand-700; }
-    .folder-grant-option input { @apply size-4 shrink-0 accent-[var(--color-brand-600)]; }
-    /* Already reached through an ancestor - still tickable, but it buys nothing. */
+    /* The row is tinted by what is actually set on it, so a tree of two hundred folders can be
+       read at a glance rather than by opening each control. :has() on the selected option is what
+       makes that possible without a class per row from the server. */
+    .folder-grant-option:has(select option[value$=":READ"]:checked) {
+        @apply bg-brand-50 font-semibold text-brand-700;
+    }
+    .folder-grant-option:has(select option[value$=":WRITE"]:checked) {
+        @apply bg-amber-50 font-semibold text-amber-800;
+    }
+    /* The compatibility layer above styles a bare `select` as a full-width form control with a
+       min-height, which is right for a form field and wrong for a control sitting at the end of a
+       tree row - it took the whole row and squeezed the folder name to nothing. Both have to be
+       undone explicitly: `w-full` is not overridden by anything this rule would otherwise say, and
+       `min-height` is a plain declaration that no utility competes with. */
+    .folder-grant-select {
+        @apply h-7 w-auto shrink-0 rounded-[var(--radius-control)] border border-ink-300 bg-white
+               px-1.5 py-0 text-xs text-ink-700;
+        min-height: 0;
+    }
+    /* Already reached through an ancestor - still settable, but it buys nothing. */
     .folder-grant-option.is-covered { @apply text-ink-400; }
     .folder-grant-copy { @apply flex min-w-0 flex-1 items-baseline gap-2; }
     .folder-grant-name { @apply truncate; }

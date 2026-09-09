@@ -1019,6 +1019,19 @@ a principal holding `DOWNLOAD_FILE` could fetch any file by id.
 
 ### 76. A folder-access grant does not gate uploading into that folder — **S2**
 
+> **Fixed** (roadmap 9.1). A grant now carries a verb — `READ` or `WRITE` — and
+> `FolderAccessService.requireWriteAccess` runs at the top of `createNewFile` and of
+> `createNewFileDetails`, which together cover all three upload paths.
+>
+> The check sits *before* the category/sub-category/tag chain is validated, not after: telling
+> somebody who may not write here that their triple is inconsistent would tell them which
+> triples are consistent.
+>
+> The reason it was deferred — that a refused write loses what the user typed — is answered by
+> the role page rather than by the service: an administrator can now see and set exactly where
+> each role may write. Narrowing the *upload form's* tag list to writable folders is still worth
+> doing and is not done here.
+
 `FileService.createNewFile` and both "new version" paths check the endpoint permission
 (`SAVE_NEW_FILE`, `API_SAVE_NEW_FILE`) and that the posted category, sub-category and tag describe
 one chain — but never that the caller may write *there*. So with folder access switched on, a user

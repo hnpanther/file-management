@@ -177,7 +177,7 @@ public class RoleController {
                 roleService.updatePermissionsOfRole(roleDTO.getId(),
                         roleDTO.getPermissionDTOListId(), principalId);
                 // What the role may do, and where - the two halves of the same form.
-                roleService.updateFoldersOfRole(roleDTO.getId(), roleDTO.getFolderIds(), principalId);
+                roleService.updateFoldersOfRole(roleDTO.getId(), roleDTO.getFolderGrants(), principalId);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (ResourceNotFoundException e) {

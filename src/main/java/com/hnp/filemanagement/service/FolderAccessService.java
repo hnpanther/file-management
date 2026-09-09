@@ -2,9 +2,11 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FolderAccess;
 import com.hnp.filemanagement.entity.Folder;
+import com.hnp.filemanagement.entity.FolderPermission;
 import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.FolderRepository;
+import com.hnp.filemanagement.repository.GrantedPath;
 import com.hnp.filemanagement.repository.RoleRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
@@ -76,8 +78,8 @@ public class FolderAccessService {
             return FolderAccess.everything();
         }
 
-        List<String> granted = new ArrayList<>(folderRepository.findPathsGrantedDirectly(principalId));
-        granted.addAll(folderRepository.findPathsGrantedThroughRoles(principalId));
+        List<GrantedPath> granted = new ArrayList<>(folderRepository.findGrantsDirectly(principalId));
+        granted.addAll(folderRepository.findGrantsThroughRoles(principalId));
         return FolderAccess.of(granted);
     }
 
@@ -129,7 +131,7 @@ public class FolderAccessService {
             return Optional.empty();
         }
         Set<Integer> tagIds = new LinkedHashSet<>();
-        for (String granted : access.grantedPaths()) {
+        for (String granted : access.readablePaths()) {
             folderRepository.findSubtree(granted).stream()
                     .filter(folder -> folder.getSourceType() == FolderSourceType.MAIN_TAG)
                     .map(Folder::getSourceId)
@@ -150,11 +152,23 @@ public class FolderAccessService {
      * fixable; the alternative is invisible.
      */
     public boolean allows(FolderAccess access, FolderSourceType sourceType, int sourceId) {
+        return holds(access, sourceType, sourceId, FolderPermission.READ);
+    }
+
+    /** The same question about writing: may documents be filed into this taxonomy row's folder? */
+    public boolean allowsWrite(FolderAccess access, FolderSourceType sourceType, int sourceId) {
+        return holds(access, sourceType, sourceId, FolderPermission.WRITE);
+    }
+
+    private boolean holds(FolderAccess access, FolderSourceType sourceType, int sourceId,
+                          FolderPermission required) {
         if (access.unrestricted()) {
             return true;
         }
         return folderOf(sourceType, sourceId)
-                .map(folder -> access.allows(folder.getPath()))
+                .map(folder -> required == FolderPermission.WRITE
+                        ? access.canWrite(folder.getPath())
+                        : access.canRead(folder.getPath()))
                 .orElse(false);
     }
 
@@ -169,6 +183,27 @@ public class FolderAccessService {
         if (!allows(access, sourceType, sourceId)) {
             throw new AccessDeniedException("no folder access to " + sourceType + " id=" + sourceId);
         }
+    }
+
+    /**
+     * Refuses unless documents may be filed into this taxonomy row's folder — the check every upload
+     * path has to make.
+     *
+     * <p>Its absence is {@code docs/issues.md} issue 76: until this existed, a principal holding
+     * {@code SAVE_NEW_FILE} could file a document under any tag they could name on the form,
+     * including one in a department they could not even open in the tree. The read side was closed
+     * in Phase 6; this is the other half.
+     */
+    public void requireWriteAccess(FolderAccess access, FolderSourceType sourceType, int sourceId) {
+        if (!allowsWrite(access, sourceType, sourceId)) {
+            throw new AccessDeniedException(
+                    "no write access to " + sourceType + " id=" + sourceId);
+        }
+    }
+
+    /** Resolves this person's access and refuses unless they may write there. */
+    public void requireWriteAccess(int principalId, FolderSourceType sourceType, int sourceId) {
+        requireWriteAccess(accessFor(principalId), sourceType, sourceId);
     }
 
     /**

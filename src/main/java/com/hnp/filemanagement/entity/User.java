@@ -7,6 +7,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
@@ -14,8 +15,13 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * A person who can sign in — local or Active Directory alike.
@@ -99,19 +105,47 @@ public class User extends AbstractEntity {
     private Set<Role> roles = new LinkedHashSet<>();
 
     /**
-     * Folders granted to this person directly, on top of whatever their roles reach (roadmap 6.5).
-     * Each grant covers the whole subtree beneath it.
+     * Folders granted to this person directly, on top of whatever their roles reach (roadmap 6.5),
+     * each grant covering the whole subtree beneath it and saying what it allows there (roadmap 9.1).
      *
      * <p>Kept out of the login query on purpose. {@code UserRepository.findByUsernameWithRoles}
      * already fetches two collections; folder access is resolved once per request by
      * {@code FolderAccessService}, which is a different question asked at a different time.
+     *
+     * <p><b>{@code cascade = ALL} with {@code orphanRemoval} here is not the mistake issue 51
+     * describes.</b> That one was a cascade on the inverse side of a many-to-many, where deleting a
+     * permission deleted every role that held it. A grant is not a shared thing: it exists only as
+     * this person's claim on a folder, so removing it from this list is exactly what deleting the
+     * row should mean, and it is what lets the edit screen post a complete selection.
      */
-    @ManyToMany(fetch = FetchType.LAZY,
-            cascade = {CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH})
-    @JoinTable(
-            name = "user_folder",
-            joinColumns = @JoinColumn(name = "user_id"),
-            inverseJoinColumns = @JoinColumn(name = "folder_id")
-    )
-    private Set<Folder> folders = new LinkedHashSet<>();
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<UserFolderGrant> folderGrants = new ArrayList<>();
+
+    /**
+     * Brings the grant list to exactly this state.
+     *
+     * <p><b>Rows that stay are updated in place rather than deleted and re-inserted.</b> The key of
+     * a grant is (user, folder), so clearing the list and adding the same folder back leaves two
+     * objects with one identifier in the persistence context, and Hibernate refuses the flush before
+     * it ever reaches the database. Merging also means changing a verb is an {@code UPDATE} rather
+     * than a delete followed by an insert of the row that was just removed.
+     */
+    public void replaceFolderGrants(List<UserFolderGrant> desired) {
+        Map<Integer, UserFolderGrant> wanted = new LinkedHashMap<>();
+        desired.forEach(grant -> wanted.put(grant.getFolder().getId(), grant));
+
+        folderGrants.removeIf(existing -> !wanted.containsKey(existing.getFolder().getId()));
+        folderGrants.forEach(existing ->
+                existing.setPermission(wanted.get(existing.getFolder().getId()).getPermission()));
+
+        Set<Integer> kept = folderGrants.stream()
+                .map(existing -> existing.getFolder().getId())
+                .collect(Collectors.toSet());
+        wanted.forEach((folderId, grant) -> {
+            if (!kept.contains(folderId)) {
+                grant.setUser(this);
+                folderGrants.add(grant);
+            }
+        });
+    }
 }

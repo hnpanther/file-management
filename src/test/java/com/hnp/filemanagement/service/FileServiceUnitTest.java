@@ -58,6 +58,12 @@ class FileServiceUnitTest {
     private MainTagFileService mainTagFileService;
     @Mock
     private ActionHistoryService actionHistoryService;
+    /**
+     * Lenient and silent by default, so the guard clauses below are tested on their own. What it
+     * does when it refuses is {@link #refusesAWriteOutsideTheGrantBeforeAnythingElse()}.
+     */
+    @Mock
+    private FolderAccessService folderAccessService;
 
     @InjectMocks
     private FileService underTest;
@@ -116,6 +122,31 @@ class FileServiceUnitTest {
 
         verifyNoInteractions(fileStorageService);
         verify(fileInfoRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    /**
+     * The write check runs before the category/sub-category/tag chain is validated, and this is the
+     * test that pins that order. Answering "your triple is inconsistent" to somebody who may not
+     * write here would tell them which triples are consistent — a slow way to map a taxonomy they
+     * were never shown.
+     */
+    @Test
+    @DisplayName("a write outside the grant is refused before the taxonomy is even checked")
+    void refusesAWriteOutsideTheGrantBeforeAnythingElse() {
+        when(mainTagFileService.getMainTagFileEntity(anyInt())).thenReturn(mainTag);
+        org.mockito.Mockito.doThrow(new org.springframework.security.access.AccessDeniedException("no"))
+                .when(folderAccessService).requireWriteAccess(anyInt(),
+                        org.mockito.ArgumentMatchers.any(), anyInt());
+
+        FileInfoDTO request = uploadRequest("report.txt");
+        // Also inconsistent, which is what makes the order observable: the taxonomy check would
+        // otherwise answer first.
+        request.setFileCategoryId(999);
+
+        assertThatThrownBy(() -> underTest.createNewFile(request, 1, 1))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
+        verifyNoInteractions(fileStorageService);
     }
 
     @Test

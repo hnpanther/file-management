@@ -1,8 +1,11 @@
 package com.hnp.filemanagement.dto;
 
+import com.hnp.filemanagement.entity.FolderPermission;
+import com.hnp.filemanagement.repository.GrantedPath;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -19,39 +22,39 @@ class FolderAccessTest {
     @Test
     @DisplayName("a grant covers the folder itself and everything beneath it")
     void grantCoversItselfAndItsDescendants() {
-        FolderAccess access = FolderAccess.of(List.of("/1/5/"));
+        FolderAccess access = FolderAccess.of(read("/1/5/"));
 
-        assertThat(access.allows("/1/5/")).as("the granted folder itself").isTrue();
-        assertThat(access.allows("/1/5/26/")).as("a child").isTrue();
-        assertThat(access.allows("/1/5/26/198/")).as("a grandchild").isTrue();
+        assertThat(access.canRead("/1/5/")).as("the granted folder itself").isTrue();
+        assertThat(access.canRead("/1/5/26/")).as("a child").isTrue();
+        assertThat(access.canRead("/1/5/26/198/")).as("a grandchild").isTrue();
     }
 
     @Test
     @DisplayName("a grant does not cover its ancestors or its siblings")
     void grantDoesNotLeakUpwardsOrSideways() {
-        FolderAccess access = FolderAccess.of(List.of("/1/5/26/"));
+        FolderAccess access = FolderAccess.of(read("/1/5/26/"));
 
-        assertThat(access.allows("/1/")).as("the root above the grant").isFalse();
-        assertThat(access.allows("/1/5/")).as("the parent above the grant").isFalse();
-        assertThat(access.allows("/1/6/")).as("a sibling branch").isFalse();
+        assertThat(access.canRead("/1/")).as("the root above the grant").isFalse();
+        assertThat(access.canRead("/1/5/")).as("the parent above the grant").isFalse();
+        assertThat(access.canRead("/1/6/")).as("a sibling branch").isFalse();
     }
 
     @Test
     @DisplayName("the trailing slash stops folder 7 from matching folder 70")
     void oneFolderIsNotAPrefixOfAnother() {
-        FolderAccess access = FolderAccess.of(List.of("/1/7/"));
+        FolderAccess access = FolderAccess.of(read("/1/7/"));
 
-        assertThat(access.allows("/1/7/3/")).isTrue();
-        assertThat(access.allows("/1/70/")).as("/1/70/ is not under /1/7/").isFalse();
-        assertThat(access.allows("/1/70/3/")).isFalse();
+        assertThat(access.canRead("/1/7/3/")).isTrue();
+        assertThat(access.canRead("/1/70/")).as("/1/70/ is not under /1/7/").isFalse();
+        assertThat(access.canRead("/1/70/3/")).isFalse();
     }
 
     @Test
     @DisplayName("a grant already covered by a shorter one is dropped")
     void redundantGrantsAreReduced() {
-        FolderAccess access = FolderAccess.of(List.of("/1/5/26/", "/1/5/", "/1/9/", "/1/5/27/198/"));
+        FolderAccess access = FolderAccess.of(read("/1/5/26/", "/1/5/", "/1/9/", "/1/5/27/198/"));
 
-        assertThat(access.grantedPaths())
+        assertThat(access.readablePaths())
                 .as("only the grants that are not already covered survive")
                 .containsExactly("/1/5/", "/1/9/");
     }
@@ -59,7 +62,7 @@ class FolderAccessTest {
     @Test
     @DisplayName("an ancestor of a grant is visible for navigation, but its contents are not readable")
     void anAncestorIsASignpostNotAnOpenDoor() {
-        FolderAccess access = FolderAccess.of(List.of("/1/5/26/"));
+        FolderAccess access = FolderAccess.of(read("/1/5/26/"));
 
         // The way down to the grant has to be walkable...
         assertThat(access.isOnPathTo("/1/")).isTrue();
@@ -67,7 +70,7 @@ class FolderAccessTest {
         assertThat(access.visible("/1/5/")).isTrue();
 
         // ...without that making anything in it readable.
-        assertThat(access.allows("/1/5/")).isFalse();
+        assertThat(access.canRead("/1/5/")).isFalse();
 
         // And a branch that leads nowhere near the grant stays hidden entirely.
         assertThat(access.visible("/1/6/")).isFalse();
@@ -77,9 +80,9 @@ class FolderAccessTest {
     @Test
     @DisplayName("the granted folder itself is readable, not merely on the way to something")
     void theGrantItselfIsNotJustASignpost() {
-        FolderAccess access = FolderAccess.of(List.of("/1/5/26/"));
+        FolderAccess access = FolderAccess.of(read("/1/5/26/"));
 
-        assertThat(access.allows("/1/5/26/")).isTrue();
+        assertThat(access.canRead("/1/5/26/")).isTrue();
         assertThat(access.isOnPathTo("/1/5/26/")).as("a folder is not an ancestor of itself").isFalse();
         assertThat(access.visible("/1/5/26/")).isTrue();
     }
@@ -90,8 +93,8 @@ class FolderAccessTest {
         FolderAccess access = FolderAccess.everything();
 
         assertThat(access.unrestricted()).isTrue();
-        assertThat(access.grantedPaths()).isEmpty();
-        assertThat(access.allows("/1/anything/")).isTrue();
+        assertThat(access.readablePaths()).isEmpty();
+        assertThat(access.canRead("/1/anything/")).isTrue();
         assertThat(access.isEmpty()).isFalse();
     }
 
@@ -101,6 +104,67 @@ class FolderAccessTest {
         FolderAccess access = FolderAccess.nothing();
 
         assertThat(access.isEmpty()).isTrue();
-        assertThat(access.allows("/1/")).isFalse();
+        assertThat(access.canRead("/1/")).isFalse();
+        assertThat(access.canWrite("/1/")).isFalse();
+    }
+
+    // ---------------------------------------------------------------- the verb (roadmap 9.1)
+
+    @Test
+    @DisplayName("a read grant allows reading and nothing else")
+    void readDoesNotImplyWrite() {
+        FolderAccess access = FolderAccess.of(read("/1/5/"));
+
+        assertThat(access.canRead("/1/5/26/")).isTrue();
+        assertThat(access.canWrite("/1/5/")).as("the granted folder itself").isFalse();
+        assertThat(access.canWrite("/1/5/26/")).as("beneath it").isFalse();
+    }
+
+    @Test
+    @DisplayName("a write grant also reads — there is no write-only folder")
+    void writeImpliesRead() {
+        FolderAccess access = FolderAccess.of(List.of(new GrantedPath("/1/5/", FolderPermission.WRITE)));
+
+        assertThat(access.canWrite("/1/5/26/")).isTrue();
+        assertThat(access.canRead("/1/5/26/")).as("write is the stronger of the two").isTrue();
+        assertThat(access.visible("/1/")).as("and the way down to it is still walkable").isTrue();
+    }
+
+    @Test
+    @DisplayName("writing is inherited downwards but never upwards or sideways")
+    void writeIsInheritedTheSameWayReadingIs() {
+        FolderAccess access = FolderAccess.of(List.of(new GrantedPath("/1/5/26/", FolderPermission.WRITE)));
+
+        assertThat(access.canWrite("/1/5/26/198/")).as("beneath the grant").isTrue();
+        assertThat(access.canWrite("/1/5/")).as("above it").isFalse();
+        assertThat(access.canWrite("/1/5/27/")).as("beside it").isFalse();
+    }
+
+    /**
+     * The case the two lists exist for. Reducing the write list against the read list would drop
+     * the deeper write grant as "already covered" and silently take writing away.
+     */
+    @Test
+    @DisplayName("a read grant on a parent does not swallow a write grant on its child")
+    void aReadParentDoesNotHideAWriteChild() {
+        FolderAccess access = FolderAccess.of(List.of(
+                new GrantedPath("/1/5/", FolderPermission.READ),
+                new GrantedPath("/1/5/26/", FolderPermission.WRITE)));
+
+        assertThat(access.readablePaths()).as("the parent covers the child for reading")
+                .containsExactly("/1/5/");
+        assertThat(access.writablePaths()).as("but writing is only granted at the child")
+                .containsExactly("/1/5/26/");
+
+        assertThat(access.canRead("/1/5/27/")).isTrue();
+        assertThat(access.canWrite("/1/5/27/")).isFalse();
+        assertThat(access.canWrite("/1/5/26/")).isTrue();
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    /** Read grants, which is what every test above this section is about. */
+    private static List<GrantedPath> read(String... paths) {
+        return Arrays.stream(paths).map(path -> new GrantedPath(path, FolderPermission.READ)).toList();
     }
 }

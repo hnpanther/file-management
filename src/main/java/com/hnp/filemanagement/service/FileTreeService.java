@@ -134,7 +134,7 @@ public class FileTreeService {
             // Files are contents, not a route to anywhere, so from here the full check applies.
             case MAIN_TAG -> {
                 Folder folder = requireVisibleFolder(access, id, FolderKind.TAG);
-                if (!access.allows(folder.getPath())) {
+                if (!access.canRead(folder.getPath())) {
                     throw new AccessDeniedException("no folder access to folder id=" + id);
                 }
                 yield filesOf(folder.getSourceId());

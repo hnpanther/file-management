@@ -64,7 +64,8 @@ public interface RoleRepository extends JpaRepository<Role, Integer> {
      */
     @Query("""
             SELECT DISTINCT r FROM Role r
-            LEFT JOIN FETCH r.folders
+            LEFT JOIN FETCH r.folderGrants g
+            LEFT JOIN FETCH g.folder
             WHERE r.id = :id
             """)
     Optional<Role> findByIdWithFolders(@Param("id") int id);

@@ -62,15 +62,19 @@
                 </fieldset>
 
                 <!--
-                  Where the role may look, next to what it may do. A grant covers everything beneath
-                  the folder it names, so ticking a parent is enough - a folder already reached that
-                  way is marked "inherited" instead of being offered as another box to tick.
+                  Where the role may look and where it may write, next to what it may do. A grant
+                  covers everything beneath the folder it names, so setting a parent is enough - a
+                  folder already reached that way is marked "inherited" instead of being offered as
+                  another control to set.
+
+                  Three states, one <select>, rather than two checkboxes: "write but not read" is not
+                  a state the model has, and two boxes would let somebody ask for it.
                 -->
                 <fieldset th:if="${#strings.equals(pageType, 'update')}" class="mt-8">
                     <legend class="mb-1 text-base font-semibold text-ink-900"
                             th:text="#{field.folderAccess}">دسترسی پوشه‌ها</legend>
                     <p class="mb-4 text-sm text-ink-500" th:text="#{role.folders.hint}">
-                        هر پوشه‌ای که انتخاب کنید، همهٔ زیرشاخه‌هایش هم در دسترس این نقش قرار می‌گیرد.
+                        هر دسترسی‌ای که برای یک پوشه تعیین کنید، برای همهٔ زیرشاخه‌هایش هم اعمال می‌شود.
                     </p>
 
                     <div th:if="${#lists.isEmpty(folders)}" class="empty-state empty-state-panel"
@@ -81,10 +85,8 @@
                              Thymeleaf expression doing it would have to format a decimal, and this
                              page renders under a Persian locale. -->
                         <label th:each="f: ${folders}" class="folder-grant-option"
-                               th:classappend="${f.covered} ? 'is-covered' : ''"
+                               th:classappend="${!#strings.isEmpty(f.inherited)} ? 'is-covered' : ''"
                                th:style="|--folder-depth:${f.depth}|">
-                            <input type="checkbox" name="folderIds"
-                                   th:value="${f.getId()}" th:checked="${f.isGranted()}">
                             <i class="bi shrink-0 text-ink-400"
                                th:classappend="${f.depth == 0 ? 'bi-house-door' : (f.depth == 1 ? 'bi-folder-fill' : (f.depth == 2 ? 'bi-folder' : 'bi-folder2'))}"
                                aria-hidden="true"></i>
@@ -93,8 +95,16 @@
                                 <span class="folder-grant-technical technical" dir="ltr"
                                       th:text="${f.getName()}"></span>
                             </span>
-                            <span th:if="${f.isCovered()}" class="folder-grant-badge"
-                                  th:text="#{role.folders.inherited}">از پوشهٔ بالاتر</span>
+                            <span th:if="${!#strings.isEmpty(f.inherited)}" class="folder-grant-badge"
+                                  th:text="${f.inherited == 'WRITE'} ? #{role.folders.inheritedWrite} : #{role.folders.inherited}">از پوشهٔ بالاتر</span>
+                            <select name="folderGrants" class="folder-grant-select">
+                                <option value="" th:selected="${#strings.isEmpty(f.permission)}"
+                                        th:text="#{role.folders.none}">بدون دسترسی</option>
+                                <option th:value="|${f.id}:READ|" th:selected="${f.permission == 'READ'}"
+                                        th:text="#{role.folders.read}">خواندن</option>
+                                <option th:value="|${f.id}:WRITE|" th:selected="${f.permission == 'WRITE'}"
+                                        th:text="#{role.folders.write}">خواندن و نوشتن</option>
+                            </select>
                         </label>
                     </div>
                 </fieldset>
