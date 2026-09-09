@@ -22,8 +22,12 @@ import java.util.Comparator;
 /**
  * The disk implementation of {@link FileStorageService}, and today the only one.
  *
- * <p>Layout under {@code base-dir} is category/sub-category/file-name/, with each revision stored
- * as {@code <name>-v<version>.<extension>}, so a version is a file name rather than a directory.
+ * <p>Layout under {@code base-dir} is
+ * {@code {category}/{subCategory}/{fileName}/v{n}/{fileName}.{extension}} — a version is a
+ * <em>directory</em>, and the stored file inside it keeps the original name. (This comment used to
+ * say the opposite, that a revision was stored as {@code <name>-v<version>.<extension>} and that a
+ * version was a file name rather than a directory. It never was: {@code save} has always built
+ * {@code level2Dir = level1Dir + "/v" + version}.)
  *
  * <p>Two properties of this class are worth knowing before changing it:
  *
@@ -36,7 +40,9 @@ import java.util.Comparator;
  * </ul>
  *
  * <p>Both are catalogued in {@code docs/issues.md} and fixed in Phase 2 along with the storage
- * port.
+ * port. Neither applies to the key-shaped methods added for roadmap 7.1: {@code resolveKey}
+ * resolves against an absolute, normalised root and refuses a key that would leave it, so those
+ * three need no separator convention and no name spelling rule.
  */
 @Service("fileSystem")
 @Primary
@@ -51,6 +57,92 @@ public class FileStorageFileSystemService implements FileStorageService {
         this.baseDir = baseDir;
 
     }
+
+    // ---------------------------------------------------------------- key-shaped (roadmap 7.1)
+
+    /**
+     * Resolves a storage key to a path inside the root, and refuses anything that would leave it.
+     *
+     * <p><b>This check does not exist on the path-shaped methods below</b>, which is catalogued: a
+     * name containing {@code ..} escapes the root there, and only {@code checkCorrectFileName} and
+     * {@code checkCorrectDirectoryName} stand in the way. The new methods do not inherit that. The
+     * root is resolved to an absolute, normalised path and the target must still be beneath it after
+     * normalisation, which is the containment test rather than a spelling test on the input.
+     *
+     * <p>It also removes the {@code base-dir} trailing-separator trap for these methods: {@code
+     * resolve} joins with a separator whether or not the configured value ends with one.
+     */
+    private Path resolveKey(String storageKey) {
+        if (storageKey == null || storageKey.isBlank()) {
+            throw new BusinessException("storage key is empty");
+        }
+        Path root = Paths.get(baseDir).toAbsolutePath().normalize();
+        Path target = root.resolve(storageKey).normalize();
+        if (!target.startsWith(root)) {
+            throw new BusinessException("storage key escapes the storage root: " + storageKey);
+        }
+        if (target.equals(root)) {
+            throw new BusinessException("storage key names the storage root itself: " + storageKey);
+        }
+        return target;
+    }
+
+    @Override
+    public void saveByKey(String storageKey, MultipartFile file) {
+        if (file == null) {
+            throw new BusinessException("can not save null file!");
+        }
+        Path target = resolveKey(storageKey);
+        logger.debug("FileStorageFileSystemService.saveByKey() -> saving key={}", storageKey);
+
+        if (Files.exists(target)) {
+            // Never overwrite. A version is immutable here, so an existing object at the key means
+            // the caller believes it is writing something new and is not.
+            throw new DuplicateResourceException("file already exists=" + target);
+        }
+
+        try {
+            Files.createDirectories(target.getParent());
+            Files.copy(file.getInputStream(), target);
+        } catch (IOException e) {
+            logger.error("FileStorageFileSystemService.saveByKey() -> IOException for key=" + storageKey, e);
+            throw new BusinessException("error in saving file, check logs");
+        }
+    }
+
+    @Override
+    public Resource loadByKey(String storageKey) {
+        Path target = resolveKey(storageKey);
+        logger.debug("FileStorageFileSystemService.loadByKey() -> loading key={}", storageKey);
+
+        if (!Files.exists(target)) {
+            throw new ResourceNotFoundException("file not found");
+        }
+        try {
+            return new UrlResource(target.toUri());
+        } catch (MalformedURLException e) {
+            logger.debug("FileStorageFileSystemService.loadByKey() -> can not load key=" + storageKey, e);
+            throw new BusinessException("can not load file, please check logs");
+        }
+    }
+
+    @Override
+    public void deleteByKey(String storageKey) {
+        Path target = resolveKey(storageKey);
+        logger.debug("FileStorageFileSystemService.deleteByKey() -> deleting key={}", storageKey);
+
+        try {
+            if (!Files.exists(target)) {
+                throw new ResourceNotFoundException("file not found, file=" + target);
+            }
+            Files.delete(target);
+        } catch (IOException e) {
+            logger.error("FileStorageFileSystemService.deleteByKey() -> IOException for key=" + storageKey, e);
+            throw new BusinessException("can not delete file=" + target + ", please check logs");
+        }
+    }
+
+    // ---------------------------------------------------------------- path-shaped (directories)
 
     @Override
     public void save(String address, MultipartFile file, int version, String extension) {

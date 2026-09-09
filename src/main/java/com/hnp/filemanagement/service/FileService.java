@@ -178,7 +178,7 @@ public class FileService {
 
         FileDetailsDTO result = ModelConverterUtil.covertFileDetailsToFileDetailsDTO(fileDetails);
 
-        fileStorageService.save(directoryOf(fileInfo), multipartFile, 1, extension);
+        fileStorageService.saveByKey(fileDetails.getStorageKey(), multipartFile);
 
         return result;
     }
@@ -214,19 +214,21 @@ public class FileService {
                     + " should be=" + fileInfo.getFileName());
         }
 
-        switch (fileUploadDTO.getType()) {
+        FileDetails created = switch (fileUploadDTO.getType()) {
             case "format" -> createNewFormatFileDetails(fileUploadDTO, fileInfo, extension, principalId);
             case "version" -> createNewVersionFileDetails(fileUploadDTO, fileInfo, principalId);
             // Silently doing nothing was the old behaviour, which made a typo in the form look
             // like a successful upload that stored nothing.
             default -> throw new InvalidDataException("unknown upload type=" + fileUploadDTO.getType());
-        }
+        };
 
-        fileStorageService.save(directoryOf(fileInfo), multipartFile, version, extension);
+        // The bytes go where the row says they go. Rebuilding the path here from the taxonomy would
+        // be a second expression for one thing, and the two would eventually disagree.
+        fileStorageService.saveByKey(created.getStorageKey(), multipartFile);
     }
 
-    private void createNewFormatFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo,
-                                            String extension, int principalId) {
+    private FileDetails createNewFormatFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo,
+                                                   String extension, int principalId) {
 
         int version = fileUploadDTO.getVersion();
         if (version > fileInfo.getLastVersion()) {
@@ -252,10 +254,10 @@ public class FileService {
                     "fileDetails with same version and format exists. version=" + version + ", format=" + extension);
         }
 
-        persistNewVersionRow(fileInfo, fileUploadDTO, version, sample.getVersionName(), principalId);
+        return persistNewVersionRow(fileInfo, fileUploadDTO, version, sample.getVersionName(), principalId);
     }
 
-    private void createNewVersionFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo, int principalId) {
+    private FileDetails createNewVersionFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo, int principalId) {
 
         int version = fileUploadDTO.getVersion();
         if (version != fileInfo.getLastVersion() + 1) {
@@ -263,15 +265,16 @@ public class FileService {
                     + version + ", last version=" + fileInfo.getLastVersion());
         }
 
-        persistNewVersionRow(fileInfo, fileUploadDTO, version, "V" + version, principalId);
+        FileDetails created = persistNewVersionRow(fileInfo, fileUploadDTO, version, "V" + version, principalId);
 
         // The parent is managed, so the dirty check writes this - it needs no save(), and calling
         // one here is what used to merge a copy of the new child into the database.
         fileInfo.setLastVersion(version);
+        return created;
     }
 
-    private void persistNewVersionRow(FileInfo fileInfo, FileUploadDTO fileUploadDTO, int version,
-                                      String versionName, int principalId) {
+    private FileDetails persistNewVersionRow(FileInfo fileInfo, FileUploadDTO fileUploadDTO, int version,
+                                             String versionName, int principalId) {
 
         FileDetails fileDetails = newFileDetails(fileInfo, fileUploadDTO.getMultipartFile(), version, versionName,
                 fileUploadDTO.getFileDetailsDescription(), principalId);
@@ -283,6 +286,8 @@ public class FileService {
 
         actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetails.getId(), ActionEnum.CREATE,
                 principalId, "CREATE NEW FILE_DETAILS", "CREATE NEW FILE_DETAILS");
+
+        return fileDetails;
     }
 
     /**
@@ -295,6 +300,9 @@ public class FileService {
         String originalFilename = multipartFile.getOriginalFilename();
         String name = ModelConverterUtil.getFileNameWithoutExtension(originalFilename);
         String versionDirectory = "/" + name + "/v" + version + "/" + originalFilename;
+        // One expression, two columns. They hold the same string today and must not be able to
+        // disagree; roadmap 7.1 keeps the key and drops or derives the paths in step 4.
+        String storageKey = fileInfo.getFileSubCategory().getRelativePath() + versionDirectory;
 
         FileDetails fileDetails = new FileDetails();
         fileDetails.setFileName(originalFilename);
@@ -305,7 +313,8 @@ public class FileService {
         fileDetails.setContentType(multipartFile.getContentType());
         fileDetails.setDescription(description);
         fileDetails.setFilePath(fileInfo.getFileSubCategory().getPath() + versionDirectory);
-        fileDetails.setRelativePath(fileInfo.getFileSubCategory().getRelativePath() + versionDirectory);
+        fileDetails.setRelativePath(storageKey);
+        fileDetails.setStorageKey(storageKey);
         fileDetails.setFileSize((int) multipartFile.getSize());
         fileDetails.setVersion(version);
         fileDetails.setVersionName(versionName);
@@ -416,9 +425,7 @@ public class FileService {
 
         int version = fileDetails.getVersion();
         boolean lastFormatOfItsVersion = fileDetailsRepository.countByFileInfoIdAndVersion(fileInfoId, version) == 1;
-        String directory = directoryOf(fileInfo);
-        String fileName = fileDetails.getFileName();
-        String extension = fileDetails.getFileExtension();
+        String storageKey = fileDetails.getStorageKey();
 
         fileInfo.removeFileDetails(fileDetails);
         fileInfoRepository.recalculateLastVersion(fileInfoId);
@@ -429,9 +436,11 @@ public class FileService {
         // The last format of a version leaves an empty version directory behind; anything else is
         // one file inside a directory that still holds others.
         if (lastFormatOfItsVersion) {
-            fileStorageService.delete(directory + "/" + fileInfo.getFileName() + "/v" + version, "", 1, "", false);
+            // The version directory is the key's parent, so this needs no second expression for
+            // where the file lives - and it removes the file with it.
+            fileStorageService.delete(parentOf(storageKey), "", 1, "", false);
         } else {
-            fileStorageService.delete(directory, fileName, version, extension, true);
+            fileStorageService.deleteByKey(storageKey);
         }
     }
 
@@ -564,8 +573,9 @@ public class FileService {
 
     private FileDownloadDTO toDownload(FileDetails fileDetails) {
 
-        Resource resource = fileStorageService.load(directoryOf(fileDetails.getFileInfo()),
-                fileDetails.getFileName(), fileDetails.getVersion(), fileDetails.getFileExtension());
+        // The stored key, not a path rebuilt from the taxonomy: where the bytes are is what was
+        // recorded when they were written (roadmap 7.1).
+        Resource resource = fileStorageService.loadByKey(fileDetails.getStorageKey());
 
         FileDownloadDTO fileDownloadDTO = new FileDownloadDTO();
         fileDownloadDTO.setResource(resource);
@@ -581,6 +591,15 @@ public class FileService {
      * sub-category column says the same thing, and {@code createNewFile} is what enforces that.
      * This was written out at six call sites, each walking four associations by hand.
      */
+    /** The directory holding a stored object, as a relative address - the key without its last segment. */
+    private static String parentOf(String storageKey) {
+        int lastSeparator = storageKey.lastIndexOf('/');
+        if (lastSeparator < 1) {
+            throw new InvalidDataException("storage key has no parent directory: " + storageKey);
+        }
+        return storageKey.substring(0, lastSeparator);
+    }
+
     private static String directoryOf(FileInfo fileInfo) {
         FileSubCategory subCategory = fileInfo.getMainTagFile().getFileSubCategory();
         return subCategory.getFileCategory().getCategoryName() + "/" + subCategory.getSubCategoryName();
