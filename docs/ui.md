@@ -58,12 +58,59 @@ npm run build:css     # once
 npm run watch:css     # while working on the UI
 ```
 
-**The compiled `static/css/app.css` is committed, and Node is a development-time tool only.** The
-Maven build contains no Node plugin, and `./mvnw package` works with `node_modules` deleted - that
-is verified by `UiResourceTest.nothingInTheBuildRequiresNode` and was checked by building with the
-directory removed. Anyone can build and run the application with nothing but a JDK.
+### What Node is for, and what it is not for
 
-If you change `app.css`, rebuild and commit both files together.
+`node_modules/` exists in this repository for exactly one job: running the Tailwind CLI to turn the
+stylesheet source into the stylesheet the application serves.
+
+```
+src/main/frontend/app.css                 the file you edit (Tailwind directives + @layer blocks)
+        |
+        |  npm run build:css              the only thing Node ever does here
+        v
+src/main/resources/static/css/app.css     generated, minified, and COMMITTED
+```
+
+`package.json` has two dependencies and both are `devDependencies`: `tailwindcss` and
+`@tailwindcss/cli`, pinned to the same version. There is no bundler, no framework, no build step for
+JavaScript - the vendored scripts under `static/vendor/` are shipped as they were downloaded.
+`node_modules/` is about 20 MB, is in `.gitignore`, and is restored with `npm install`.
+
+**The application never needs Node.** The compiled `app.css` is committed, so:
+
+* `./mvnw package` works with `node_modules` deleted - checked by deleting it and building;
+* `./mvnw verify` needs a JDK and a Docker daemon, and nothing else;
+* the running application has no relationship with Node at all;
+* a deployment needs a JDK - see [deployment.md](deployment.md).
+
+`UiResourceTest.nothingInTheBuildRequiresNode` keeps it that way: it fails if `frontend-maven-plugin`
+or `exec-maven-plugin` ever appears in `pom.xml`, which are the two ways a Maven build starts
+depending on Node.
+
+### The rule, and what happens if you forget it
+
+**If you edit `src/main/frontend/app.css`, run `npm run build:css` and commit both files in the same
+commit.**
+
+Forgetting is quiet. The source has your new rules, the served file does not, and the application
+starts and runs with no error anywhere - the new styles simply are not there, and a class that was
+never compiled renders as an unstyled element. Tailwind only emits the utilities it finds in the
+sources listed in the `@source` lines at the top of `app.css`, so a utility used in a *new* template
+does not exist in the compiled file until the next build either.
+
+### Why the output is committed rather than built by Maven
+
+Nothing the interface needs may be fetched at runtime or resolved by Maven at request time. Both
+failure modes reach the browser identically: a 404 for a script is served as HTML, so the page
+arrives unstyled with `Uncaught SyntaxError: Unexpected token '<'` in the console and nothing that
+points at the real cause. That has happened twice here with `/webjars/` URLs on a machine whose
+`~/.m2` was only partly populated.
+
+Committing the generated file removes the whole class of failure, and keeps the build reproducible
+for anyone with a JDK - including a CI runner and an air-gapped server. It is also the pattern any
+future front-end work has to follow: a framework with a bundler would have to commit its output the
+same way, or `nothingInTheBuildRequiresNode` and the JDK-only deployment promise both stop being
+true.
 
 Right-to-left needs no separate stylesheet: Tailwind logical utilities (`ms-*`, `me-*`, `ps-*`,
 `pe-*`, `start-*`, `end-*`, `text-start`, `text-end`, `border-e`) flip automatically under

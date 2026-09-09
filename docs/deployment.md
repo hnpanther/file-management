@@ -27,6 +27,12 @@ nor a route to a repository mirror, and should not have one.
 # target/file-management.jar
 ```
 
+**A JDK and a network route to a Maven mirror are the whole list.** Node is not needed to build,
+and `node_modules/` can be absent: the Tailwind stylesheet is compiled by hand during development
+and its output is committed, so the build has no front-end step at all. A test
+(`UiResourceTest.nothingInTheBuildRequiresNode`) fails if that ever stops being true — see
+[ui.md](ui.md) for why it is arranged this way.
+
 ### The settings that must not stay as they ship
 
 Do this **before** the first start.
