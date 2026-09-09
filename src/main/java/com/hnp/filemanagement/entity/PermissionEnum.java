@@ -187,6 +187,16 @@ public enum PermissionEnum {
      */
     API_KEY,
 
+    /**
+     * Reading the OpenAPI document and the Swagger page (roadmap 9.6).
+     *
+     * <p>Not public. The document names every endpoint, its parameters and the authority each one
+     * needs, which is a map of what is worth attacking; and the page's "try it out" posts real
+     * requests. Held by a person, never by a key: a key is an integration, and an integration that
+     * needed the documentation at runtime would be doing something else wrong.
+     */
+    VIEW_API_DOCS,
+
     // ===================================================================================================
 
     // FileSubCategoryResource @RequestMapping("/resource/file-sub-categories") ==========================

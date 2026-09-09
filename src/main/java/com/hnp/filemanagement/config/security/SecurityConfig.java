@@ -143,6 +143,15 @@ public class SecurityConfig {
                             auth.requestMatchers("/vendor/**").permitAll();
                             auth.requestMatchers("/public-pages/**").permitAll();
 
+                            // The OpenAPI document and the Swagger page (roadmap 9.6). Behind a
+                            // permission rather than public, and on this chain rather than the
+                            // machine one, so an anonymous visitor is sent to the login page
+                            // instead of being answered with a Basic challenge a browser would
+                            // turn into a native password box.
+                            auth.requestMatchers("/api-docs", "/api-docs/**",
+                                            "/swagger-ui.html", "/swagger-ui/**")
+                                    .hasAnyAuthority("VIEW_API_DOCS", "ADMIN");
+
                             auth.anyRequest().authenticated();
                         }
                 )
@@ -223,6 +232,42 @@ public class SecurityConfig {
      * <p>Writing the status with {@code setStatus} instead of {@code sendError} skips the error
      * dispatch entirely, so 401 stays 401.
      */
+    /**
+     * Health and info, before every other chain (roadmap 9.5).
+     *
+     * <p><b>It needs a chain of its own or the probes are worse than useless.</b> {@code /actuator/**}
+     * matches neither {@code /api/**} nor anything the browser chain treats specially, so without
+     * this it lands on the session chain and an unauthenticated probe is answered with
+     * {@code 302 Location: /login} — and {@code GET /login} answers {@code 200}. A load balancer
+     * following that redirect would report a healthy application with its database down, which is
+     * the same failure the API chain documents at length below.
+     *
+     * <p><b>Health is reachable without credentials, and that is the deliberate widening.</b> A
+     * probe is a container or a load balancer; giving it a credential means putting one in the
+     * infrastructure to read a status. What it can learn is limited instead:
+     * {@code show-details=never} and {@code show-components=never} mean the answer is
+     * {@code UP} or {@code DOWN} and nothing more — no component names, no drivers, no URLs. Only
+     * {@code health} and {@code info} are exposed at all, and everything else under
+     * {@code /actuator} is refused here as well as unexposed, so adding an endpoint to the exposure
+     * list cannot accidentally publish it.
+     */
+    @Bean
+    @Order(0)
+    public SecurityFilterChain actuatorSecurityFilterChain(HttpSecurity httpSecurity) throws Exception {
+        return httpSecurity
+                .securityMatcher("/actuator/**")
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(AbstractHttpConfigurer::disable)
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(
+                                PathPatternRequestMatcher.pathPattern("/actuator/health"),
+                                PathPatternRequestMatcher.pathPattern("/actuator/health/**"),
+                                PathPatternRequestMatcher.pathPattern("/actuator/info")).permitAll()
+                        .anyRequest().denyAll())
+                .build();
+    }
+
     @Bean
     @Order(1)
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity httpSecurity, AuthenticationManager authenticationManager,

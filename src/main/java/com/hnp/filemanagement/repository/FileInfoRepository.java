@@ -182,6 +182,9 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     /** Tree view: the files filed under one main tag. */
     List<FileInfo> findByMainTagFileIdOrderByFileNameAsc(int mainTagFileId);
 
+    /** Every file under a set of main tags — the bucket walk the v2 listing does (roadmap 9.3). */
+    List<FileInfo> findByMainTagFileIdIn(Collection<Integer> mainTagFileIds);
+
     /**
      * The same files, one page at a time — what the explorer lists.
      *
