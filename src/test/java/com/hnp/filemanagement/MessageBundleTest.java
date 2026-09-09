@@ -34,6 +34,8 @@ class MessageBundleTest {
     /** Templates whose copy has been moved into the bundle. Extend as the rest are converted. */
     private static final List<String> EXTERNALISED = List.of(
             "navbar.html", "security/login.html", "error.html",
+            "api-key/api-keys.html",
+            "api-key/save-api-key.html",
             "file-management/category/categories.html",
             "file-management/category/save-category.html",
             "file-management/files/file-explorer.html",

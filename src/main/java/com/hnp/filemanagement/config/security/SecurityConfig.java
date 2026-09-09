@@ -13,9 +13,11 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import com.hnp.filemanagement.service.ApiKeyService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.savedrequest.RequestCache;
 import org.springframework.security.web.util.matcher.AndRequestMatcher;
@@ -34,7 +36,16 @@ import static org.springframework.security.config.Customizer.withDefaults;
 @EnableMethodSecurity(securedEnabled = true, prePostEnabled = true)
 public class SecurityConfig {
 
-    /** Sent with every 401 on the API chain, so a client knows which scheme to retry with. */
+    /**
+     * Sent with every 401 on the API chain, so a client knows which scheme to retry with.
+     *
+     * <p><b>Basic only, although the chain also accepts {@code Bearer} API keys</b> (roadmap 9.2).
+     * Offering both as a comma-separated challenge is legal and was tried, and it is not worth it:
+     * this header is a published contract with machine clients — {@code RestContractTest} pins it
+     * because a previous change to the 401 path silently broke Oracle's {@code UTL_HTTP} — and
+     * multi-challenge headers are exactly what that class of client parses badly. A caller holding a
+     * key gains nothing from being told the scheme exists; it already sends one unprompted.
+     */
     private static final String BASIC_CHALLENGE = "Basic realm=\"file-management\", charset=\"UTF-8\"";
 
     @Value("${filemanagement.auth.ldap.activedirectory.enabled:false}")
@@ -214,7 +225,8 @@ public class SecurityConfig {
      */
     @Bean
     @Order(1)
-    public SecurityFilterChain apiSecurityFilterChain(HttpSecurity httpSecurity, AuthenticationManager authenticationManager) throws Exception {
+    public SecurityFilterChain apiSecurityFilterChain(HttpSecurity httpSecurity, AuthenticationManager authenticationManager,
+                                                      ApiKeyService apiKeyService) throws Exception {
         return httpSecurity
                 .securityMatcher("/api/**")
                 .csrf(csrf -> csrf.disable())
@@ -222,6 +234,12 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> {
                     auth.anyRequest().authenticated();
                 })
+                // Before Basic, not after: a request carrying a key never reaches the Basic filter,
+                // and one carrying neither reaches it exactly as it did before. The key filter
+                // refuses nothing itself - it either authenticates or steps aside - so a bad key
+                // and a bad password produce the same 401 from the same entry point below.
+                .addFilterBefore(new ApiKeyAuthenticationFilter(apiKeyService),
+                        BasicAuthenticationFilter.class)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // Both, and they cover different failures. BasicAuthenticationFilter keeps its own
                 // entry point and calls it when a credential is present but wrong;

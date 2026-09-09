@@ -83,6 +83,30 @@ public class FolderAccessService {
         return FolderAccess.of(granted);
     }
 
+    /**
+     * The access for one request, whoever made it.
+     *
+     * <p>A request authenticated with an API key reaches the folders granted to <em>the key</em>,
+     * not the folders granted to the person who created it. The two are separate on purpose: a key
+     * is issued for one integration and scoped to what that integration needs, and it must not
+     * silently widen when its creator is given a new role.
+     *
+     * @param apiKeyId null for a person, the key's id when a key is acting
+     */
+    public FolderAccess accessFor(int principalId, Integer apiKeyId) {
+        return apiKeyId == null ? accessFor(principalId) : accessForApiKey(apiKeyId);
+    }
+
+    /** Everything one API key may reach, resolved the same way and reduced the same way. */
+    public FolderAccess accessForApiKey(int apiKeyId) {
+        if (!enforced) {
+            return FolderAccess.everything();
+        }
+        // No administrator shortcut here, deliberately. A key is scoped to what it was granted and
+        // to nothing else, however powerful the person who created it happens to be.
+        return FolderAccess.of(folderRepository.findGrantsOfApiKey(apiKeyId));
+    }
+
     /** The folder mirroring one taxonomy row, if the mirror has one. */
     public Optional<Folder> folderOf(FolderSourceType sourceType, int sourceId) {
         return folderRepository.findBySourceTypeAndSourceId(sourceType, sourceId);

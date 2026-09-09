@@ -124,16 +124,31 @@ public class RoleService {
                 () -> new ResourceNotFoundException("role with id=" + roleId + " doesn't exists")
         );
 
-        Map<Integer, FolderPermission> grantedById = role.getFolderGrants().stream()
-                .collect(Collectors.toMap(grant -> grant.getFolder().getId(), RoleFolderGrant::getPermission,
-                        (a, b) -> a, LinkedHashMap::new));
-        List<GrantedPath> grantedPaths = role.getFolderGrants().stream()
-                .map(grant -> new GrantedPath(grant.getFolder().getPath(), grant.getPermission()))
+        return getFolderTree(role.getFolderGrants().stream()
+                .map(grant -> grant.getFolder().getId() + ":" + grant.getPermission().name())
+                .toList());
+    }
+
+    /**
+     * The whole folder tree marked up against an arbitrary set of grants.
+     *
+     * <p>Shared with the API key screen, which asks the identical question — "which folders does this
+     * reach, and which does it reach through an ancestor?" — about a key rather than a role. Two
+     * copies of this would be two chances for the two screens to disagree about what a grant covers.
+     *
+     * @param grants the current selection as {@code "{folderId}:{READ|WRITE}"}, the same encoding
+     *               both pages post
+     */
+    public List<FolderGrantDTO> getFolderTree(List<String> grants) {
+        Map<Integer, FolderPermission> grantedById = parseGrants(grants);
+
+        List<Folder> all = folderRepository.findAllByOrderByPathAsc();
+        List<GrantedPath> grantedPaths = all.stream()
+                .filter(folder -> grantedById.containsKey(folder.getId()))
+                .map(folder -> new GrantedPath(folder.getPath(), grantedById.get(folder.getId())))
                 .toList();
 
-        return folderRepository.findAllByOrderByPathAsc().stream()
-                .map(folder -> toGrantDto(folder, grantedById, grantedPaths))
-                .toList();
+        return all.stream().map(folder -> toGrantDto(folder, grantedById, grantedPaths)).toList();
     }
 
     private FolderGrantDTO toGrantDto(Folder folder, Map<Integer, FolderPermission> grantedById,

@@ -20,6 +20,17 @@ public class UserDetailsImpl implements UserDetails {
     private int state;
     private int loginType;
 
+    /**
+     * Set only when this request authenticated with an API key rather than as a person
+     * (roadmap 9.2); null otherwise.
+     *
+     * <p>{@link #id} still names the user the key was created by, so every service that takes a
+     * {@code principalId} and every {@code action_history} row keep working unchanged. This field is
+     * what stops a key inheriting that person's folder grants: {@code FolderAccessService} resolves
+     * the key's own scopes when it is present.
+     */
+    private Integer apiKeyId;
+
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

@@ -14,7 +14,8 @@ public enum EntityEnum {
     ActionHistory("action_history"),
     UserRole("user_role"),
     PermissionRole("permission_role"),
-    RoleFolder("role_folder")
+    RoleFolder("role_folder"),
+    ApiKey("api_key")
     ;
 
 

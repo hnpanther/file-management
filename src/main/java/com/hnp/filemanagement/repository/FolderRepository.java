@@ -140,6 +140,14 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
             """)
     List<GrantedPath> findGrantsThroughRoles(@Param("userId") int userId);
 
+    /** The folders granted to one API key, with what each one allows (roadmap 9.2). */
+    @Query("""
+            SELECT new com.hnp.filemanagement.repository.GrantedPath(g.folder.path, g.permission)
+            FROM ApiKeyFolderGrant g
+            WHERE g.apiKey.id = :apiKeyId
+            """)
+    List<GrantedPath> findGrantsOfApiKey(@Param("apiKeyId") int apiKeyId);
+
     /** The folders granted to a person directly, as rows — for showing what a grant points at. */
     @Query("SELECT g.folder FROM UserFolderGrant g WHERE g.user.id = :userId")
     List<Folder> findFoldersGrantedDirectly(@Param("userId") int userId);
