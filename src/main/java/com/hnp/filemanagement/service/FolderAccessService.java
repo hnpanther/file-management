@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.FolderAccess;
 import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderPermission;
@@ -10,6 +11,8 @@ import com.hnp.filemanagement.repository.GrantedPath;
 import com.hnp.filemanagement.repository.RoleRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -73,6 +76,15 @@ public class FolderAccessService {
         if (!enforced) {
             return FolderAccess.everything();
         }
+
+        // Deliberately before the administrator shortcut. A request made with an API key reaches
+        // what the key was granted and nothing else, however powerful the person who created it -
+        // and that person is who `principalId` names, because the audit trail has to land on them.
+        Integer apiKeyId = currentApiKeyId();
+        if (apiKeyId != null) {
+            return accessForApiKey(apiKeyId);
+        }
+
         if (roleRepository.userHasRole(principalId, ADMIN_ROLE)) {
             // No grant rows are needed for the administrator role, and none are read.
             return FolderAccess.everything();
@@ -81,6 +93,24 @@ public class FolderAccessService {
         List<GrantedPath> granted = new ArrayList<>(folderRepository.findGrantsDirectly(principalId));
         granted.addAll(folderRepository.findGrantsThroughRoles(principalId));
         return FolderAccess.of(granted);
+    }
+
+    /**
+     * The API key this request was made with, or null when a person made it.
+     *
+     * <p><b>Read from the security context rather than passed in, and that is a deliberate trade.</b>
+     * Threading it through would mean an extra parameter on every service method that takes a
+     * {@code principalId} and on every one of their callers — and every one of those is a place to
+     * forget it, on a security check, silently. Whether a request is a key's is a property of the
+     * request, which is what the security context is; resolving it in the one method that answers
+     * "what may this request reach" keeps it impossible to miss.
+     */
+    private static Integer currentApiKeyId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof UserDetailsImpl principal)) {
+            return null;
+        }
+        return principal.getApiKeyId();
     }
 
     /**

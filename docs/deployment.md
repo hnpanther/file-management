@@ -205,21 +205,34 @@ sudo journalctl -u file-management -f
 
 ## 4. Confirm it is actually up
 
-> **There is no `/actuator/health`.** The actuator dependency was planned in roadmap Phase 1 and
-> never added ([issue 41](issues.md)), so this application has no probe that reports the database.
-> What follows is the closest available substitute, and the difference matters when you point a load
-> balancer at it.
+Three probes, and they answer different questions. **Point a load balancer at readiness**, not at
+the other two.
 
 ```bash
-# Liveness only: renders a page, touches no database.
-curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8122/login       # expect 200
+# Readiness: can it serve traffic? Includes the database.
+curl -sS http://localhost:8122/actuator/health/readiness    # {"status":"UP"}
 
-# Reaches the database: /files/public-files is permitAll and runs a query.
-curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8122/files/public-files   # expect 200
+# Liveness: is the process alive? A DOWN here is what a restart fixes.
+curl -sS http://localhost:8122/actuator/health/liveness     # {"status":"UP"}
+
+# The aggregate, which is what most tooling defaults to.
+curl -sS http://localhost:8122/actuator/health              # {"status":"UP"}
+
+# Which build is actually running - the question to ask after every upgrade.
+curl -sS http://localhost:8122/actuator/info
 ```
 
-A 200 from `/login` with MySQL down is entirely possible — it proves Tomcat is serving, nothing
-more. Use the second URL for anything that decides whether to send traffic here.
+The three health URLs need no credential, so a probe does not need one either. They answer `UP` or
+`DOWN` and nothing else: component names and failure reasons are switched off deliberately, in
+`management.properties`, because whoever can reach the port should not be able to read the shape of
+the inside of the process. **When something is DOWN the reason is in the log**, not in the response.
+
+Everything else under `/actuator` answers 403, whether or not it has been exposed.
+
+> **Do not use `GET /login` as a health check.** It renders without touching the database, so it
+> answers 200 with MySQL down - which is how a load balancer comes to send traffic to an
+> application that cannot serve any. It was the best substitute available before the actuator
+> existed; it is not one now.
 
 On the first boot, find the generated administrator password if you did not set one:
 
@@ -815,8 +828,7 @@ could be restored. Once a month, half an hour:
 ## Related
 
 - [arch.md](arch.md) — how the application is built, and what the configuration keys do
-- [issues.md](issues.md) — known defects, including [45](issues.md) (`base-dir` concatenation) and
-  [41](issues.md) (no actuator)
+- [issues.md](issues.md) — known defects, including [45](issues.md) (`base-dir` concatenation)
 - [roadmap.md](roadmap.md) — where this is going; Phase 3 replaces MySQL with PostgreSQL and Phase 4
   moves file storage to S3, both of which change this document
 - [AGENTS.md](../AGENTS.md) — the working agreement, including the commands

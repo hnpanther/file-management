@@ -108,4 +108,13 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
               AND fd.version = fd.fileInfo.lastVersion
             """)
     List<FileDetails> findLatestVersionOf(@Param("fileInfoIds") Collection<Integer> fileInfoIds);
+
+    /**
+     * Every stored version of a set of files.
+     *
+     * <p>Unlike {@link #findLatestVersionOf}, which describes a file as a list row shows it, this is
+     * what the v2 key space is made of: every version is a key of its own (roadmap 9.3).
+     */
+    @Query("SELECT fd FROM FileDetails fd WHERE fd.fileInfo.id IN :fileInfoIds")
+    List<FileDetails> findByFileInfoIdIn(@Param("fileInfoIds") Collection<Integer> fileInfoIds);
 }

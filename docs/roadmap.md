@@ -17,7 +17,7 @@ working, and to depend only on what came before.
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | mirror + grants **done**, off by default |
 | 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | planned |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
-| 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | keys + grants **done** |
+| 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | all but OpenAPI **done** |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -1083,7 +1083,24 @@ api_key_folder (api_key_id, folder_id, permission)
 * **A key cannot be scoped to a folder its creator cannot see** (administrators excepted). Without
   that rule, the permission to create keys quietly becomes the permission to reach everything.
 
-### 9.3 The v2 API
+### 9.3 The v2 API — **done**
+
+> `ObjectStoreApi` and `ObjectStoreService`. A bucket is a top-level folder, a key is everything
+> below it flattened with `/`, and the version is a segment of the key. Listing supports `prefix`,
+> `delimiter=/` with `commonPrefixes`, `max-keys` and `continuation-token`; writing appends a
+> version and answers with the canonical key it landed on.
+>
+> **Folder access reaches it without a single new check.** `FolderAccessService.accessFor` reads
+> the API key out of the security context and resolves the key's own scopes instead of the
+> creator's — so every existing enforcement point became key-aware at once. Threading an
+> `apiKeyId` parameter through instead would have meant an extra argument on every service that
+> takes a `principalId`, and every one of those is a place to forget it, on a security check,
+> silently.
+>
+> A listing gathers the subtree and sorts it in memory: the key space is derived from the folder
+> tree rather than stored, so there is no index to page over. Three queries, and right at this
+> size — 1358 files in the whole installation. `file_info.folder_id` and a real key column
+> (Phase 7) are what would change that.
 
 Bucket, key, and the five operations an integrator expects:
 
@@ -1150,7 +1167,18 @@ outright that this is S3-*style*, so nobody plans an integration around a CLI th
 connect. If real S3 compatibility is ever wanted it is its own phase, and it starts by making
 secrets recoverable.
 
-### 9.5 Actuator
+### 9.5 Actuator — **done**
+
+> `health` and `info` only, with `readiness` and `liveness` as separate groups, behind an
+> `@Order(0)` chain that permits the three health URLs and refuses everything else under
+> `/actuator` whether or not it is exposed. Details and component names are off, so the answer is
+> `UP` or `DOWN` and nothing more. `deployment.md` was rewritten around it.
+>
+> **The settings live in `management.properties`, imported by both `application.properties`** —
+> because `src/test/resources/application.properties` *shadows* the main file rather than adding
+> to it, so anything written only in the main one is absent from every test. The first version of
+> this work asserted Spring Boot's defaults and would not have noticed the real configuration
+> being wrong.
 
 This closes [issue 41](issues.md#41-no-actuator-no-metrics-no-real-health-check--s2), which was
 planned in Phase 1 and never done — `pom.xml` carries no actuator dependency at all.
@@ -1166,7 +1194,26 @@ planned in Phase 1 and never done — `pom.xml` carries no actuator dependency a
   liveness and `GET /files/public-files` as the closest thing to a readiness probe. Both become
   wrong the day this ships.
 
-### 9.6 OpenAPI
+### 9.6 OpenAPI — **done**
+
+> springdoc-openapi 3.1.0, the line that targets Boot 4. Two groups rather than one —
+> `v2-object-store` and `v1-files` — because they are two contracts that happen to share a
+> prefix, not two versions of one. `/resource/**` is not described: those endpoints belong to
+> this application's own screens and change with them, and a test asserts they stay out.
+>
+> Behind `VIEW_API_DOCS` on the browser chain, not the machine one, so an anonymous visitor is
+> sent to the login page rather than being answered with a Basic challenge the browser would
+> turn into a native password box. The path is `/api-docs`, not springdoc's default
+> `/v3/api-docs`, which is one character away from `/api/**` and would land in the machine
+> chain.
+>
+> **Both halves switch off independently and are tested doing so**, because a property that
+> quietly does nothing looks exactly like one that works.
+>
+> The settings live in `openapi.properties`, imported by both `application.properties` files.
+> The test copy *shadows* the main one — same classpath name, and the test copy wins — so
+> anything the suite must exercise from the shipped configuration has to be imported rather
+> than written in the main file, where it would be silently absent from every test.
 
 `springdoc-openapi` 3.x, whose major version tracks Spring Boot's; pin the current stable release at
 implementation time rather than from this document.
@@ -1209,9 +1256,9 @@ folder and nothing stored changes. Two folder names that collide once normalised
 |---|---|---|---|
 | 0 | `permission` on the two grant tables; `FolderAccess` splits; upload gated; role page three-state — **done**, `V2.0` | `V2.0` | prerequisite for 1 |
 | 1 | `api_key` + `api_key_folder`; bearer filter on the API chain; the "API keys" page — **done**, `V2.1` | `V2.1` | needs 0 |
-| 2 | Actuator, its security chain, and the deployment.md revision | — | yes |
-| 3 | `/api/v2/**` — the five operations, bucket and key resolution, version in the key | — | needs 1 |
-| 4 | springdoc, grouped to `/api/**`, switchable | — | yes |
+| 2 | Actuator, its security chain, and the deployment.md revision — **done** | — | yes |
+| 3 | `/api/v2/**` — the five operations, bucket and key resolution, version in the key — **done** | — | needs 1 |
+| 4 | springdoc, grouped to `/api/**`, switchable — **done** | — | yes |
 
 Steps 2 and 4 depend on nothing else here and can ship whenever.
 

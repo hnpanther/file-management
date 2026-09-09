@@ -29,7 +29,7 @@ The project version was also reverted from `1.0` back to `1.0.0`.
 Consequence: the deployed artefact is on Spring Boot 3.2.x, which is out of OSS support, while the
 commit log claims 3.5.5. Anyone reading the log will trust the wrong number.
 
-*Fixed by the Spring Boot 4.1.1 upgrade in [roadmap.md](roadmap.md#phase-1--platform-upgrade); the
+*Fixed by the Spring Boot 4.1.1 upgrade in [roadmap.md](roadmap.md#phase-1--platform-upgrade--done); the
 lesson is that this merge needs to be called out in the commit message so nobody re-applies 3.5.5.*
 
 ### 2. `@Data` on bidirectional JPA entities — **S1**
@@ -519,6 +519,15 @@ Fix: `${LOG_PATH:-./logs}` sourced from a Spring property, and console-only JSON
 containers.
 
 ### 41. No Actuator, no metrics, no real health check — **S2**
+
+> **Partly fixed** (roadmap 9.5). `spring-boot-starter-actuator` is in, `health` and `info` are
+> exposed, `readiness` and `liveness` are separate groups, and `/actuator/**` has a security
+> chain of its own so a probe gets a status rather than `302 /login`. `deployment.md` now points
+> operators at readiness instead of at `GET /login`.
+>
+> **Still open: metrics.** There is no Micrometer registry and nothing is timed, so "how long
+> does an upload take" still has no answer. That belongs with the storage port (Phase 2), which
+> is what would be worth instrumenting.
 
 `spring-boot-starter-actuator` is not a dependency. `/api/v1/files/health-test` returns a hardcoded
 string, requires authentication, and checks nothing — not the database, not the filesystem. There is
