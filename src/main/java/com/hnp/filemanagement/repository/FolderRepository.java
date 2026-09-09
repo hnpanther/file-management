@@ -56,6 +56,35 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
 
     List<Folder> findByParentIdOrderByNameAsc(Integer parentId);
 
+    /**
+     * One level of the tree with each folder's general tag already attached.
+     *
+     * <p>{@code generalTag} is {@code LAZY}, so reading it while mapping a listing would be one
+     * extra query per row. The explorer shows it as the note on a category, so it is fetched with
+     * the level rather than after it.
+     */
+    @Query("""
+            SELECT f FROM Folder f
+            LEFT JOIN FETCH f.generalTag
+            WHERE f.parent.id = :parentId
+            ORDER BY f.name ASC
+            """)
+    List<Folder> findChildrenWithGeneralTag(@Param("parentId") int parentId);
+
+    /**
+     * How many child folders each of these folders has, in one query.
+     *
+     * <p>A parent with no children has no row here rather than a zero — {@code GROUP BY} cannot
+     * invent one — so the caller treats a missing key as zero.
+     */
+    @Query("""
+            SELECT new com.hnp.filemanagement.repository.ChildCount(f.parent.id, COUNT(f.id))
+            FROM Folder f
+            WHERE f.parent.id IN :parentIds
+            GROUP BY f.parent.id
+            """)
+    List<ChildCount> countChildFoldersByParent(@Param("parentIds") Collection<Integer> parentIds);
+
     Optional<Folder> findByKindAndOwnerUserId(FolderKind kind, Integer ownerUserId);
 
     long countByKind(FolderKind kind);

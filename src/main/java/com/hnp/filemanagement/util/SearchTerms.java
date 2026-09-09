@@ -21,4 +21,28 @@ public final class SearchTerms {
     public static String blankToNull(String search) {
         return (search == null || search.isBlank()) ? null : search.trim();
     }
+
+    /**
+     * The term read as a file id, or {@code null} when it is not one.
+     *
+     * <p>A search box that also accepts an id is the only way to find a file whose label is shared
+     * with another branch ({@code docs/issues.md}, issue 73), so "does this look like an id?" is
+     * asked in more than one place and must be answered the same way in all of them.
+     *
+     * <p>Two things make it less obvious than it looks. {@code Character.isDigit} accepts
+     * Persian-Indic digits — which this interface's users type — and {@code Integer.valueOf} cannot
+     * parse them; and a run of ASCII digits can still be too long for an {@code int}. Both are "not
+     * an id", not a search that fails: the term is then matched as text, which is what someone
+     * typing a long number in a name almost certainly meant.
+     */
+    public static Integer asFileId(String term) {
+        if (term == null || term.isBlank() || !term.chars().allMatch(c -> c >= '0' && c <= '9')) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(term);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
 }
