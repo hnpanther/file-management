@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{apiKey.form.pageTitle}">کلید API | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  Create and edit in one template, switched by `pageType`, the same way the role and category forms
+  work.
+
+  The folder section is deliberately identical to the role page's - same control, same classes, same
+  posted encoding - because it answers the same question. Its model comes from the same service
+  method.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{apiKey.kicker}">دسترسی ماشینی</div>
+        <h1 th:text="${#strings.equals(pageType, 'create')} ? #{apiKey.form.createHeading} : #{apiKey.form.updateHeading}">
+            کلید جدید
+        </h1>
+        <p class="page-description" th:text="#{apiKey.form.description}">
+            عنوان و دامنهٔ دسترسی این کلید را مشخص کنید.
+        </p>
+    </header>
+
+    <section class="card">
+        <div class="card-body">
+            <form th:action="${#strings.equals(pageType, 'create')} ? @{/api-keys} : @{'/api-keys/' + ${apiKey.id}}"
+                  th:object="${apiKey}" method="post">
+
+                <div class="form-group">
+                    <label class="control-label" for="title" th:text="#{apiKey.field.title}">عنوان</label>
+                    <input type="text" id="title" class="form-control" th:field="*{title}" required
+                           maxlength="100">
+                    <p class="form-text" th:text="#{apiKey.field.titleHint}">
+                        نامی که در فهرست کلیدها دیده می‌شود؛ مثلاً نام سامانه‌ای که وصل می‌شود.
+                    </p>
+                </div>
+
+                <div class="form-group">
+                    <label class="control-label" for="description" th:text="#{apiKey.field.description}">توضیحات</label>
+                    <textarea id="description" class="form-control" th:field="*{description}"
+                              rows="2" maxlength="500"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="control-label" for="expiresAt" th:text="#{apiKey.field.expiresAt}">تاریخ انقضا</label>
+                    <input type="date" id="expiresAt" class="form-control" th:field="*{expiresAt}" dir="ltr">
+                    <p class="form-text" th:text="#{apiKey.field.expiresAtHint}">
+                        اختیاری. اگر خالی بماند، کلید تاریخ انقضا ندارد.
+                    </p>
+                </div>
+
+                <!--
+                  Same control, same encoding and same service method as the role page: a folder is
+                  set to no access, read, or read and write, and a grant covers everything beneath
+                  the folder it names.
+                -->
+                <fieldset class="mt-8">
+                    <legend class="mb-1 text-base font-semibold text-ink-900"
+                            th:text="#{apiKey.field.folderAccess}">دسترسی پوشه‌ها</legend>
+                    <p class="mb-4 text-sm text-ink-500" th:text="#{apiKey.field.folderAccessHint}">
+                        این کلید فقط به پوشه‌هایی که اینجا مشخص می‌کنید دسترسی دارد.
+                    </p>
+
+                    <div th:if="${#lists.isEmpty(folders)}" class="empty-state empty-state-panel"
+                         th:text="#{role.folders.empty}">هنوز پوشه‌ای ساخته نشده است.</div>
+
+                    <div th:unless="${#lists.isEmpty(folders)}" class="folder-grant-tree">
+                        <label th:each="f: ${folders}" class="folder-grant-option"
+                               th:classappend="${!#strings.isEmpty(f.inherited)} ? 'is-covered' : ''"
+                               th:style="|--folder-depth:${f.depth}|">
+                            <i class="bi shrink-0 text-ink-400"
+                               th:classappend="${f.depth == 0 ? 'bi-house-door' : (f.depth == 1 ? 'bi-folder-fill' : (f.depth == 2 ? 'bi-folder' : 'bi-folder2'))}"
+                               aria-hidden="true"></i>
+                            <span class="folder-grant-copy">
+                                <span class="folder-grant-name" th:text="${f.getDisplayName()}"></span>
+                                <span class="folder-grant-technical technical" dir="ltr"
+                                      th:text="${f.getName()}"></span>
+                            </span>
+                            <span th:if="${!#strings.isEmpty(f.inherited)}" class="folder-grant-badge"
+                                  th:text="${f.inherited == 'WRITE'} ? #{role.folders.inheritedWrite} : #{role.folders.inherited}">از پوشهٔ بالاتر</span>
+                            <select name="folderGrants" class="folder-grant-select">
+                                <option value="" th:selected="${#strings.isEmpty(f.permission)}"
+                                        th:text="#{role.folders.none}">بدون دسترسی</option>
+                                <option th:value="|${f.id}:READ|" th:selected="${f.permission == 'READ'}"
+                                        th:text="#{role.folders.read}">خواندن</option>
+                                <option th:value="|${f.id}:WRITE|" th:selected="${f.permission == 'WRITE'}"
+                                        th:text="#{role.folders.write}">خواندن و نوشتن</option>
+                            </select>
+                        </label>
+                    </div>
+                </fieldset>
+
+                <div th:if="${showMessage && valid}" class="alert alert-success mt-5" role="status"
+                     th:text="#{message.saved}">اطلاعات با موفقیت ذخیره شد.</div>
+                <div th:if="${showMessage && !valid}" class="alert alert-warning mt-5" role="alert"
+                     th:text="${#strings.isEmpty(message)} ? #{apiKey.form.invalid} : ${message}"></div>
+
+                <div class="form-actions mt-6">
+                    <button type="submit" class="btn btn-primary"
+                            th:text="${#strings.equals(pageType, 'create')} ? #{apiKey.form.submitCreate} : #{apiKey.form.submitUpdate}">
+                        ساخت کلید
+                    </button>
+                    <a th:href="@{/api-keys}" class="btn btn-secondary" th:text="#{apiKey.form.back}">بازگشت</a>
+                </div>
+            </form>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

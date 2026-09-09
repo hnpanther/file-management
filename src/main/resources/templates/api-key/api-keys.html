@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{apiKey.pageTitle}">کلیدهای API | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The API key list. A key is not a person, so this is its own section rather than a tab of the user
+  pages.
+
+  The one thing this page does that no other list page does: immediately after a key is created it
+  renders the credential, once. The POST that creates a key returns straight here rather than
+  redirecting, because a redirect would have to carry the secret somewhere it could be read again.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{apiKey.kicker}">دسترسی ماشینی</div>
+        <h1 th:text="#{apiKey.heading}">کلیدهای API</h1>
+        <p class="page-description" th:text="#{apiKey.description}">
+            کلیدهایی که سامانه‌های دیگر با آن‌ها به این سامانه وصل می‌شوند.
+        </p>
+    </header>
+
+    <!--
+      Shown exactly once, on the render that follows creation. The secret is stored only as a hash,
+      so this really is the only chance to copy it - the copy says so rather than implying it.
+    -->
+    <section class="card mb-5 border-brand-300 bg-brand-50/60" th:if="${created != null}">
+        <div class="card-body">
+            <h2 class="mb-1 text-base font-semibold text-brand-800" th:text="#{apiKey.created.title}">
+                کلید ساخته شد
+            </h2>
+            <p class="mb-3 text-sm text-ink-600" th:text="#{apiKey.created.warning}">
+                این کلید فقط همین یک بار نمایش داده می‌شود.
+            </p>
+            <code class="technical block overflow-x-auto rounded-[var(--radius-control)] border
+                         border-ink-300 bg-white px-3 py-2 text-sm" dir="ltr"
+                  th:text="${created.credential()}">fmk_...</code>
+            <p class="mt-3 text-xs text-ink-500" th:text="#{apiKey.created.usage}">
+                در هدر درخواست بفرستید.
+            </p>
+            <code class="technical block overflow-x-auto rounded-[var(--radius-control)] bg-ink-100
+                         px-3 py-2 text-xs text-ink-700" dir="ltr"
+                  th:text="'Authorization: Bearer ' + ${created.credential()}">Authorization: Bearer ...</code>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-body">
+            <div class="card-title">
+                <h2 class="text-base font-semibold" th:text="#{apiKey.list.title}">کلیدهای ساخته‌شده</h2>
+                <a sec:authorize="hasAuthority('CREATE_API_KEY_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/api-keys/create}" class="btn btn-primary btn-sm">
+                    <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                    <span th:text="#{apiKey.list.create}">کلید جدید</span>
+                </a>
+            </div>
+
+            <p th:if="${#lists.isEmpty(apiKeys)}" class="empty-state" th:text="#{apiKey.list.empty}">
+                هنوز کلیدی ساخته نشده است.
+            </p>
+
+            <div th:unless="${#lists.isEmpty(apiKeys)}" class="overflow-x-auto">
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th th:text="#{apiKey.column.title}">عنوان</th>
+                        <th th:text="#{apiKey.column.keyId}">شناسهٔ کلید</th>
+                        <th th:text="#{apiKey.column.status}">وضعیت</th>
+                        <th th:text="#{apiKey.column.expiresAt}">انقضا</th>
+                        <th th:text="#{apiKey.column.lastUsedAt}">آخرین استفاده</th>
+                        <th th:text="#{apiKey.column.createdBy}">ساخته‌شده توسط</th>
+                        <th th:text="#{apiKey.column.actions}">عملیات</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="k : ${apiKeys}">
+                        <td>
+                            <span class="font-semibold" th:text="${k.title}"></span>
+                            <span class="block text-xs text-ink-500" th:text="${k.description}"></span>
+                        </td>
+                        <td class="technical text-xs" dir="ltr" th:text="${k.keyId}"></td>
+                        <td>
+                            <span th:if="${k.revokedAt != null}" class="badge badge-danger"
+                                  th:text="#{apiKey.status.revoked}">باطل‌شده</span>
+                            <span th:if="${k.revokedAt == null and k.usable}" class="badge badge-success"
+                                  th:text="#{apiKey.status.active}">فعال</span>
+                            <span th:if="${k.revokedAt == null and !k.usable}" class="badge badge-warning"
+                                  th:text="#{apiKey.status.inactive}">غیرفعال</span>
+                        </td>
+                        <td class="text-xs" th:text="${k.expiresAt != null} ? ${#temporals.format(k.expiresAt, 'yyyy-MM-dd')} : ''">
+                            <span th:if="${k.expiresAt == null}" th:text="#{apiKey.noExpiry}">بدون انقضا</span>
+                        </td>
+                        <td class="text-xs" th:text="${k.lastUsedAt != null} ? ${#temporals.format(k.lastUsedAt, 'yyyy-MM-dd HH:mm')} : '—'"></td>
+                        <td class="technical text-xs" dir="ltr" th:text="${k.createdBy}"></td>
+                        <td>
+                            <div class="btn-group">
+                                <a sec:authorize="hasAuthority('UPDATE_API_KEY_PAGE') || hasAuthority('ADMIN')"
+                                   th:href="@{'/api-keys/' + ${k.id}}" class="btn btn-secondary btn-sm"
+                                   th:text="#{apiKey.action.edit}">ویرایش</a>
+
+                                <form sec:authorize="hasAuthority('REVOKE_API_KEY') || hasAuthority('ADMIN')"
+                                      th:if="${k.revokedAt == null}"
+                                      th:action="@{'/api-keys/' + ${k.id} + '/revoke'}" method="post">
+                                    <input type="hidden" name="enabled"
+                                           th:value="${k.enabled == 1} ? '0' : '1'">
+                                    <button type="submit" class="btn btn-secondary btn-sm"
+                                            th:text="${k.enabled == 1} ? #{apiKey.action.disable} : #{apiKey.action.enable}">
+                                        غیرفعال کردن
+                                    </button>
+                                </form>
+
+                                <form sec:authorize="hasAuthority('REVOKE_API_KEY') || hasAuthority('ADMIN')"
+                                      th:if="${k.revokedAt == null}"
+                                      th:action="@{'/api-keys/' + ${k.id} + '/revoke'}" method="post">
+                                    <button type="submit" class="btn btn-danger btn-sm"
+                                            th:attr="onclick=|return confirm('${#messages.msg('apiKey.action.revokeConfirm')}')|"
+                                            th:text="#{apiKey.action.revoke}">ابطال</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

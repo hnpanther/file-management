@@ -380,6 +380,11 @@ user see *this* folder". Both must pass.
   not swallow a `WRITE` on its child.
 * `FolderAccessService.accessFor(principalId)` resolves it once per call into a `FolderAccess`; the
   `ADMIN` role is unrestricted and reads no grant rows at all.
+* **An API key is scoped to its own folders, not to its creator's** (roadmap 9.2). A request
+  authenticated with `Authorization: Bearer fmk_…` carries a principal whose `id` is the person
+  who created the key — so `principalId` and `action_history` are unchanged — and whose
+  `apiKeyId` sends `accessFor` to `api_key_folder` instead. There is no administrator shortcut
+  on that path: a key reaches what it was granted however powerful its creator is.
 * **Readable and traversable are different.** A grant can sit in the middle of the tree, and the
   holder has no right to the folders above it — but hiding those would leave no route down to what
   they do have. So an ancestor of a grant is shown and can be opened, revealing only the branch that

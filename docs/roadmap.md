@@ -17,7 +17,7 @@ working, and to depend only on what came before.
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | mirror + grants **done**, off by default |
 | 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | planned |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
-| 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | grants have a verb **done** |
+| 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | keys + grants **done** |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -1041,7 +1041,24 @@ Something needs it.
 Nothing above is specific to API keys. It is the missing half of Phase 6, and the interface needs it
 too.
 
-### 9.2 API keys
+### 9.2 API keys — **done**
+
+> Shipped as migration `V2.1`. A key is `fmk_{keyId}_{secret}`, stored as the id plus a SHA-256
+> hash, shown once at creation and never again; it carries a title, a description, an optional
+> expiry and its own folder scopes, and is managed on its own screen under
+> `/api-keys`. `ApiKeyAuthenticationFilter` sits in front of Basic on the `/api/**` chain and
+> authenticates or steps aside — it never writes an error, so a bad key and a bad password
+> produce the same 401 from the same entry point.
+>
+> **A key holds `API_KEY` and `API_HEALTH_TEST`, and nothing else.** The v1 file permissions
+> belong to the shared machine account; a key inheriting them would reach every file in the
+> system. The health probe is granted so that a newly issued key can be proved to work on the
+> day it is issued. The endpoints a key is actually for arrive in §9.3.
+>
+> **The key id is hex, not base64.** Both halves were base64url at first, and base64url's
+> alphabet contains the underscore the credential is split on — so roughly one key in four came
+> out unusable, intermittently and only once generated. Anything that becomes part of the
+> credential before the separator has to come from an alphabet that cannot contain it.
 
 A section of its own, separate from users, because a key is not a person.
 
@@ -1191,7 +1208,7 @@ folder and nothing stored changes. Two folder names that collide once normalised
 | # | Step | Migration | Independent? |
 |---|---|---|---|
 | 0 | `permission` on the two grant tables; `FolderAccess` splits; upload gated; role page three-state — **done**, `V2.0` | `V2.0` | prerequisite for 1 |
-| 1 | `api_key` + `api_key_folder`; bearer filter on the API chain; the "API keys" page | `V2.x` | needs 0 |
+| 1 | `api_key` + `api_key_folder`; bearer filter on the API chain; the "API keys" page — **done**, `V2.1` | `V2.1` | needs 0 |
 | 2 | Actuator, its security chain, and the deployment.md revision | — | yes |
 | 3 | `/api/v2/**` — the five operations, bucket and key resolution, version in the key | — | needs 1 |
 | 4 | springdoc, grouped to `/api/**`, switchable | — | yes |

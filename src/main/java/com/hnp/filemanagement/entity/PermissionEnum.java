@@ -163,6 +163,32 @@ public enum PermissionEnum {
 
     // ===================================================================================================
 
+    // ApiKeyController @RequestMapping("/api-keys") =====================================================
+    //@GetMapping
+    GET_ALL_API_KEY_PAGE,
+    //@GetMapping("create")
+    CREATE_API_KEY_PAGE,
+    //@PostMapping
+    SAVE_NEW_API_KEY,
+    //@GetMapping("{id}")
+    UPDATE_API_KEY_PAGE,
+    //@PostMapping("{id}")
+    SAVE_UPDATED_API_KEY,
+    //@PostMapping("{id}/revoke")
+    REVOKE_API_KEY,
+
+    /**
+     * Held by an API key itself rather than by any person, and by every API key.
+     *
+     * <p>It is what the v2 endpoints will require, and it is deliberately not any of the
+     * {@code API_*} constants above: those belong to the shared v1 account, and a key must not
+     * inherit them by accident. Until v2 exists a key can authenticate and prove itself against
+     * {@code API_HEALTH_TEST} and reach nothing else.
+     */
+    API_KEY,
+
+    // ===================================================================================================
+
     // FileSubCategoryResource @RequestMapping("/resource/file-sub-categories") ==========================
     //@GetMapping("{id}/main-tags")
     REST_GET_ALL_MAIN_TAGS_OF_SUB_CATEGORY_FILE,
