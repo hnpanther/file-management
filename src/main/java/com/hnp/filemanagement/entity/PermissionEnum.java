@@ -28,6 +28,8 @@ public enum PermissionEnum {
     PUBLIC_FILE_PAGE,
     //@GetMapping("tree")
     FILE_TREE_PAGE,
+    //@GetMapping("explorer")
+    FILE_EXPLORER_PAGE,
     //@GetMapping("file-info/{id}")
     FILE_INFO_PAGE,
     //@GetMapping("public-download/{id}")
@@ -149,6 +151,15 @@ public enum PermissionEnum {
 
     //@GetMapping("search")
     REST_SEARCH_FILE_TREE,
+
+    // ===================================================================================================
+
+    // FolderResource @RequestMapping("/resource/folders") ===============================================
+    //@GetMapping("children")
+    REST_GET_FOLDER_CONTENT,
+
+    //@GetMapping("search")
+    REST_SEARCH_FOLDER_CONTENT,
 
     // ===================================================================================================
 

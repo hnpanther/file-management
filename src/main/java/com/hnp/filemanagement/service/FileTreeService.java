@@ -18,6 +18,7 @@ import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FileSubCategoryRepository;
 import com.hnp.filemanagement.repository.MainTagFileRepository;
+import com.hnp.filemanagement.util.SearchTerms;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -211,7 +212,7 @@ public class FileTreeService {
             return List.of();
         }
         FolderAccess access = folderAccessService.accessFor(principalId);
-        Integer id = parseAsFileId(term);
+        Integer id = SearchTerms.asFileId(term);
         return fileInfoRepository.searchForTree(id, term, PageRequest.of(0, 20)).stream()
                 // Search reaches across the whole taxonomy, so unlike opening a folder it can turn
                 // up something outside every grant. A hit is only offered if its tag is reachable.
@@ -220,22 +221,6 @@ public class FileTreeService {
                 .map(this::toSearchHit)
                 .flatMap(Optional::stream)
                 .toList();
-    }
-
-    /**
-     * {@code Character.isDigit} accepts Persian-Indic digits that {@code Integer.valueOf} cannot
-     * parse, and a run of ASCII digits can still be too long to fit an {@code int}, so both are
-     * treated the same as "not an id" rather than as a search that fails outright.
-     */
-    private Integer parseAsFileId(String term) {
-        if (!term.chars().allMatch(c -> c >= '0' && c <= '9')) {
-            return null;
-        }
-        try {
-            return Integer.valueOf(term);
-        } catch (NumberFormatException e) {
-            return null;
-        }
     }
 
     /**

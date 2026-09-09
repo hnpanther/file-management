@@ -111,6 +111,20 @@
                         <span th:text="#{nav.publicFiles}">فایل‌های عمومی</span>
                     </a>
                 </li>
+                <!--
+                  The explorer is a workspace rather than a page of this shell - it fills its own
+                  tab and carries its own top bar - so it sits here, above the sections, and opens
+                  in a new tab. The arrow says so before the click rather than after it.
+                -->
+                <li sec:authorize="hasAuthority('FILE_EXPLORER_PAGE') || hasAuthority('ADMIN')">
+                    <a th:href="@{/files/explorer}" target="_blank" rel="noopener"
+                       class="app-nav-link" th:title="#{nav.files.explorer.newTab}">
+                        <i class="bi bi-columns-gap app-nav-icon" aria-hidden="true"></i>
+                        <span th:text="#{nav.files.explorer}">کاوشگر فایل‌ها</span>
+                        <i class="bi bi-box-arrow-up-left ms-auto text-[0.7rem] text-ink-400"
+                           aria-hidden="true"></i>
+                    </a>
+                </li>
             </ul>
 
             <section sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('CREATE_FILE_PAGE') || hasAuthority('FILE_TREE_PAGE') || hasAuthority('ADMIN')"

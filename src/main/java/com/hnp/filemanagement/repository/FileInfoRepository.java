@@ -181,4 +181,68 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
 
     /** Tree view: the files filed under one main tag. */
     List<FileInfo> findByMainTagFileIdOrderByFileNameAsc(int mainTagFileId);
+
+    /**
+     * The same files, one page at a time — what the explorer lists.
+     *
+     * <p>The unpaged version above is kept for the tree, which renders a tag's files inside an
+     * already-open branch. A folder listing has no such bound: today a tag holds tens of files, but
+     * roadmap Phase 7 moves every file into a folder, and one of them will eventually hold more than
+     * anybody wants delivered in a single response ({@code docs/issues.md}, issue 71).
+     */
+    Page<FileInfo> findByMainTagFileId(int mainTagFileId, Pageable pageable);
+
+    /**
+     * How many files sit under each of these main tags, in one query rather than one per tag.
+     *
+     * <p>A tag with no files has no row, so a missing key means zero.
+     */
+    @Query("""
+            SELECT new com.hnp.filemanagement.repository.ChildCount(fi.mainTagFile.id, COUNT(fi.id))
+            FROM FileInfo fi
+            WHERE fi.mainTagFile.id IN :mainTagIds
+            GROUP BY fi.mainTagFile.id
+            """)
+    List<ChildCount> countFilesByMainTag(@Param("mainTagIds") Collection<Integer> mainTagIds);
+
+    /**
+     * Explorer search: files whose id, name or description matches, a page at a time.
+     *
+     * <p>Deliberately narrower than {@link #search(String, Pageable)}, which also matches the tag,
+     * sub-category and category a file sits under. That is right for a list page, where the term is
+     * a filter over one flat table of everything; it is wrong for a folder tree, where matching the
+     * category returns every file in the category and buries the one that was actually named.
+     *
+     * <p>The tag is fetched with the row because every hit has to be resolved to the folder it lives
+     * in, and reading the association per row would be one query per result.
+     */
+    @Query("""
+            SELECT f FROM FileInfo f
+            JOIN FETCH f.mainTagFile mt
+            WHERE (:id IS NOT NULL AND f.id = :id)
+               OR f.fileName LIKE CONCAT('%', :term, '%')
+               OR f.description LIKE CONCAT('%', :term, '%')
+            """)
+    Page<FileInfo> searchFiles(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
+
+    /**
+     * The same search, restricted to a set of main tags — which is how both folder access and
+     * "search inside this folder" are applied: as a filter in the query, never to the rows it
+     * returned. Filtering afterwards would leave the total counting matches the caller may not see.
+     *
+     * <p>Must not be called with an empty set, which is not valid SQL for {@code IN}. An empty set
+     * means "nothing can match", and the caller answers that without a query.
+     */
+    @Query("""
+            SELECT f FROM FileInfo f
+            JOIN FETCH f.mainTagFile mt
+            WHERE mt.id IN (:mainTagIds)
+              AND ((:id IS NOT NULL AND f.id = :id)
+               OR f.fileName LIKE CONCAT('%', :term, '%')
+               OR f.description LIKE CONCAT('%', :term, '%'))
+            """)
+    Page<FileInfo> searchFilesWithinTags(@Param("id") Integer id,
+                                         @Param("term") String term,
+                                         @Param("mainTagIds") Collection<Integer> mainTagIds,
+                                         Pageable pageable);
 }

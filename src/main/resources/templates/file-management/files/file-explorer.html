@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{explorer.pageTitle}">کاوشگر فایل‌ها | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The file explorer. Opened in a tab of its own, so it does not use the application shell: the
+  sidebar would spend a fifth of the screen on navigation this page does not need, and the top bar
+  here has to hold the breadcrumb and the search box instead.
+
+  Three panes, each scrolling on its own - folders at the start, contents in the middle, details at
+  the end. Below `lg` the two side panes become drawers; the transform direction is the same one
+  navbar.html uses, which is known to be right under RTL.
+
+  Everything on screen comes from /resource/folders/*, including the first level: the controller
+  renders an empty shell and passes only the deep-link folder id. Read-only by design - no upload,
+  no rename, and no disabled buttons standing in for them.
+-->
+<body>
+
+<div class="explorer-shell" x-data="fileExplorer()"
+     @keydown.escape.window="treeOpen = false; selectedFile = null">
+
+    <header class="explorer-topbar">
+        <button type="button" class="explorer-topbar-button lg:hidden"
+                @click="treeOpen = true" :aria-expanded="treeOpen"
+                th:aria-label="#{explorer.aria.openTree}">
+            <i class="bi bi-list" aria-hidden="true"></i>
+        </button>
+
+        <span class="grid size-8 shrink-0 place-items-center rounded-[var(--radius-control)]
+                     bg-white text-brand-700" aria-hidden="true">
+            <i class="bi bi-folder2-open text-base"></i>
+        </span>
+        <h1 class="truncate text-sm font-semibold" th:text="#{explorer.heading}">کاوشگر فایل‌ها</h1>
+
+        <span class="hidden items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[0.7rem] sm:inline-flex">
+            <i class="bi bi-eye" aria-hidden="true"></i>
+            <span th:text="#{explorer.readOnly}">فقط نمایشی</span>
+        </span>
+
+        <form class="ms-auto flex min-w-0 items-center gap-1.5" @submit.prevent="runSearch()">
+            <input type="search" x-model="searchQuery" :placeholder="EX.searchPlaceholder"
+                   class="h-8 w-36 min-w-0 rounded-[var(--radius-control)] border border-white/25
+                          bg-white/15 px-2 text-sm text-white placeholder:text-white/60
+                          focus:bg-white focus:text-ink-800 focus:placeholder:text-ink-400 sm:w-56" />
+            <button type="submit" class="explorer-topbar-button" :disabled="searching"
+                    th:aria-label="#{explorer.search.submit}">
+                <i class="bi" :class="searching ? 'bi-arrow-repeat animate-spin' : 'bi-search'" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="explorer-topbar-button" x-show="searchResults !== null" x-cloak
+                    @click="clearSearch()" th:aria-label="#{explorer.search.clear}">
+                <i class="bi bi-x-lg" aria-hidden="true"></i>
+            </button>
+        </form>
+
+        <a th:href="@{/}" class="explorer-topbar-button">
+            <i class="bi bi-box-arrow-left" aria-hidden="true"></i>
+            <span class="hidden sm:inline" th:text="#{explorer.backToApp}">بازگشت به سامانه</span>
+        </a>
+    </header>
+
+    <div class="explorer-panes">
+
+        <!-- backdrop for the two drawers, narrow screens only -->
+        <div x-show="treeOpen" x-cloak x-transition.opacity @click="treeOpen = false"
+             class="fixed inset-0 z-30 bg-ink-900/40 lg:hidden" aria-hidden="true"></div>
+        <div x-show="selectedFile" x-cloak x-transition.opacity @click="selectedFile = null"
+             class="fixed inset-0 z-30 bg-ink-900/40 xl:hidden" aria-hidden="true"></div>
+
+        <!-- ------------------------------------------------------------ folders -->
+        <aside class="explorer-pane-tree" th:aria-label="#{explorer.aria.tree}"
+               :class="treeOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'">
+            <div class="explorer-pane-heading">
+                <span th:text="#{explorer.tree.title}">پوشه‌ها</span>
+                <button type="button" class="text-ink-400 hover:text-ink-700 lg:hidden"
+                        @click="treeOpen = false" th:aria-label="#{explorer.tree.close}">
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+            </div>
+
+            <div class="explorer-scroll p-2">
+                <p class="px-2 py-1 text-xs text-ink-400" x-show="treeLoading" x-cloak
+                   th:text="#{explorer.tree.loading}">در حال خواندن...</p>
+
+                <ul class="m-0 list-none p-0" role="tree">
+                    <template x-for="row in treeRows" :key="row.id">
+                        <li role="treeitem" :aria-level="row.depth + 1"
+                            :aria-expanded="row.expandable ? (row.open ? 'true' : 'false') : null">
+                            <div class="flex items-center"
+                                 :style="'padding-inline-start:' + (row.depth * 0.9) + 'rem'">
+                                <button type="button" class="explorer-folder-twisty"
+                                        :class="!row.expandable && 'is-leaf'"
+                                        :disabled="!row.expandable || row.loading"
+                                        :aria-label="row.open ? EX.collapse : EX.expand"
+                                        @click.stop="toggleRow(row)">
+                                    <i class="bi text-[0.7rem]"
+                                       :class="row.loading ? 'bi-arrow-repeat animate-spin'
+                                                           : (row.open ? 'bi-chevron-down' : 'bi-chevron-left')"
+                                       aria-hidden="true"></i>
+                                </button>
+                                <button type="button" class="explorer-folder-row"
+                                        :class="row.id === currentFolderId && 'is-selected'"
+                                        @click="navigate(row.id)">
+                                    <i class="bi shrink-0 text-ink-400" :class="iconFor(row)" aria-hidden="true"></i>
+                                    <span class="min-w-0 flex-1 truncate" x-text="row.title"></span>
+                                    <span class="explorer-badge" x-show="row.total > 0"
+                                          x-text="number(row.total)"></span>
+                                </button>
+                            </div>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+        </aside>
+
+        <!-- ------------------------------------------------------------ contents -->
+        <main class="explorer-pane-main" th:aria-label="#{explorer.aria.content}">
+
+            <nav class="explorer-subbar" th:aria-label="#{explorer.aria.breadcrumb}">
+                <div class="explorer-crumbs">
+                    <template x-for="(crumb, index) in breadcrumb" :key="crumb.id">
+                        <span class="flex min-w-0 items-center gap-0.5">
+                            <button type="button" class="explorer-crumb" x-text="crumbTitle(crumb)"
+                                    @click="navigate(crumb.id)"></button>
+                            <i class="bi bi-chevron-left explorer-crumb-sep text-[0.65rem]" aria-hidden="true"></i>
+                        </span>
+                    </template>
+                    <span class="explorer-crumb-current" x-text="folder ? crumbTitle(folder) : ''"></span>
+                </div>
+
+                <div class="flex shrink-0 items-center gap-1.5" x-show="searchResults === null" x-cloak>
+                    <span class="explorer-cell-muted" x-show="page && page.totalPages > 1" x-cloak
+                          x-text="pagePosition()"></span>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            x-show="page && page.totalPages > 1" x-cloak
+                            :disabled="!page || page.number <= 0" @click="goToPage(page.number - 1)"
+                            th:aria-label="#{explorer.page.previous}">
+                        <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            x-show="page && page.totalPages > 1" x-cloak
+                            :disabled="!page || page.number >= page.totalPages - 1" @click="goToPage(page.number + 1)"
+                            th:aria-label="#{explorer.page.next}">
+                        <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </nav>
+
+            <div class="explorer-scroll">
+
+                <!--
+                  A folder that may only be walked through shows the branches that lead onwards.
+                  Without this strip that is indistinguishable from a folder whose files simply do
+                  not exist, which is the report that came in twice.
+                -->
+                <div class="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-3 py-1.5
+                            text-xs text-amber-800"
+                     x-show="!error && searchResults === null && !readable && !isEmpty()" x-cloak>
+                    <i class="bi bi-shield-lock" aria-hidden="true"></i>
+                    <span th:text="#{explorer.passThrough}">این پوشه فقط مسیر عبور است.</span>
+                </div>
+
+                <!-- an error, a refusal, or an expired session -->
+                <div class="explorer-state" x-show="error" x-cloak>
+                    <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+                    <strong x-text="error"></strong>
+                    <a th:href="@{/login}" class="btn btn-primary btn-sm mt-3" x-show="expired" x-cloak
+                       th:text="#{explorer.sessionExpiredAction}">ورود دوباره</a>
+                    <button type="button" class="btn btn-secondary btn-sm mt-3" x-show="!expired" x-cloak
+                            @click="reload()" th:text="#{explorer.retry}">تلاش دوباره</button>
+                </div>
+
+                <!-- search results -->
+                <table class="explorer-table" x-show="!error && searchResults !== null && searchResults.length > 0" x-cloak>
+                    <thead>
+                    <tr>
+                        <th th:text="#{explorer.column.name}">نام</th>
+                        <th class="hidden md:table-cell" th:text="#{explorer.details.location}">محل نگهداری</th>
+                        <th class="hidden sm:table-cell" th:text="#{explorer.column.formats}">قالب‌ها</th>
+                        <th class="hidden sm:table-cell" th:text="#{explorer.column.size}">حجم</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <template x-for="hit in (searchResults || [])" :key="hit.file.id">
+                        <tr @click="openHit(hit)">
+                            <td>
+                                <span class="explorer-cell-name">
+                                    <i class="bi bi-file-earmark-text shrink-0 text-ink-400" aria-hidden="true"></i>
+                                    <span class="min-w-0">
+                                        <span class="technical block truncate" x-text="hit.file.name"></span>
+                                        <span class="block truncate text-xs text-ink-500" x-text="hit.file.title"></span>
+                                    </span>
+                                </span>
+                            </td>
+                            <td class="hidden md:table-cell">
+                                <span class="text-xs text-ink-500" x-text="pathOf(hit)"></span>
+                            </td>
+                            <td class="hidden sm:table-cell">
+                                <template x-for="format in hit.file.formats" :key="format">
+                                    <span class="explorer-chip technical me-1" x-text="format"></span>
+                                </template>
+                            </td>
+                            <td class="explorer-cell-muted hidden sm:table-cell" x-text="size(hit.file.size)"></td>
+                        </tr>
+                    </template>
+                    </tbody>
+                </table>
+
+                <p class="explorer-state" x-show="!error && searchResults !== null && searchResults.length === 0" x-cloak
+                   th:text="#{explorer.search.empty}">فایلی با این مشخصات پیدا نشد.</p>
+
+                <!-- folder contents -->
+                <table class="explorer-table" x-show="!error && searchResults === null && !isEmpty()" x-cloak>
+                    <thead>
+                    <tr>
+                        <th th:text="#{explorer.column.name}">نام</th>
+                        <th class="hidden sm:table-cell" th:text="#{explorer.column.contents}">محتوا</th>
+                        <th class="hidden lg:table-cell" th:text="#{explorer.column.formats}">قالب‌ها</th>
+                        <th class="hidden sm:table-cell" th:text="#{explorer.column.size}">حجم</th>
+                        <th class="hidden lg:table-cell" th:text="#{explorer.column.date}">تاریخ ایجاد</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <template x-for="entry in folders" :key="'d' + entry.id">
+                        <tr @click="navigate(entry.id)">
+                            <td>
+                                <span class="explorer-cell-name">
+                                    <i class="bi shrink-0 text-brand-600" :class="iconFor(entry)" aria-hidden="true"></i>
+                                    <span class="min-w-0">
+                                        <span class="block truncate font-semibold" x-text="entry.title"></span>
+                                        <span class="technical block truncate text-xs text-ink-400"
+                                              x-show="entry.name !== entry.title" x-text="entry.name"></span>
+                                    </span>
+                                </span>
+                            </td>
+                            <td class="explorer-cell-muted hidden sm:table-cell" x-text="contentsOf(entry)"></td>
+                            <td class="hidden lg:table-cell"></td>
+                            <td class="hidden sm:table-cell"></td>
+                            <td class="hidden lg:table-cell"></td>
+                        </tr>
+                    </template>
+
+                    <template x-for="entry in files" :key="'f' + entry.id">
+                        <tr :class="selectedFile && selectedFile.id === entry.id && 'is-selected'"
+                            @click="selectedFile = entry">
+                            <td>
+                                <span class="explorer-cell-name">
+                                    <i class="bi bi-file-earmark-text shrink-0 text-ink-400" aria-hidden="true"></i>
+                                    <span class="min-w-0">
+                                        <span class="technical block truncate" x-text="entry.name"></span>
+                                        <span class="block truncate text-xs text-ink-500"
+                                              x-show="entry.title !== entry.name" x-text="entry.title"></span>
+                                    </span>
+                                </span>
+                            </td>
+                            <td class="explorer-cell-muted hidden sm:table-cell" x-text="'v' + number(entry.lastVersion)"></td>
+                            <td class="hidden lg:table-cell">
+                                <template x-for="format in entry.formats" :key="format">
+                                    <span class="explorer-chip technical me-1" x-text="format"></span>
+                                </template>
+                            </td>
+                            <td class="explorer-cell-muted hidden sm:table-cell" x-text="size(entry.size)"></td>
+                            <td class="explorer-cell-muted hidden lg:table-cell" x-text="date(entry.createdAt)"></td>
+                        </tr>
+                    </template>
+                    </tbody>
+                </table>
+
+                <!--
+                  A folder that may be walked through but not read is not an empty folder, and
+                  saying "empty" here is what sent people looking for files that were never
+                  missing. The two states are told apart by `readable` on the response.
+                -->
+                <div class="explorer-state" x-show="!error && searchResults === null && isEmpty() && !readable" x-cloak>
+                    <i class="bi bi-shield-lock" aria-hidden="true"></i>
+                    <strong th:text="#{explorer.notReadable}">محتوای این پوشه برای شما قابل نمایش نیست.</strong>
+                    <span th:text="#{explorer.notReadableHint}">این پوشه فقط مسیر رسیدن به پوشه‌ای است که به آن دسترسی دارید.</span>
+                </div>
+
+                <div class="explorer-state" x-show="!error && searchResults === null && isEmpty() && readable" x-cloak>
+                    <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                    <strong th:text="#{explorer.empty}">این پوشه خالی است.</strong>
+                    <span th:text="#{explorer.emptyHint}">هیچ پوشه یا فایلی در این محل ثبت نشده است.</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- ------------------------------------------------------------ details -->
+        <aside class="explorer-pane-details" th:aria-label="#{explorer.aria.details}"
+               :class="selectedFile ? 'translate-x-0' : '-translate-x-full xl:translate-x-0'">
+            <div class="explorer-pane-heading">
+                <span th:text="#{explorer.details.title}">جزئیات</span>
+                <button type="button" class="text-ink-400 hover:text-ink-700 xl:hidden"
+                        @click="selectedFile = null" th:aria-label="#{explorer.details.close}">
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+            </div>
+
+            <div class="p-3" x-show="!selectedFile" x-cloak>
+                <p class="py-8 text-center text-sm text-ink-400" th:text="#{explorer.details.empty}">
+                    برای دیدن جزئیات، یک فایل را انتخاب کنید.
+                </p>
+            </div>
+
+            <div class="p-3" x-show="selectedFile" x-cloak>
+                <template x-if="selectedFile">
+                    <div>
+                        <p class="technical mb-1 text-sm font-semibold break-words" x-text="selectedFile.name"></p>
+                        <p class="mb-4 text-xs text-ink-500" x-text="selectedFile.title"></p>
+
+                        <p class="explorer-detail-term" th:text="#{explorer.details.location}">محل نگهداری</p>
+                        <p class="explorer-detail-value" x-text="currentPath()"></p>
+
+                        <p class="explorer-detail-term" th:text="#{explorer.details.version}">آخرین نسخه</p>
+                        <p class="explorer-detail-value" x-text="'v' + number(selectedFile.lastVersion)"></p>
+
+                        <p class="explorer-detail-term" th:text="#{explorer.details.formats}">قالب‌های موجود</p>
+                        <p class="explorer-detail-value">
+                            <template x-for="format in selectedFile.formats" :key="format">
+                                <span class="explorer-chip technical me-1" x-text="format"></span>
+                            </template>
+                        </p>
+
+                        <p class="explorer-detail-term" th:text="#{explorer.details.size}">حجم آخرین نسخه</p>
+                        <p class="explorer-detail-value" x-text="size(selectedFile.size)"></p>
+
+                        <p class="explorer-detail-term" th:text="#{explorer.details.created}">تاریخ ایجاد</p>
+                        <p class="explorer-detail-value" x-text="date(selectedFile.createdAt)"></p>
+
+                        <a class="btn btn-primary btn-sm w-full" :href="EX.filePage + selectedFile.id">
+                            <i class="bi bi-download" aria-hidden="true"></i>
+                            <span th:text="#{explorer.details.openFile}">صفحهٔ فایل و دانلود نسخه‌ها</span>
+                        </a>
+                    </div>
+                </template>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+
+<script th:inline="javascript">
+    /*
+     * All copy comes from messages.properties; th:inline emits each one as a quoted literal, so the
+     * expressions must not be wrapped in quotes of their own (docs/ui.md).
+     */
+    const EX = {
+        searchPlaceholder: [[#{explorer.search.placeholder}]],
+        expand:            [[#{explorer.tree.expand}]],
+        collapse:          [[#{explorer.tree.collapse}]],
+        forbidden:         [[#{explorer.forbidden}]],
+        notFound:          [[#{explorer.notFound}]],
+        loadFailed:        [[#{explorer.loadFailed}]],
+        searchFailed:      [[#{explorer.search.failed}]],
+        sessionExpired:    [[#{explorer.sessionExpired}]],
+        countFolders:      [[#{explorer.count.folders}]],
+        countFiles:        [[#{explorer.count.files}]],
+        pagePosition:      [[#{explorer.page.position}]],
+        rootTitle:         [[#{explorer.root}]],
+        childrenUrl:       [[@{/resource/folders/children}]],
+        searchUrl:         [[@{/resource/folders/search}]],
+        filePage:          [[@{/files/file-info/}]]
+    };
+
+    const INITIAL_FOLDER_ID = /*[[${initialFolderId}]]*/ null;
+
+    /** Carries the status through, so a refusal reads differently from a failure. */
+    class ExplorerError extends Error {
+        constructor(status) {
+            super("HTTP " + status);
+            this.status = status;
+        }
+    }
+
+    /**
+     * An expired session is not an error status. The browser security chain answers an
+     * unauthenticated request with a redirect to the login page whatever the request asked for, so
+     * `fetch` follows it and hands back the login page's HTML with a 200 - `response.ok` is true and
+     * `response.json()` then fails with "Unexpected token '<'". Reported as what it is instead.
+     * See docs/issues.md, issue 77.
+     */
+    class SessionExpiredError extends Error {
+    }
+
+    async function readJson(url) {
+        const response = await fetch(url, {
+            headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+            credentials: "same-origin",
+            redirect: "follow"
+        });
+        if (response.redirected || !(response.headers.get("content-type") || "").includes("json")) {
+            throw new SessionExpiredError();
+        }
+        if (!response.ok) {
+            throw new ExplorerError(response.status);
+        }
+        return response.json();
+    }
+
+    function fileExplorer() {
+        return {
+            EX: EX,
+
+            // the folder on screen
+            folder: null,
+            breadcrumb: [],
+            folders: [],
+            files: [],
+            page: null,
+            readable: true,
+            currentFolderId: null,
+
+            treeRows: [],
+            treeLoading: false,
+            treeOpen: false,
+
+            selectedFile: null,
+
+            // null means "not searching"; an array means "these are the results", including none
+            searchQuery: "",
+            searchResults: null,
+            searching: false,
+
+            error: "",
+            expired: false,
+
+            async init() {
+                await this.navigate(INITIAL_FOLDER_ID);
+            },
+
+            // ------------------------------------------------------------ navigation
+
+            /**
+             * Opens a folder: one request fills the content pane, and its `folders` are spliced
+             * into the tree as that node's children. The tree and the table are therefore never
+             * two views of two different reads.
+             */
+            async navigate(folderId, pageNumber) {
+                this.error = "";
+                this.expired = false;
+                this.selectedFile = null;
+                this.searchResults = null;
+                this.treeOpen = false;
+
+                let content;
+                try {
+                    content = await this.fetchContent(folderId, pageNumber || 0);
+                } catch (e) {
+                    this.fail(e, EX.loadFailed);
+                    return;
+                }
+
+                this.apply(content);
+                await this.syncTree(content);
+            },
+
+            apply(content) {
+                this.folder = content.folder;
+                this.currentFolderId = content.folder.id;
+                this.breadcrumb = content.breadcrumb;
+                this.folders = content.folders;
+                this.files = content.files;
+                this.page = content.page;
+                this.readable = content.readable;
+            },
+
+            fetchContent(folderId, pageNumber) {
+                const params = new URLSearchParams();
+                if (folderId !== null && folderId !== undefined) {
+                    params.set("folderId", folderId);
+                }
+                params.set("page", pageNumber || 0);
+                return readJson(EX.childrenUrl + "?" + params.toString());
+            },
+
+            goToPage(pageNumber) {
+                return this.navigate(this.currentFolderId, pageNumber);
+            },
+
+            reload() {
+                return this.navigate(this.currentFolderId, this.page ? this.page.number : 0);
+            },
+
+            // ------------------------------------------------------------ the folder tree
+
+            /**
+             * Keeps the tree showing the path to whatever is open, including on a deep link, where
+             * nothing has been expanded yet. It walks the breadcrumb from the root down and expands
+             * each level in turn; the level already in hand is spliced in rather than fetched twice.
+             */
+            async syncTree(content) {
+                const chain = content.breadcrumb.map(crumb => crumb.id).concat([content.folder.id]);
+                this.treeLoading = true;
+                try {
+                    if (this.treeRows.length === 0) {
+                        const top = chain.length > 1 ? await this.fetchContent(chain[0], 0) : content;
+                        this.treeRows = top.folders.map(entry => this.toRow(entry, 0));
+                    }
+                    for (let level = 1; level < chain.length; level++) {
+                        const row = this.treeRows.find(candidate => candidate.id === chain[level]);
+                        if (!row) {
+                            break;
+                        }
+                        if (!row.open && row.expandable) {
+                            await this.expandRow(row, level === chain.length - 1 ? content : null);
+                        }
+                    }
+                } catch (e) {
+                    // The tree failing is not the same as the folder failing: the contents are on
+                    // screen and usable, so this is left silent rather than replacing them with an
+                    // error the user cannot act on.
+                    this.treeRows = this.treeRows;
+                } finally {
+                    this.treeLoading = false;
+                }
+            },
+
+            toRow(entry, depth) {
+                return {
+                    id: entry.id,
+                    name: entry.name,
+                    title: entry.title,
+                    kind: entry.kind,
+                    total: entry.folderCount + entry.fileCount,
+                    expandable: entry.folderCount > 0,
+                    depth: depth,
+                    open: false,
+                    loading: false
+                };
+            },
+
+            async toggleRow(row) {
+                if (!row.expandable || row.loading) {
+                    return;
+                }
+                if (row.open) {
+                    this.collapseRow(row);
+                    return;
+                }
+                await this.expandRow(row, null);
+            },
+
+            async expandRow(row, known) {
+                row.loading = true;
+                try {
+                    const content = known || await this.fetchContent(row.id, 0);
+                    const children = content.folders.map(entry => this.toRow(entry, row.depth + 1));
+                    const at = this.treeRows.indexOf(row) + 1;
+                    this.treeRows = [
+                        ...this.treeRows.slice(0, at),
+                        ...children,
+                        ...this.treeRows.slice(at)
+                    ];
+                    row.open = true;
+                } finally {
+                    row.loading = false;
+                }
+            },
+
+            collapseRow(row) {
+                row.open = false;
+                const start = this.treeRows.indexOf(row) + 1;
+                let end = start;
+                while (end < this.treeRows.length && this.treeRows[end].depth > row.depth) {
+                    end++;
+                }
+                this.treeRows = [...this.treeRows.slice(0, start), ...this.treeRows.slice(end)];
+            },
+
+            // ------------------------------------------------------------ search
+
+            async runSearch() {
+                const term = this.searchQuery.trim();
+                if (!term) {
+                    this.clearSearch();
+                    return;
+                }
+                this.searching = true;
+                this.error = "";
+                this.expired = false;
+                this.selectedFile = null;
+                try {
+                    const params = new URLSearchParams();
+                    params.set("query", term);
+                    const found = await readJson(EX.searchUrl + "?" + params.toString());
+                    this.searchResults = found.hits;
+                } catch (e) {
+                    this.searchResults = null;
+                    this.fail(e, EX.searchFailed);
+                } finally {
+                    this.searching = false;
+                }
+            },
+
+            clearSearch() {
+                this.searchQuery = "";
+                this.searchResults = null;
+            },
+
+            /** Goes to the folder a hit lives in and selects the file there. */
+            async openHit(hit) {
+                const file = hit.file;
+                await this.navigate(hit.folder.id);
+                this.selectedFile = this.files.find(candidate => candidate.id === file.id) || file;
+            },
+
+            pathOf(hit) {
+                return hit.breadcrumb.slice(1).map(crumb => crumb.title)
+                    .concat([hit.folder.title]).join(" ◂ ");
+            },
+
+            // ------------------------------------------------------------ rendering helpers
+
+            isEmpty() {
+                return this.folders.length === 0 && this.files.length === 0;
+            },
+
+            currentPath() {
+                return this.breadcrumb.slice(1).map(crumb => crumb.title)
+                    .concat([this.folder ? this.folder.title : ""]).join(" ◂ ");
+            },
+
+            contentsOf(entry) {
+                const parts = [];
+                if (entry.folderCount > 0) {
+                    parts.push(EX.countFolders.replace("{0}", this.number(entry.folderCount)));
+                }
+                if (entry.fileCount > 0) {
+                    parts.push(EX.countFiles.replace("{0}", this.number(entry.fileCount)));
+                }
+                return parts.join("، ");
+            },
+
+            pagePosition() {
+                if (!this.page) {
+                    return "";
+                }
+                return EX.pagePosition
+                    .replace("{0}", this.number(this.page.number + 1))
+                    .replace("{1}", this.number(this.page.totalPages));
+            },
+
+            /** The root folder is named in English by migration V1.4; its label belongs here. */
+            crumbTitle(crumb) {
+                return crumb.kind === "ROOT" ? EX.rootTitle : crumb.title;
+            },
+
+            iconFor(entry) {
+                if (entry.kind === "TAG") {
+                    return "bi-folder2";
+                }
+                if (entry.kind === "SUB_CATEGORY") {
+                    return "bi-folder";
+                }
+                return "bi-folder-fill";
+            },
+
+            /** Persian digits throughout, from the browser - no locale data is shipped for this. */
+            number(value) {
+                try {
+                    return Number(value).toLocaleString("fa-IR");
+                } catch (e) {
+                    return String(value);
+                }
+            },
+
+            size(bytes) {
+                if (!bytes) {
+                    return "—";
+                }
+                const units = ["B", "KB", "MB", "GB"];
+                let value = bytes;
+                let unit = 0;
+                while (value >= 1024 && unit < units.length - 1) {
+                    value = value / 1024;
+                    unit++;
+                }
+                try {
+                    return value.toLocaleString("fa-IR", { maximumFractionDigits: 1 }) + " " + units[unit];
+                } catch (e) {
+                    return bytes + " B";
+                }
+            },
+
+            /**
+             * The Persian calendar comes from Intl, which every supported browser carries: shipping
+             * a date library would be another vendored asset to keep offline and up to date.
+             */
+            date(value) {
+                if (!value) {
+                    return "—";
+                }
+                try {
+                    return new Intl.DateTimeFormat("fa-IR", {
+                        year: "numeric", month: "long", day: "numeric"
+                    }).format(new Date(value));
+                } catch (e) {
+                    return String(value).slice(0, 10);
+                }
+            },
+
+            fail(e, fallback) {
+                if (e instanceof SessionExpiredError) {
+                    this.expired = true;
+                    this.error = EX.sessionExpired;
+                    return;
+                }
+                if (e instanceof ExplorerError && e.status === 403) {
+                    this.error = EX.forbidden;
+                    return;
+                }
+                if (e instanceof ExplorerError && e.status === 400) {
+                    this.error = EX.notFound;
+                    return;
+                }
+                this.error = fallback;
+            }
+        };
+    }
+</script>
+</body>
+</html>

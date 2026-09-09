@@ -531,4 +531,82 @@
         @apply sticky top-[calc(var(--spacing-topbar)+1rem)] max-h-[calc(100vh-var(--spacing-topbar)-2rem)]
                overflow-y-auto rounded-[var(--radius-card)] border border-ink-200 bg-white p-3;
     }
+
+    /* ------------------------------------------------------------ file explorer
+       A workspace, not a page: it opens in a tab of its own, fills the viewport, and each of its
+       three panes scrolls independently so the toolbar and the breadcrumb never leave the screen.
+       Direction is handled by logical properties alone - the tree sits at the start (right under
+       RTL) and the details panel at the end - so there is no second stylesheet for LTR. */
+    .explorer-shell    { @apply flex h-dvh flex-col overflow-hidden bg-canvas; }
+    .explorer-topbar {
+        @apply flex h-[var(--spacing-topbar)] shrink-0 items-center gap-2 border-b border-brand-800
+               bg-brand-700 px-3 text-white sm:gap-3 sm:px-4;
+    }
+    .explorer-topbar-button {
+        @apply inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius-control)]
+               border border-white/25 px-2 text-xs font-semibold text-white/90 hover:bg-white/10;
+    }
+    .explorer-panes    { @apply relative flex min-h-0 flex-1; }
+
+    /* Both side panes are drawers on a narrow screen and columns on a wide one - the pattern the
+       application shell already uses, so the transform direction is known to be right under RTL. */
+    .explorer-pane-tree {
+        @apply fixed inset-y-0 start-0 z-40 flex w-[17rem] flex-col overflow-hidden border-e
+               border-ink-200 bg-white transition-transform duration-200 ease-out
+               lg:static lg:z-auto lg:translate-x-0;
+    }
+    .explorer-pane-details {
+        @apply fixed inset-y-0 end-0 z-40 flex w-[20rem] max-w-[calc(100vw-2rem)] flex-col
+               overflow-y-auto border-s border-ink-200 bg-white transition-transform duration-200
+               ease-out xl:static xl:z-auto xl:translate-x-0;
+    }
+    .explorer-pane-main    { @apply flex min-w-0 flex-1 flex-col overflow-hidden; }
+    .explorer-pane-heading {
+        @apply flex shrink-0 items-center justify-between gap-2 border-b border-ink-100 px-3 py-2
+               text-xs font-semibold text-ink-500;
+    }
+
+    .explorer-subbar   { @apply flex shrink-0 flex-wrap items-center gap-2 border-b border-ink-200 bg-white px-3 py-2; }
+    .explorer-crumbs   { @apply flex min-w-0 flex-1 flex-wrap items-center gap-0.5 text-sm text-ink-500; }
+    .explorer-crumb    { @apply max-w-[13rem] truncate rounded-[var(--radius-control)] px-1.5 py-0.5 hover:bg-ink-100 hover:text-ink-800; }
+    .explorer-crumb-current { @apply max-w-[16rem] truncate px-1.5 py-0.5 font-semibold text-ink-800; }
+    .explorer-crumb-sep { @apply select-none text-ink-300; }
+    .explorer-scroll   { @apply min-h-0 flex-1 overflow-auto; }
+
+    .explorer-table    { @apply w-full border-collapse text-sm; }
+    .explorer-table th {
+        @apply sticky top-0 z-10 whitespace-nowrap border-b border-ink-200 bg-canvas px-3 py-2
+               text-start text-xs font-semibold text-ink-500;
+    }
+    .explorer-table td { @apply border-b border-ink-100 px-3 py-2 align-middle; }
+    .explorer-table tbody tr { @apply cursor-pointer hover:bg-ink-50; }
+    .explorer-table tbody tr.is-selected { @apply bg-brand-50; }
+    .explorer-cell-name { @apply flex min-w-0 items-center gap-2; }
+    .explorer-cell-muted{ @apply whitespace-nowrap text-xs tabular-nums text-ink-500; }
+
+    .explorer-chip {
+        @apply inline-flex items-center rounded-full border border-ink-200 bg-ink-50 px-1.5
+               text-[0.7rem] text-ink-600;
+    }
+    .explorer-badge {
+        @apply shrink-0 rounded-full border border-ink-200 bg-ink-50 px-1.5 text-[0.7rem]
+               tabular-nums text-ink-500;
+    }
+    .explorer-state    { @apply mx-auto max-w-md px-4 py-12 text-center text-sm text-ink-500; }
+    .explorer-state i  { @apply mb-2 block text-2xl text-ink-300; }
+    .explorer-state strong { @apply mb-1 block text-base font-semibold text-ink-700; }
+
+    .explorer-folder-row {
+        @apply flex min-h-[2.125rem] w-full items-center gap-1.5 rounded-[var(--radius-control)]
+               px-1.5 py-1 text-start text-sm text-ink-700 hover:bg-ink-50;
+    }
+    .explorer-folder-row.is-selected { @apply bg-brand-50 font-semibold text-brand-700; }
+    .explorer-folder-twisty {
+        @apply grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm border-0
+               bg-transparent p-0 text-ink-400 hover:bg-ink-200 hover:text-ink-700;
+    }
+    .explorer-folder-twisty.is-leaf { @apply invisible; }
+
+    .explorer-detail-term  { @apply mb-0.5 text-[0.7rem] font-semibold text-ink-400; }
+    .explorer-detail-value { @apply mb-3 text-sm break-words text-ink-800; }
 }

@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -90,4 +92,20 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
 
     /** How many rows share one version of a file — one format, or several. */
     int countByFileInfoIdAndVersion(int fileInfoId, int version);
+
+    /**
+     * The formats stored at the newest version of each of these files.
+     *
+     * <p>A file listing shows one size and one set of formats — the current ones — so fetching every
+     * version of every row on the page and then discarding the old ones would read the whole history
+     * to render the present. The comparison is against {@code FileInfo.lastVersion} rather than a
+     * {@code MAX()} sub-query because that column is what the rest of the application already treats
+     * as the current version, and the two are asserted to agree.
+     */
+    @Query("""
+            SELECT fd FROM FileDetails fd
+            WHERE fd.fileInfo.id IN :fileInfoIds
+              AND fd.version = fd.fileInfo.lastVersion
+            """)
+    List<FileDetails> findLatestVersionOf(@Param("fileInfoIds") Collection<Integer> fileInfoIds);
 }

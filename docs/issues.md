@@ -1031,3 +1031,27 @@ upload paths. Left out of that change because read and write enforcement fail di
 that is refused shows an empty list, a write that is refused loses whatever the user had typed, so
 the upload form needs to stop offering the tags they cannot use before the service starts refusing
 them.
+
+---
+
+## Found while building the folder-content endpoint
+
+### 77. An expired session answers a JSON `fetch` with a redirect to the login page — **S3**
+
+The browser chain has one entry point for unauthenticated requests
+(`SecurityConfig.formLogin`), and it does not look at whether the request came from a page
+navigation or from a script. So a `fetch` to `/resource/**` made after the session has expired is
+answered with `302 -> /login`, the browser follows it, and what arrives at the caller is the login
+page's HTML with a `200`. `response.ok` is true, `response.json()` then throws
+`Unexpected token '<'`, and a screen with no special handling reports it as "loading failed" — the
+same misleading symptom vendored assets were moved out of `/webjars/` to avoid.
+
+`SecurityConfig` already distinguishes the two kinds of request, but only for the *request cache*:
+`pageNavigation` excludes anything sent with `X-Requested-With: XMLHttpRequest` or asking for JSON,
+so that the URL remembered for "return here after login" is never a REST call. The same matcher
+would serve as the condition for a second entry point that answers `401` instead of redirecting.
+
+Not fixed here because it is a change to the security chain rather than to one screen, and every
+existing page that calls a resource endpoint has the same behaviour today. Asserted as it stands by
+`FolderContentEndpointTest.anonymousCallersAreSentToLoginRatherThanRefused`, so a fix will show up
+as a failing test rather than as a silent change.

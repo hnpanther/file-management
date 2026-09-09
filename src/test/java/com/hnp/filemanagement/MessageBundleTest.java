@@ -36,6 +36,7 @@ class MessageBundleTest {
             "navbar.html", "security/login.html", "error.html",
             "file-management/category/categories.html",
             "file-management/category/save-category.html",
+            "file-management/files/file-explorer.html",
             "file-management/files/file-info-page.html",
             "file-management/files/file-info.html",
             "file-management/files/files-public.html",
