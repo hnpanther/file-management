@@ -180,8 +180,12 @@ public final class TestData {
         fileDetails.setFileExtension(extension);
         fileDetails.setContentType("application/octet-stream");
         fileDetails.setDescription(fileName + " description");
+        // One expression for both, as FileService does: the two columns hold the same string and
+        // a fixture that let them differ would be testing state the application cannot produce.
+        String storageKey = fileInfo.getRelativePath() + "/v" + version + "/" + fileName;
         fileDetails.setFilePath(fileInfo.getFilePath() + "/v" + version + "/" + fileName);
-        fileDetails.setRelativePath(fileInfo.getRelativePath() + "/v" + version + "/" + fileName);
+        fileDetails.setRelativePath(storageKey);
+        fileDetails.setStorageKey(storageKey);
         fileDetails.setFileSize(1024);
         fileDetails.setVersion(version);
         fileDetails.setVersionName("V" + version);

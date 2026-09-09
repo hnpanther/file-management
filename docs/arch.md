@@ -196,7 +196,25 @@ registered as `@Service("fileSystem") @Primary` and takes `${file.management.bas
                 └── {fileName}.{ext}
 ```
 
-The interface is deliberately narrow and path-shaped:
+The interface now has two halves, and which one a caller uses is not a matter of taste.
+
+**Key-shaped, for one stored object** (roadmap 7.1). The whole location is a single opaque
+string — the value in `file_details.storage_key`:
+
+```java
+void     saveByKey(String storageKey, MultipartFile file);
+Resource loadByKey(String storageKey);
+void     deleteByKey(String storageKey);
+```
+
+Every read and write of a single file goes through these, so **where the bytes are is what was
+recorded when they were written**, not something rebuilt from the taxonomy at read time. That is
+what lets Phase 7 rename and move folders without moving a byte or orphaning a file. These three
+also resolve against an absolute, normalised root and refuse a key that would leave it, so the
+containment gap and the trailing-separator convention below do not apply to them.
+
+**Path-shaped, for directories.** What is left on these is directory work — creating a
+category's folder, removing an emptied one — which is genuinely path-shaped:
 
 ```java
 void     save(String address, MultipartFile file, int version, String extension);
@@ -456,10 +474,10 @@ POST /files (multipart)
             ├─ isDuplicate(baseName, subCategoryId)
             ├─ ValidationUtil.checkCorrectFileName
             ├─ build FileInfo (paths, state, lastVersion = 1)
-            ├─ build FileDetails v1 (hashId = random UUID)
+            ├─ build FileDetails v1 (hashId = random UUID, storageKey)
             ├─ fileInfoRepository.save(fileInfo)          ← cascades to FileDetails
             ├─ actionHistoryService.saveActionHistory × 2
-            └─ fileStorageService.save(address, multipartFile, 1, ext)   ← disk write, LAST
+            └─ fileStorageService.saveByKey(fileDetails.storageKey, multipartFile)  ← disk write, LAST
 ```
 
 The disk write happens inside the transaction but is not part of it — see
@@ -572,7 +590,8 @@ Catalogued in full in [issues.md](issues.md). The ones that shape the architectu
 
 1. Three HTTP layers over one service layer. The two JSON layers now share one contract (§6); the
    Thymeleaf layer deliberately does not, because it re-renders forms rather than returning statuses.
-2. `FileStorageService`'s signature is filesystem-shaped, blocking S3.
+2. `FileStorageService`'s directory half is filesystem-shaped; its key half (roadmap 7.1) is
+   the part an object store can implement.
 3. Storage and database mutations are not atomic in either direction.
 4. `@Table(name = "user")` — a reserved word in PostgreSQL.
 5. Every `@ManyToOne` is `EAGER`; `ModelConverterUtil` walks the full graph on every list page.

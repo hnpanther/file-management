@@ -14,10 +14,10 @@ working, and to depend only on what came before.
 | 3 | PostgreSQL migration | 1, partly 2, **and 7** | |
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done** |
-| 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | mirror + grants **done**, off by default |
-| 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | planned |
+| 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**, enforced by default |
+| 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | 7.1 **done** |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
-| 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | all but OpenAPI **done** |
+| 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -184,7 +184,7 @@ Write the **storage contract test** now, as an abstract JUnit class. `Filesystem
 only subject until Phase 4 adds a second one.
 
 > **Half of this is pulled forward into
-> [Phase 7.1](#71-first-decouple-the-storage-key-from-the-structure)**: the `storage_key` column and
+> [Phase 7.1](#71-first-decouple-the-storage-key-from-the-structure--done)**: the `storage_key` column and
 > the key → path mapping, because folders cannot become the structure while the structure *is* the
 > path on disk. What is left here is the rest of the port — the interface itself, the containment
 > check, the guards and the contract test.
@@ -382,7 +382,7 @@ Read-only on purpose: no move, rename or delete. `FILE_TREE_PAGE` and `REST_GET_
 
 > **Unblocked differently than planned.** The premise below was that a move needs a storage port
 > that can express one, because moving a node means moving bytes.
-> [Phase 7.1](#71-first-decouple-the-storage-key-from-the-structure) removes the premise instead: once
+> [Phase 7.1](#71-first-decouple-the-storage-key-from-the-structure--done) removes the premise instead: once
 > a stored object is addressed by a key rather than by its place in the tree, a move touches no bytes
 > at all and becomes a `parent_id` change plus the one-statement path rewrite in
 > [6.1](#61-choosing-how-to-store-the-tree). Do 7.1 first; then only steps 2 and 3 below remain, and
@@ -716,7 +716,7 @@ and the `source_type` / `source_id` columns.
 > **Superseded by [Phase 7](#phase-7--nested-folders-replace-the-taxonomy)**, which does this and
 > more: the four levels do not merely stop being structure, they become tags. The sketch here also
 > assumed the step must move bytes, "because a main tag has no directory". Phase 7 removes that
-> assumption instead — see [7.1](#71-first-decouple-the-storage-key-from-the-structure).
+> assumption instead — see [7.1](#71-first-decouple-the-storage-key-from-the-structure--done).
 
 ---
 
@@ -749,7 +749,28 @@ takes over, and the redundant tags can be pruned later at no risk. Reshaping the
 taxonomy in the same change would leave nothing recognisable to compare against if something looks
 wrong.
 
-### 7.1 First: decouple the storage key from the structure
+### 7.1 First: decouple the storage key from the structure — **done**
+
+> Shipped as migration `V2.2`. `file_details.storage_key` holds the whole relative location of
+> one stored object, backfilled from `relative_path`, and `FileStorageService` gained a
+> key-shaped half — `saveByKey`, `loadByKey`, `deleteByKey` — that every read and write of a
+> single file now goes through. **No byte moved.**
+>
+> The backfill is sound because nothing renames a category or a sub-category: both services
+> update the *description* only, so the stored location and the location a read used to derive
+> were the same string for every existing row. The migration carries the verification query to
+> confirm that against real data before deploying, and `StorageKeyTest` asserts it on generated
+> data.
+>
+> The proof of what this buys is `StorageKeyTest.aRenameDoesNotOrphanTheBytes`: a category is
+> renamed in the database with no directory touched, and the file still downloads. Before this
+> step the read would have looked under the new name and found nothing.
+>
+> Two things came with it. The new methods resolve against an absolute, normalised root and
+> refuse a key that would leave it, so the containment gap the path-shaped methods have is not
+> inherited. And `FileStorageFileSystemService`'s own class comment was wrong: it said a
+> revision was stored as `<name>-v<version>.<extension>` and that "a version is a file name
+> rather than a directory". It never was — `save` has always built `level2Dir + "/v" + version`.
 
 **This is the prerequisite, and the single most important step.** Today the structure *is* the path
 on disk:
@@ -780,7 +801,7 @@ Each is independently shippable, and only the fourth cannot be undone.
 
 | # | Step | Migration | Reverting it |
 |---|---|---|---|
-| 0 | `file_details.storage_key`, backfilled from `relative_path`; adapter maps key → path | `V1.6` | an unused column |
+| 0 | `file_details.storage_key`, backfilled from `relative_path`; adapter maps key → path — **done** | `V2.2` | an unused column |
 | 1 | `file_info.folder_id`, nullable, backfilled to the folder mirroring the file's main tag; written alongside the old foreign keys | `V1.7` | an unused column |
 | 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under | `V1.8` | `DROP TABLE` |
 | 3 | **Reads move to the folder**: tree, upload, file list, search | — | revert the code |
@@ -1241,7 +1262,7 @@ rules. The temptation is an update that rewrites `_` to `-` across the taxonomy.
   ([issue 35](issues.md#35-paths-are-denormalised-into-three-places--s2)). Renaming means moving
   directories *and* rewriting four columns across every row — the exact shape of migration that
   loses files;
-* [Phase 7.1](#71-first-decouple-the-storage-key-from-the-structure) makes a rename free by
+* [Phase 7.1](#71-first-decouple-the-storage-key-from-the-structure--done) makes a rename free by
   decoupling the storage key from the structure. Doing it before then is paying full price for
   something that is about to cost nothing.
 

@@ -277,5 +277,83 @@ class FileStorageFileSystemServiceTest extends StorageRootSupport {
 ////        assertThat(Files.exists(path)).isTrue();
     }
 
+    // ---------------------------------------------------------------- key-shaped (roadmap 7.1)
 
+    @Test
+    void savesLoadsAndDeletesOneObjectByItsKey() throws IOException {
+        String key = "hello/report/v1/report.txt";
+
+        underTest.saveByKey(key, new MockMultipartFile("f", "report.txt", "text/plain", "hi".getBytes()));
+
+        assertThat(Files.readString(Paths.get(baseDir, key))).isEqualTo("hi");
+        assertThat(underTest.loadByKey(key).exists()).isTrue();
+
+        underTest.deleteByKey(key);
+        assertThat(Files.exists(Paths.get(baseDir, key))).isFalse();
+    }
+
+    /**
+     * The path-shaped {@code save} needs its directories to exist already, one level at a time.
+     * A key names the whole location at once, so the adapter makes whatever it needs.
+     */
+    @Test
+    void savingByKeyCreatesTheDirectoriesTheKeyImplies() {
+        underTest.saveByKey("hello/deep/deeper/report/v3/report.txt",
+                new MockMultipartFile("f", "report.txt", "text/plain", "hi".getBytes()));
+
+        assertThat(Files.exists(Paths.get(baseDir, "hello/deep/deeper/report/v3/report.txt"))).isTrue();
+    }
+
+    @Test
+    void willNotOverwriteWhatIsAlreadyStoredAtAKey() {
+        String key = "hello/report/v1/report.txt";
+        underTest.saveByKey(key, new MockMultipartFile("f", "report.txt", "text/plain", "first".getBytes()));
+
+        assertThatThrownBy(() -> underTest.saveByKey(key,
+                new MockMultipartFile("f", "report.txt", "text/plain", "second".getBytes())))
+                .isInstanceOf(DuplicateResourceException.class);
+    }
+
+    @Test
+    void readingOrDeletingSomethingThatIsNotThereIsNotFound() {
+        assertThatThrownBy(() -> underTest.loadByKey("hello/nothing/v1/nothing.txt"))
+                .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> underTest.deleteByKey("hello/nothing/v1/nothing.txt"))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    /**
+     * The containment check the path-shaped methods do not have. It is a test of where the target
+     * lands after normalisation, not of how the key is spelled, so it holds however many segments
+     * are stacked up and whatever separators are used.
+     */
+    @Test
+    void refusesAKeyThatWouldLeaveTheStorageRoot() {
+        assertThatThrownBy(() -> underTest.loadByKey("../outside.txt"))
+                .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> underTest.loadByKey("hello/../../outside.txt"))
+                .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> underTest.saveByKey("../../evil.txt",
+                new MockMultipartFile("f", "evil.txt", "text/plain", "x".getBytes())))
+                .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> underTest.deleteByKey("hello/../../evil.txt"))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void refusesAnEmptyKeyAndOneThatNamesTheRootItself() {
+        assertThatThrownBy(() -> underTest.loadByKey(null)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> underTest.loadByKey("")).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> underTest.loadByKey("   ")).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> underTest.deleteByKey("hello/..")).isInstanceOf(BusinessException.class);
+    }
+
+    /** A key inside the root that merely *contains* dot segments is fine once normalised. */
+    @Test
+    void aKeyThatNormalisesBackInsideTheRootIsAccepted() {
+        underTest.saveByKey("hello/x/../report/v1/report.txt",
+                new MockMultipartFile("f", "report.txt", "text/plain", "hi".getBytes()));
+
+        assertThat(Files.exists(Paths.get(baseDir, "hello/report/v1/report.txt"))).isTrue();
+    }
 }

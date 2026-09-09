@@ -50,6 +50,24 @@ public class FileDetails extends AuditableEntity {
     @Column(name = "relative_path", nullable = false)
     private String relativePath;
 
+    /**
+     * Where the bytes are, as one opaque string relative to the storage root (roadmap 7.1).
+     *
+     * <p><b>This is what a read resolves, and it is deliberately not derived from anything.</b>
+     * Before it existed, a download rebuilt the path from the taxonomy as it stood at read time —
+     * so the location of every stored byte was a function of names that Phase 7 makes editable. With
+     * a key written beside the bytes, renaming or moving a folder is a metadata change and no file
+     * becomes unreadable.
+     *
+     * <p>It holds the same value as {@link #relativePath} today and is written from the same
+     * expression, so the two cannot disagree. They are not the same field because they stop being
+     * the same thing the moment a folder moves: {@code relativePath} describes where the file sits
+     * in the tree, this describes where its bytes are, and Phase 7 separates those. {@code filePath}
+     * and {@code relativePath} are dropped or derived in step 4; this one survives.
+     */
+    @Column(name = "storage_key", nullable = false)
+    private String storageKey;
+
     @Column(name = "file_link")
     private String fileLink;
 
