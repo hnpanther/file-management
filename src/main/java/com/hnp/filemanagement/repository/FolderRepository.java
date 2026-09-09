@@ -121,17 +121,26 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     List<Folder> findSubtree(@Param("pathPrefix") String pathPrefix);
 
     /**
-     * Folders granted to this person directly. Returns paths rather than entities because that is
-     * all an access decision needs, and it keeps the per-request resolution to two small queries.
+     * Folders granted to this person directly, with what each one allows. Returns paths rather than
+     * entities because that is all an access decision needs, and it keeps the per-request resolution
+     * to two small queries.
      */
-    @Query("SELECT gf.path FROM User u JOIN u.folders gf WHERE u.id = :userId")
-    List<String> findPathsGrantedDirectly(@Param("userId") int userId);
+    @Query("""
+            SELECT new com.hnp.filemanagement.repository.GrantedPath(g.folder.path, g.permission)
+            FROM UserFolderGrant g
+            WHERE g.user.id = :userId
+            """)
+    List<GrantedPath> findGrantsDirectly(@Param("userId") int userId);
 
-    /** Folders granted through any of this person's roles. */
-    @Query("SELECT gf.path FROM User u JOIN u.roles r JOIN r.folders gf WHERE u.id = :userId")
-    List<String> findPathsGrantedThroughRoles(@Param("userId") int userId);
+    /** The same, through any of this person's roles. */
+    @Query("""
+            SELECT new com.hnp.filemanagement.repository.GrantedPath(g.folder.path, g.permission)
+            FROM User u JOIN u.roles r JOIN RoleFolderGrant g ON g.role = r
+            WHERE u.id = :userId
+            """)
+    List<GrantedPath> findGrantsThroughRoles(@Param("userId") int userId);
 
-    /** The folders granted to a person, as rows — for showing what a grant actually points at. */
-    @Query("SELECT gf FROM User u JOIN u.folders gf WHERE u.id = :userId")
+    /** The folders granted to a person directly, as rows — for showing what a grant points at. */
+    @Query("SELECT g.folder FROM UserFolderGrant g WHERE g.user.id = :userId")
     List<Folder> findFoldersGrantedDirectly(@Param("userId") int userId);
 }

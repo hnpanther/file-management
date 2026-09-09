@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
+import com.hnp.filemanagement.entity.FolderPermission;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.repository.FolderRepository;
@@ -77,32 +78,36 @@ class RoleFolderGrantPageTest extends MySqlSupport {
     }
 
     @Test
-    @DisplayName("the edit page renders the folder tree with a checkbox per folder")
+    @DisplayName("the edit page renders the folder tree with a three-state control per folder")
     void theEditPageRendersTheFolderTree() throws Exception {
         mockMvc.perform(get("/roles/{roleId}", roleId)
                         .with(user(principal(PermissionEnum.ADMIN)))
                         .accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk())
                 .andExpect(content().string(Matchers.containsString("folder-grant-tree")))
-                .andExpect(content().string(Matchers.containsString("name=\"folderIds\"")))
-                .andExpect(content().string(Matchers.containsString("value=\"" + rootFolderId + "\"")));
+                .andExpect(content().string(Matchers.containsString("name=\"folderGrants\"")))
+                .andExpect(content().string(Matchers.containsString("value=\"" + rootFolderId + ":READ\"")))
+                .andExpect(content().string(Matchers.containsString("value=\"" + rootFolderId + ":WRITE\"")));
     }
 
     @Test
-    @DisplayName("posting the form saves the ticked folders against the role")
+    @DisplayName("posting the form saves the chosen folders, and the verb chosen with them")
     void postingTheFormSavesTheGrants() throws Exception {
         mockMvc.perform(post("/roles/{roleId}", roleId)
                         .param("id", String.valueOf(roleId))
                         .param("roleName", roleRepository.findById(roleId).orElseThrow().getRoleName())
                         .param("permissionDTOListId", "")
-                        .param("folderIds", String.valueOf(rootFolderId))
+                        .param("folderGrants", rootFolderId + ":WRITE")
                         .with(user(principal(PermissionEnum.ADMIN)))
                         .with(csrf())
                         .accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk());
 
-        assertThat(roleRepository.findByIdWithFolders(roleId).orElseThrow().getFolders())
-                .extracting(folder -> folder.getId())
-                .containsExactly(rootFolderId);
+        assertThat(roleRepository.findByIdWithFolders(roleId).orElseThrow().getFolderGrants())
+                .singleElement()
+                .satisfies(grant -> {
+                    assertThat(grant.getFolder().getId()).isEqualTo(rootFolderId);
+                    assertThat(grant.getPermission()).isEqualTo(FolderPermission.WRITE);
+                });
     }
 }

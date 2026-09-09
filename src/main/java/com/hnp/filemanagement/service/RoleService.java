@@ -6,20 +6,27 @@ import com.hnp.filemanagement.dto.RoleDTO;
 import com.hnp.filemanagement.entity.ActionEnum;
 import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.Folder;
+import com.hnp.filemanagement.entity.FolderPermission;
 import com.hnp.filemanagement.entity.Permission;
 import com.hnp.filemanagement.entity.Role;
+import com.hnp.filemanagement.entity.RoleFolderGrant;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FolderRepository;
+import com.hnp.filemanagement.repository.GrantedPath;
 import com.hnp.filemanagement.repository.PermissionRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -117,25 +124,40 @@ public class RoleService {
                 () -> new ResourceNotFoundException("role with id=" + roleId + " doesn't exists")
         );
 
-        Set<Integer> grantedIds = role.getFolders().stream().map(Folder::getId).collect(Collectors.toSet());
-        List<String> grantedPaths = role.getFolders().stream().map(Folder::getPath).toList();
+        Map<Integer, FolderPermission> grantedById = role.getFolderGrants().stream()
+                .collect(Collectors.toMap(grant -> grant.getFolder().getId(), RoleFolderGrant::getPermission,
+                        (a, b) -> a, LinkedHashMap::new));
+        List<GrantedPath> grantedPaths = role.getFolderGrants().stream()
+                .map(grant -> new GrantedPath(grant.getFolder().getPath(), grant.getPermission()))
+                .toList();
 
         return folderRepository.findAllByOrderByPathAsc().stream()
-                .map(folder -> toGrantDto(folder, grantedIds, grantedPaths))
+                .map(folder -> toGrantDto(folder, grantedById, grantedPaths))
                 .toList();
     }
 
-    private FolderGrantDTO toGrantDto(Folder folder, Set<Integer> grantedIds, List<String> grantedPaths) {
+    private FolderGrantDTO toGrantDto(Folder folder, Map<Integer, FolderPermission> grantedById,
+                                      List<GrantedPath> grantedPaths) {
         FolderGrantDTO dto = new FolderGrantDTO();
         dto.setId(folder.getId());
         dto.setName(folder.getName());
         dto.setDisplayName(folder.getDisplayName());
         dto.setDepth(folder.getDepth());
         dto.setKind(folder.getKind().name());
-        dto.setGranted(grantedIds.contains(folder.getId()));
-        // Strictly an ancestor: a folder does not cover itself, or every grant would read as inherited.
-        dto.setCovered(grantedPaths.stream()
-                .anyMatch(granted -> folder.getPath().startsWith(granted) && !folder.getPath().equals(granted)));
+
+        FolderPermission own = grantedById.get(folder.getId());
+        dto.setPermission(own == null ? "" : own.name());
+
+        // Strictly an ancestor: a folder does not cover itself, or every grant would read as
+        // inherited. The strongest covering grant is the one reported, because that is what the
+        // role actually reaches here.
+        dto.setInherited(grantedPaths.stream()
+                .filter(granted -> folder.getPath().startsWith(granted.path())
+                        && !folder.getPath().equals(granted.path()))
+                .map(GrantedPath::permission)
+                .max(Comparator.naturalOrder())
+                .map(FolderPermission::name)
+                .orElse(""));
         return dto;
     }
 
@@ -144,30 +166,70 @@ public class RoleService {
      *
      * <p>The page posts the complete selection, so a folder missing from the list is a removal
      * rather than an omission — the same contract {@link #updatePermissionsOfRole} has. Unlike that
-     * method a null list is accepted and means "none": a browser leaves a checkbox group out of the
-     * request entirely when nothing in it is ticked, and taking every folder away from a role has to
-     * be possible.
+     * method a null list is accepted and means "none": a browser leaves a group out of the request
+     * entirely when nothing in it is chosen, and taking every folder away from a role has to be
+     * possible.
+     *
+     * <p>Each entry is {@code "{folderId}:{READ|WRITE}"}. One field rather than two lists because
+     * the two halves have to describe the same folder: a folder that appeared in a "write" list and
+     * not in a "read" list would be a grant the model cannot represent, and something would have to
+     * decide what it meant.
      */
     @Transactional
-    public void updateFoldersOfRole(int roleId, List<Integer> folderIds, int principalId) {
+    public void updateFoldersOfRole(int roleId, List<String> folderGrants, int principalId) {
 
         Role role = roleRepository.findByIdWithFolders(roleId).orElseThrow(
                 () -> new ResourceNotFoundException("role with id=" + roleId + " doesn't exists")
         );
 
-        Set<Integer> requested = folderIds == null ? Set.of() : new LinkedHashSet<>(folderIds);
-        Set<Folder> folders = requested.isEmpty()
-                ? new LinkedHashSet<>()
-                : new LinkedHashSet<>(folderRepository.findAllById(requested));
+        Map<Integer, FolderPermission> requested = parseGrants(folderGrants);
+
+        Map<Integer, Folder> folders = folderRepository.findAllById(requested.keySet()).stream()
+                .collect(Collectors.toMap(Folder::getId, folder -> folder, (a, b) -> a, LinkedHashMap::new));
 
         if (folders.size() != requested.size()) {
             throw new InvalidDataException("folder list for update folders of role holds an id that does not exist");
         }
 
-        role.setFolders(folders);
+        role.replaceFolderGrants(requested.entrySet().stream()
+                .map(entry -> new RoleFolderGrant(role, folders.get(entry.getKey()), entry.getValue()))
+                .toList());
 
         actionHistoryService.saveActionHistory(EntityEnum.RoleFolder, role.getId(), ActionEnum.UPDATE_VALUES,
                 principalId, "UPDATE ROLE_FOLDER", "UPDATE ROLE_FOLDER, folders=" + requested.size());
+    }
+
+    /**
+     * Reads the posted {@code "{folderId}:{permission}"} entries.
+     *
+     * <p>Blank entries are dropped rather than rejected: every folder on the page posts a value, and
+     * "no access" is the empty one. Anything else malformed is a bad request — the page generates
+     * these strings, so a value it could not have produced is not something to guess about.
+     *
+     * <p>The last entry for a folder wins if one somehow appears twice, which keeps the result a
+     * map and stops a duplicate turning into a constraint violation two layers down.
+     */
+    private Map<Integer, FolderPermission> parseGrants(List<String> folderGrants) {
+        if (folderGrants == null) {
+            return Map.of();
+        }
+        Map<Integer, FolderPermission> parsed = new LinkedHashMap<>();
+        for (String entry : folderGrants) {
+            if (entry == null || entry.isBlank()) {
+                continue;
+            }
+            String[] parts = entry.split(":", 2);
+            if (parts.length != 2) {
+                throw new InvalidDataException("malformed folder grant: " + entry);
+            }
+            try {
+                parsed.put(Integer.valueOf(parts[0].trim()),
+                        FolderPermission.valueOf(parts[1].trim().toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException e) {
+                throw new InvalidDataException("malformed folder grant: " + entry);
+            }
+        }
+        return parsed;
     }
 
     /** The roles named by a set of ids, for assigning them to a user. */

@@ -31,5 +31,11 @@ public class RoleDTO {
      * in it is ticked, and "this role reaches no folder" is a legitimate thing to save. Null is
      * therefore read as an empty selection, not as a missing field.
      */
-    List<Integer> folderIds;
+    /**
+     * The folder grants the role edit page posts, each {@code "{folderId}:{READ|WRITE}"}.
+     *
+     * <p>One field rather than a list of ids and a parallel list of verbs: the two would have to
+     * describe the same folders, and nothing could make them.
+     */
+    List<String> folderGrants;
 }

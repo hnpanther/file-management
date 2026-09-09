@@ -101,7 +101,7 @@ public class FolderContentService {
         FolderAccess access = folderAccessService.accessFor(principalId);
         Folder folder = resolve(folderId, access);
 
-        boolean readable = access.allows(folder.getPath());
+        boolean readable = access.canRead(folder.getPath());
         PageRequest pageRequest = pageRequest(page, size);
 
         // Resolved once: it is a count plus a select, and asking for it again to fill in the page

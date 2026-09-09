@@ -3,8 +3,10 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.FolderGrantDTO;
 import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.Folder;
+import com.hnp.filemanagement.entity.FolderPermission;
 import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.Role;
+import com.hnp.filemanagement.entity.RoleFolderGrant;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
@@ -84,10 +86,10 @@ class RoleFolderGrantTest extends MySqlSupport {
     @Test
     @DisplayName("granting a folder writes the row and an audit line")
     void grantingAFolder() {
-        underTest.updateFoldersOfRole(roleId, List.of(subCategoryFolderId), principalId);
+        underTest.updateFoldersOfRole(roleId, List.of(subCategoryFolderId + ":READ"), principalId);
 
-        assertThat(roleRepository.findByIdWithFolders(roleId).orElseThrow().getFolders())
-                .extracting(Folder::getId)
+        assertThat(grantsOf(roleId))
+                .extracting(grant -> grant.getFolder().getId())
                 .containsExactly(subCategoryFolderId);
         assertThat(actionHistoryService.getActionHistoriesOfEntity(roleId, EntityEnum.RoleFolder))
                 .hasSize(1);
@@ -96,47 +98,102 @@ class RoleFolderGrantTest extends MySqlSupport {
     @Test
     @DisplayName("the posted selection replaces the previous one, so an unticked folder is removed")
     void theSelectionReplacesWhatWasThere() {
-        underTest.updateFoldersOfRole(roleId, List.of(subCategoryFolderId), principalId);
+        underTest.updateFoldersOfRole(roleId, List.of(subCategoryFolderId + ":READ"), principalId);
 
-        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId), principalId);
+        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId + ":READ"), principalId);
 
-        assertThat(roleRepository.findByIdWithFolders(roleId).orElseThrow().getFolders())
-                .extracting(Folder::getId)
+        assertThat(grantsOf(roleId))
+                .extracting(grant -> grant.getFolder().getId())
                 .containsExactly(categoryFolderId);
     }
 
     @Test
     @DisplayName("an empty selection takes every grant away rather than being read as 'unchanged'")
     void everyGrantCanBeRemoved() {
-        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId), principalId);
+        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId + ":READ"), principalId);
 
         // A browser omits the checkbox group entirely when nothing is ticked, so this arrives null.
         underTest.updateFoldersOfRole(roleId, null, principalId);
 
-        assertThat(roleRepository.findByIdWithFolders(roleId).orElseThrow().getFolders()).isEmpty();
+        assertThat(grantsOf(roleId)).isEmpty();
     }
 
     @Test
     @DisplayName("a folder id that does not exist is refused rather than silently dropped")
     void anUnknownFolderIsRefused() {
-        assertThatThrownBy(() -> underTest.updateFoldersOfRole(roleId, List.of(999_999), principalId))
+        assertThatThrownBy(() -> underTest.updateFoldersOfRole(roleId, List.of("999999:READ"), principalId))
                 .isInstanceOf(InvalidDataException.class);
     }
 
     @Test
     @DisplayName("the tree marks a granted folder, and marks its children as reached through it")
     void theTreeSeparatesGrantedFromInherited() {
-        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId), principalId);
+        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId + ":READ"), principalId);
 
         List<FolderGrantDTO> tree = underTest.getFolderTreeForRole(roleId);
 
         FolderGrantDTO granted = row(tree, categoryFolderId);
-        assertThat(granted.isGranted()).as("the folder that has a row").isTrue();
-        assertThat(granted.isCovered()).as("a grant does not cover itself").isFalse();
+        assertThat(granted.getPermission()).as("the folder that has a row").isEqualTo("READ");
+        assertThat(granted.getInherited()).as("a grant does not cover itself").isEmpty();
 
         FolderGrantDTO child = row(tree, subCategoryFolderId);
-        assertThat(child.isGranted()).as("no row of its own").isFalse();
-        assertThat(child.isCovered()).as("but reached through its parent").isTrue();
+        assertThat(child.getPermission()).as("no row of its own").isEmpty();
+        assertThat(child.getInherited()).as("but reached through its parent").isEqualTo("READ");
+    }
+
+    // ---------------------------------------------------------------- the verb (roadmap 9.1)
+
+    @Test
+    @DisplayName("a write grant is stored as a write grant, not silently weakened to a read")
+    void aWriteGrantIsStoredAsSuch() {
+        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId + ":WRITE"), principalId);
+
+        assertThat(grantsOf(roleId)).singleElement().satisfies(grant -> {
+            assertThat(grant.getFolder().getId()).isEqualTo(categoryFolderId);
+            assertThat(grant.getPermission()).isEqualTo(FolderPermission.WRITE);
+        });
+    }
+
+    @Test
+    @DisplayName("changing the verb on a folder replaces the grant rather than adding a second row")
+    void theVerbCanBeChanged() {
+        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId + ":READ"), principalId);
+
+        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId + ":WRITE"), principalId);
+
+        assertThat(grantsOf(roleId)).singleElement()
+                .extracting(RoleFolderGrant::getPermission)
+                .isEqualTo(FolderPermission.WRITE);
+    }
+
+    @Test
+    @DisplayName("the tree reports the strongest thing an ancestor already allows")
+    void inheritedReportsTheAncestorVerb() {
+        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId + ":WRITE"), principalId);
+
+        assertThat(row(underTest.getFolderTreeForRole(roleId), subCategoryFolderId).getInherited())
+                .isEqualTo("WRITE");
+    }
+
+    @Test
+    @DisplayName("a folder set to 'no access' posts an empty value, which is not a malformed grant")
+    void blankEntriesMeanNoAccess() {
+        underTest.updateFoldersOfRole(roleId,
+                List.of("", categoryFolderId + ":READ", ""), principalId);
+
+        assertThat(grantsOf(roleId)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("a grant the page could not have produced is refused rather than guessed at")
+    void malformedGrantsAreRefused() {
+        assertThatThrownBy(() -> underTest.updateFoldersOfRole(roleId,
+                List.of(categoryFolderId + ":DELETE"), principalId))
+                .isInstanceOf(InvalidDataException.class);
+
+        assertThatThrownBy(() -> underTest.updateFoldersOfRole(roleId,
+                List.of(String.valueOf(categoryFolderId)), principalId))
+                .isInstanceOf(InvalidDataException.class);
     }
 
     @Test
@@ -149,6 +206,10 @@ class RoleFolderGrantTest extends MySqlSupport {
         assertThat(tree.indexOf(row(tree, categoryFolderId)))
                 .as("a category is listed before its own sub-category")
                 .isLessThan(tree.indexOf(row(tree, subCategoryFolderId)));
+    }
+
+    private List<RoleFolderGrant> grantsOf(int roleId) {
+        return roleRepository.findByIdWithFolders(roleId).orElseThrow().getFolderGrants();
     }
 
     private FolderGrantDTO row(List<FolderGrantDTO> tree, int folderId) {

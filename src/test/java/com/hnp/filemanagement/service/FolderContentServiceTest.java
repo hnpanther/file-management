@@ -9,11 +9,13 @@ import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.Folder;
+import com.hnp.filemanagement.entity.FolderPermission;
 import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.GeneralTag;
 import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.entity.UserFolderGrant;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
@@ -32,6 +34,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.TestPropertySource;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -378,7 +383,9 @@ class FolderContentServiceTest extends MySqlSupport {
 
     private void grantDirectly(int userId, FolderSourceType sourceType, int sourceId) {
         User user = userRepository.findById(userId).orElseThrow();
-        user.getFolders().add(folderOf(sourceType, sourceId));
+        List<UserFolderGrant> grants = new ArrayList<>(user.getFolderGrants());
+        grants.add(new UserFolderGrant(user, folderOf(sourceType, sourceId), FolderPermission.READ));
+        user.replaceFolderGrants(grants);
         userRepository.save(user);
     }
 

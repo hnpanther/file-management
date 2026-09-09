@@ -2,8 +2,9 @@
 
 This began as four goals — restructuring, PostgreSQL, S3 storage and a folder tree. Phase 0 came
 first to make the rest safe, and Phases 6–8 grew out of the fourth once it became clear what a folder
-tree actually implies. Every phase is sequenced to leave the application working, and to depend only
-on what came before.
+tree actually implies. Phase 9 is the one addition from outside that line: machine access, which the
+folder tree finally made it possible to scope. Every phase is sequenced to leave the application
+working, and to depend only on what came before.
 
 | Phase | Goal | Depends on | Status |
 |---|---|---|---|
@@ -11,11 +12,12 @@ on what came before.
 | 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done** |
 | 2 | Architectural restructuring | 1 | |
 | 3 | PostgreSQL migration | 1, partly 2, **and 7** | |
-| 4 | S3-compatible storage alongside the filesystem | 2, 3 | |
+| 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done** |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | mirror + grants **done**, off by default |
 | 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | planned |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
+| 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | grants have a verb **done** |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -291,7 +293,7 @@ The checksum backfill in step 3 is also what makes the Phase 4 migration verifia
 
 ---
 
-## Phase 4 — S3-compatible storage
+## Phase 4 — S3 as a storage backend
 
 **Target: AWS SDK for Java v2** (`software.amazon.awssdk:bom` 2.54.x), which works against S3, MinIO,
 Ceph RGW, Backblaze B2 and Cloudflare R2. `io.awspring.cloud:spring-cloud-aws-dependencies` 4.1.1 is
@@ -982,6 +984,234 @@ to see, and it belongs on `workflow_task`, not on the folder grant.
 **Done when:** a form defined in the builder can be filled in, routed for approval, and — on approval
 — produce a numbered revision of a controlled document that lands in the right folder, is visible to
 exactly the people the folder grants allow, and leaves an audit trail from submission to approval.
+
+---
+
+## Phase 9 — API keys and an S3-style API v2
+
+Machine access today is one shared account with HTTP Basic and four endpoint permissions. This phase
+gives it credentials of its own, scopes those credentials to folders, and puts a second API in front
+of them whose shape an integrator already knows.
+
+### 9.0 First: two different things were both called "S3-compatible"
+
+[Phase 4](#phase-4--s3-as-a-storage-backend) makes this application a **client** of S3 — bytes move
+to MinIO or S3 and `BlobStore` reads them back. This phase makes it look like a **server** of S3 —
+callers address objects the way they would address them in a bucket.
+
+They point in opposite directions and both were called "S3-compatible". Phase 4's heading was
+therefore changed to "S3 as a storage backend", and this one is deliberately named **S3-*style***,
+not S3-compatible. §9.4 says exactly how far the resemblance goes.
+
+### 9.1 The prerequisite: folder grants gain a verb — **done**
+
+> Shipped as migration `V2.0`. `role_folder` and `user_folder` carry a `permission` column, both are
+> mapped as entities (`RoleFolderGrant`, `UserFolderGrant`) because a join table with a third column
+> can no longer be a `@ManyToMany`, `FolderAccess` keeps a readable and a writable path list, every
+> upload path calls `requireWriteAccess`, and the role page sets each folder to none / read / write.
+> Existing rows became `READ`, which is what they already meant, so nothing changed for anyone.
+>
+> Two things worth knowing for the steps that follow. **Replacing a role's grants merges rather than
+> clears and re-adds** — the key is (role, folder), so removing and re-adding the same folder in one
+> transaction puts two objects with one identifier in the persistence context and Hibernate refuses
+> the flush. And **the write check runs before the taxonomy chain is validated**, so a refusal cannot
+> be used to discover which category/sub-category/tag triples exist.
+
+A grant is one boolean today: `FolderAccess.allows(path)` means "may read". There is no way to say
+"may write here", and worse, **uploading is not checked against folder access at all**
+([issue 76](issues.md#76-a-folder-access-grant-does-not-gate-uploading-into-that-folder--s2)). An
+API key "with write access to a folder" is a sentence the system cannot currently enforce, so this
+comes first.
+
+`V1.5` anticipated it in writing:
+
+> Adding "read here, write there" later is a column on these two tables rather than a new model —
+> but it is not added before something actually needs it.
+
+Something needs it.
+
+| | |
+|---|---|
+| Schema | `permission` on `role_folder` and `user_folder` — `READ` or `WRITE`, where `WRITE` implies `READ` |
+| Mapping | the two stop being pure join tables: `User.folders` and `Role.folders` become `Set<FolderGrant>`, not `Set<Folder>` |
+| `FolderAccess` | two path sets instead of one; `allows` splits into `canRead` and `canWrite` |
+| Enforcement | `requireWrite` at the top of the three upload paths, which closes issue 76 |
+| UI | the role page's folder checkbox becomes three-state: none / read / write |
+
+Nothing above is specific to API keys. It is the missing half of Phase 6, and the interface needs it
+too.
+
+### 9.2 API keys
+
+A section of its own, separate from users, because a key is not a person.
+
+```sql
+api_key        (id, key_id, secret_hash, title, description, expires_at NULL,
+                enabled, revoked_at, last_used_at, created_at, created_by)
+api_key_folder (api_key_id, folder_id, permission)
+```
+
+* **The key is `fmk_{key_id}_{secret}`.** The embedded `key_id` is what makes verification a single
+  indexed row read rather than a scan of every hash in the table.
+* **Only `secret_hash` is stored**, SHA-256, and the plaintext is shown once at creation and never
+  again. A random secret has full entropy, so bcrypt buys nothing here and would put a deliberate
+  delay on every API request. §9.4 explains why hashing is an option at all.
+* **`expires_at` is nullable** — null means it does not expire. `revoked_at` is the separate,
+  deliberate kill switch.
+* **`last_used_at` is written at most once every few minutes**, not on every call: a read-only API
+  that writes a row per request is not a read-only API.
+* **`created_by` is not decoration.** `action_history.created_by` is a foreign key to `user`, so
+  anything a key does has to be attributable to a person or the audit trail breaks. It is invisible
+  in the interface; it exists so the log stays complete.
+* **A key cannot be scoped to a folder its creator cannot see** (administrators excepted). Without
+  that rule, the permission to create keys quietly becomes the permission to reach everything.
+
+### 9.3 The v2 API
+
+Bucket, key, and the five operations an integrator expects:
+
+| Operation | Request |
+|---|---|
+| List | `GET /api/v2/{bucket}?prefix=&delimiter=/&max-keys=&continuation-token=` |
+| Download | `GET /api/v2/{bucket}/{key}` — honours `Range` |
+| Metadata | `HEAD /api/v2/{bucket}/{key}` |
+| Upload | `PUT /api/v2/{bucket}/{key}` |
+| Delete | `DELETE /api/v2/{bucket}/{key}` |
+
+**A bucket is a top-level folder.** Not every folder: a bucket cannot contain a bucket, and in S3
+there are no folders at all — `a/b/c.pdf` is one flat key and the "folders" are prefixes. Modelling
+nested folders as nested buckets would confuse precisely the person this API is shaped for. One
+level of buckets, everything below it a prefix.
+
+`folder.name` is already the right thing to name a bucket with: it is documented directory-safe (no
+`.`, no space, no `/`) and `uq_folder_sibling_name` makes it unique among siblings — and top-level
+folders are all siblings, so it is globally unique. §9.7 covers the one way it deviates from AWS's
+naming rules.
+
+**The version is part of the key**, which is the decision taken for this phase:
+
+```
+IMS/IMS_Document_System/HSED/BL-HRM-JC-001/v3/BL-HRM-JC-001.pdf
+```
+
+The first segment is the bucket and everything after it is the key. That is exactly the layout on
+disk today, and it answers "S3 has no versions" without implementing versioning: a version is a path
+segment like any other.
+
+**Writing appends a version; it does not overwrite.** In S3 a `PUT` to an existing key replaces it.
+Here a file's versions are immutable, which for a document system is the point rather than a
+limitation:
+
+* `PUT .../{fileName}/{fileName}.pdf` — no version segment — creates the next version, and the
+  response says which one in `x-fm-version`;
+* `PUT` to an explicit `v{n}` answers `409`.
+
+`DELETE` on `.../v2/file.pdf` maps onto the existing `deleteFileDetails`: one format of one version,
+and removing the last version removes the file.
+
+Responses are JSON rather than S3's XML. There is no real S3 client to satisfy (§9.4), and JSON
+keeps v2 consistent with the rest of the API. Familiar headers stay familiar: `ETag`,
+`Content-Length`, `Last-Modified`, `Range` / `Content-Range`.
+
+### 9.4 What this is not, stated plainly
+
+**`aws s3 cp` will not work against it, and neither will the AWS SDKs.** Every real S3 client signs
+with Signature V4, and implementing SigV4 would mean:
+
+* verifying a four-step HMAC chain over a canonical request, including the chunked
+  `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` body format the CLI uses for uploads;
+* multipart upload, because the CLI switches to it automatically above roughly 8 MB — without it,
+  large uploads simply fail;
+* ETag semantics clients verify (MD5 for a single `PUT`; MD5-of-part-MD5s plus `-N` for multipart);
+* and **storing every secret reversibly**, because SigV4 is a symmetric HMAC: the server must know
+  the plaintext secret to recompute the signature. That single consequence is what lets §9.2 hash
+  secrets instead.
+
+The goal is a shape people recognise, not a protocol they can point tooling at. Authentication is
+therefore a bearer credential — `Authorization: Bearer fmk_…` — and the documentation must say
+outright that this is S3-*style*, so nobody plans an integration around a CLI that will never
+connect. If real S3 compatibility is ever wanted it is its own phase, and it starts by making
+secrets recoverable.
+
+### 9.5 Actuator
+
+This closes [issue 41](issues.md#41-no-actuator-no-metrics-no-real-health-check--s2), which was
+planned in Phase 1 and never done — `pom.xml` carries no actuator dependency at all.
+
+* Expose `health` and `info`. Never `env`, `beans`, `configprops` or `heapdump`.
+* `management.endpoint.health.probes.enabled=true` for the `readiness` and `liveness` groups.
+* **`/actuator/**` needs a security chain of its own.** Without one it falls into the browser chain,
+  whose form-login entry point answers an unauthenticated probe with `302 /login` — and `GET /login`
+  returns `200`, so a health check would report a healthy application with its database down. That
+  is the same failure `SecurityConfig` already documents at length for the API chain.
+* **[deployment.md](deployment.md) has to be revised with this.** It currently states that no
+  actuator exists and builds its whole health-check section on that, recommending `GET /login` for
+  liveness and `GET /files/public-files` as the closest thing to a readiness probe. Both become
+  wrong the day this ships.
+
+### 9.6 OpenAPI
+
+`springdoc-openapi` 3.x, whose major version tracks Spring Boot's; pin the current stable release at
+implementation time rather than from this document.
+
+* Swagger UI is served from the classpath of the dependency itself, so it works offline. This is
+  **not** the `/webjars/` failure mode `ui.md` records — that one depends on Maven having resolved
+  an artifact at runtime.
+* A `GroupedOpenApi` limited to `/api/**`, so the internal `/resource/**` endpoints the pages use do
+  not appear in a document meant for outside callers.
+* **Enabled in production, and switchable** — the decision taken for this phase. Two properties
+  (`springdoc.api-docs.enabled`, `springdoc.swagger-ui.enabled`) default to on and can be turned off
+  without a rebuild, and the UI sits behind its own permission rather than being public.
+
+### 9.7 The question of underscores — and why not to migrate
+
+AWS bucket names may not contain `_` or an uppercase letter. `IMS_Document_System` breaks both
+rules. The temptation is an update that rewrites `_` to `-` across the taxonomy.
+
+**Do not.** It buys nothing and costs a great deal:
+
+* nothing here checks those rules, because no real S3 client is the target (§9.4);
+* a category or sub-category name **is** a directory name on disk, and it is denormalised into
+  `file_info.file_path`, `file_info.relative_path`, `file_details.file_path` and
+  `file_details.relative_path`
+  ([issue 35](issues.md#35-paths-are-denormalised-into-three-places--s2)). Renaming means moving
+  directories *and* rewriting four columns across every row — the exact shape of migration that
+  loses files;
+* [Phase 7.1](#71-first-decouple-the-storage-key-from-the-structure) makes a rename free by
+  decoupling the storage key from the structure. Doing it before then is paying full price for
+  something that is about to cost nothing.
+
+**Normalise at the boundary instead.** The v2 layer resolves a bucket name case-insensitively and
+treats `_` and `-` as equivalent, so `ims-document-system` and `IMS_Document_System` reach the same
+folder and nothing stored changes. Two folder names that collide once normalised would be ambiguous
+— check for that before shipping, and enforce uniqueness of the normalised form from then on.
+
+### 9.8 The steps
+
+| # | Step | Migration | Independent? |
+|---|---|---|---|
+| 0 | `permission` on the two grant tables; `FolderAccess` splits; upload gated; role page three-state — **done**, `V2.0` | `V2.0` | prerequisite for 1 |
+| 1 | `api_key` + `api_key_folder`; bearer filter on the API chain; the "API keys" page | `V2.x` | needs 0 |
+| 2 | Actuator, its security chain, and the deployment.md revision | — | yes |
+| 3 | `/api/v2/**` — the five operations, bucket and key resolution, version in the key | — | needs 1 |
+| 4 | springdoc, grouped to `/api/**`, switchable | — | yes |
+
+Steps 2 and 4 depend on nothing else here and can ship whenever.
+
+### 9.9 What Phase 7 does to this
+
+**Bucket and key names are an external contract, and Phase 7 makes folders renamable and movable.**
+A rename changes the keys of everything beneath it, and any caller holding those keys breaks. The
+position taken here is a filesystem gateway's — keys follow names, and a rename is a visible,
+documented event — rather than inventing a second, immutable key space. If that turns out to be
+unacceptable to an integrator, the alternative is an id-based key space alongside the name-based
+one, and it is cheaper to add then than to retrofit stability onto names now.
+
+**Done when:** a key can be created with a title, a description and an optional expiry; its secret
+is shown once and never again; it reaches exactly the folders it was scoped to and no more; the five
+v2 operations work against a bucket with the version in the key; uploading is refused where the
+grant is read-only; `/actuator/health` reflects the database; and the API documents itself at a URL
+that can be switched off without a rebuild.
 
 ---
 

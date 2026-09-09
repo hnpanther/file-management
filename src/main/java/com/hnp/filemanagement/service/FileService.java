@@ -130,6 +130,11 @@ public class FileService {
         String extension = getFileExtension(originalFilename);
 
         MainTagFile mainTagFile = mainTagFileService.getMainTagFileEntity(fileInfoDTO.getMainTagFileId());
+
+        // Before the chain is validated, not after: answering "that triple is inconsistent" to
+        // somebody who may not write here would tell them which triples are consistent.
+        folderAccessService.requireWriteAccess(principalId, FolderSourceType.MAIN_TAG, mainTagFile.getId());
+
         FileSubCategory subCategory = mainTagFile.getFileSubCategory();
 
         // The upload form posts all three levels; they have to describe one chain, or the file
@@ -187,6 +192,11 @@ public class FileService {
     public void createNewFileDetails(FileUploadDTO fileUploadDTO, int principalId) {
 
         FileInfo fileInfo = getFileInfoWithFileDetails(fileUploadDTO.getFileId());
+
+        // Both branches below - a new format and a new version - write into the folder this file
+        // already sits in, so one check covers them.
+        folderAccessService.requireWriteAccess(principalId,
+                FolderSourceType.MAIN_TAG, fileInfo.getMainTagFile().getId());
 
         MultipartFile multipartFile = fileUploadDTO.getMultipartFile();
         String originalFilename = multipartFile.getOriginalFilename();

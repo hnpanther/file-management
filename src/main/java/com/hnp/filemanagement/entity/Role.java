@@ -7,12 +7,18 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * A named bundle of permissions. A user's authorities are the union of the permissions of every
@@ -50,21 +56,48 @@ public class Role extends AbstractEntity {
     private Set<Permission> permissions = new LinkedHashSet<>();
 
     /**
-     * The folders this role reaches, each grant covering everything beneath it — the second half of
-     * the two-tier model (roadmap 6.5). A role therefore carries both a set of permissions, which say
-     * what its holders may <em>do</em>, and a set of folders, which say <em>where</em>.
+     * The folders this role reaches, each grant covering everything beneath it and saying what it
+     * allows there — the second half of the two-tier model (roadmap 6.5, and 9.1 for the verb). A
+     * role therefore carries both a set of permissions, which say what its holders may <em>do</em>,
+     * and a set of grants, which say <em>where</em> and <em>how</em>.
      *
-     * <p>No {@code REMOVE} in the cascade, deliberately: cascading a remove from the inverse side of
-     * a many-to-many is what made deleting a permission delete every role that held it
-     * ({@code docs/issues.md}, issue 51). The join rows are cleaned up by {@code ON DELETE CASCADE}
-     * in the schema instead.
+     * <p><b>{@code cascade = ALL} with {@code orphanRemoval} is safe here in a way it was not for
+     * permissions.</b> Issue 51 was a cascade on the inverse side of a many-to-many, where removing
+     * a permission removed every role holding it. A grant belongs to this role and to nothing else,
+     * so deleting it when it leaves this list is the whole point — it is what lets the edit screen
+     * post a complete selection and have removals take effect.
+     *
+     * <p>The schema keeps its own {@code ON DELETE CASCADE} on both foreign keys, because deleting a
+     * <em>folder</em> still happens outside this mapping, from the mirror.
      */
-    @ManyToMany(fetch = FetchType.LAZY,
-            cascade = {CascadeType.MERGE, CascadeType.REFRESH, CascadeType.DETACH})
-    @JoinTable(
-            name = "role_folder",
-            joinColumns = @JoinColumn(name = "role_id"),
-            inverseJoinColumns = @JoinColumn(name = "folder_id")
-    )
-    private Set<Folder> folders = new LinkedHashSet<>();
+    @OneToMany(mappedBy = "role", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<RoleFolderGrant> folderGrants = new ArrayList<>();
+
+    /**
+     * Brings the grant list to exactly this state.
+     *
+     * <p><b>Rows that stay are updated in place rather than deleted and re-inserted.</b> The key of
+     * a grant is (role, folder), so clearing the list and adding the same folder back leaves two
+     * objects with one identifier in the persistence context, and Hibernate refuses the flush before
+     * it ever reaches the database. Merging also means changing a verb is an {@code UPDATE} rather
+     * than a delete followed by an insert of the row that was just removed.
+     */
+    public void replaceFolderGrants(List<RoleFolderGrant> desired) {
+        Map<Integer, RoleFolderGrant> wanted = new LinkedHashMap<>();
+        desired.forEach(grant -> wanted.put(grant.getFolder().getId(), grant));
+
+        folderGrants.removeIf(existing -> !wanted.containsKey(existing.getFolder().getId()));
+        folderGrants.forEach(existing ->
+                existing.setPermission(wanted.get(existing.getFolder().getId()).getPermission()));
+
+        Set<Integer> kept = folderGrants.stream()
+                .map(existing -> existing.getFolder().getId())
+                .collect(Collectors.toSet());
+        wanted.forEach((folderId, grant) -> {
+            if (!kept.contains(folderId)) {
+                grant.setRole(this);
+                folderGrants.add(grant);
+            }
+        });
+    }
 }
