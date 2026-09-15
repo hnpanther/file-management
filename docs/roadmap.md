@@ -15,7 +15,7 @@ working, and to depend only on what came before.
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done** |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**, enforced by default |
-| 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | 7.1 **done** |
+| 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | 7.1 and 7.2 step 1 **done** |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
 
@@ -802,11 +802,20 @@ Each is independently shippable, and only the fourth cannot be undone.
 | # | Step | Migration | Reverting it |
 |---|---|---|---|
 | 0 | `file_details.storage_key`, backfilled from `relative_path`; adapter maps key → path — **done** | `V2.2` | an unused column |
-| 1 | `file_info.folder_id`, nullable, backfilled to the folder mirroring the file's main tag; written alongside the old foreign keys | `V1.7` | an unused column |
-| 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under | `V1.8` | `DROP TABLE` |
+| 1 | `file_info.folder_id`, nullable, backfilled to the folder mirroring the file's main tag; written alongside the old foreign keys — **done** | `V2.3` | an unused column |
+| 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under | `V2.4` | `DROP TABLE` |
 | 3 | **Reads move to the folder**: tree, upload, file list, search | — | revert the code |
-| 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` | `V1.9` | ⚠️ **none** |
+| 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` | `V2.5` | ⚠️ **none** |
 | 5 | Folder operations: create, rename, move, delete — and drag-and-drop | `V2.x` | — |
+
+> **Step 1 done.** `FileInfo.folder` is set from `FolderMirrorService.folderOf(mainTag)` on every
+> upload — get-or-create, so an upload into a tag that was never mirrored heals the mirror rather
+> than storing a null. The backfill's own `UPDATE` is what the test runs (cut out of the migration
+> file and executed against rows deliberately un-linked), and
+> `FileInfoRepository.findRowsWhoseFolderDisagreesWithTheMirror()` is the reconciliation, asked
+> on every build. The foreign key is `RESTRICT`, so a folder with files in it cannot be deleted by
+> any route. Nothing reads the column: the whole suite, `RestContractTest` included, passed
+> without another line changing, which is the test of "no behaviour change". `FileFolderLinkTest`.
 
 Steps 0–2 only add data and change no behaviour, so they can ship early and sit in production while
 step 3 is written. Step 3 is where the application actually changes. Step 4 should follow only after

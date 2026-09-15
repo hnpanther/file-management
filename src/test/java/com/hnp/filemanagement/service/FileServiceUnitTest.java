@@ -64,6 +64,9 @@ class FileServiceUnitTest {
      */
     @Mock
     private FolderAccessService folderAccessService;
+    /** Only reached once every guard has passed, which none of these tests get to. */
+    @Mock
+    private FolderMirrorService folderMirrorService;
 
     @InjectMocks
     private FileService underTest;

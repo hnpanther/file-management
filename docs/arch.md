@@ -531,6 +531,10 @@ Flyway migrations in `src/main/resources/db/migration`:
 | `V1.3__Add_Uniqueness_And_Indexes.sql` | the composite unique constraints the services check in Java, and indexes on the filtered columns |
 | `V1.4__Add_Folder_Mirror.sql` | `folder`, plus the backfill that mirrors every category, sub-category and main tag into it |
 | `V1.5__Add_Folder_Grants.sql` | `role_folder`, `user_folder` |
+| `V2.0__Add_Permission_To_Folder_Grants.sql` | `permission` (READ / WRITE) on both grant tables |
+| `V2.1__Add_Api_Keys.sql` | `api_key`, `api_key_folder` |
+| `V2.2__Add_Storage_Key_To_File_Details.sql` | `file_details.storage_key`, backfilled from `relative_path` (roadmap 7.1) |
+| `V2.3__Add_Folder_To_File_Info.sql` | `file_info.folder_id`, nullable, indexed, backfilled to the folder mirroring the file's main tag; written on every upload, read by nothing yet (roadmap 7.2 step 1) |
 
 `V1.3` turns four rules that lived only in application code into constraints: a sub-category name is
 unique per category, a main-tag name per sub-category, a file name per sub-category, and a
