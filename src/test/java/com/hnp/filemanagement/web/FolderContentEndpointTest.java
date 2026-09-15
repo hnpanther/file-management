@@ -16,6 +16,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -46,18 +47,18 @@ class FolderContentEndpointTest extends MySqlSupport {
     }
 
     /**
-     * An anonymous caller is redirected to the login page, not refused with a status a client can
-     * read — the browser chain has one form-login entry point and it does not look at whether the
-     * request was a {@code fetch}. Asserted because it is what a screen built on this endpoint will
-     * actually meet when a session expires, and it has to be handled rather than reported as a load
-     * failure ({@code docs/issues.md}, issue 77).
+     * An anonymous script call is refused with a status it can read, not redirected to the login
+     * page. It used to be a redirect: {@code fetch} followed it and handed the caller the login
+     * page's HTML with a 200, which {@code response.json()} reported as a parse error
+     * ({@code docs/issues.md}, issue 77 - fixed by a second entry point on the browser chain).
      */
     @Test
-    void anonymousCallersAreSentToLoginRatherThanRefused() throws Exception {
+    void anonymousScriptCallsAre401NotARedirect() throws Exception {
         mockMvc.perform(get("/resource/folders/children")
                         .header("X-Requested-With", "XMLHttpRequest")
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().is3xxRedirection());
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist("Location"));
     }
 
     @Test

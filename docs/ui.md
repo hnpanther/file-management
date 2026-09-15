@@ -140,7 +140,23 @@ JavaScript is gone, so `data-bs-*` attributes do nothing; use Alpine instead:
 Always pair `x-show` with `x-cloak`, or the element flashes before Alpine initialises.
 
 `static/js/app.js` holds only what is genuinely global: active-navigation marking, the search-box
-Enter key, and `window.appCsrf()` for hand-written requests.
+Enter key, `window.appCsrf()` for hand-written requests, and `window.appSessionExpired()`.
+
+### An expired session
+
+A resource endpoint answers a script's call with `401` once the session has ended - never with a
+redirect to the login page (issue 77; the security chain tells a script from a person by
+`X-Requested-With: XMLHttpRequest` or an `Accept` that asks for JSON). Every jQuery page handles it
+for free: `app.js` registers one `ajaxError` hook that calls `window.appSessionExpired()`, which
+goes to `/login`. A page that uses `fetch` checks `response.status === 401` itself and calls the
+same function - or, like the explorer, shows its own message with a way back in, because it has
+state on screen worth keeping. Send both headers on every hand-written request:
+
+```js
+fetch(url, { headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" } })
+```
+
+Without them the request looks like a person navigating and gets the redirect.
 
 jQuery and Select2 are still loaded for page AJAX and dependent dropdowns that have not been
 converted to `fetch` + Alpine. They are transitional; remove them with their last consumer.

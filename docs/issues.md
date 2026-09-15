@@ -1065,6 +1065,16 @@ them.
 
 ### 77. An expired session answers a JSON `fetch` with a redirect to the login page — **S3**
 
+> **Fixed.** The browser chain has a second entry point: a request that a script made -
+> `X-Requested-With: XMLHttpRequest`, or an `Accept` asking for JSON and not HTML - is answered
+> `401` with no `Location`; a person navigating still gets `/login`. The predicate is the one the
+> request cache already used (`SecurityConfig.isScriptCall`), so the two behaviours cannot drift.
+> On the client, `app.js` registers one jQuery `ajaxError` hook that sends a `401` to `/login`,
+> the tree does the same on its `fetch`, and the explorer keeps its in-page message. Pinned by
+> `AuthenticationRedirectTest.anExpiredSessionIs401ForAScriptAndTheLoginPageForAPerson` and
+> `FolderContentEndpointTest.anonymousScriptCallsAre401NotARedirect` (which asserted the old
+> behaviour until now).
+
 The browser chain has one entry point for unauthenticated requests
 (`SecurityConfig.formLogin`), and it does not look at whether the request came from a page
 navigation or from a script. So a `fetch` to `/resource/**` made after the session has expired is

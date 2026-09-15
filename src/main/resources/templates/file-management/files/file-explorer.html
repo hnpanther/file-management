@@ -378,11 +378,11 @@
     }
 
     /**
-     * An expired session is not an error status. The browser security chain answers an
+     * An expired session used to arrive as a redirect. The browser security chain answered an
      * unauthenticated request with a redirect to the login page whatever the request asked for, so
      * `fetch` follows it and hands back the login page's HTML with a 200 - `response.ok` is true and
-     * `response.json()` then fails with "Unexpected token '<'". Reported as what it is instead.
-     * See docs/issues.md, issue 77.
+     * `response.json()` then failed with "Unexpected token '<'". The chain now answers a script
+     * with 401 (issue 77); this reports it as what it is, with a way back in.
      */
     class SessionExpiredError extends Error {
     }
@@ -393,7 +393,11 @@
             credentials: "same-origin",
             redirect: "follow"
         });
-        if (response.redirected || !(response.headers.get("content-type") || "").includes("json")) {
+        // 401 is what the security chain answers a script with once the session has ended
+        // (issue 77). The redirect check stays as a second line: a proxy in front could still
+        // turn it into a login page.
+        if (response.status === 401 || response.redirected
+                || !(response.headers.get("content-type") || "").includes("json")) {
             throw new SessionExpiredError();
         }
         if (!response.ok) {

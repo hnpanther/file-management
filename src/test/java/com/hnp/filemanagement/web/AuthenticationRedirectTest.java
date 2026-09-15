@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -67,6 +68,35 @@ class AuthenticationRedirectTest extends MySqlSupport {
     @Test
     void anonymousRequestForAProtectedPageIsSentToLogin() throws Exception {
         mockMvc.perform(get("/users").accept(MediaType.TEXT_HTML))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/login"));
+    }
+
+    // ---------------------------------------------------------------- scripts get a status, people get the page
+
+    /**
+     * The same endpoint, two callers (issue 77). A person navigating is sent to the login page; a
+     * page's script - jQuery's header, or a plain {@code fetch} that asks for JSON - gets a 401 it
+     * can act on. Both in one test so the distinction, not just one side of it, is what is pinned.
+     */
+    @Test
+    void anExpiredSessionIs401ForAScriptAndTheLoginPageForAPerson() throws Exception {
+        mockMvc.perform(get("/resource/general-tags")
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist("Location"));
+
+        mockMvc.perform(get("/resource/general-tags").accept(MediaType.APPLICATION_JSON))
+                // a fetch that asks only for JSON is a script even without jQuery's header
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/users").accept(MediaType.TEXT_HTML))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/login"));
+
+        mockMvc.perform(get("/users"))
+                // no Accept header at all is a person, or a tool acting as one
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/login"));
     }

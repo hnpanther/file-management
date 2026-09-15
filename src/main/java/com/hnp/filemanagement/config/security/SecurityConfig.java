@@ -21,9 +21,13 @@ import org.springframework.security.web.authentication.www.BasicAuthenticationFi
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.savedrequest.RequestCache;
 import org.springframework.security.web.util.matcher.AndRequestMatcher;
+import org.springframework.security.web.util.matcher.AnyRequestMatcher;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
@@ -172,7 +176,18 @@ public class SecurityConfig {
                                 .permitAll()
                 )
                 .requestCache(cache -> cache.requestCache(pageOnlyRequestCache()))
-                .exceptionHandling(ex -> ex.accessDeniedPage("/access-denied"))
+                .exceptionHandling(ex -> ex
+                        .accessDeniedPage("/access-denied")
+                        // Two entry points, chosen by what made the request (issue 77). A script
+                        // calling a resource endpoint after the session ended gets a 401 it can
+                        // read; a person navigating gets the login page as before. Registered in
+                        // this order on purpose: the first mapping is also the fallback, and the
+                        // second matches everything, so form login's own registration is never
+                        // consulted - but the redirect it would have sent is exactly this one.
+                        .defaultAuthenticationEntryPointFor(
+                                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED), SecurityConfig::isScriptCall)
+                        .defaultAuthenticationEntryPointFor(
+                                new LoginUrlAuthenticationEntryPoint("/login"), AnyRequestMatcher.INSTANCE))
                 .authenticationManager(authenticationManager)
                 .build();
 
@@ -180,6 +195,23 @@ public class SecurityConfig {
     }
 
 
+
+    /**
+     * A request made by a page's script rather than by a person navigating: jQuery sets
+     * {@code X-Requested-With} on every {@code $.ajax} call and the {@code fetch} calls in the
+     * templates set it by hand; a request that asks for JSON and not for HTML is one as well.
+     *
+     * <p>One predicate, two uses: such a request is never remembered for after login (it would
+     * dump the person on raw JSON), and it is answered {@code 401} rather than redirected when the
+     * session has ended (a redirect would hand the script the login page with a {@code 200}).
+     */
+    private static boolean isScriptCall(HttpServletRequest request) {
+        if ("XMLHttpRequest".equals(request.getHeader("X-Requested-With"))) {
+            return true;
+        }
+        String accept = request.getHeader("Accept");
+        return accept != null && accept.contains("application/json") && !accept.contains("text/html");
+    }
 
     /**
      * Spring Security replays whatever request triggered the login prompt. Left unfiltered that can
@@ -200,12 +232,7 @@ public class SecurityConfig {
                         PathPatternRequestMatcher.pathPattern("/favicon.ico"),
                         PathPatternRequestMatcher.pathPattern("/login"),
                         PathPatternRequestMatcher.pathPattern("/logout"))),
-                // jQuery sets this on every $.ajax call, so it rules out the UI's own REST traffic.
-                request -> !"XMLHttpRequest".equals(request.getHeader("X-Requested-With")),
-                request -> {
-                    String accept = request.getHeader("Accept");
-                    return accept == null || accept.contains("text/html");
-                });
+                request -> !isScriptCall(request));
 
         HttpSessionRequestCache requestCache = new HttpSessionRequestCache();
         requestCache.setRequestMatcher(pageNavigation);
