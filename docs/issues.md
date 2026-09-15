@@ -939,6 +939,11 @@ the row belongs to.
 > automatically get `REST_SEARCH_FILE_TREE` — `FileManagementApplication`'s seeding only inserts
 > the row, it does not grant it to any role. Grant it through the roles admin page to whichever
 > roles should see the search box (`ADMIN` is unaffected: its `@PreAuthorize` bypass is unconditional).
+>
+> **The tag side is now in place** (roadmap 7.2 step 2, `V2.4`): a sub-category and a main tag
+> both named `HSED` under one general tag are a single tag, carried once by every file under
+> either. The two *places* remain distinct — that is the folder tree's job — and nothing reads
+> the tags yet, so the tree looks the same until step 3.
 
 The user reported a second "missing" file after 71/72 (`file_info` id 1578) and it is the same
 shape as the first, not a regression: `file_info.id = 1578` has `main_tag_file_id = 136`

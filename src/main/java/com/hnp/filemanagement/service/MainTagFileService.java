@@ -50,19 +50,22 @@ public class MainTagFileService {
     private final FileSubCategoryService fileSubCategoryService;
     private final ActionHistoryService actionHistoryService;
     private final FolderMirrorService folderMirrorService;
+    private final TagMirrorService tagMirrorService;
 
     public MainTagFileService(MainTagFileRepository mainTagFileRepository,
                               FileInfoRepository fileInfoRepository,
                               UserRepository userRepository,
                               FileSubCategoryService fileSubCategoryService,
                               ActionHistoryService actionHistoryService,
-                              FolderMirrorService folderMirrorService) {
+                              FolderMirrorService folderMirrorService,
+                              TagMirrorService tagMirrorService) {
         this.mainTagFileRepository = mainTagFileRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.userRepository = userRepository;
         this.fileSubCategoryService = fileSubCategoryService;
         this.actionHistoryService = actionHistoryService;
         this.folderMirrorService = folderMirrorService;
+        this.tagMirrorService = tagMirrorService;
     }
 
     @Transactional
@@ -148,8 +151,10 @@ public class MainTagFileService {
 
         mainTagFile.setUpdatedBy(userRepository.getReferenceById(principalId));
 
-        // The one level whose directory-safe name can change, so this can move the folder's name.
+        // The one level whose directory-safe name can change, so this can move the folder's name -
+        // and, since a file's tags are derived from the names above it, re-derive them.
         folderMirrorService.renamed(mainTagFile);
+        tagMirrorService.retagFilesUnder(mainTagFile);
 
         actionHistoryService.saveActionHistory(EntityEnum.MainTagFile, mainTagFileDTO.getId(),
                 ActionEnum.UPDATE_VALUES, principalId, "UPDATE MAIN_TAG_FILE", "UPDATE MAIN_TAG_FILE");

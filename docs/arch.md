@@ -104,6 +104,35 @@ arbitrary depth.
   `FolderMirrorReconciliationTest` is what proves the mirror describes the *whole* taxonomy, and it
   runs on every build.
 
+### What a file is attached to, during Phase 7
+
+Phase 7 separates *where a file is* from *what it is about*. Both halves already exist on every
+file, written alongside the taxonomy keys and read by nothing yet (roadmap 7.2 steps 1–2); step 3
+moves the readers over.
+
+```
+FileInfo ──N:1──> Folder            file_info.folder_id   the folder mirroring its main tag   (V2.3)
+FileInfo ──N:M──> Tag ──N:1──> TagGroup                   its category, sub-category and       (V2.4)
+                  file_tag           tag / tag_group      main tag as labels, in the group of
+                                                          its general tag
+```
+
+* **The folder** is `FolderMirrorService.folderOf(mainTag)` — get-or-create, so an upload into a
+  tag written behind the services heals the mirror rather than storing a null. The foreign key is
+  `RESTRICT`: a folder with files in it cannot be deleted by any route.
+* **The tags** are written by `TagMirrorService`, the one writer of `tag_group`, `tag` and
+  `file_tag` while the taxonomy is authoritative, with the same rules as the folder mirror
+  (`MANDATORY` transaction, get-or-create). A file's tags are a *function of its taxonomy* —
+  `retag(file)` makes the set exactly that — and are re-derived on the one input that can change,
+  a main-tag rename.
+* **A tag is a label, not a place.** Unique by `(group, name)`; a sub-category and a main tag both
+  named `HSED` under one general tag are *one* tag, carried once. The files are still told apart
+  by their folders. Titles are copied at creation and not followed (which of the merged rows'
+  labels should win has no answer until tags are edited as tags, step 5).
+* **Both are reconciled on every build**: `FileInfoRepository.findRowsWhoseFolderDisagreesWithTheMirror`
+  and `findIdsWhoseTagsDisagreeWithTheTaxonomy` must be empty (`FileFolderLinkTest`, `FileTagTest`),
+  and each migration's backfill is the statement the test runs, cut out of the file.
+
 ### How the entities are mapped
 
 Four rules hold across every entity, and each replaced something that was actively wrong.
@@ -535,6 +564,7 @@ Flyway migrations in `src/main/resources/db/migration`:
 | `V2.1__Add_Api_Keys.sql` | `api_key`, `api_key_folder` |
 | `V2.2__Add_Storage_Key_To_File_Details.sql` | `file_details.storage_key`, backfilled from `relative_path` (roadmap 7.1) |
 | `V2.3__Add_Folder_To_File_Info.sql` | `file_info.folder_id`, nullable, indexed, backfilled to the folder mirroring the file's main tag; written on every upload, read by nothing yet (roadmap 7.2 step 1) |
+| `V2.4__Add_Tags.sql` | `tag_group` (one per general tag), `tag` (unique per group), `file_tag`; backfilled from the three levels beneath each general tag, names merging within a group; re-runnable (roadmap 7.2 step 2) |
 
 `V1.3` turns four rules that lived only in application code into constraints: a sub-category name is
 unique per category, a main-tag name per sub-category, a file name per sub-category, and a

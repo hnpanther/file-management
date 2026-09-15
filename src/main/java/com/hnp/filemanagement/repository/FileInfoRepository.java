@@ -262,4 +262,30 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
                OR d.sourceId <> f.mainTagFile.id
             """)
     List<FileInfo> findRowsWhoseFolderDisagreesWithTheMirror();
+
+    /**
+     * The files whose tags are not exactly the ones their taxonomy says (roadmap 7.2, step 2):
+     * a tag missing, a tag too many, or a tag from the wrong group. Empty is the only acceptable
+     * answer, and {@code FileTagTest} asks on every build. Native, and the same statement
+     * migration {@code V2.4} documents for production, because the comparison is between two
+     * counts and a set membership, which JPQL expresses badly.
+     */
+    @Query(value = """
+            SELECT fi.id
+            FROM file_info fi
+                JOIN main_tag_file mt ON mt.id = fi.main_tag_file_id
+                JOIN file_sub_category sc ON sc.id = mt.file_sub_category_id
+                JOIN file_category c ON c.id = sc.file_category_id
+                JOIN general_tag gt ON gt.id = c.general_tag_id
+                LEFT JOIN tag_group g ON g.name = gt.tag_name
+            WHERE g.id IS NULL
+               OR (SELECT COUNT(*) FROM file_tag ft WHERE ft.file_info_id = fi.id)
+                  <> (SELECT COUNT(DISTINCT t.id) FROM tag t
+                      WHERE t.group_id = g.id AND t.name IN (c.category_name, sc.sub_category_name, mt.tag_name))
+               OR EXISTS (SELECT 1 FROM file_tag ft JOIN tag t ON t.id = ft.tag_id
+                          WHERE ft.file_info_id = fi.id
+                            AND (t.group_id <> g.id
+                                 OR t.name NOT IN (c.category_name, sc.sub_category_name, mt.tag_name)))
+            """, nativeQuery = true)
+    List<Integer> findIdsWhoseTagsDisagreeWithTheTaxonomy();
 }
