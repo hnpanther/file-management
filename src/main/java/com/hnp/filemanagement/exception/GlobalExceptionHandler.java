@@ -17,6 +17,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.ModelAndView;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -155,6 +156,23 @@ public class GlobalExceptionHandler {
             return ResponseEntity.notFound().build();
         }
         return htmlError(HttpStatus.NOT_FOUND, message("error.notFound"));
+    }
+
+    /**
+     * The client hung up while the bytes were going out. Not an error on this side, and not one
+     * that can be answered: the response is already committed.
+     *
+     * <p>A PDF preview does this every time - Chrome's viewer drops the first request as soon as
+     * it has the header and re-requests with {@code Range} - and it used to produce two stack
+     * traces per preview: this exception logged at ERROR as "unhandled", and then an
+     * {@code IllegalStateException} from trying to render the HTML error page onto a stream that
+     * had already been written to. Spring wraps Tomcat's {@code ClientAbortException} in this type
+     * before it reaches an advice, so this is the one to catch.
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void clientWentAway(AsyncRequestNotUsableException e, HttpServletRequest request) {
+        logger.debug("client closed the connection during {} {}: {}", request.getMethod(),
+                GlobalGeneralLogging.fullPath(request), e.getMessage());
     }
 
     /**

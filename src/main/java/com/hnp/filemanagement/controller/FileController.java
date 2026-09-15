@@ -296,6 +296,7 @@ public class FileController {
     @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
     public ResponseEntity<?> downloadFile(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("fileInfoId") int fileInfoId,
                                                 @PathVariable("fileDetailsId") int fileDetailsId,
+                                                @RequestParam(value = "inline", required = false) String inline,
                                                 HttpServletRequest request) {
 
         int principalId = userDetails.getId();
@@ -307,7 +308,11 @@ public class FileController {
 
         FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId, principalId);
         String contentType = fileDownloadDTO.getContentType();
-        String header = "attachment; filename=\"" + fileDownloadDTO.getFileName() + "\"";
+
+        // The same preview the public page has: inline lets the browser show a PDF or an image in
+        // the tab instead of saving it. The bytes and the permission are the same either way.
+        String disposition = "1".equals(inline) ? "inline" : "attachment";
+        String header = disposition + "; filename=\"" + fileDownloadDTO.getFileName() + "\"";
 
 
 
