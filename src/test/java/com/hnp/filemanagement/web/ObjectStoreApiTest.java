@@ -35,6 +35,7 @@ import java.util.List;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -78,12 +79,15 @@ class ObjectStoreApiTest extends MySqlSupport {
     private GeneralTagRepository generalTagRepository;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private com.hnp.filemanagement.repository.FileInfoRepository fileInfoRepository;
 
     private int creatorId;
     private String bucket;
     private String prefix;
     private int tagFolderId;
     private int otherTagFolderId;
+    private String otherTagName;
 
     /** One category (the bucket), one sub-category, two tags — one to reach and one to be refused. */
     @BeforeEach
@@ -118,7 +122,8 @@ class ObjectStoreApiTest extends MySqlSupport {
 
         String tagName = createTag(categoryId, subCategoryId);
         tagFolderId = folderIdOfTag(tagName);
-        otherTagFolderId = folderIdOfTag(createTag(categoryId, subCategoryId));
+        otherTagName = createTag(categoryId, subCategoryId);
+        otherTagFolderId = folderIdOfTag(otherTagName);
 
         prefix = subCategory.getSubCategoryName() + "/" + tagName;
     }
@@ -166,6 +171,15 @@ class ObjectStoreApiTest extends MySqlSupport {
                 .andExpect(header().string("x-fm-version", "1"))
                 .andExpect(content().string("hello"));
 
+        mockMvc.perform(head("/api/v2/" + bucket + "/" + storedKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-fm-version", "1"))
+                .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, "5"))
+                .andExpect(header().exists(HttpHeaders.ETAG))
+                .andExpect(header().exists(HttpHeaders.LAST_MODIFIED))
+                .andExpect(content().string(""));
+
         // 4. A second write is a second version, not an overwrite.
         mockMvc.perform(put("/api/v2/" + bucket + "/" + writeKey)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential)
@@ -206,8 +220,86 @@ class ObjectStoreApiTest extends MySqlSupport {
         mockMvc.perform(put("/api/v2/" + bucket + "/" + prefix + "/report/v1/report.txt")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential)
                         .contentType(MediaType.TEXT_PLAIN).content("second".getBytes(StandardCharsets.UTF_8)))
-                .andExpect(status().is4xxClientError())
+                .andExpect(status().isConflict())
                 .andExpect(content().string(containsString("cannot be replaced")));
+    }
+
+    /**
+     * File names are unique per sub-category, not per tag folder. The first version of this
+     * checked write access on the folder in the key, then appended the version to the file that
+     * owns the name - under a sibling folder - and answered 404 for the key it had just written.
+     * The conflict has to come before anything is stored.
+     */
+    @Test
+    @DisplayName("a name already taken under a sibling folder is a conflict, not a write elsewhere")
+    void aNameTakenUnderASiblingFolderIsAConflict() throws Exception {
+        String credential = keyWith(tagFolderId + ":WRITE", otherTagFolderId + ":WRITE");
+        String otherPrefix = prefix.substring(0, prefix.indexOf('/')) + "/" + otherTagName;
+
+        mockMvc.perform(put("/api/v2/" + bucket + "/" + prefix + "/report/report.txt")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential)
+                        .contentType(MediaType.TEXT_PLAIN).content("a".getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(put("/api/v2/" + bucket + "/" + otherPrefix + "/report/report.txt")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential)
+                        .contentType(MediaType.TEXT_PLAIN).content("b".getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isConflict())
+                .andExpect(content().string(containsString("another folder")));
+
+        mockMvc.perform(get("/api/v2/" + bucket + "/" + prefix + "/report/v2/report.txt")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
+                // nothing was appended to the file that owns the name
+                .andExpect(status().isNotFound());
+    }
+
+    /**
+     * The key is taken from the URL <em>decoded</em>. The first version sliced it out of the raw
+     * request line, so a Persian file name - which this installation is full of - was stored as
+     * {@code %DA%AF%D8%B2…}, on disk and in {@code file_info}, and could then only be read back
+     * by sending the percent-encoded form.
+     */
+    @Test
+    @DisplayName("a key with non-ASCII characters is stored and read back as written")
+    void aNonAsciiKeyIsStoredAsWritten() throws Exception {
+        String credential = keyWith(tagFolderId + ":WRITE");
+        String name = "گزارش"; // Persian for "report"
+
+        mockMvc.perform(put("/api/v2/" + bucket + "/" + prefix + "/" + name + "/" + name + ".txt")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential)
+                        .contentType(MediaType.TEXT_PLAIN).content("x".getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.key").value(prefix + "/" + name + "/v1/" + name + ".txt"));
+
+        mockMvc.perform(get("/api/v2/" + bucket + "/" + prefix + "/" + name + "/v1/" + name + ".txt")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
+                .andExpect(status().isOk())
+                .andExpect(content().string("x"));
+
+        org.assertj.core.api.Assertions.assertThat(fileInfoRepository.findAll())
+                .extracting(com.hnp.filemanagement.entity.FileInfo::getFileName)
+                .contains(name)
+                .noneMatch(stored -> stored.contains("%"));
+    }
+
+    /** What the roadmap promises of a download: {@code Range}, {@code Last-Modified}, {@code ETag}. */
+    @Test
+    @DisplayName("a download honours Range and carries the caching headers")
+    void aDownloadHonoursRange() throws Exception {
+        String credential = keyWith(tagFolderId + ":WRITE");
+        mockMvc.perform(put("/api/v2/" + bucket + "/" + prefix + "/report/report.txt")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential)
+                        .contentType(MediaType.TEXT_PLAIN).content("hello".getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v2/" + bucket + "/" + prefix + "/report/v1/report.txt")
+                        .header(HttpHeaders.RANGE, "bytes=1-2")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
+                .andExpect(status().isPartialContent())
+                .andExpect(header().string(HttpHeaders.CONTENT_RANGE, "bytes 1-2/5"))
+                .andExpect(header().exists(HttpHeaders.LAST_MODIFIED))
+                .andExpect(header().exists(HttpHeaders.ETAG))
+                .andExpect(content().string("el"));
     }
 
     // ---------------------------------------------------------------- listing

@@ -1,0 +1,6 @@
+This is the file the client example uploads.
+
+Each upload of this file through the v2 API becomes the next version of the object
+- v1, then v2, and so on - and never overwrites an earlier one.
+
+Change this text and run the client again to see a new version appear.

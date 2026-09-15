@@ -113,8 +113,15 @@ class OpenApiDocumentTest extends MySqlSupport {
         mockMvc.perform(get("/api-docs/v2-object-store").with(user(principal(PermissionEnum.ADMIN))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/v2/{bucket}']").exists())
-                .andExpect(jsonPath("$.paths['/api/v2/{bucket}/**'].put").exists())
-                .andExpect(jsonPath("$.paths['/api/v2/{bucket}/**'].delete").exists())
+                .andExpect(jsonPath("$.paths['/api/v2/{bucket}/{key}'].put").exists())
+                .andExpect(jsonPath("$.paths['/api/v2/{bucket}/{key}'].delete").exists())
+                .andExpect(jsonPath("$.paths['/api/v2/{bucket}/{key}'].head").exists())
+                // The download shares its path and method with the ?metadata twin; the document
+                // holds one operation per pair, and it must be the download that is described.
+                .andExpect(jsonPath("$.paths['/api/v2/{bucket}/{key}'].get.summary").value(Matchers.containsString("Download")))
+                .andExpect(jsonPath("$.paths['/api/v2/{bucket}/{key}'].get.responses['206']").exists())
+                .andExpect(jsonPath("$.paths['/api/v2/{bucket}/{key}'].put.requestBody.content['application/octet-stream']").exists())
+                .andExpect(jsonPath("$.paths['/api/v2/{bucket}/{key}'].put.responses['409']").exists())
                 .andExpect(jsonPath("$.components.securitySchemes.apiKey.scheme").value("bearer"));
     }
 

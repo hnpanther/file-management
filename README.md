@@ -93,7 +93,7 @@ Produces `target/file-management.jar`, a self-contained executable:
 java -jar target/file-management.jar
 ```
 
-(A container image is still [Phase 1](docs/roadmap.md#phase-1--platform-upgrade).)
+(A container image is still outstanding from [Phase 1](docs/roadmap.md#phase-1--platform-upgrade--done).)
 
 ## Running the tests
 
