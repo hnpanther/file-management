@@ -15,7 +15,7 @@ working, and to depend only on what came before.
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done** |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**, enforced by default |
-| 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | 7.1 and 7.2 step 1 **done** |
+| 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | 7.1 and 7.2 steps 1–2 **done** |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
 
@@ -803,7 +803,7 @@ Each is independently shippable, and only the fourth cannot be undone.
 |---|---|---|---|
 | 0 | `file_details.storage_key`, backfilled from `relative_path`; adapter maps key → path — **done** | `V2.2` | an unused column |
 | 1 | `file_info.folder_id`, nullable, backfilled to the folder mirroring the file's main tag; written alongside the old foreign keys — **done** | `V2.3` | an unused column |
-| 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under | `V2.4` | `DROP TABLE` |
+| 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under — **done** | `V2.4` | `DROP TABLE` |
 | 3 | **Reads move to the folder**: tree, upload, file list, search | — | revert the code |
 | 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` | `V2.5` | ⚠️ **none** |
 | 5 | Folder operations: create, rename, move, delete — and drag-and-drop | `V2.x` | — |
@@ -816,6 +816,15 @@ Each is independently shippable, and only the fourth cannot be undone.
 > on every build. The foreign key is `RESTRICT`, so a folder with files in it cannot be deleted by
 > any route. Nothing reads the column: the whole suite, `RestContractTest` included, passed
 > without another line changing, which is the test of "no behaviour change". `FileFolderLinkTest`.
+>
+> **Step 2 done.** `TagMirrorService` is the one writer, shaped like `FolderMirrorService`. A
+> file's tags are a function of its taxonomy — category, sub-category and main tag, in the group
+> of its general tag — re-derived on upload and on a main-tag rename, the one name that changes.
+> The migration's three backfill statements skip what exists, so they double as a repair script,
+> and `FileTagTest` runs them (cut out of the file) against files it has stripped of their tags,
+> group and all, then runs them again to prove the second pass is a no-op. The v1 API round trip
+> is asserted unchanged in the same test. Two things were decided while doing it, both recorded
+> in §7.3 below.
 
 Steps 0–2 only add data and change no behaviour, so they can ship early and sit in production while
 step 3 is written. Step 3 is where the application actually changes. Step 4 should follow only after
@@ -835,9 +844,19 @@ file_tag  (file_info_id, tag_id, PRIMARY KEY (file_info_id, tag_id))
 every tag row, and the four levels being collapsed are visibly of different kinds (a general tag is
 not the same sort of label as a main tag). `general_tag` becomes a `tag_group`.
 
-A tag name is unique across the system, which incidentally closes
+A tag name is unique **within its group**, which incidentally closes
 [issue 73](issues.md#73-main-tags-under-ims_document_system-reuse-the-exact-names-of-unrelated-sibling-sub-categories--s2):
-there can no longer be two different "HSED" in two different branches, because a tag is not a place.
+there can no longer be two different "HSED" in two different branches of one general tag, because a
+tag is not a place.
+
+> **As built (step 2), two refinements to the above.** First, uniqueness is per group rather than
+> system-wide: with one group per general tag, `IMS / HSED` and some other general tag's `HSED`
+> are labels in two different organisational scopes, and merging across them would fold two
+> unrelated things into one on the strength of a spelling. `UNIQUE (group_id, name)` is what the
+> table says. Second, when several taxonomy rows merge into one tag the title comes from the
+> highest level that carries the name (category, then sub-category, then main tag, then the lowest
+> id) — deterministic, so the migration's pre-flight query shows exactly what it will write — and
+> is not followed afterwards. `V2.4` documents the query that lists every merge before deploying.
 
 ### 7.4 What has to be dealt with, and will hurt if it is not
 

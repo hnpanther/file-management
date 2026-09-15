@@ -91,6 +91,7 @@ public class FileService {
     private final ActionHistoryService actionHistoryService;
     private final FolderAccessService folderAccessService;
     private final FolderMirrorService folderMirrorService;
+    private final TagMirrorService tagMirrorService;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileDetailsRepository fileDetailsRepository,
@@ -99,7 +100,8 @@ public class FileService {
                        MainTagFileService mainTagFileService,
                        ActionHistoryService actionHistoryService,
                        FolderAccessService folderAccessService,
-                       FolderMirrorService folderMirrorService) {
+                       FolderMirrorService folderMirrorService,
+                       TagMirrorService tagMirrorService) {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
@@ -108,6 +110,7 @@ public class FileService {
         this.actionHistoryService = actionHistoryService;
         this.folderAccessService = folderAccessService;
         this.folderMirrorService = folderMirrorService;
+        this.tagMirrorService = tagMirrorService;
     }
 
     // ------------------------------------------------------------------ upload
@@ -165,8 +168,9 @@ public class FileService {
         fileInfo.setCreatedBy(userRepository.getReferenceById(principalId));
         fileInfo.setMainTagFile(mainTagFile);
         fileInfo.setFileSubCategory(subCategory);
-        // Written alongside the taxonomy keys, read by nothing yet (roadmap 7.2, step 1).
+        // Written alongside the taxonomy keys, read by nothing yet (roadmap 7.2, steps 1 and 2).
         fileInfo.setFolder(folderMirrorService.folderOf(mainTagFile));
+        tagMirrorService.retag(fileInfo);
 
         FileDetails fileDetails = newFileDetails(fileInfo, multipartFile, 1, "V1",
                 fileInfoDTO.getDescription(), principalId);

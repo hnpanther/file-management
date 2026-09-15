@@ -5,6 +5,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
@@ -12,7 +14,9 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * A logical file: one name, filed under one sub-category and one main tag, with a description and
@@ -89,6 +93,20 @@ public class FileInfo extends AuditableEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "folder_id")
     private Folder folder;
+
+    /**
+     * What this file is about (roadmap 7.2, step 2): the category, sub-category and main tag it
+     * sits under, as tags - deduplicated, because two of those can carry one name.
+     *
+     * <p>Derived from the taxonomy by {@code TagMirrorService.retag} on every upload and on every
+     * main-tag rename, and read by nothing yet. A plain join table rather than an entity of its
+     * own: a row here has no attributes, and replacing the set wholesale is what a resync does.
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "file_tag",
+            joinColumns = @JoinColumn(name = "file_info_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id"))
+    private Set<Tag> tags = new HashSet<>();
 
     @OneToMany(
             fetch = FetchType.LAZY,
