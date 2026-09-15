@@ -79,6 +79,17 @@ public class FileInfo extends AuditableEntity {
     @JoinColumn(name = "main_tag_file_id", nullable = false)
     private MainTagFile mainTagFile;
 
+    /**
+     * The folder this file is in (roadmap 7.2, step 1): the one mirroring {@code mainTagFile}.
+     *
+     * <p>Written alongside the two taxonomy keys above and, for now, read by nothing - step 3 is
+     * where the readers move over. Nullable until step 4 makes it the only structure; a null here on
+     * a row written after {@code V2.3} is a fault, and {@code FileFolderLinkTest} is what finds it.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "folder_id")
+    private Folder folder;
+
     @OneToMany(
             fetch = FetchType.LAZY,
             cascade = CascadeType.ALL,

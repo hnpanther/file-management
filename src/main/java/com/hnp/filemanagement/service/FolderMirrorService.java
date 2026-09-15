@@ -111,6 +111,18 @@ public class FolderMirrorService {
         delete(FolderSourceType.MAIN_TAG, mainTagId);
     }
 
+    /**
+     * The folder a file under this tag belongs in (roadmap 7.2, step 1).
+     *
+     * <p>Get-or-create like everything else here, and for the same reason: a tag written behind the
+     * services has no mirror, and an upload into it must link the file to a folder that exists
+     * rather than fail or store a null. Healing the ancestry on the spot is what "the mirror must
+     * never break the thing it mirrors" means for a file.
+     */
+    public Folder folderOf(MainTagFile mainTag) {
+        return mirrorOf(mainTag);
+    }
+
     // ------------------------------------------------------------------ the root
 
     /**

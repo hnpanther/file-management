@@ -90,6 +90,7 @@ public class FileService {
     private final MainTagFileService mainTagFileService;
     private final ActionHistoryService actionHistoryService;
     private final FolderAccessService folderAccessService;
+    private final FolderMirrorService folderMirrorService;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileDetailsRepository fileDetailsRepository,
@@ -97,7 +98,8 @@ public class FileService {
                        FileStorageService fileStorageService,
                        MainTagFileService mainTagFileService,
                        ActionHistoryService actionHistoryService,
-                       FolderAccessService folderAccessService) {
+                       FolderAccessService folderAccessService,
+                       FolderMirrorService folderMirrorService) {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
@@ -105,6 +107,7 @@ public class FileService {
         this.mainTagFileService = mainTagFileService;
         this.actionHistoryService = actionHistoryService;
         this.folderAccessService = folderAccessService;
+        this.folderMirrorService = folderMirrorService;
     }
 
     // ------------------------------------------------------------------ upload
@@ -162,6 +165,8 @@ public class FileService {
         fileInfo.setCreatedBy(userRepository.getReferenceById(principalId));
         fileInfo.setMainTagFile(mainTagFile);
         fileInfo.setFileSubCategory(subCategory);
+        // Written alongside the taxonomy keys, read by nothing yet (roadmap 7.2, step 1).
+        fileInfo.setFolder(folderMirrorService.folderOf(mainTagFile));
 
         FileDetails fileDetails = newFileDetails(fileInfo, multipartFile, 1, "V1",
                 fileInfoDTO.getDescription(), principalId);

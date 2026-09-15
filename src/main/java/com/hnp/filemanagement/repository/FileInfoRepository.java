@@ -248,4 +248,18 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
                                          @Param("term") String term,
                                          @Param("mainTagIds") Collection<Integer> mainTagIds,
                                          Pageable pageable);
+
+    /**
+     * The files whose folder is not the one mirroring their main tag - or is missing (roadmap 7.2,
+     * step 1). Empty is the only acceptable answer, and {@code FileFolderLinkTest} asks on every
+     * build; it is the same query migration {@code V2.3} documents for production.
+     */
+    @Query("""
+            SELECT f FROM FileInfo f
+            LEFT JOIN f.folder d
+            WHERE d IS NULL
+               OR d.sourceType <> com.hnp.filemanagement.entity.FolderSourceType.MAIN_TAG
+               OR d.sourceId <> f.mainTagFile.id
+            """)
+    List<FileInfo> findRowsWhoseFolderDisagreesWithTheMirror();
 }
