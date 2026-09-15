@@ -73,6 +73,25 @@
         };
     };
 
+    /**
+     * The session has ended (docs/issues.md, issue 77). A resource endpoint answers a script's
+     * call with 401 in that case, never with a redirect to the login page, so this is the one
+     * place that decides what a page does about it: go and sign in again. The explorer overrides
+     * this with an in-page message, because it has state worth keeping on screen.
+     */
+    window.appSessionExpired = function () {
+        window.location.assign("/login");
+    };
+
+    /** Every jQuery page gets the handling for free; fetch callers call appSessionExpired themselves. */
+    if (window.jQuery) {
+        window.jQuery(document).ajaxError(function (event, xhr) {
+            if (xhr && xhr.status === 401) {
+                window.appSessionExpired();
+            }
+        });
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
         markActiveNavigation();
         enableKeyboardSearch();

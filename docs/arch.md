@@ -425,6 +425,12 @@ the folder from environment variables and never holds a credential in the file.
   `_csrf` / `_csrf_header` from `<meta>` tags and set the header), form login at `/login`,
   logout at `/logout`. PermitAll list: `/`, `/favicon.ico`, `/webjars/**`, `/css/**`, `/js/**`,
   `/public-pages/**`, `/files/public-files/**`, `/files/public-download/**`.
+  **Two entry points for an unauthenticated request**, chosen by what made it
+  (`SecurityConfig.isScriptCall`): a script — `X-Requested-With: XMLHttpRequest`, or an `Accept`
+  that asks for JSON and not HTML — gets `401` and no `Location`; a person navigating is sent to
+  `/login` as before. The same predicate decides what is *not* remembered for replay after login.
+  Before the split, an expired session answered a `fetch` with a redirect the browser followed,
+  and the script received the login page's HTML with a `200` (issue 77).
 
 ### Authentication
 

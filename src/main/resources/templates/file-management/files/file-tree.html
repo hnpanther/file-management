@@ -269,6 +269,10 @@
                         headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
                         credentials: "same-origin"
                     });
+                    if (response.status === 401) {
+                        window.appSessionExpired();   // issue 77: the session has ended
+                        return;
+                    }
                     if (!response.ok) {
                         throw new TreeRequestError(response.status);
                     }
@@ -319,6 +323,10 @@
                         headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
                         credentials: "same-origin"
                     });
+                    if (response.status === 401) {
+                        window.appSessionExpired();   // issue 77: the session has ended
+                        return;
+                    }
                     if (!response.ok) {
                         throw new TreeRequestError(response.status);
                     }
