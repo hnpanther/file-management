@@ -88,10 +88,12 @@ public class FileTreeService {
         Map<Integer, Folder> folders = folderAccessService.foldersBySourceId(FolderSourceType.CATEGORY,
                 categories.stream().map(FileCategory::getId).toList());
 
+        // A category with no mirror row is skipped, not fatal: Map.entry refuses a null value, so
+        // the previous shape threw on the first orphan and took the whole page down with it.
         return categories.stream()
-                .map(category -> Map.entry(category, folders.get(category.getId())))
-                .filter(entry -> entry.getValue() != null && access.visible(entry.getValue().getPath()))
-                .map(entry -> toCategoryNode(entry.getKey(), entry.getValue().getId()))
+                .filter(category -> folders.containsKey(category.getId()))
+                .filter(category -> access.visible(folders.get(category.getId()).getPath()))
+                .map(category -> toCategoryNode(category, folders.get(category.getId()).getId()))
                 .toList();
     }
 

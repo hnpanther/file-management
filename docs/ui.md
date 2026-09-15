@@ -204,6 +204,22 @@ filesystem path. Never change the direction of an entire page or table to fix on
 Source-code comments and project documentation are written in English. Visible interface copy remains
 Persian unless a technical term must retain its established English form.
 
+### Dates
+
+Dates are shown in the Jalali (Solar Hijri) calendar with Persian digits, and the time alongside
+where the value has one - `1405/06/24 07:27`, rendered in Persian digits. The database and every
+DTO stay Gregorian; only the rendering changes, at the point of use.
+
+* Server-rendered pages call the `jalali` bean: `th:text="${@jalali.format(fd.getCreatedAt())}"`.
+  It is `JalaliDate` in `util/`, a port of the *jalaali-js* arithmetic with no dependency, and
+  returns an empty string for a missing value so a page never fails on one.
+* Pages that render from JSON in the browser (the explorer) use `Intl.DateTimeFormat("fa-IR")`,
+  which the browser ships with - no locale data is downloaded.
+
+Give a date cell `dir="ltr"`: the digits are Persian but the order of the parts is left-to-right.
+Never print a raw `LocalDateTime` into a template; the ISO form is what an unformatted value
+looks like, and `FilePreviewPageTest` fails the file page if one appears.
+
 ## Interface copy
 
 Persian copy lives in `src/main/resources/messages.properties`, beside `application.properties`.

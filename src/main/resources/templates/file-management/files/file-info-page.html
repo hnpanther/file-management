@@ -83,8 +83,8 @@
                                                         <div class="col">
                                                             <div class="form-group">
                                                                 <label th:text="#{field.createdAt}">تاریخ ایجاد</label>
-                                                                <input th:value="${file.getCreatedAt()}"
-                                                                       class="form-control change-date-input"
+                                                                <input th:value="${@jalali.format(file.getCreatedAt())}"
+                                                                       class="form-control change-date-input" dir="ltr"
                                                                        type="text" name="cerate-date"
                                                                         disabled>
                                                             </div>
@@ -226,13 +226,16 @@
                                             <td th:text="${fd.getVersion()}" class="text-nowrap align-middle"></td>
                                             <td th:text="${(fd.getFileSize() / 1024)}" class="text-nowrap align-middle"></td>
                                             <td th:text="${fd.getFileExtension()}" class="text-nowrap align-middle technical"></td>
-                                            <td th:text="${fd.getCreatedAt()}" class="text-nowrap align-middle"></td>
+                                            <td th:text="${@jalali.format(fd.getCreatedAt())}" class="text-nowrap align-middle" dir="ltr"></td>
                                             <td th:text="${fd.getCreatedBy()}" class="text-nowrap align-middle"></td>
 
                                             <td sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')" class="text-center align-middle">
                                                 <div class="btn-group align-top">
                                                     <a sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/' + ${fd.getId() + '/download'} }"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button" th:text="#{action.download}">دانلود</a>
+                                                    <a sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')" th:if="${fd.isPreviewable()}"
+                                                       th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/' + ${fd.getId()} + '/download?inline=1'}" target="_blank"
+                                                       class="btn btn-sm btn-outline-secondary badge" type="button" th:text="#{action.preview}">پیش‌نمایش</a>
                                                     <a sec:authorize="hasAuthority('REST_DELETE_FILE_DETAILS') || hasAuthority('ADMIN')" th:onclick="deleteFileDetails(/*[[${fd.getId()}]]*/, /*[[${file.getFileDetailsDTOS().size()}]]*/)"
                                                        class="btn btn-sm btn-outline-secondary badge" type="button" th:text="#{action.delete}">حذف</a>
                                                     <a sec:authorize="hasAuthority('SAVE_NEW_FILE_DETAILS_PAGE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=format&id=' + ${fd.getId()} + '&version-number=' + ${fd.getVersion()}}"
