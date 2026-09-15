@@ -122,10 +122,18 @@ class FileInfoRepositoryTest extends MySqlSupport {
         assertThat(Hibernate.isInitialized(page.getContent().getFirst().getMainTagFile())).isTrue();
     }
 
+    /**
+     * "Everything" is measured against the table, not assumed to be the one row this test made. The
+     * container is shared by the whole run, and the web tests that exercise the v2 API commit real
+     * {@code file_info} rows — so a fixed count passes or fails depending on which class ran first.
+     */
     @Test
     @DisplayName("a null search term matches everything")
     void aNullTermMatchesEverything() {
-        assertThat(underTest.search(null, PageRequest.of(0, 10)).getTotalElements()).isEqualTo(1);
+        var everything = underTest.search(null, PageRequest.of(0, Integer.MAX_VALUE));
+
+        assertThat(everything.getTotalElements()).isEqualTo(underTest.count());
+        assertThat(everything.getContent()).extracting(FileInfo::getId).contains(fileInfoId);
     }
 
     // ---------------------------------------------------------------- lastVersion

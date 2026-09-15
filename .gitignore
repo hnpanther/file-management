@@ -48,3 +48,6 @@ logs/
 # node_modules is a local toolchain cache; package-lock.json is committed so the CSS can be
 # regenerated from the exact same dependency tree (npm ci).
 node_modules/
+
+### v2 client example ###
+template/downloaded-*

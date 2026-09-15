@@ -233,13 +233,18 @@ file names must contain **exactly one** `.` and zero of ` `, `/`.
 
 ## 6. HTTP layers
 
-There are three parallel HTTP surfaces over the same services:
+There are four parallel HTTP surfaces over the same services:
 
 | Package | Base path | Returns | Auth | Purpose |
 |---|---|---|---|---|
-| `controller/` | `/files`, `/file-categories`, `/file-sub-categories`, `/main-tags`, `/general-tags`, `/users`, `/roles`, `/` | Thymeleaf view names | form login, session | the UI |
+| `controller/` | `/files`, `/file-categories`, `/file-sub-categories`, `/main-tags`, `/general-tags`, `/users`, `/roles`, `/api-keys`, `/file-explorer`, `/` | Thymeleaf view names | form login, session | the UI |
 | `resource/` | `/resource/**` | JSON (`ApiResult` or a DTO) | form login, session, CSRF | AJAX called by the pages themselves |
-| `api/` | `/api/v1/files` | JSON | HTTP Basic, stateless | external integrations |
+| `api/` | `/api/v1/files` | JSON | HTTP Basic, stateless | external integrations (the shared machine account) |
+| `api/` | `/api/v2/{bucket}` | JSON, S3-style | `Authorization: Bearer fmk_…` (an API key), stateless | external integrations, scoped to folders |
+
+The v2 surface is described by an OpenAPI document at `/api-docs/v2-object-store` and a Swagger
+page at `/swagger-ui/index.html`, both behind `VIEW_API_DOCS` on the browser chain and switchable
+off with `springdoc.api-docs.enabled` / `springdoc.swagger-ui.enabled` (roadmap 9.6).
 
 ### The REST contract
 
@@ -348,14 +353,45 @@ document, so a browser navigation still lands on a page.
 
 </details>
 
+<details>
+<summary>REST — /api/v2 (Bearer API key; roadmap 9.3)</summary>
+
+Every handler requires `API_KEY`, which every key carries and no person does, or `ADMIN`. Which
+objects a call actually reaches is decided by folder access inside `ObjectStoreService`: a key's
+own scopes, never its creator's. A bucket is a top-level folder, matched case-insensitively and with
+`_` ≡ `-`; a key is the path beneath it, decoded, with the version as a segment.
+
+| Method | Path | Answers |
+|---|---|---|
+| GET | `/{bucket}?prefix=&delimiter=/&max-keys=&continuation-token=` | 200 listing; 404 no such bucket; 403 outside the key's folders |
+| GET | `/{bucket}/{sub}/{tag}/{file}/v{n}/{file}.{ext}` | 200 bytes with `ETag`, `Last-Modified`, `x-fm-version`; 206 for a `Range`; 404; 403 |
+| GET | `…?metadata`, or `HEAD` on the URL above | 200 metadata as JSON / headers only |
+| PUT | `/{bucket}/{sub}/{tag}/{file}/{file}.{ext}` — **no** version segment; the body is the file | 201 with the canonical key and `x-fm-version`; 409 if the key names a version or the name is taken under a sibling tag; 403 without `WRITE` on the tag folder |
+| DELETE | `/{bucket}/{sub}/{tag}/{file}/v{n}/{file}.{ext}` | 204; removing the last version removes the file |
+
+Not S3-compatible: no Signature V4, no XML, so the AWS CLI and SDKs do not connect (roadmap 9.4).
+A runnable client — upload, inspect, download, list, delete, standard library only — is in
+[`template/v2_client.py`](../template/v2_client.py); it takes the base URL, the key, the bucket and
+the folder from environment variables and never holds a credential in the file.
+
+</details>
+
 ## 7. Security model
 
-### Two filter chains
+### Three filter chains
 
-`SecurityConfig` publishes two `SecurityFilterChain` beans:
+`SecurityConfig` publishes three `SecurityFilterChain` beans:
 
+* **`@Order(0)` `actuatorSecurityFilterChain`** — `securityMatcher("/actuator/**")`, stateless,
+  permits `/actuator/health`, `/actuator/health/**` and `/actuator/info` and refuses everything else
+  under `/actuator` whether or not it is exposed (roadmap 9.5).
 * **`@Order(1)` `apiSecurityFilterChain`** — `securityMatcher("/api/**")`, CSRF off, CORS off,
-  `SessionCreationPolicy.STATELESS`, `httpBasic()`.
+  `SessionCreationPolicy.STATELESS`. `ApiKeyAuthenticationFilter` runs before
+  `BasicAuthenticationFilter`: a request carrying `Authorization: Bearer fmk_…` is resolved through
+  `ApiKeyService.authenticate` (hash comparison, enabled, not revoked, not expired) into a principal
+  whose `id` is the key's creator and whose `apiKeyId` is set; one carrying Basic credentials goes
+  to `httpBasic()` as before; one carrying neither, or a refused credential, gets the chain's single
+  401 entry point. The filter never writes a response of its own.
 * **`@Order(2)` `securityFilterChain`** — everything else. CSRF **on** (all AJAX templates read
   `_csrf` / `_csrf_header` from `<meta>` tags and set the header), form login at `/login`,
   logout at `/logout`. PermitAll list: `/`, `/favicon.ico`, `/webjars/**`, `/css/**`, `/js/**`,

@@ -12,7 +12,7 @@ import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderKind;
 import com.hnp.filemanagement.entity.FolderSourceType;
-import com.hnp.filemanagement.exception.BusinessException;
+import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
@@ -175,7 +175,10 @@ public class ObjectStoreService {
 
         ObjectKeyDTO parsed = ObjectKeyDTO.parse(key);
         if (!parsed.isVersionless()) {
-            throw new BusinessException(
+            // 409, as the roadmap promises: the caller named something that already exists (or a
+            // number the server assigns), and the conflict is with the key, not with a rule they
+            // could not have known.
+            throw new DuplicateResourceException(
                     "a stored version cannot be replaced; write to the same key without the version segment");
         }
 
@@ -194,6 +197,16 @@ public class ObjectStoreService {
         FileInfo existing = fileInfoRepository
                 .findByNameAndSubCategoryId(subCategoryIdOf(folder), parsed.fileName())
                 .orElse(null);
+
+        // File names are unique per sub-category, not per tag folder, so a name can already be
+        // taken by a file under a *sibling* tag. Without this check the write would append a
+        // version to that other file - the caller's write access to the folder they named would be
+        // checked, then the version would land somewhere else and the canonical key answered with
+        // would not resolve. A conflict up front, before anything is stored.
+        if (existing != null && !existing.getMainTagFile().getId().equals(folder.getSourceId())) {
+            throw new DuplicateResourceException("a file named " + parsed.fileName()
+                    + " already exists under another folder of the same sub-category");
+        }
 
         if (existing == null) {
             fileService.createNewFile(newFileRequest(folder, parsed, body), principalId, 0);

@@ -1122,6 +1122,22 @@ api_key_folder (api_key_id, folder_id, permission)
 > tree rather than stored, so there is no index to page over. Three queries, and right at this
 > size — 1358 files in the whole installation. `file_info.folder_id` and a real key column
 > (Phase 7) are what would change that.
+>
+> **Two things a review found after it was first called done.** The key was sliced out of
+> `getRequestURI()`, which is the *raw* request line — so a Persian file name arrived
+> percent-encoded and was stored as `%DA%AF%D8%B2…`, on disk and in `file_info`. The key is now a
+> `{*key}` capture, which Spring decodes; the lesson is that `getRequestURI()` is never the thing
+> to parse a name out of. And because file names are unique per *sub-category* rather than per tag
+> folder, a `PUT` under one tag could append a version to the file that owns that name under a
+> sibling tag, then answer 404 for the key it had just written — the write access checked was the
+> named folder's, the write landed elsewhere. That is now a 409 before anything is stored, as is a
+> `PUT` to an explicit `v{n}` (it answered 417 through `BusinessException`; the table below had
+> promised 409 all along). Both have tests in `ObjectStoreApiTest`. The OpenAPI document, too,
+> had lost its most important entry: the download and the `?metadata` variant share a path and a
+> method, a document holds one operation per pair, and springdoc had kept the wrong one. `HEAD` is
+> now an explicit handler (answering from the row, not by reading the file and discarding it) and
+> the `?metadata` twin is hidden from the document; `OpenApiDocumentTest` asserts the download is
+> the `GET` that is described.
 
 Bucket, key, and the five operations an integrator expects:
 
@@ -1129,7 +1145,7 @@ Bucket, key, and the five operations an integrator expects:
 |---|---|
 | List | `GET /api/v2/{bucket}?prefix=&delimiter=/&max-keys=&continuation-token=` |
 | Download | `GET /api/v2/{bucket}/{key}` — honours `Range` |
-| Metadata | `HEAD /api/v2/{bucket}/{key}` |
+| Metadata | `HEAD /api/v2/{bucket}/{key}`, or `GET …?metadata` for the same as a JSON body |
 | Upload | `PUT /api/v2/{bucket}/{key}` |
 | Delete | `DELETE /api/v2/{bucket}/{key}` |
 
@@ -1159,7 +1175,9 @@ limitation:
 
 * `PUT .../{fileName}/{fileName}.pdf` — no version segment — creates the next version, and the
   response says which one in `x-fm-version`;
-* `PUT` to an explicit `v{n}` answers `409`.
+* `PUT` to an explicit `v{n}` answers `409`, and so does a file name already taken by a file under
+  a sibling tag folder — names are unique per sub-category, and the alternative is a version
+  landing somewhere the caller did not name.
 
 `DELETE` on `.../v2/file.pdf` maps onto the existing `deleteFileDetails`: one format of one version,
 and removing the last version removes the file.
