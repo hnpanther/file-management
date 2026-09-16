@@ -186,10 +186,14 @@ FILEMANAGEMENT_BOOTSTRAP_ADMIN_PASSWORD=<a real password>
 # Leave false until the folder grants exist.
 FILEMANAGEMENT_FOLDER_ACCESS_ENABLED=false
 
-# Active Directory — off unless the site uses it.
+# Active Directory — off unless the site uses it. See "Active Directory behind a load balancer".
 FILEMANAGEMENT_AD_ENABLED=false
 FILEMANAGEMENT_AD_DOMAIN=
 FILEMANAGEMENT_AD_URL=
+FILEMANAGEMENT_AD_TRUSTSTORE=
+FILEMANAGEMENT_AD_TRUSTSTORE_PASSWORD=
+FILEMANAGEMENT_AD_VERIFY_HOSTNAME=true
+FILEMANAGEMENT_AD_VERIFY_CERTIFICATE=true
 ```
 
 `systemd` does **not** expand shell syntax in these files. `A=$B` is the literal string `$B`, and
@@ -256,6 +260,82 @@ DC presents: `openssl s_client -connect dc01.site.example:636 -showcerts`.
 
 Meanwhile, `FILEMANAGEMENT_AD_URL=ldap://dc01.site.example:389` restores logins exactly as they
 worked before — with the password on the wire in the clear, so as a stopgap only.
+
+### Active Directory behind a load balancer, with self-signed certificates
+
+The usual production shape is not one controller with a public certificate. It is a domain name
+(`site.example`) that DNS answers with any of several controllers, each with its own self-signed
+certificate, and not all of them necessarily listening on 636. Configured naïvely as
+`ldaps://site.example:636` that fails three ways at once: the name is not on any certificate, no
+certificate is trusted, and a controller without 636 turns some logins into a wait for a TCP
+timeout. The provider is built for exactly this shape; the settings map onto it one to one.
+
+**1. List the controllers, not the balancer.** JNDI takes a space- or comma-separated list and
+tries each in order until one connects, so the application does its own fail-over:
+
+```
+FILEMANAGEMENT_AD_URL=ldaps://dc01.site.example:636 ldaps://dc02.site.example:636 ldaps://dc03.site.example:636
+```
+
+A controller that does not listen on 636 refuses the connection in milliseconds and the next is
+tried; one that is down but not refusing is bounded by `FILEMANAGEMENT_AD_CONNECT_TIMEOUT_MS`
+(default 5 s) instead of the operating system's twenty-odd seconds. Put the controllers most
+likely to be up first. Do **not** mix `ldap://` into the list to cover a controller without TLS:
+every login that fails over to it sends the password in the clear, and the start-up log warns
+about any `ldap://` entry for that reason. Fix that controller instead.
+
+**2. Pin the certificates.** Export each controller's certificate once and put them in one
+PKCS12 beside the jar. On a machine that can reach the controllers:
+
+```powershell
+# one per controller; -servername matters when a controller carries several names
+openssl s_client -connect dc01.site.example:636 -servername dc01.site.example -showcerts </dev/null `
+  | openssl x509 -outform PEM > dc01.cer
+keytool -importcert -noprompt -alias dc01 -file dc01.cer `
+  -keystore D:\MyApp\file-management\config\ad-truststore.p12 -storetype PKCS12 -storepass <password>
+```
+
+or, on the controller itself, export the certificate from the local machine store
+(`certlm.msc` → Personal → Certificates → the one issued to the controller → Export, without the
+private key, DER or Base-64). If the controllers' certificates were issued by an internal CA,
+import that CA's certificate instead — one entry, and it survives the controllers' renewals.
+Then:
+
+```
+FILEMANAGEMENT_AD_TRUSTSTORE=D:\MyApp\file-management\config\ad-truststore.p12
+FILEMANAGEMENT_AD_TRUSTSTORE_PASSWORD=<password>
+```
+
+The JVM's own `cacerts` is not touched, and nothing goes on the command line. Self-signed
+certificates expire and get replaced: when a controller's changes, logins through that
+controller start failing over to the others (the log shows the handshake failure) until its new
+certificate is imported. Put "re-export after renewing a DC certificate" wherever that renewal
+is tracked.
+
+**3. Only if you must use the balancer name:** `FILEMANAGEMENT_AD_URL=ldaps://site.example:636`
+works with `FILEMANAGEMENT_AD_VERIFY_HOSTNAME=false` — the hostname check is switched off, and
+*only* that check. The certificate is still verified against the truststore, and since the
+truststore holds nothing but the controllers' own certificates, that verification is what proves
+which server answered. Without a truststore the switch is refused at start-up: encryption to a
+server whose identity nothing checks is not worth having. Prefer step 1 anyway; a balancer in
+front of LDAP adds a hop and hides which controller misbehaved.
+
+**4. Or verify nothing.** `FILEMANAGEMENT_AD_VERIFY_CERTIFICATE=false` accepts any certificate
+and any name — exactly what a Python `ldap3` client does with `ssl.CERT_NONE`, and the reason
+such a script "just works" against the same controllers. Logins then succeed against anything
+that speaks TLS on 636, including a machine on the path pretending to be a controller, which
+would read every password. The connection is encrypted; the other end is unverified. Take it
+as a conscious decision on a network you consider closed, not as the fix for a handshake error
+whose real cause is one export command away (step 2). The start-up log says so, in capitals.
+
+**What the start-up log says**, so this can be checked without a login attempt:
+
+```
+Active Directory TLS trust: D:\MyApp\file-management\config\ad-truststore.p12 (PKCS12)
+Active Directory authentication: domain=site.example, servers=ldaps://dc01.site.example:636 ldaps://dc02.site.example:636, connect timeout 5000 ms, read timeout 10000 ms
+```
+
+plus a WARN line per `ldap://` server and one if hostname verification is off.
 
 ## 3. The unit
 

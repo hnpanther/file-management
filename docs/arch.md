@@ -439,6 +439,12 @@ the folder from environment variables and never holds a credential in the file.
 
 * **off** → `DaoAuthenticationProvider` only (BCrypt against the `user` table).
 * **on** → `ActiveDirectoryCustomAuthenticationProvider` first, then `DaoAuthenticationProvider`.
+  The AD provider is shaped for a real directory: several controllers as a JNDI fail-over list,
+  connect/read timeouts on every bind, an optional PKCS12 truststore handed to JNDI through
+  `LdapTrustStoreSocketFactory` (self-signed controller certificates, pinned), and a hostname
+  check that can be switched off only when that pin exists. `deployment.md`, "Active Directory
+  behind a load balancer"; `ActiveDirectoryConnectionTest` exercises the trust with a real
+  handshake.
 
 `User.loginType` gates which provider may accept a user: `0` = either, `1` = local DB only,
 `2` = Active Directory only. `UserDetailsServiceImpl` refuses `loginType != 0 && != 1`; the AD
