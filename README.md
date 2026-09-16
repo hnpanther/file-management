@@ -16,6 +16,7 @@ Files are stored on the local filesystem; metadata lives in MySQL. A small REST 
 | Document | What it covers |
 |---|---|
 | [docs/arch.md](docs/arch.md) | How the application is built **today** — domain model, layers, security, storage layout, request flows |
+| [docs/schema.md](docs/schema.md) | Every table, column, key and index as it stands after all migrations — generated from the migrated database and checked on every build |
 | [docs/issues.md](docs/issues.md) | Catalogued defects, security risks and technical debt, with file references |
 | [docs/target-architecture.md](docs/target-architecture.md) | The architecture being migrated to |
 | [docs/roadmap.md](docs/roadmap.md) | Sequenced plan: platform upgrade → restructuring → PostgreSQL → S3 |

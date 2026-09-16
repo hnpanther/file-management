@@ -14,7 +14,7 @@ working, and to depend only on what came before.
 | 3 | PostgreSQL migration | 1, partly 2, **and 7** | |
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done** |
-| 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**, enforced by default |
+| 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**; enforcement switched on per installation, after the grants exist |
 | 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | 7.1 and 7.2 steps 1–2 **done** |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |

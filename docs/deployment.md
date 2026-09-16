@@ -33,6 +33,50 @@ and its output is committed, so the build has no front-end step at all. A test
 (`UiResourceTest.nothingInTheBuildRequiresNode`) fails if that ever stops being true — see
 [ui.md](ui.md) for why it is arranged this way.
 
+### The artefact is a fat jar
+
+`target/file-management.jar` is a Spring Boot **executable ("fat") jar**: the application, every
+dependency (`BOOT-INF/lib/`, about a hundred of them) and the embedded Tomcat, launched by
+`org.springframework.boot.loader.launch.JarLauncher`. `java -jar file-management.jar` is the whole
+runtime. There is no `war`, no application server to install, no `lib/` directory to ship beside
+it, and no classpath to assemble — the `spring-boot-maven-plugin` `repackage` goal builds it so,
+and `pom.xml` says so explicitly. Copy one file.
+
+### Configuring it from outside the jar
+
+The jar carries `application.properties` with defaults, and every setting that must differ per
+installation reads an environment variable (`FILEMANAGEMENT_DB_PASSWORD`, `FILEMANAGEMENT_BASE_DIR`,
+…). Environment variables are the primary way, and both service definitions below set them. But
+a properties file **beside the jar** works too, and is sometimes tidier — Spring Boot reads, in
+this order, each one overriding the one before:
+
+| Where | Notes |
+|---|---|
+| `application.properties` inside the jar | the shipped defaults |
+| `./config/application.properties` | a `config/` directory next to the jar — the conventional place |
+| `./application.properties` | directly beside the jar |
+| `./config/*/application.properties` | any subdirectory of `config/`, for splitting settings across files |
+| `--spring.config.additional-location=file:D:/somewhere/` | anywhere else, given on the command line |
+| environment variables | `FILEMANAGEMENT_*` as documented; or any property name in relaxed form, e.g. `SPRING_DATASOURCE_URL` |
+| `--property=value` on the command line | highest |
+
+Three things to know before relying on a file:
+
+* **`./` is the working directory, not the jar's directory.** Both service definitions set it
+  explicitly (`WorkingDirectory=` / `<workingdirectory>`); a `config/` beside the jar is only found
+  if the service starts there.
+* **An external file overrides property by property**; it does not replace the packaged one. Put
+  only what differs in it. The packaged `spring.config.import` (the actuator and OpenAPI settings)
+  still applies.
+* **Profile-specific files work the same way**: `./config/application-prod.properties` is read
+  because `prod` is the active profile, and `application-local.properties` beside the jar is read
+  if you start with `--spring.profiles.active=prod,local` (the repository ships an `.example`).
+
+So a Windows installation can be laid out as `D:\MyApp\file-management\config\application.properties`
+holding the database URL, the directories and the port, with the password alone in an `<env>`
+entry — or everything in `<env>`. Either is fine; do not do both for the same key and then wonder
+which won (the environment does).
+
 ### The settings that must not stay as they ship
 
 Do this **before** the first start.
@@ -263,6 +307,113 @@ is not undone by putting the old JAR back — the old code then meets a schema i
 `ddl-auto=validate` turns that into a refusal to start rather than silent damage, which is the
 failure you want, but it is still a stopped application.
 
+### Upgrading from 1.0.0 to 1.1.0
+
+This is not a jar swap. 1.1.0 carries the Spring Boot 4 upgrade, eight migrations
+(`V1.3` to `V2.4`), fourteen new permissions and folder-level access control. Read this section
+to the end before stopping the service; the whole upgrade is one stop-start, but three of the
+steps happen *before* it and two *after*.
+
+**Before — on a copy of the production database, or read-only against it:**
+
+1. **Java 21 on the host**, as before — 1.0.0 already required it. `java -version` on the
+   target, not on your machine.
+
+2. **Confirm what Flyway thinks is applied.** The plan below assumes `V1.0`–`V1.2`:
+
+   ```sql
+   SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;
+   ```
+
+3. **`V1.3` adds four unique constraints and fails, cleanly, if existing rows violate one.** Find
+   them first; each query must return nothing:
+
+   ```sql
+   SELECT file_category_id, sub_category_name, COUNT(*) FROM file_sub_category
+   GROUP BY file_category_id, sub_category_name HAVING COUNT(*) > 1;
+
+   SELECT file_sub_category_id, tag_name, COUNT(*) FROM main_tag_file
+   GROUP BY file_sub_category_id, tag_name HAVING COUNT(*) > 1;
+
+   SELECT file_sub_category_id, file_name, COUNT(*) FROM file_info
+   GROUP BY file_sub_category_id, file_name HAVING COUNT(*) > 1;
+
+   SELECT file_info_id, version, file_extension, COUNT(*) FROM file_details
+   GROUP BY file_info_id, version, file_extension HAVING COUNT(*) > 1;
+   ```
+
+   Names compare case-insensitively (the tables collate `utf8mb4_unicode_ci`), so `HSED` and
+   `hsed` under one parent are a duplicate. Resolve any hit in the application *before* the
+   upgrade; a failed migration leaves Flyway stopped with the version marked failed, and the
+   service will not start until it is repaired.
+
+4. **`V2.4` merges same-named taxonomy rows into one tag.** This is by design (roadmap 7.3) but
+   it is a decision about real data, so look at it: the pre-flight query at the top of
+   `V2.4__Add_Tags.sql` lists every name that will become a single tag and which rows it comes
+   from. Nothing is deleted or renamed — the folders stay distinct — but know what it will do.
+
+5. **Back up the database and the file directory together** ([Backups](#backups--one-job-both-halves)).
+
+**The upgrade:** stop, replace the jar, start. Watch the log for `Successfully applied 8
+migrations` and for the `seeded 14 new permission(s)` line from `DataInitializer`. If Flyway
+fails, the application does not start and the database is exactly as far as the last successful
+migration — restore the backup, fix the cause, try again.
+
+**After — with the service up:**
+
+6. **Verify the backfills.** Each of these must return nothing; they are the same queries the
+   migrations document and the test suite runs on every build:
+
+   ```sql
+   -- V1.4: every category, sub-category and main tag has exactly one folder
+   SELECT 'category' AS kind, c.id FROM file_category c
+     LEFT JOIN folder f ON f.source_type = 'CATEGORY' AND f.source_id = c.id WHERE f.id IS NULL
+   UNION ALL
+   SELECT 'sub_category', sc.id FROM file_sub_category sc
+     LEFT JOIN folder f ON f.source_type = 'SUB_CATEGORY' AND f.source_id = sc.id WHERE f.id IS NULL
+   UNION ALL
+   SELECT 'main_tag', mt.id FROM main_tag_file mt
+     LEFT JOIN folder f ON f.source_type = 'MAIN_TAG' AND f.source_id = mt.id WHERE f.id IS NULL;
+
+   -- V2.2: the storage key is the relative path
+   SELECT id FROM file_details WHERE storage_key <> relative_path OR storage_key = '';
+
+   -- V2.3: every file is in the folder that mirrors its main tag
+   SELECT fi.id FROM file_info fi LEFT JOIN folder f ON f.id = fi.folder_id
+   WHERE fi.folder_id IS NULL OR f.source_type <> 'MAIN_TAG' OR f.source_id <> fi.main_tag_file_id;
+   ```
+
+   and the `V2.4` verification query from the top of `V2.4__Add_Tags.sql`.
+
+7. **Grant the new permissions.** `DataInitializer` inserts a `permission` row for every new
+   constant but grants none of them to any role — `ADMIN` bypasses the check and needs nothing.
+   On the roles page, give:
+
+   | To whom | Permissions |
+   |---|---|
+   | anyone who should browse | `FILE_TREE_PAGE`, `REST_GET_FILE_TREE`, `REST_SEARCH_FILE_TREE`, `FILE_EXPLORER_PAGE`, `REST_GET_FOLDER_CONTENT`, `REST_SEARCH_FOLDER_CONTENT` |
+   | whoever issues API keys | `GET_ALL_API_KEY_PAGE`, `CREATE_API_KEY_PAGE`, `SAVE_NEW_API_KEY`, `UPDATE_API_KEY_PAGE`, `SAVE_UPDATED_API_KEY`, `REVOKE_API_KEY` |
+   | whoever reads the API documentation | `VIEW_API_DOCS` (`/swagger-ui/index.html`) |
+
+   `API_KEY` is not for people: every API key carries it and no user should.
+
+8. **Folder access stays off until you turn it on.** `FILEMANAGEMENT_FOLDER_ACCESS_ENABLED`
+   defaults to `false` and the upgrade changes nothing anyone can reach. When you are ready:
+   grant folders to each role on its edit page, check what each role reaches, then set the
+   variable to `true` and restart — see
+   [the decision above](#one-decision-to-make-deliberately-folder-access). With it on and no
+   grants, every non-administrator sees an empty tree.
+
+**What users will notice on day one**, with folder access still off: the file explorer and tree
+menu entries (once granted), a preview button on the file page, Jalali dates, and the API keys
+screen. `/api/v1/files` is unchanged. `/actuator/health` answers without a credential (for the
+load balancer); everything else under `/actuator` is refused.
+
+**Rollback.** Put the 1.0.0 jar back **and** restore the pre-upgrade database backup in the same
+operation: the old code's Flyway sees eight migrations it does not know and refuses to start,
+and the old schema validation would refuse the new columns anyway. A rollback after users have
+uploaded files loses those uploads — which is why the pre-flight above exists.
+
 ---
 
 # Windows — WinSW
@@ -274,6 +425,8 @@ Scheduler starts the process but nothing restarts it when it dies.
 
 **WinSW** wraps the process and registers it properly. Use **v3 in bundled mode**: the WinSW
 executable is renamed for the service, and an XML file with the same base name sits beside it.
+Download `WinSW-x64.exe` from a v3 release on GitHub (`winsw/winsw`); v3 is self-contained and
+needs no .NET Framework on the host, which v2 did. Rename it to `FileManagement.exe`.
 
 ## 1. Layout
 
@@ -282,7 +435,9 @@ D:\MyApp\file-management\
 │
 ├── FileManagement.exe          ← the renamed WinSW executable, NOT the application
 ├── FileManagement.xml          ← the service definition; base name must match the .exe
-├── file-management.jar         ← the Spring Boot JAR
+├── file-management.jar         ← the Spring Boot fat jar - the whole application
+├── config\                     ← optional: application.properties with the settings that differ
+│   └── application.properties     from the shipped defaults (see "Configuring it from outside the jar")
 │
 ├── logs\                       ← WinSW's own capture: .out.log / .err.log / .wrapper.log
 ├── ProdLog\                    ← the application's own app_log.log and archived\
@@ -356,20 +511,37 @@ not optional.
 
 The `prod` profile is **not** passed on the command line: it is already the default in
 `application.properties`. Passing `--spring.profiles.active=prod` does no harm, but leaving it out is
-not a mistake.
+not a mistake. Application arguments go **after** `-jar "…jar"` inside `<arguments>`; JVM flags go
+before it:
+
+```xml
+<arguments>-Xms256m -Xmx1g … -jar "D:\MyApp\file-management\file-management.jar" --spring.profiles.active=prod,local</arguments>
+```
 
 ### Where the secrets go
 
-Either the `<env>` entries above, or an `application-local.properties` beside the JAR started with
-`--spring.profiles.active=prod,local`. `application-local.properties` is gitignored and there is an
-`.example` beside it in the repository.
+Three places work; pick one per setting.
 
-Either way the file holds the database password, so restrict it:
+1. **`<env>` entries in `FileManagement.xml`**, as above. Simplest, and what the file shows.
+2. **`D:\MyApp\file-management\config\application.properties`** — read automatically because the
+   service's working directory is `D:\MyApp\file-management`. Holds any property, in the same
+   names as the packaged file (`spring.datasource.password=…`, `file.management.base-dir=…`). No
+   flag is needed. Details in [Configuring it from outside the jar](#configuring-it-from-outside-the-jar).
+3. **`application-local.properties` beside the jar**, activated with
+   `--spring.profiles.active=prod,local` in `<arguments>`. The repository ships
+   `application-local.properties.example`; the real file is gitignored.
+
+Whichever file holds the database password, restrict it to the service account and administrators:
 
 ```powershell
 icacls "D:\MyApp\file-management\FileManagement.xml" /inheritance:r `
   /grant "Administrators:(R,W)" "SYSTEM:(R)"
+# and the same for config\application.properties if the password lives there
 ```
+
+If the service runs as a dedicated account rather than `LocalSystem` (add `<serviceaccount>` to
+the XML), grant that account read on the files instead of `SYSTEM`, plus modify on `files\`,
+`ProdLog\` and `logs\`.
 
 ## 3. Install and start
 
@@ -397,7 +569,8 @@ cd "D:\MyApp\file-management"
 
 `refresh` updates the registered service properties from the XML without an uninstall/install cycle
 — but a change that affects the **running child process** (arguments, JVM flags, environment, the
-JAR path) still needs a restart to take effect.
+JAR path) still needs a restart to take effect. A change to `config\application.properties` needs
+only `restart`; the XML did not change, so no `refresh`.
 
 `dev kill` is a troubleshooting fallback, never the normal stop. Stop first, uninstall second:
 removing the executable or XML while the service is still registered leaves an entry Windows cannot
@@ -405,13 +578,17 @@ clean up.
 
 ## 5. Confirm it is actually up
 
-```powershell
-# Liveness only — renders a page, touches no database.
-(Invoke-WebRequest http://localhost:8122/login -UseBasicParsing).StatusCode
+The same three probes as on Linux — readiness is the one that includes the database, and the one
+a load balancer should watch:
 
-# Reaches the database.
-(Invoke-WebRequest http://localhost:8122/files/public-files -UseBasicParsing).StatusCode
+```powershell
+(Invoke-WebRequest http://localhost:8122/actuator/health/readiness -UseBasicParsing).Content   # {"status":"UP"}
+(Invoke-WebRequest http://localhost:8122/actuator/health/liveness  -UseBasicParsing).Content   # {"status":"UP"}
+(Invoke-WebRequest http://localhost:8122/actuator/info             -UseBasicParsing).Content   # which build is running
 ```
+
+No credential is needed for the three health URLs. Do not use `GET /login` as a check: it renders
+without touching the database and answers 200 with MySQL down.
 
 First boot, if no admin password was set:
 
