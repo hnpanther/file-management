@@ -2,6 +2,7 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.FolderAccess;
+import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderPermission;
 import com.hnp.filemanagement.entity.FolderSourceType;
@@ -46,6 +47,8 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(readOnly = true)
 public class FolderAccessService {
+
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(FolderAccessService.class);
 
     private static final String ADMIN_ROLE = "ADMIN";
 
@@ -275,6 +278,47 @@ public class FolderAccessService {
     /** Resolves this person's access and refuses unless they may write there. */
     public void requireWriteAccess(int principalId, FolderSourceType sourceType, int sourceId) {
         requireWriteAccess(accessFor(principalId), sourceType, sourceId);
+    }
+
+    // ------------------------------------------------------------------ by the file's own folder (roadmap 7.2 step 3)
+
+    /**
+     * Refuses unless this file's own folder is readable - the check for a download and a file
+     * page, answered from {@code file_info.folder_id} rather than by translating the file's main
+     * tag into a folder first.
+     *
+     * <p><b>A file with no folder is refused, not allowed.</b> Only a row from before {@code V2.3}
+     * that escaped the backfill can be one; an unrestricted principal still reaches it, everybody
+     * else is denied and the gap is logged. This is the one place where guessing wrong shows
+     * somebody a document they were not granted, so it fails closed - the same rule
+     * {@link #holds} applies to a taxonomy row without a mirror.
+     */
+    public void requireReadAccess(FolderAccess access, FileInfo file) {
+        if (!holdsOn(access, file, FolderPermission.READ)) {
+            throw new AccessDeniedException("no folder access to file id=" + file.getId());
+        }
+    }
+
+    /** The same question about writing into the folder this file already sits in: a new version or format. */
+    public void requireWriteAccess(FolderAccess access, FileInfo file) {
+        if (!holdsOn(access, file, FolderPermission.WRITE)) {
+            throw new AccessDeniedException("no write access to the folder of file id=" + file.getId());
+        }
+    }
+
+    private boolean holdsOn(FolderAccess access, FileInfo file, FolderPermission required) {
+        if (access.unrestricted()) {
+            return true;
+        }
+        Folder folder = file.getFolder();
+        if (folder == null) {
+            logger.warn("file id={} has no folder_id and is refused to a restricted principal; "
+                    + "run the V2.3 backfill (see the migration's header)", file.getId());
+            return false;
+        }
+        return required == FolderPermission.WRITE
+                ? access.canWrite(folder.getPath())
+                : access.canRead(folder.getPath());
     }
 
     /**

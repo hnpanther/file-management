@@ -203,9 +203,9 @@ public class FileService {
         FileInfo fileInfo = getFileInfoWithFileDetails(fileUploadDTO.getFileId());
 
         // Both branches below - a new format and a new version - write into the folder this file
-        // already sits in, so one check covers them.
-        folderAccessService.requireWriteAccess(principalId,
-                FolderSourceType.MAIN_TAG, fileInfo.getMainTagFile().getId());
+        // already sits in, so one check covers them - and it is the file's own folder that is
+        // asked (roadmap 7.2 step 3), not the folder its tag happens to mirror.
+        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), fileInfo);
 
         MultipartFile multipartFile = fileUploadDTO.getMultipartFile();
         String originalFilename = multipartFile.getOriginalFilename();
@@ -486,8 +486,7 @@ public class FileService {
                 () -> new ResourceNotFoundException("fileDetails with id=" + fileDetailsId + " not exists")
         );
 
-        folderAccessService.requireAccess(folderAccessService.accessFor(principalId),
-                FolderSourceType.MAIN_TAG, fileDetails.getFileInfo().getMainTagFile().getId());
+        folderAccessService.requireReadAccess(folderAccessService.accessFor(principalId), fileDetails.getFileInfo());
 
         return toDownload(fileDetails);
     }
@@ -502,18 +501,21 @@ public class FileService {
     public FileInfoPageDTO getPageFileInfo(int pageSize, int pageNumber, String search, int principalId) {
 
         Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
-        Optional<Set<Integer>> readableTags =
-                folderAccessService.readableMainTagIds(folderAccessService.accessFor(principalId));
+        // The folders this person may read, applied inside the query against each file's own
+        // folder_id (roadmap 7.2 step 3). A file with no folder is outside every set, so a
+        // restricted reader does not see it; an unrestricted one has no filter and does.
+        Optional<Set<Integer>> readableFolders =
+                folderAccessService.readableFolderIds(folderAccessService.accessFor(principalId));
 
         Page<FileInfo> page;
-        if (readableTags.isEmpty()) {
+        if (readableFolders.isEmpty()) {
             page = fileInfoRepository.search(SearchTerms.blankToNull(search), pageable);
-        } else if (readableTags.get().isEmpty()) {
+        } else if (readableFolders.get().isEmpty()) {
             // Granted nothing: an empty page, without asking the database for `IN ()`.
             page = Page.empty(pageable);
         } else {
-            page = fileInfoRepository.searchWithinTags(
-                    SearchTerms.blankToNull(search), readableTags.get(), pageable);
+            page = fileInfoRepository.searchWithinFolders(
+                    SearchTerms.blankToNull(search), readableFolders.get(), pageable);
         }
 
         FileInfoPageDTO pageDTO = new FileInfoPageDTO();
@@ -551,8 +553,7 @@ public class FileService {
     public FileInfoDTO getFileInfoDtoWithFileDetails(int id, int principalId) {
         FileInfo fileInfo = getFileInfoWithFileDetails(id);
 
-        folderAccessService.requireAccess(folderAccessService.accessFor(principalId),
-                FolderSourceType.MAIN_TAG, fileInfo.getMainTagFile().getId());
+        folderAccessService.requireReadAccess(folderAccessService.accessFor(principalId), fileInfo);
 
         return ModelConverterUtil.convertFileInfoToFileInfoDTO(fileInfo);
     }
