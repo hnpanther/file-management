@@ -10,6 +10,7 @@ import com.hnp.filemanagement.dto.TreeSearchHitDTO;
 import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.Folder;
+import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.FolderPermission;
 import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.GeneralTag;
@@ -143,7 +144,13 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         tagId = createdTag.getId();
 
         fileName = "report" + TestData.nextSequence();
-        fileInfoRepository.save(TestData.fileInfo(owner, createdTag, fileName));
+        FileInfo file = TestData.fileInfo(owner, createdTag, fileName);
+        // A repository-written file has no folder - like a pre-V2.3 row the backfill missed - and
+        // since roadmap 7.2 step 3 the download, the file page and the list decide access from the
+        // file's own folder, refusing a folderless file to anyone restricted. Link it as the
+        // backfill would; FileServiceFolderAccessTest covers the folderless case on purpose.
+        file.setFolder(folderRepository.findBySourceTypeAndSourceId(FolderSourceType.MAIN_TAG, tagId).orElseThrow());
+        fileInfoRepository.save(file);
     }
 
     // ---------------------------------------------------------------- closed by default

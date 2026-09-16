@@ -133,6 +133,32 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
                                     Pageable pageable);
 
     /**
+     * The list page restricted to a set of folders, matched against each file's own
+     * {@code folder_id} (roadmap 7.2 step 3) - the same search, the same fetch plan, a
+     * different filter. Must not be called with an empty set.
+     */
+    @Query("""
+            SELECT f FROM FileInfo f
+            JOIN FETCH f.mainTagFile mt
+            JOIN FETCH mt.fileSubCategory sc
+            JOIN FETCH sc.fileCategory c
+            JOIN FETCH c.generalTag
+            WHERE f.folder.id IN (:folderIds)
+              AND ((:search) IS NULL
+               OR f.fileName LIKE CONCAT('%', (:search), '%')
+               OR f.description LIKE CONCAT('%', (:search), '%')
+               OR mt.tagName LIKE CONCAT('%', (:search), '%')
+               OR mt.description LIKE CONCAT('%', (:search), '%')
+               OR sc.subCategoryName LIKE CONCAT('%', (:search), '%')
+               OR sc.subCategoryNameDescription LIKE CONCAT('%', (:search), '%')
+               OR c.categoryName LIKE CONCAT('%', (:search), '%')
+               OR c.categoryNameDescription LIKE CONCAT('%', (:search), '%'))
+            """)
+    Page<FileInfo> searchWithinFolders(@Param("search") String search,
+                                    @Param("folderIds") Collection<Integer> folderIds,
+                                    Pageable pageable);
+
+    /**
      * Tree "find a file" search — see issue 73: two nodes at different depths of the same category
      * can carry the identical label, so a label alone cannot find a file or say where it lives. This
      * matches by exact id (when the query parses as one) or a fragment of the name/description, and

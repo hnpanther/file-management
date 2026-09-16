@@ -804,7 +804,7 @@ Each is independently shippable, and only the fourth cannot be undone.
 | 0 | `file_details.storage_key`, backfilled from `relative_path`; adapter maps key → path — **done** | `V2.2` | an unused column |
 | 1 | `file_info.folder_id`, nullable, backfilled to the folder mirroring the file's main tag; written alongside the old foreign keys — **done** | `V2.3` | an unused column |
 | 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under — **done** | `V2.4` | `DROP TABLE` |
-| 3 | **Reads move to the folder**: tree, upload, file list, search — **in progress**, one reader per commit; readers 1 (API v2) and 2 (explorer) done | — | revert the code |
+| 3 | **Reads move to the folder**: tree, upload, file list, search — **in progress**, one reader per commit; readers 1 (API v2), 2 (explorer) and 3 (folder access on download, file page, list, new version) done | — | revert the code |
 | 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` | `V2.5` | ⚠️ **none** |
 | 5 | Folder operations: create, rename, move, delete — and drag-and-drop | `V2.x` | — |
 
@@ -850,6 +850,21 @@ Each is independently shippable, and only the fourth cannot be undone.
 > existing tests changed only their fixture, which had inserted a file straight through the
 > repository and therefore, like a pre-`V2.3` row, without a folder. `FolderContentFolderReadTest`
 > is the oracle test (listing, counts, search, a single-folder grant, the orphan case).
+>
+> **Step 3, reader 3 done — folder access in `FileService`.** The security-bearing one. A
+> download, the file page and a new version or format now ask `requireReadAccess(access, file)`
+> / `requireWriteAccess(access, file)` on the file's own folder; the list page filters on
+> `readableFolderIds` inside the query (`searchWithinFolders`). The one thing a folder read can
+> meet that a tag read could not — a file with no `folder_id` — **fails closed**: refused to any
+> restricted principal and logged, still reachable by an administrator, never a 500. This is the
+> same rule `holds()` already applied to a taxonomy row with no mirror, for the same reason: it is
+> the one place where guessing wrong shows somebody a document they were not granted.
+> `FileServiceFolderAccessTest` writes every combination out rather than sampling — no grant,
+> administrator, READ and WRITE on a tag, READ and WRITE inherited from the sub-category, READ on
+> the parent with WRITE on one child, a grant through a role, and the folderless file — against a
+> taxonomy oracle. The existing `FolderAccessEnforcementTest` needed only its fixture linked to a
+> folder, as the explorer's had. Uploading a *new* file (`createNewFile`) still checks the tag the
+> form named: that is reader 5, where the form learns `folderId`. The tree is reader 4.
 
 Steps 0–2 only add data and change no behaviour, so they can ship early and sit in production while
 step 3 is written. Step 3 is where the application actually changes. Step 4 should follow only after

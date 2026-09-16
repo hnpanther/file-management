@@ -111,8 +111,11 @@ file, written alongside the taxonomy keys (roadmap 7.2 steps 1–2). Step 3 move
 one at a time. The v2 object store reads files by `folder_id` — its listing is three queries
 with no tag translation, and a key resolves to its file through the folder the key walked to.
 The explorer does too: a folder's files, each child's file count and every search hit come from
-`folder_id`, and folder access is applied as a set of folder ids in the query. The file list,
-downloads and the tree still go through the main tag; the tags are still read by nothing.
+`folder_id`, and folder access is applied as a set of folder ids in the query. So does folder
+access in `FileService`: a download, the file page and a new version ask the file's own folder
+(`requireReadAccess` / `requireWriteAccess` on a `FileInfo`), and the list page filters on
+`readableFolderIds`; a file with no folder is refused to a restricted principal (fail closed). The
+tree and the upload form still go through the main tag; the tags are still read by nothing.
 
 ```
 FileInfo ──N:1──> Folder            file_info.folder_id   the folder mirroring its main tag   (V2.3)
