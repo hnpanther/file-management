@@ -107,8 +107,12 @@ arbitrary depth.
 ### What a file is attached to, during Phase 7
 
 Phase 7 separates *where a file is* from *what it is about*. Both halves already exist on every
-file, written alongside the taxonomy keys and read by nothing yet (roadmap 7.2 steps 1–2); step 3
-moves the readers over.
+file, written alongside the taxonomy keys (roadmap 7.2 steps 1–2). Step 3 moves the readers over
+one at a time. The v2 object store reads files by `folder_id` — its listing is three queries
+with no tag translation, and a key resolves to its file through the folder the key walked to.
+The explorer does too: a folder's files, each child's file count and every search hit come from
+`folder_id`, and folder access is applied as a set of folder ids in the query. The file list,
+downloads and the tree still go through the main tag; the tags are still read by nothing.
 
 ```
 FileInfo ──N:1──> Folder            file_info.folder_id   the folder mirroring its main tag   (V2.3)
@@ -577,7 +581,7 @@ migrations themselves, in `src/main/resources/db/migration`:
 | `V2.0__Add_Permission_To_Folder_Grants.sql` | `permission` (READ / WRITE) on both grant tables |
 | `V2.1__Add_Api_Keys.sql` | `api_key`, `api_key_folder` |
 | `V2.2__Add_Storage_Key_To_File_Details.sql` | `file_details.storage_key`, backfilled from `relative_path` (roadmap 7.1) |
-| `V2.3__Add_Folder_To_File_Info.sql` | `file_info.folder_id`, nullable, indexed, backfilled to the folder mirroring the file's main tag; written on every upload, read by nothing yet (roadmap 7.2 step 1) |
+| `V2.3__Add_Folder_To_File_Info.sql` | `file_info.folder_id`, nullable, indexed, backfilled to the folder mirroring the file's main tag; written on every upload, read by the v2 API since step 3 (roadmap 7.2 step 1) |
 | `V2.4__Add_Tags.sql` | `tag_group` (one per general tag), `tag` (unique per group), `file_tag`; backfilled from the three levels beneath each general tag, names merging within a group; re-runnable (roadmap 7.2 step 2) |
 
 `V1.3` turns four rules that lived only in application code into constraints: a sub-category name is

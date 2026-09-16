@@ -180,6 +180,23 @@ public class FolderAccessService {
      * another. The alternative — a {@code LIKE} per grant stitched into the list query — would mean
      * building the query text at runtime for a filter that changes only when a grant does.
      */
+    /**
+     * The folders this access may read, as ids: every folder beneath a readable path. Empty
+     * {@code Optional} for an unrestricted principal, an empty set for one granted nothing - the
+     * same two answers as {@link #readableMainTagIds}, for the readers that have moved to
+     * {@code file_info.folder_id} (roadmap 7.2 step 3).
+     */
+    public Optional<Set<Integer>> readableFolderIds(FolderAccess access) {
+        if (access.unrestricted()) {
+            return Optional.empty();
+        }
+        Set<Integer> folderIds = new LinkedHashSet<>();
+        for (String granted : access.readablePaths()) {
+            folderRepository.findSubtree(granted).stream().map(Folder::getId).forEach(folderIds::add);
+        }
+        return Optional.of(folderIds);
+    }
+
     public Optional<Set<Integer>> readableMainTagIds(FolderAccess access) {
         if (access.unrestricted()) {
             return Optional.empty();
