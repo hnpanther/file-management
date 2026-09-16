@@ -114,8 +114,12 @@ The explorer does too: a folder's files, each child's file count and every searc
 `folder_id`, and folder access is applied as a set of folder ids in the query. So does folder
 access in `FileService`: a download, the file page and a new version ask the file's own folder
 (`requireReadAccess` / `requireWriteAccess` on a `FileInfo`), and the list page filters on
-`readableFolderIds`; a file with no folder is refused to a restricted principal (fail closed). The
-tree and the upload form still go through the main tag; the tags are still read by nothing.
+`readableFolderIds`; a file with no folder is refused to a restricted principal (fail closed). And
+the tree: a tag node's files and count, opening a file, and the branch a search hit is placed on.
+And uploading: a new file's place may be named as a `folderId` as well as by the taxonomy triple,
+the folder is what write access is checked on, and the two addressings must agree when both are
+sent. The taxonomy keys on `file_info` are still written, for the taxonomy pages and the
+per-sub-category uniqueness rule, until step 4. The tags are still read by nothing.
 
 ```
 FileInfo ──N:1──> Folder            file_info.folder_id   the folder mirroring its main tag   (V2.3)
@@ -383,7 +387,7 @@ document, so a browser navigation still lands on a page.
 | Method | Path | Permission |
 |---|---|---|
 | GET | `/health-test` | `API_HEALTH_TEST` |
-| POST | `/` (multipart, `?public-file=0` for private) | `API_SAVE_NEW_FILE` |
+| POST | `/` (multipart, `?public-file=0` for private; the place as `fileCategoryId` + `fileSubCategoryId` + `mainTagFileId`, or as `folderId`, or both agreeing) | `API_SAVE_NEW_FILE` |
 | DELETE | `/file-info/{fileInfoId}/file-details/{fileDetailsId}` | `API_DELETE_FILE_DETAILS` |
 | GET | `/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` |
 

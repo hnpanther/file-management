@@ -804,7 +804,7 @@ Each is independently shippable, and only the fourth cannot be undone.
 | 0 | `file_details.storage_key`, backfilled from `relative_path`; adapter maps key → path — **done** | `V2.2` | an unused column |
 | 1 | `file_info.folder_id`, nullable, backfilled to the folder mirroring the file's main tag; written alongside the old foreign keys — **done** | `V2.3` | an unused column |
 | 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under — **done** | `V2.4` | `DROP TABLE` |
-| 3 | **Reads move to the folder**: tree, upload, file list, search — **in progress**, one reader per commit; readers 1 (API v2), 2 (explorer) and 3 (folder access on download, file page, list, new version) done | — | revert the code |
+| 3 | **Reads move to the folder**: tree, upload, file list, search — **done**, one reader per commit: 1 API v2, 2 explorer, 3 folder access on download / file page / list / new version, 4 tree, 5 upload by `folderId` alongside the triple | — | revert the code |
 | 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` | `V2.5` | ⚠️ **none** |
 | 5 | Folder operations: create, rename, move, delete — and drag-and-drop | `V2.x` | — |
 
@@ -865,6 +865,36 @@ Each is independently shippable, and only the fourth cannot be undone.
 > taxonomy oracle. The existing `FolderAccessEnforcementTest` needed only its fixture linked to a
 > folder, as the explorer's had. Uploading a *new* file (`createNewFile`) still checks the tag the
 > form named: that is reader 5, where the form learns `folderId`. The tree is reader 4.
+>
+> **Step 3, reader 4 done — the tree.** `FileTreeService` renders a tag node's children from
+> `findByFolderIdOrderByFileNameAsc(folderId)` and counts them with `countByFolderId`; opening a
+> file asks `requireReadAccess(access, file)` on the file's own folder; a search hit is placed by
+> the file's folder and its two ancestors, all fetched with the search (`searchForTree` now
+> fetches `folder → parent → parent` instead of the taxonomy chain, and the labels are the folders'
+> display names, which the mirror keeps equal to the taxonomy's). The folder *levels* of the tree —
+> categories, sub-categories, tags as nodes — still come from the taxonomy tables with their
+> folder ids looked up; that is not a file read and goes with the taxonomy in step 4. The
+> `FileTreeSearchTest` fixture needed the same one-line link as the others. `FileTreeFolderReadTest`
+> is the oracle test. **Every file read in the application now goes through `folder_id`**; the
+> only tag-based *write* left is filing a new document, reader 5.
+>
+> **Step 3, reader 5 done — uploading by `folderId`.** `FileInfoDTO` gained `folderId`, and the
+> taxonomy triple lost its `@NotNull`: `FileService.createNewFile` resolves the target folder
+> from whichever the request sent — the folder directly, or the main tag's mirror — then checks
+> write access on that folder, then holds whatever else the request said about the place to
+> agreeing with it (a `folderId` and a `mainTagFileId` that name different places are a 400, as is
+> a folder that is not a tag folder, as is neither). The uniqueness scope is the sub-category the
+> *resolved* folder sits in, not a request field — the test caught the first version reading the
+> request. Both `POST /api/v1/files` and the web form accept either addressing through the same
+> binding; `FileUploadAddressingTest` writes out every combination through the real endpoint,
+> including the 403-before-400 ordering. This is the compatibility window §7.4 item 2 asked for:
+> the triple stays until step 4, so no integration changes today, and any that wants to can send
+> `folderId` now. The upload form itself still shows the three selects; a folder picker belongs
+> with the folder operations of step 5.
+>
+> **Step 3 is done.** Nothing in the application reads a file's place from the taxonomy any more;
+> `file_info.main_tag_file_id` and `file_sub_category_id` are still *written*, for the taxonomy
+> pages and the uniqueness rule, until step 4 removes them.
 
 Steps 0–2 only add data and change no behaviour, so they can ship early and sit in production while
 step 3 is written. Step 3 is where the application actually changes. Step 4 should follow only after
@@ -905,7 +935,8 @@ tag is not a place.
    ([issue 35](issues.md#35-paths-are-denormalised-into-three-places--s2)).
 2. **`/api/v1/files` takes a category, a sub-category and a tag.** Step 3 breaks every machine
    integration. It needs a window where the endpoint accepts both the old triple and a `folderId`,
-   and the old form is removed only once callers have moved.
+   and the old form is removed only once callers have moved. — **The window is open** (step 3,
+   reader 5): both are accepted, the triple is unchanged, and it is removed in step 4 only.
 3. **File-name uniqueness moves** from "per sub-category" (`uq_file_info_name_per_sub_category`) to
    "per folder". The existing data may not satisfy the new rule — it needs the same pre-flight query
    the `folder` backfill got, run before the constraint is added, not after.

@@ -64,7 +64,10 @@ class FileServiceUnitTest {
      */
     @Mock
     private FolderAccessService folderAccessService;
-    /** Only reached once every guard has passed, which none of these tests get to. */
+    /**
+     * Answers the tag's folder when a test stubs it - the upload resolves its target folder before
+     * the access check and the taxonomy check, so the guards below need one to exist.
+     */
     @Mock
     private FolderMirrorService folderMirrorService;
     @Mock
@@ -74,6 +77,17 @@ class FileServiceUnitTest {
     private FileService underTest;
 
     private MainTagFile mainTag;
+
+    /** The folder mirroring {@code mainTag}: a TAG folder whose source is the tag. */
+    private com.hnp.filemanagement.entity.Folder tagFolder() {
+        var folder = new com.hnp.filemanagement.entity.Folder();
+        folder.setId(70);
+        folder.setKind(com.hnp.filemanagement.entity.FolderKind.TAG);
+        folder.setSourceType(com.hnp.filemanagement.entity.FolderSourceType.MAIN_TAG);
+        folder.setSourceId(mainTag.getId());
+        folder.setPath("/1/2/3/70/");
+        return folder;
+    }
 
     @BeforeEach
     void setUp() {
@@ -118,6 +132,7 @@ class FileServiceUnitTest {
     @DisplayName("a mismatched taxonomy is refused, and nothing is written to storage")
     void refusesAMismatchedTaxonomy() {
         when(mainTagFileService.getMainTagFileEntity(anyInt())).thenReturn(mainTag);
+        when(folderMirrorService.folderOf(mainTag)).thenReturn(tagFolder());
 
         FileInfoDTO request = uploadRequest("report.txt");
         request.setFileCategoryId(999);
@@ -139,9 +154,10 @@ class FileServiceUnitTest {
     @DisplayName("a write outside the grant is refused before the taxonomy is even checked")
     void refusesAWriteOutsideTheGrantBeforeAnythingElse() {
         when(mainTagFileService.getMainTagFileEntity(anyInt())).thenReturn(mainTag);
+        when(folderMirrorService.folderOf(mainTag)).thenReturn(tagFolder());
         org.mockito.Mockito.doThrow(new org.springframework.security.access.AccessDeniedException("no"))
-                .when(folderAccessService).requireWriteAccess(anyInt(),
-                        org.mockito.ArgumentMatchers.any(), anyInt());
+                .when(folderAccessService).requireWriteAccess(
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(com.hnp.filemanagement.entity.Folder.class));
 
         FileInfoDTO request = uploadRequest("report.txt");
         // Also inconsistent, which is what makes the order observable: the taxonomy check would

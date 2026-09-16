@@ -108,6 +108,11 @@ class FileTreeSearchTest extends MySqlSupport {
         // Built through repositories, so nothing mirrored them; the mirror heals the whole
         // ancestry upwards from the tag, which is what makes the branch addressable by folder id.
         folderMirrorService.created(mainTag);
+        // And the file is placed in that folder, as the V2.3 backfill does: since roadmap 7.2
+        // step 3 a search hit is placed by the file's own folder_id, and a file without one is
+        // deliberately left out (FileTreeFolderReadTest covers that case).
+        fileInfo.setFolder(folderMirrorService.folderOf(mainTag));
+        fileInfoRepository.save(fileInfo);
     }
 
     @Test

@@ -73,6 +73,12 @@ public class FileApi {
     /**
      * Uploads a file, or a new version of one that already exists.
      *
+     * <p>Where it goes can be named two ways (roadmap 7.2 step 3, reader 5): the taxonomy triple
+     * {@code fileCategoryId} / {@code fileSubCategoryId} / {@code mainTagFileId}, which every
+     * existing integration sends and which stays until Phase 7 step 4; or a {@code folderId}, the
+     * id the explorer and the tree render. Sending both is allowed and they must agree; sending
+     * neither is a 400 that says so.
+     *
      * @param publicFile {@code "0"} marks the file private; anything else, including absent,
      *                   leaves it public. The odd default is the existing behaviour and the pages
      *                   depend on it.

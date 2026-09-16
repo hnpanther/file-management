@@ -299,6 +299,18 @@ public class FolderAccessService {
         }
     }
 
+    /** Whether this file's folder is readable - for filtering a list, where refusing one item is wrong. */
+    public boolean allowsRead(FolderAccess access, FileInfo file) {
+        return holdsOn(access, file, FolderPermission.READ);
+    }
+
+    /** Refuses unless documents may be filed into this folder - the check for a new file (roadmap 7.2 step 3, reader 5). */
+    public void requireWriteAccess(FolderAccess access, Folder folder) {
+        if (!access.unrestricted() && !access.canWrite(folder.getPath())) {
+            throw new AccessDeniedException("no write access to folder id=" + folder.getId());
+        }
+    }
+
     /** The same question about writing into the folder this file already sits in: a new version or format. */
     public void requireWriteAccess(FolderAccess access, FileInfo file) {
         if (!holdsOn(access, file, FolderPermission.WRITE)) {

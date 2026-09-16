@@ -34,18 +34,24 @@ public class FileInfoDTO {
 
     private Integer lastVersion;
 
-    @NotNull(groups = {InsertValidation.class})
+    /**
+     * Where the file goes, named as a folder (roadmap 7.2 step 3, reader 5). Either this or the
+     * taxonomy triple below must be given; both may be, and then they must agree. The triple was
+     * {@code @NotNull} until the folder could name the target on its own; the "one or the other"
+     * rule cannot be expressed per field, so {@code FileService.createNewFile} checks it and
+     * answers 400 with a message that says which is missing.
+     */
+    private Integer folderId;
+
     private Integer fileSubCategoryId;
     private String fileSubCategoryName;
     private String fileSubCategoryNameDescription;
 
-    @NotNull(groups = {InsertValidation.class})
     private Integer fileCategoryId;
     private String fileCategoryName;
     private String fileCategoryNameDescription;
     private String fileCategoryDisplayName;
 
-    @NotNull(groups = {InsertValidation.class})
     private Integer mainTagFileId;
     private String tagName;
     private String tagDescription;

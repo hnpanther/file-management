@@ -162,19 +162,27 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
      * Tree "find a file" search — see issue 73: two nodes at different depths of the same category
      * can carry the identical label, so a label alone cannot find a file or say where it lives. This
      * matches by exact id (when the query parses as one) or a fragment of the name/description, and
-     * fetches the taxonomy chain needed to build a path down to each match.
+     * fetches the file's folder with its two ancestors - the branch the tree opens on the way to the
+     * hit (roadmap 7.2 step 3: it used to fetch the taxonomy chain and look each level's folder up).
+     * {@code LEFT}, so a file with no folder is still returned; the caller leaves it out and says so.
      */
     @Query("""
             SELECT f FROM FileInfo f
-            JOIN FETCH f.mainTagFile mt
-            JOIN FETCH mt.fileSubCategory sc
-            JOIN FETCH sc.fileCategory c
+            LEFT JOIN FETCH f.folder d
+            LEFT JOIN FETCH d.parent p
+            LEFT JOIN FETCH p.parent
             WHERE (:id IS NOT NULL AND f.id = :id)
                OR f.fileName LIKE CONCAT('%', :term, '%')
                OR f.description LIKE CONCAT('%', :term, '%')
             ORDER BY f.fileName ASC
             """)
     List<FileInfo> searchForTree(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
+
+    /** The files directly in a folder, as the tree renders a tag node's children (roadmap 7.2 step 3, reader 4). */
+    List<FileInfo> findByFolderIdOrderByFileNameAsc(int folderId);
+
+    /** How many files sit directly in a folder - a tag node's child count. */
+    long countByFolderId(int folderId);
 
     @Query("SELECT f.lastVersion FROM FileInfo f WHERE f.id = :fileInfoId")
     Integer getLastVersionNumberOfFile(@Param("fileInfoId") int fileInfoId);
