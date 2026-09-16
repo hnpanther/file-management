@@ -963,41 +963,79 @@ WantedBy=timers.target
 
 ### Windows
 
+Everything the script needs is in the block at the top: the same database URL and files
+directory the service runs with (copy them from the WinSW `<env>` block), a backup account and
+its password, and where the runs go. Nothing else has to exist beforehand - no defaults file,
+no `pgpass`-style lookup.
+
 ```powershell
 # D:\MyApp\scripts\backup-file-management.ps1
 $ErrorActionPreference = 'Stop'
 
-$MySqlBin = 'C:\Program Files\MySQL\MySQL Server 8.0\bin'
-$AppFiles = 'D:\MyApp\file-management\files'
-$Dest     = 'D:\Backup\file-management'
-$KeepDays = 7
-$DbName   = 'file_management'
+# ---------------- settings ----------------------------------------------------------------
+$MySqlBin   = 'C:\Program Files\MySQL\MySQL Server 8.0\bin'
+$DbUrl      = 'jdbc:mysql://localhost:3306/file_management'   # the service's FILEMANAGEMENT_DB_URL, verbatim
+$DbUser     = 'file_management_backup'                        # a read-only account - see below
+$DbPassword = 'a real password'
+$AppFiles   = 'D:\MyApp\file-management\files'                # the service's FILEMANAGEMENT_BASE_DIR
+$Dest       = 'D:\Backup\file-management'                     # where every run goes, one folder each
+$KeepDays   = 7
+# ------------------------------------------------------------------------------------------
 
+# Host, port and database come out of the JDBC URL, so the value is copied from the service
+# definition rather than typed a second time and allowed to drift from it.
+if ($DbUrl -notmatch '^jdbc:mysql://([^:/]+)(?::(\d+))?/([^?]+)') { throw "cannot parse DbUrl: $DbUrl" }
+$DbHost = $Matches[1]
+$DbPort = if ($Matches[2]) { $Matches[2] } else { '3306' }
+$DbName = $Matches[3]
+
+# Date and time to the second. Everything this run produces goes in here and nowhere else,
+# so a run can neither disturb nor be confused with any other.
 $stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 $Run   = "$Dest\$stamp"
 New-Item -ItemType Directory -Force -Path $Run | Out-Null
 Start-Transcript -Path "$Run\backup.log" | Out-Null
 
 try {
-    # 1) Database first. --result-file, never a pipe: a PowerShell pipe re-encodes the dump.
-    #    Credentials come from the defaults file, not the command line.
-    & "$MySqlBin\mysqldump.exe" `
-        --defaults-file="D:\MyApp\file-management\my-backup.cnf" `
-        --single-transaction --quick --default-character-set=utf8mb4 `
-        --databases $DbName --result-file="$Run\db.sql"
-    if ($LASTEXITCODE -ne 0) { throw "mysqldump failed with $LASTEXITCODE" }
+    # 1) Database first (see "Order" above). --result-file, never a pipe: a PowerShell pipe
+    #    re-encodes the dump. The password reaches mysqldump through MYSQL_PWD, an environment
+    #    variable only the child process sees - never as --password=, which every user on the
+    #    host can read from the process list for as long as the dump runs.
+    $dump = "$Run\db.sql"
+    $env:MYSQL_PWD = $DbPassword
+    try {
+        & "$MySqlBin\mysqldump.exe" `
+            --host=$DbHost --port=$DbPort --user=$DbUser `
+            --single-transaction --quick --default-character-set=utf8mb4 `
+            --databases $DbName --result-file=$dump
+        if ($LASTEXITCODE -ne 0) { throw "mysqldump failed with $LASTEXITCODE" }
+    }
+    finally {
+        Remove-Item Env:MYSQL_PWD -ErrorAction SilentlyContinue
+    }
 
-    # 2) Files second - a full copy. /E includes empty directories; not /MIR, because the
-    #    destination is new and /MIR on a fresh folder only invites a typo in $Run to delete
-    #    something else.
-    robocopy $AppFiles "$Run\files" /E /R:2 /W:5 /MT:8 /NP /NDL /NFL /LOG:"$Run\robocopy.log"
-    # robocopy reports 0-7 for success and 8+ for a real failure, so it cannot be tested like an
-    # ordinary command. Reset the code or the next check inherits it.
+    # 2) Files second, into this run's own folder - a full copy.
+    #    /E copies the tree including empty directories. Not /MIR: the destination is new,
+    #    so there is nothing to mirror away, and /MIR on a fresh folder only invites a typo
+    #    in $Run to delete something else. /MT:8 uses eight threads.
+    robocopy $AppFiles "$Run\files" `
+        /E /R:2 /W:5 /MT:8 /NP /NDL /NFL /LOG:"$Run\robocopy.log"
+    # robocopy reports 0-7 for success and 8+ for a real failure, so it cannot be tested like
+    # an ordinary command. Reset the code or the next check inherits it.
     if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
     $global:LASTEXITCODE = 0
 
-    # 3) Rotation - age from the folder NAME, not its timestamp: a directory's LastWriteTime
-    #    changes whenever anything inside it does. A name that does not parse is left alone.
+    # 3) Prove the dump is complete now, not on the day it is needed. mysqldump writes its
+    #    last line only after every table went out; a dump cut short by a lost connection or a
+    #    full disk has the right name, a plausible size, and no such line.
+    $last = Get-Content -Path $dump -Tail 1
+    if ($last -notmatch '^-- Dump completed') { throw "dump is incomplete: $dump (last line: $last)" }
+    if ((Get-Item $dump).Length -lt 10KB) { throw "dump is implausibly small: $((Get-Item $dump).Length) bytes" }
+
+    # 4) Rotation - whole run folders.
+    #    Age comes from the folder NAME, not its timestamp: a directory's LastWriteTime changes
+    #    whenever anything inside it does. A name that does not parse is left alone, so nothing
+    #    unexpected in this directory is ever deleted - including the run this script is writing.
     $cutoff = (Get-Date).AddDays(-$KeepDays)
     Get-ChildItem $Dest -Directory | Where-Object {
         $parsed = [datetime]::MinValue
@@ -1015,6 +1053,33 @@ catch {
     exit 1      # non-zero, so Task Scheduler records it as failed
 }
 ```
+
+Each run produces one folder:
+
+```text
+D:\Backup\file-management\2026-09-16_010000\
+├── db.sql           the database, one consistent snapshot, utf8mb4
+├── files\           every uploaded file, the tree as it is under FILEMANAGEMENT_BASE_DIR
+├── backup.log       everything the script printed
+└── robocopy.log     what was copied
+```
+
+**The script holds the database password, so restrict it** to the account the task runs as and
+administrators; and give the job its own read-only account rather than the application's:
+
+```powershell
+icacls "D:\MyApp\scripts\backup-file-management.ps1" /inheritance:r `
+  /grant "Administrators:(R,W)" "SYSTEM:(R)"
+```
+
+```sql
+CREATE USER 'file_management_backup'@'localhost' IDENTIFIED BY '...';
+GRANT SELECT, LOCK TABLES, SHOW VIEW, EVENT, TRIGGER
+  ON file_management.* TO 'file_management_backup'@'localhost';
+```
+
+Run it once by hand before scheduling it and read `backup.log`; the first run is the one that
+finds a wrong path or a refused login, and it should find it while somebody is watching.
 
 > **Save this script as ASCII, or as UTF-8 *with* a BOM.** Windows PowerShell 5.1 assumes the system
 > ANSI code page for a `.ps1` with no BOM, so a UTF-8 file saved without one is decoded as
