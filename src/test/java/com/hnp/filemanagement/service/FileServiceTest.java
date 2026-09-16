@@ -476,8 +476,7 @@ class FileServiceTest extends MySqlSupport {
     }
 
     private static MultipartFile multipart(String fileName) {
-        return new MockMultipartFile(fileName, fileName, "text/plain",
-                ("contents of " + fileName).getBytes(StandardCharsets.UTF_8));
+        return new MockMultipartFile(fileName, fileName, "text/plain", TestData.bytesFor(fileName));
     }
 
     /**

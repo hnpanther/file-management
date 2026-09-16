@@ -8,6 +8,9 @@ public class FileDownloadDTO {
 
     private String contentType;
 
+    /** Whether a browser may render this type inline without running anything (issue 13). */
+    private boolean inlineSafe;
+
     private String fileName;
 
     private Resource resource;

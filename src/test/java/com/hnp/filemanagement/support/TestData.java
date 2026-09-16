@@ -48,6 +48,29 @@ public final class TestData {
         return SEQUENCE.incrementAndGet();
     }
 
+    /**
+     * Bytes that pass for the kind of file the name promises. Uploads are judged by their first
+     * bytes as well as their extension (issue 12), so a fixture named {@code report.pdf} has to
+     * start like a PDF. The payload after the signature is the name, so two fixtures differ.
+     */
+    public static byte[] bytesFor(String fileName) {
+        String extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
+        byte[] body = ("content of " + fileName).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] signature = switch (extension) {
+            case "pdf" -> "%PDF-1.4 ".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            case "png" -> new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+            case "jpg", "jpeg" -> new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0};
+            case "docx", "xlsx", "pptx" -> new byte[]{'P', 'K', 0x03, 0x04};
+            case "mp4" -> new byte[]{0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'm', 'p', '4', '2'};
+            case "mp3" -> new byte[]{'I', 'D', '3'};
+            default -> new byte[0];
+        };
+        byte[] bytes = new byte[signature.length + body.length];
+        System.arraycopy(signature, 0, bytes, 0, signature.length);
+        System.arraycopy(body, 0, bytes, signature.length, body.length);
+        return bytes;
+    }
+
     public static User user() {
         int n = nextSequence();
         User user = new User();

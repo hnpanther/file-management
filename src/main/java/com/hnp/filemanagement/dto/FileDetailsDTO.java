@@ -42,18 +42,11 @@ public class FileDetailsDTO {
     private LocalDateTime createdAt;
 
     /**
-     * Whether a browser can show this inline: PDFs, images and plain text. Anything else opened
-     * with {@code ?inline=1} would only be downloaded, so the page offers no preview for it.
-     * Judged on the extension the file was stored with, not on the content type the uploader
-     * claimed (never trusted here).
+     * Whether a browser may show this inline - the allow-list {@code ContentTypes} keeps, judged on
+     * the stored extension and never on the content type the uploader claimed. Anything else opened
+     * with {@code ?inline=1} is served as an attachment anyway, so the page offers no preview for it.
      */
     public boolean isPreviewable() {
-        if (fileExtension == null) {
-            return false;
-        }
-        return switch (fileExtension.toLowerCase()) {
-            case "pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "txt", "csv", "json", "xml", "md", "log" -> true;
-            default -> false;
-        };
+        return com.hnp.filemanagement.validation.ContentTypes.inlineSafe(fileExtension);
     }
 }

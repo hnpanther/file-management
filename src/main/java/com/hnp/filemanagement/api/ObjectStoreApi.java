@@ -142,9 +142,11 @@ public class ObjectStoreApi {
         ObjectMetadataDTO metadata = objectStoreService.head(bucket, key, userDetails.getId());
         FileDownloadDTO download = objectStoreService.get(bucket, key, userDetails.getId());
 
+        // Served as the extension's type, as an attachment, with nosniff - the v1 rules (issue 13).
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(download.getContentType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + download.getFileName() + "\"")
+                .header("X-Content-Type-Options", "nosniff")
                 .header(HttpHeaders.ETAG, metadata.eTag())
                 .header("x-fm-version", String.valueOf(metadata.version()))
                 .lastModified(metadata.lastModified().atZone(java.time.ZoneId.systemDefault()))

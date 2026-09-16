@@ -22,12 +22,14 @@ import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import com.hnp.filemanagement.util.SearchTerms;
+import com.hnp.filemanagement.validation.ContentTypes;
 import com.hnp.filemanagement.validation.ValidationUtil;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -395,7 +397,9 @@ public class FileService {
         // Issue 7 - a real checksum has to exist before the S3 migration.
         fileDetails.setHashId(UUID.randomUUID().toString());
         fileDetails.setFileExtension(getFileExtension(originalFilename));
-        fileDetails.setContentType(multipartFile.getContentType());
+        // Judged from the extension and the bytes, never taken from the client (issue 12). This is
+        // the enforcement: every route that stores a file - form, v1, v2 - passes through here.
+        fileDetails.setContentType(ContentTypes.detect(multipartFile));
         fileDetails.setDescription(description);
         fileDetails.setFilePath(fileInfo.getFileSubCategory().getPath() + versionDirectory);
         fileDetails.setRelativePath(storageKey);
@@ -665,7 +669,12 @@ public class FileService {
 
         FileDownloadDTO fileDownloadDTO = new FileDownloadDTO();
         fileDownloadDTO.setResource(resource);
-        fileDownloadDTO.setContentType(fileDetails.getContentType());
+        // Served as what the extension says, not as what the row says (issue 13): rows from
+        // before V2.5 hold whatever the client declared, and a row this cannot place is a plain
+        // binary the browser is told to save.
+        fileDownloadDTO.setContentType(ContentTypes.servedTypeFor(fileDetails.getFileExtension())
+                .orElse(MediaType.APPLICATION_OCTET_STREAM_VALUE));
+        fileDownloadDTO.setInlineSafe(ContentTypes.inlineSafe(fileDetails.getFileExtension()));
         fileDownloadDTO.setFileName(fileDetails.getFileName());
         return fileDownloadDTO;
     }

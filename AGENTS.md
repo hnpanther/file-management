@@ -202,9 +202,14 @@ Hibernate will refuse to start on a mismatch.
   credentials in the git history still need rotating
   ([issue 11](docs/issues.md#11-credentials-and-infrastructure-details-are-committed--s1)).
 * **Do not trust `MultipartFile.getContentType()`** for anything security-relevant. It is a
-  client-supplied header.
+  header the client wrote. Nothing in the application reads it any more: `ContentTypes` decides
+  the type from the extension and the first bytes, stores that, and serves downloads by
+  extension. Do not add a code path that consults the declared type.
 * **Do not widen the `permitAll` list** in `SecurityConfig` without saying why in the commit message.
-* **Do not add `inline` content disposition** to any new download path.
+* **Do not add `inline` content disposition** to any new download path. Every download goes
+  through `FileController.download(FileDownloadDTO, boolean)`, which honours `?inline=1` only for
+  the types `ContentTypes.inlineSafe` names and always sends `nosniff` and a `default-src 'none'`
+  CSP; route a new download through it rather than building the headers again.
 * **Every AJAX call needs the CSRF header.** Read `_csrf` / `_csrf_header` from the `<meta>` tags,
   as every existing template does. The session chain has CSRF enabled and it must stay that way.
 * **Authorization is per-endpoint only.** There is no per-file check
