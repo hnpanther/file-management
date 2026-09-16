@@ -153,7 +153,10 @@ File names must contain exactly one `.`, no space, no `/`. Enforced in both `Val
 * **Everything is `FetchType.EAGER`.** Loading one `FileDetails` pulls the entire ancestry plus two
   `User` rows per level. Adding a field to a mapper can quietly add joins to every list page.
 * **`hash_id` is a random UUID, not a hash.** Nothing verifies file integrity.
-* **`base-dir` must end with a separator.** The storage service concatenates; it does not resolve.
+* **`base-dir` is concatenated, not resolved**, by the path-shaped half of the storage service.
+  The constructor appends a trailing separator when the configured value lacks one (it did not
+  always: 1.1.0's first deployment stored files under `main\IMS\…` and deleted from `mainIMS/…`),
+  so both spellings work - but write it with the separator.
 * **Hand-written SQL must match table names exactly.** MySQL folds identifiers on Windows but not on
   Linux, so a typo like `file_Info` passes locally and fails in production. `compose.yaml` sets
   `--lower-case-table-names=0` and the test container is Linux, so both now catch it — do not work

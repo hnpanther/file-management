@@ -32,8 +32,11 @@ import java.util.Comparator;
  * <p>Two properties of this class are worth knowing before changing it:
  *
  * <ul>
- *   <li>{@code base-dir} is concatenated, not resolved, so the configured value must end with a
- *       separator;</li>
+ *   <li>{@code base-dir} is concatenated, not resolved. The constructor appends a separator when
+ *       the configured value lacks one, so {@code E:\files\main} and {@code E:\files\main\} now
+ *       mean the same directory - they did not, and the first production deployment of 1.1.0 found
+ *       out: uploads went through the key-shaped half, which resolves, into {@code main\IMS\...},
+ *       while a delete went through this half into {@code mainIMS/...} and answered 404;</li>
  *   <li>there is no path-containment check, so a name containing {@code ..} would escape the root.
  *       {@code checkCorrectFileName} and {@code checkCorrectDirectoryName} are what stand between
  *       the caller and that, which is why they reject rather than sanitise.</li>
@@ -54,8 +57,21 @@ public class FileStorageFileSystemService implements FileStorageService {
 
 
     public FileStorageFileSystemService(@Value("${file.management.base-dir}") String baseDir) {
-        this.baseDir = baseDir;
+        this.baseDir = withTrailingSeparator(baseDir);
+    }
 
+    /**
+     * The path-shaped methods below build paths by string concatenation, so the root must end with
+     * a separator or the first path segment fuses with the directory name. The key-shaped methods
+     * resolve and do not care either way. Making the two halves agree here is what keeps a file
+     * that one half stored findable by the other, whatever the operator typed.
+     */
+    static String withTrailingSeparator(String baseDir) {
+        if (baseDir == null || baseDir.isEmpty()) {
+            return baseDir;
+        }
+        char last = baseDir.charAt(baseDir.length() - 1);
+        return last == '/' || last == '\\' ? baseDir : baseDir + java.io.File.separator;
     }
 
     // ---------------------------------------------------------------- key-shaped (roadmap 7.1)
