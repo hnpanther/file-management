@@ -293,6 +293,15 @@ permissions, use `permission-grid`; identifiers must be allowed to wrap rather t
 File uploads use the `file-picker` pattern so the action and empty state remain Persian instead of
 depending on browser-native English copy.
 
+The upload form has two modes. Opened plainly, it asks for the place with three dependent selects
+(category, sub-category, tag). Opened from the explorer's "upload here" button - `/files/create?folderId=` -
+the place is fixed: the path down to the folder is shown read-only with a "change target" link back
+to the plain form, and a hidden `folderId` is what gets posted. The selects are not rendered in
+that mode; hidden-but-`required` controls would block the submit. A folder that cannot be uploaded
+into (not a tag folder, or outside the person's write grants) drops the form back to the plain mode
+with a message rather than an error page - the person came to upload, and the form is where they
+can still do that.
+
 ### Detail pages
 
 Present immutable information as label-and-value pairs and keep related actions in the same card.

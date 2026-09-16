@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -70,29 +71,51 @@ public class FileController {
         this.fileService = fileService;
     }
 
+    /**
+     * The upload form. With {@code ?folderId=} - the link the explorer offers on a folder the
+     * person may write into - the target is fixed to that folder and shown as a path instead of
+     * the three selects (roadmap 7.2 step 5). Without it, the form is as it always was.
+     *
+     * <p>A {@code folderId} that cannot be filed into - not a tag folder, or outside the person's
+     * write grants - falls back to the plain form with a message rather than an error page: the
+     * person came here to upload, and the form is where they can still do that.
+     */
     //CREATE_FILE_PAGE
     @PreAuthorize("hasAuthority('CREATE_FILE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("create")
-    public String getCreateFilePage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
+    public String getCreateFilePage(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                    @RequestParam(value = "folderId", required = false) Integer folderId,
+                                    Model model, HttpServletRequest request) {
 
         int principalId = userDetails.getId();
         String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get create file page";
+        String logMessage = "request to get create file page, folderId=" + folderId;
         String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         globalGeneralLogging.controllerLogging(principalId, principalUsername,
                 request.getMethod() + " " + path, "FileController.class", logMessage);
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
-
         FileInfoDTO fileInfoDTO = new FileInfoDTO();
+        boolean showMessage = false;
+        String message = "";
+
+        if (folderId != null) {
+            try {
+                fileInfoDTO = fileService.uploadTargetOf(folderId, principalId);
+            } catch (InvalidDataException | AccessDeniedException e) {
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "FileController.class",
+                        e.getClass().getSimpleName() + ":" + e.getMessage());
+                showMessage = true;
+                message = "امکان بارگذاری در پوشهٔ انتخاب‌شده وجود ندارد؛ مقصد را انتخاب کنید";
+            }
+        }
 
         model.addAttribute("file", fileInfoDTO);
-        model.addAttribute("listCategory", allFileCategories);
+        model.addAttribute("listCategory", fileCategoryService.getAllFileCategoriesForSelection());
         model.addAttribute("pageType", "create");
-        model.addAttribute("showMessage", false);
+        model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", false);
-        model.addAttribute("message", "");
-
+        model.addAttribute("message", message);
 
         return "file-management/files/save-file.html";
     }
@@ -148,6 +171,19 @@ public class FileController {
                 message = "فایلی با اطلاعات مشابه در سیستم وجود دارد";
             }
 
+        }
+
+        // In folder mode the form re-renders with the target still fixed, so its labels are
+        // resolved again; a folder that no longer resolves simply drops the form back to the selects.
+        if (fileInfoDTO.getFolderId() != null) {
+            try {
+                FileInfoDTO target = fileService.uploadTargetOf(fileInfoDTO.getFolderId(), principalId);
+                fileInfoDTO.setFileCategoryNameDescription(target.getFileCategoryNameDescription());
+                fileInfoDTO.setFileSubCategoryNameDescription(target.getFileSubCategoryNameDescription());
+                fileInfoDTO.setTagDescription(target.getTagDescription());
+            } catch (InvalidDataException | AccessDeniedException e) {
+                fileInfoDTO.setFolderId(null);
+            }
         }
 
         List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
