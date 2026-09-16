@@ -191,6 +191,35 @@ public class FileService {
     }
 
     /**
+     * What the upload form shows when it was opened on a folder: the folder, the taxonomy ids it
+     * mirrors, and their labels (roadmap 7.2 step 5). Refused - the same way the upload itself
+     * would refuse - for a folder that cannot hold documents or that the person may not write into,
+     * so the form never promises a target the submit would reject.
+     */
+    @Transactional(readOnly = true)
+    public FileInfoDTO uploadTargetOf(int folderId, int principalId) {
+        Folder folder = folderAccessService.requireFolder(folderId);
+        if (folder.getKind() != FolderKind.TAG || folder.getSourceId() == null) {
+            throw new InvalidDataException("folder id=" + folderId + " is a " + folder.getKind()
+                    + "; a document can only be filed into a tag folder");
+        }
+        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), folder);
+
+        MainTagFile mainTagFile = mainTagFileService.getMainTagFileEntity(folder.getSourceId());
+        FileSubCategory subCategory = mainTagFile.getFileSubCategory();
+
+        FileInfoDTO target = new FileInfoDTO();
+        target.setFolderId(folder.getId());
+        target.setMainTagFileId(mainTagFile.getId());
+        target.setTagDescription(mainTagFile.getTagNameDescription());
+        target.setFileSubCategoryId(subCategory.getId());
+        target.setFileSubCategoryNameDescription(subCategory.getSubCategoryNameDescription());
+        target.setFileCategoryId(subCategory.getFileCategory().getId());
+        target.setFileCategoryNameDescription(subCategory.getFileCategory().getCategoryNameDescription());
+        return target;
+    }
+
+    /**
      * The folder a new file is filed into, from whichever addressing the request used.
      *
      * <p>{@code folderId} names it directly. Without one, the main tag names it - the taxonomy

@@ -133,6 +133,13 @@
                 </div>
 
                 <div class="flex shrink-0 items-center gap-1.5" x-show="searchResults === null" x-cloak>
+                    <!-- Only where a document can actually be filed: a tag folder inside a WRITE grant. -->
+                    <a class="btn btn-primary btn-sm" x-show="writable" x-cloak
+                       :href="uploadHref()" th:data-href="@{/files/create}"
+                       x-ref="uploadLink" sec:authorize="hasAuthority('CREATE_FILE_PAGE') || hasAuthority('ADMIN')">
+                        <i class="bi bi-upload" aria-hidden="true"></i>
+                        <span th:text="#{explorer.uploadHere}">بارگذاری در این پوشه</span>
+                    </a>
                     <span class="explorer-cell-muted" x-show="page && page.totalPages > 1" x-cloak
                           x-text="pagePosition()"></span>
                     <button type="button" class="btn btn-secondary btn-sm"
@@ -417,6 +424,7 @@
             files: [],
             page: null,
             readable: true,
+            writable: false,
             currentFolderId: null,
 
             treeRows: [],
@@ -471,6 +479,7 @@
                 this.files = content.files;
                 this.page = content.page;
                 this.readable = content.readable;
+                this.writable = content.writable;
             },
 
             fetchContent(folderId, pageNumber) {
@@ -662,6 +671,12 @@
                     return "bi-folder";
                 }
                 return "bi-folder-fill";
+            },
+
+            /** The upload form, opened on the folder on screen. */
+            uploadHref() {
+                const base = this.$refs.uploadLink ? this.$refs.uploadLink.dataset.href : "/files/create";
+                return this.folder ? base + "?folderId=" + encodeURIComponent(this.folder.id) : base;
             },
 
             /** Persian digits throughout, from the browser - no locale data is shipped for this. */

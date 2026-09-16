@@ -115,6 +115,7 @@ public class FolderContentService {
         return new FolderContentDTO(
                 refOf(folder),
                 readable,
+                folder.getKind() == FolderKind.TAG && access.canWrite(folder.getPath()),
                 breadcrumbOf(folder),
                 childFoldersOf(folder, access),
                 filePage == null ? List.of() : entriesOf(filePage.getContent()),

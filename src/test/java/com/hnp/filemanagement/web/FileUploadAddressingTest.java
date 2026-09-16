@@ -46,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -77,6 +78,8 @@ class FileUploadAddressingTest extends MySqlSupport {
     private MainTagFileService mainTagFileService;
     @Autowired
     private FileInfoRepository fileInfoRepository;
+    @Autowired
+    private com.hnp.filemanagement.service.FolderContentService folderContentService;
     @Autowired
     private FolderRepository folderRepository;
     @Autowired
@@ -265,6 +268,69 @@ class FileUploadAddressingTest extends MySqlSupport {
 
         assertThat(fileInfoRepository.findAll()).filteredOn(f -> f.getFileName().equals("form"))
                 .singleElement().satisfies(f -> assertThat(f.getFolder().getId()).isEqualTo(tagFolderId));
+    }
+
+    // ================================================================ the form opened on a folder (roadmap 7.2 step 5)
+
+    @Test
+    @DisplayName("opened on a writable tag folder, the form fixes the target and shows the path instead of the selects")
+    void theFormOpenedOnAFolderFixesTheTarget() throws Exception {
+        String page = mockMvc.perform(get("/files/create").param("folderId", String.valueOf(tagFolderId))
+                        .with(user(principal(adminId, PermissionEnum.ADMIN))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(page)
+                .contains("name=\"folderId\"")
+                .contains("value=\"" + tagFolderId + "\"")
+                .contains(mainTagFileRepository.findById(tagId).orElseThrow().getTagNameDescription())
+                .contains(fileSubCategoryRepository.findById(subCategoryId).orElseThrow().getSubCategoryNameDescription())
+                .doesNotContain("id=\"mainTagFileId\"")
+                .doesNotContain("id=\"fileCategoryId\"");
+    }
+
+    @Test
+    @DisplayName("opened on a folder that cannot hold documents, or outside the write grant, the form falls back to the selects with a message")
+    void theFormFallsBackWhenTheFolderCannotBeUsed() throws Exception {
+        String onSubCategory = mockMvc.perform(get("/files/create").param("folderId", String.valueOf(subCategoryFolderId))
+                        .with(user(principal(adminId, PermissionEnum.ADMIN))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(onSubCategory).doesNotContain("name=\"folderId\"").contains("id=\"mainTagFileId\"");
+
+        User restricted = userRepository.save(TestData.user());
+        restricted.replaceFolderGrants(List.of(new UserFolderGrant(restricted,
+                folderRepository.findById(tagFolderId).orElseThrow(), FolderPermission.READ)));
+        userRepository.save(restricted);
+        entityManager.flush();
+        String readOnly = mockMvc.perform(get("/files/create").param("folderId", String.valueOf(tagFolderId))
+                        .with(user(principal(restricted.getId(), PermissionEnum.CREATE_FILE_PAGE))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(readOnly).doesNotContain("name=\"folderId\"").contains("id=\"mainTagFileId\"");
+    }
+
+    @Test
+    @DisplayName("the explorer says whether the folder on screen can be uploaded into")
+    void theExplorerReportsWritable() throws Exception {
+        User restricted = userRepository.save(TestData.user());
+        restricted.replaceFolderGrants(List.of(new UserFolderGrant(restricted,
+                folderRepository.findById(tagFolderId).orElseThrow(), FolderPermission.WRITE)));
+        userRepository.save(restricted);
+        entityManager.flush();
+
+        assertThat(folderContentService.contentOf(tagFolderId, 0, 10, restricted.getId()).writable()).isTrue();
+        assertThat(folderContentService.contentOf(otherTagFolderId, 0, 10, adminId).writable())
+                .as("an administrator may write anywhere").isTrue();
+        assertThat(folderContentService.contentOf(subCategoryFolderId, 0, 10, adminId).writable())
+                .as("a sub-category cannot hold documents, however powerful the caller").isFalse();
+
+        restricted.replaceFolderGrants(List.of(new UserFolderGrant(restricted,
+                folderRepository.findById(tagFolderId).orElseThrow(), FolderPermission.READ)));
+        userRepository.save(restricted);
+        entityManager.flush();
+        assertThat(folderContentService.contentOf(tagFolderId, 0, 10, restricted.getId()).writable())
+                .as("READ is not WRITE").isFalse();
     }
 
     // ---------------------------------------------------------------- helpers

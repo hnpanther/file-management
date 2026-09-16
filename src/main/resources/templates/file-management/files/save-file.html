@@ -47,6 +47,29 @@
                                th:field="*{description}" required>
                     </div>
 
+                    <!--
+                      Opened from the explorer on a folder, the target is that folder: shown as the
+                      path down to it and posted as folderId, which the service resolves and checks
+                      write access on (roadmap 7.2 step 5). The three selects are not rendered at all
+                      in this mode - hidden-but-required controls would block the submit.
+                    -->
+                    <div th:if="${file.getFolderId() != null}" class="form-group">
+                        <label th:text="#{file.upload.target}">مقصد بارگذاری</label>
+                        <input type="hidden" name="folderId" th:value="${file.getFolderId()}">
+                        <div class="flex flex-wrap items-center gap-2 rounded-md border border-ink-200 bg-ink-50 px-3 py-2">
+                            <i class="bi bi-folder2-open text-ink-400" aria-hidden="true"></i>
+                            <span class="min-w-0" id="uploadTarget">
+                                <span th:text="${file.getFileCategoryNameDescription()}"></span>
+                                <i class="bi bi-chevron-left mx-1 text-[0.65rem] text-ink-400" aria-hidden="true"></i>
+                                <span th:text="${file.getFileSubCategoryNameDescription()}"></span>
+                                <i class="bi bi-chevron-left mx-1 text-[0.65rem] text-ink-400" aria-hidden="true"></i>
+                                <strong th:text="${file.getTagDescription()}"></strong>
+                            </span>
+                            <a th:href="@{/files/create}" class="mr-auto text-sm" th:text="#{file.upload.changeTarget}">تغییر مقصد</a>
+                        </div>
+                    </div>
+
+                    <th:block th:if="${file.getFolderId() == null}">
                     <div class="form-group">
                         <label for="fileCategoryId" th:text="#{select.category}">انتخاب دسته‌بندی اصلی</label>
                         <select class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId"
@@ -80,6 +103,7 @@
                                     th:text="${file.getTagDescription()}" selected></option>
                         </select>
                     </div>
+                    </th:block>
 
                     <div th:if="${#strings.equals(pageType, 'create')}" class="form-group">
                         <label for="multipartFile" th:text="#{field.chooseFile}">فایل موردنظر</label>
@@ -134,14 +158,17 @@
         const tag = $("#mainTagFileId");
         const fileInput = $("#multipartFile");
 
-        category.select2({ width: "100%", dir: "rtl", placeholder: FILE_FORM_COPY.category });
-        subCategory.select2({ width: "100%", dir: "rtl", placeholder: FILE_FORM_COPY.subCategory });
-        tag.select2({ width: "100%", dir: "rtl", placeholder: FILE_FORM_COPY.tag });
+        // In folder mode the selects are not on the page at all; there is nothing to wire.
+        if (category.length) {
+            category.select2({ width: "100%", dir: "rtl", placeholder: FILE_FORM_COPY.category });
+            subCategory.select2({ width: "100%", dir: "rtl", placeholder: FILE_FORM_COPY.subCategory });
+            tag.select2({ width: "100%", dir: "rtl", placeholder: FILE_FORM_COPY.tag });
 
-        if (FILE_FORM_CREATE_MODE) {
-            category.val(null).trigger("change.select2");
-            subCategory.val(null).trigger("change.select2");
-            tag.val(null).trigger("change.select2");
+            if (FILE_FORM_CREATE_MODE) {
+                category.val(null).trigger("change.select2");
+                subCategory.val(null).trigger("change.select2");
+                tag.val(null).trigger("change.select2");
+            }
         }
 
         category.on("change", function () {

@@ -806,7 +806,7 @@ Each is independently shippable, and only the fourth cannot be undone.
 | 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under — **done** | `V2.4` | `DROP TABLE` |
 | 3 | **Reads move to the folder**: tree, upload, file list, search — **done**, one reader per commit: 1 API v2, 2 explorer, 3 folder access on download / file page / list / new version, 4 tree, 5 upload by `folderId` alongside the triple | — | revert the code |
 | 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` | `V2.5` | ⚠️ **none** |
-| 5 | Folder operations: create, rename, move, delete — and drag-and-drop | `V2.x` | — |
+| 5 | Folder operations: create, rename, move, delete — and drag-and-drop. **Started**: uploading into a folder from the explorer (5a) | `V2.x` | — |
 
 > **Step 1 done.** `FileInfo.folder` is set from `FolderMirrorService.folderOf(mainTag)` on every
 > upload — get-or-create, so an upload into a tag that was never mirrored heals the mirror rather
@@ -895,6 +895,18 @@ Each is independently shippable, and only the fourth cannot be undone.
 > **Step 3 is done.** Nothing in the application reads a file's place from the taxonomy any more;
 > `file_info.main_tag_file_id` and `file_sub_category_id` are still *written*, for the taxonomy
 > pages and the uniqueness rule, until step 4 removes them.
+>
+> **Step 5a done — uploading into a folder from the explorer.** The first thing a person does
+> with a folder that is not just looking at it. `FolderContentDTO.writable` says whether the
+> folder on screen can be filed into (a tag folder inside a `WRITE` grant); the explorer shows
+> "upload here" on it, which opens `/files/create?folderId=`. The form then fixes the target -
+> `FileService.uploadTargetOf` resolves the folder to its labels and refuses the same way the
+> upload would - and posts `folderId` alone, which reader 5 already accepts. Ordered before rename
+> and move on purpose: it needs nothing of the taxonomy to change, while a rename of a *folder*
+> would have to flow back into the taxonomy it mirrors until step 4, and a move is something the
+> taxonomy forbids outright (a tag cannot change sub-category). Both wait for step 4, after which
+> the folder is the only structure and there is nothing to keep in step. `FileUploadAddressingTest`
+> covers the page in both modes and `writable` for every grant shape.
 
 Steps 0–2 only add data and change no behaviour, so they can ship early and sit in production while
 step 3 is written. Step 3 is where the application actually changes. Step 4 should follow only after
