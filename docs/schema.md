@@ -16,6 +16,66 @@ Everything above the marker is written by hand and kept short: what the tables a
 [arch.md](arch.md#4-the-domain-model), and why each one is shaped the way it is lives in the
 comment block at the top of the migration that created it.
 
+## Creating the database and its user
+
+The one thing Flyway cannot do is create the database it runs in, or the account it connects as.
+That is done once, by hand, as a MySQL administrator, before the first start:
+
+```sql
+CREATE DATABASE file_management
+    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE USER 'file_management'@'localhost' IDENTIFIED BY 'a real password';
+
+GRANT ALL PRIVILEGES ON file_management.* TO 'file_management'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+Line by line:
+
+* **`CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`** is not optional. Every table below is
+  created with the same pair, and a database default that differs would give a table added later
+  without an explicit clause a different collation — and then a `JOIN` between the two fails with
+  "illegal mix of collations". `utf8mb4` is what Persian text and emoji need; `unicode_ci` is what
+  makes the uniqueness constraints compare names case-insensitively, which the pre-flight queries
+  in [deployment.md](deployment.md#upgrading-from-100-to-110) rely on.
+* **A dedicated user.** The application must not connect as `root`. `ALL PRIVILEGES ON
+  file_management.*` is the least that works — Flyway needs `CREATE`, `ALTER`, `INDEX` and
+  `REFERENCES` on this schema to run migrations at start-up — and it is scoped to this one schema:
+  no global privilege, no `GRANT OPTION`, nothing on `mysql.*`.
+* **`@'localhost'`** is right when the application runs on the same machine as MySQL and connects
+  over loopback, which both service definitions do. If the application is on another host, the
+  account must be created for that host (`'file_management'@'10.0.0.5'`, or `@'%'` behind a
+  firewall) — a `'localhost'` account is invisible to a remote connection and the error is a bare
+  "Access denied".
+* **The password** goes into `FILEMANAGEMENT_DB_PASSWORD` or the external `application.properties`
+  ([deployment.md](deployment.md#configuring-it-from-outside-the-jar)) and nowhere else.
+  `file_management` — the password the repository ships as a default — is published in this
+  repository and must never be the real one.
+* **`USE file_management;`** is for a person at the MySQL prompt about to run the verification
+  queries below or in a migration's header. The application never needs it: its JDBC URL names
+  the schema.
+
+Flyway does everything after that on the first boot, and `DataInitializer` seeds the permissions,
+the two roles and the `Admin` account. Nothing else is run by hand.
+
+### A throw-away developer database
+
+For a local database you intend to destroy and recreate, the same statements are preceded by:
+
+```sql
+DROP DATABASE IF EXISTS file_management;
+DROP USER IF EXISTS 'file_management'@'localhost';
+```
+
+**Never on a server with real data.** Those two lines are the opening of the old
+`schema-db/schema.sql`, which was deleted in Phase 0 precisely because a file that begins by
+dropping the production database, carries no warning, and can be run against the wrong
+connection is a live footgun
+([issue 32](issues.md#32-schema-dbschemasql-is-a-live-footgun--s1)). They are shown here so that
+the reset is documented; they are not shipped as a script on purpose. Developers should prefer
+`compose.yaml`, which brings up a disposable MySQL with the right settings and no reset to type.
+
 ## How the tables relate
 
 ```

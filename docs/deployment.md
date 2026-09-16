@@ -692,7 +692,9 @@ GRANT ALL PRIVILEGES ON file_management.* TO 'file_management'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-Flyway creates the schema on first boot. Nothing else is run by hand.
+Why each line is what it is — the collation, the scope of the grant, when `@'localhost'` is wrong —
+is in [schema.md](schema.md#creating-the-database-and-its-user). Flyway creates the schema on
+first boot. Nothing else is run by hand.
 
 > **Set `lower-case-table-names=0`.** MySQL folds identifiers on Windows but not on Linux, so a
 > query that misspells a table works on one and fails on the other — which is exactly how
