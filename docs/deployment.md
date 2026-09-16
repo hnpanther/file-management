@@ -88,13 +88,16 @@ Do this **before** the first start.
 | `FILEMANAGEMENT_LOG_PATH` | `./logs` | Same problem: relative to the working directory |
 | `filemanagement.bootstrap.admin-password` | *(empty)* | With nothing set, `DataInitializer` generates a random password for the `Admin` account and prints it **once**, at WARN, on the first boot. Miss that line and the account is unusable |
 
-> **`FILEMANAGEMENT_BASE_DIR` must end with a separator.** `FileStorageFileSystemService`
-> concatenates strings (`baseDir + address + "/" + …`) rather than resolving paths, so
-> `/srv/file-management/files` without the trailing slash produces `/srv/file-management/filesIMS/…`.
-> The same concatenation is why there is no path-containment check
-> ([issue 16](issues.md#16-no-path-containment-check-at-the-storage-boundary--s2)); until that is
-> fixed in Phase 2, the trailing separator is not optional. It is also listed among the gotchas in
-> [AGENTS.md](../AGENTS.md#things-that-will-bite-you).
+> **`FILEMANAGEMENT_BASE_DIR` with or without a trailing separator - both work, since 1.1.0.**
+> The storage service used to concatenate strings (`baseDir + address + "/" + …`), so
+> `/srv/file-management/files` without the slash produced `/srv/file-management/filesIMS/…`. Worse,
+> from 1.1.0 half of it resolves paths properly (uploads, downloads) while the other half still
+> concatenates (deleting a whole file): with `E:\FileManagementSystem\files\main` an upload landed
+> in `main\IMS\…` and the delete of that same file looked in `mainIMS/…` and answered 404. The
+> constructor now appends the separator when it is missing, so both halves name the same root.
+> Write it with the separator anyway; it is what every example here shows. The path-containment
+> check ([issue 16](issues.md#16-no-path-containment-check-at-the-storage-boundary--s2)) is a
+> separate matter and still Phase 2.
 
 Generate the admin password rather than inventing one:
 
@@ -200,6 +203,59 @@ On the Active Directory block specifically, two failures that point somewhere el
 * **A user must already exist in the `user` table.** AD verifies the password; it does not create
   accounts. `user.login_type` then decides which backend may accept that account — `0` either,
   `1` local only, `2` AD only.
+
+### `ldaps://` — "Connection to LDAP server failed", and what is actually failing
+
+Plain `ldap://…:389` sends every password across the network in the clear; `ldaps://…:636` is
+what production should use. But it adds a TLS handshake to the login, and when that handshake
+fails the log says only
+
+```
+InternalAuthenticationServiceException: Connection to LDAP server failed
+  Caused by: CommunicationException: simple bind failed: <host>:636
+    Caused by: SocketException: Connection or outbound has closed
+```
+
+— every user is refused, and nothing in that message says *why* the TLS layer gave up. The JVM
+is the client here, and it is the JVM's rules that decide. Three causes cover nearly every case:
+
+1. **The host in the URL is not the name on the domain controller's certificate.** The JVM
+   verifies that the hostname matches the certificate (endpoint identification is on by default
+   for LDAPS). A certificate on a DC names that DC — `dc01.site.example` — and a URL that uses the
+   **domain** name (`ldaps://site.example:636`, which DNS answers with any DC) fails the check,
+   whereas `ldap://` on the same name worked because there was no certificate to check. Use a
+   DC's fully-qualified hostname, exactly as it appears in the certificate's Subject Alternative
+   Names.
+2. **The certificate is not trusted.** Domain controllers usually carry a certificate from the
+   organisation's own CA, which the JVM does not know. Import that CA's certificate (not the DC's
+   own, which rotates) into a truststore beside the jar and point the JVM at it:
+
+   ```powershell
+   keytool -importcert -alias corp-ca -file corp-root-ca.cer `
+     -keystore D:\MyApp\file-management\config\truststore.p12 -storetype PKCS12 -storepass changeit
+   ```
+
+   then, in `<arguments>` before `-jar`:
+   `-Djavax.net.ssl.trustStore=D:\MyApp\file-management\config\truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=PKCS12`.
+   A file beside the jar rather than the JDK's own `cacerts`: the JDK gets upgraded, and its
+   `cacerts` goes with it.
+3. **The domain controller only offers TLS 1.0 / 1.1**, which the JDK has disabled for years.
+   The fix belongs on the DC (enable TLS 1.2); re-enabling old TLS in the JVM is the wrong side.
+
+**Find out which before changing anything.** Start the jar once by hand with handshake
+debugging and try one login:
+
+```powershell
+& "…\java.exe" -Djavax.net.debug=ssl:handshake -jar file-management.jar
+```
+
+The reason appears in plain words in that output — `No subject alternative DNS name matching …`
+(cause 1), `PKIX path building failed` / `unable to find valid certification path` (cause 2), or
+`protocol_version` / `handshake_failure` (cause 3). Or, without the application, inspect what the
+DC presents: `openssl s_client -connect dc01.site.example:636 -showcerts`.
+
+Meanwhile, `FILEMANAGEMENT_AD_URL=ldap://dc01.site.example:389` restores logins exactly as they
+worked before — with the password on the wire in the clear, so as a stopgap only.
 
 ## 3. The unit
 

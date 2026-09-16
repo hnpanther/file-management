@@ -265,6 +265,15 @@ calls `Path.normalize()` nor verifies that the resolved path still starts with `
 come from DB rows today, so there is no live traversal hole, but the only thing standing between a
 future caller and `../../` is a character-counting helper.
 
+> **One consequence fixed on its own, 2026-09-16.** The concatenation also meant a root
+> configured without a trailing separator fused with the first path segment. That was a documented
+> rule until the key-shaped half of the port (roadmap 7.1) started *resolving* paths: from then on
+> an upload with `base-dir=E:\…\files\main` landed correctly in `main\IMS\…` while the
+> whole-file delete, still concatenating, looked in `mainIMS/…` and answered 404 - which is how
+> the first 1.1.0 deployment found it. The constructor now normalises the separator
+> (`withTrailingSeparator`; `StorageRootSeparatorTest` replays the sequence on both spellings).
+> The containment check itself is still this issue, and still Phase 2.
+
 Fix: resolve against a canonical base and assert containment, in one place, unconditionally.
 
 ### 17. No transport security configuration — **S2**
