@@ -193,7 +193,7 @@ class FilePreviewPageTest extends MySqlSupport {
         request.setFileSubCategoryId(subCategoryId);
         request.setMainTagFileId(mainTagId);
         request.setMultipartFile(new MockMultipartFile("file", fileName, "application/octet-stream",
-                ("content of " + fileName).getBytes(StandardCharsets.UTF_8)));
+                TestData.bytesFor(fileName)));
         return fileService.createNewFile(request, principalId, 1);
     }
 }

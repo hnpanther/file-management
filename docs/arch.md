@@ -354,7 +354,7 @@ document, so a browser navigation still lands on a page.
 | GET | `/login` | permitAll |
 | GET / POST | `/files/create`, `/files` | `CREATE_FILE_PAGE`, `SAVE_NEW_FILE` |
 | GET | `/files/public-files` | `PUBLIC_FILE_PAGE` (path is also permitAll in the chain) |
-| GET | `/files/public-download/{id}` | permitAll (`?inline=1` switches Content-Disposition) |
+| GET | `/files/public-download/{id}` | permitAll (`?inline=1` is honoured only for `ContentTypes.inlineSafe` kinds; every download carries `nosniff` and a `default-src 'none'` CSP) |
 | GET | `/files/file-info`, `/files/file-info/{id}` | `GET_ALL_FILE_INFO_PAGE`, `FILE_INFO_PAGE` |
 | GET | `/files/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `DOWNLOAD_FILE` |
 | GET / POST | `/files/file-info/{fileInfoId}/file-details/create`, `.../file-details` | `SAVE_NEW_FILE_DETAILS_PAGE`, `SAVE_NEW_FILE_DETAILS` |
@@ -555,14 +555,14 @@ beside it, which a status code cannot do.
 POST /files (multipart)
   └─ FileController.saveNewFile
        ├─ @PreAuthorize SAVE_NEW_FILE || ADMIN
-       ├─ @Validated(InsertValidation) → @ValidFile checks MultipartFile.getContentType()
+       ├─ @Validated(InsertValidation) → @ValidFile asks ContentTypes (extension allow-list + first bytes)
        └─ FileService.createNewFile(dto, principalId, publicFile)          @Transactional
             ├─ MainTagFileService.getMainTagFileByIdOrTagName
             ├─ verify tag.subCategory / tag.subCategory.category match the form
             ├─ isDuplicate(baseName, subCategoryId)
             ├─ ValidationUtil.checkCorrectFileName
             ├─ build FileInfo (paths, state, lastVersion = 1)
-            ├─ build FileDetails v1 (hashId = random UUID, storageKey)
+            ├─ build FileDetails v1 (hashId = random UUID, storageKey, content_type = ContentTypes.detect)
             ├─ fileInfoRepository.save(fileInfo)          ← cascades to FileDetails
             ├─ actionHistoryService.saveActionHistory × 2
             └─ fileStorageService.saveByKey(fileDetails.storageKey, multipartFile)  ← disk write, LAST
@@ -590,6 +590,7 @@ migrations themselves, in `src/main/resources/db/migration`:
 | `V2.2__Add_Storage_Key_To_File_Details.sql` | `file_details.storage_key`, backfilled from `relative_path` (roadmap 7.1) |
 | `V2.3__Add_Folder_To_File_Info.sql` | `file_info.folder_id`, nullable, indexed, backfilled to the folder mirroring the file's main tag; written on every upload, read by the v2 API since step 3 (roadmap 7.2 step 1) |
 | `V2.4__Add_Tags.sql` | `tag_group` (one per general tag), `tag` (unique per group), `file_tag`; backfilled from the three levels beneath each general tag, names merging within a group; re-runnable (roadmap 7.2 step 2) |
+| `V2.5__Normalise_Content_Type.sql` | data only: `file_details.content_type` rewritten from the extension for the nine accepted kinds, so the column holds the server's word rather than the client's (issues 12, 13) |
 
 `V1.3` turns four rules that lived only in application code into constraints: a sub-category name is
 unique per category, a main-tag name per sub-category, a file name per sub-category, and a

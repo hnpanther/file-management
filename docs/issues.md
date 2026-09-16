@@ -190,6 +190,16 @@ first-login password change, and rotation of anything already committed.
 
 ### 12. File-type validation trusts the client — **S1**
 
+> **Fixed.** `ContentTypes` decides what a file is from its extension (an allow-list of the nine
+> kinds the form offers) and its first bytes (`%PDF-`, the PNG signature, a ZIP header for Office
+> documents, `ftyp`, `ID3`, no NUL byte for text); the client's declared type is never read. It is
+> enforced in `FileService.newFileDetails`, which every storing route passes through - the form,
+> `/api/v1/files`, and `/api/v2` whose raw body bypassed the DTO validator entirely - and the
+> `@ValidFile` validator delegates to it so the form and v1 answer early with the reason. What is
+> stored in `file_details.content_type` is the server's word; `V2.5` rewrites the existing rows to
+> match. No Tika: the allow-list is nine fixed kinds, and a hand-written check has no dependency
+> to keep current. `ContentTypesTest` and `UploadContentTypeTest`.
+
 `FileValidator.isValid` allow-lists `MultipartFile.getContentType()`. That value is the
 `Content-Type` header the *client* put in the multipart part — entirely attacker-controlled. A
 `.exe`, a `.html` or an `.svg` renamed and labelled `image/png` passes.
@@ -201,6 +211,16 @@ Fix: sniff the magic bytes (Apache Tika), verify the sniffed type against the ex
 declared type, and store the sniffed value. Add an AV scan hook for untrusted uploads.
 
 ### 13. `inline` disposition on the public download endpoint — **S1**
+
+> **Fixed.** Every download - private, public and v2 - is served with the type the extension maps
+> to, never with the row's `content_type`; a row whose extension the server does not know is
+> `application/octet-stream` as an attachment. `inline` is honoured only for a render-safe
+> allow-list (PDF, PNG, JPEG, MP4, MP3, plain text): a spreadsheet, or anything else, asked for
+> inline is still an attachment. `X-Content-Type-Options: nosniff` is on every download and
+> `Content-Security-Policy: default-src 'none'` on the inline ones - not `sandbox`, which makes
+> Chrome download a PDF instead of rendering it. With issue 12 closed nothing that carries script
+> can be stored; this closes the other end in case something already had been. No separate
+> download origin yet; that stays a Phase 2 option. `UploadContentTypeTest`.
 
 `GET /files/public-download/{id}?inline=1` is `permitAll` and sets
 `Content-Disposition: inline` with the stored `content_type`. Combined with issue 12, any stored

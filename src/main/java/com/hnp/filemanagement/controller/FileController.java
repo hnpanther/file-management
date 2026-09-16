@@ -276,22 +276,7 @@ public class FileController {
                 request.getMethod() + " " + path, "FileController.class", logMessage);
 
         FileDownloadDTO fileDownloadDTO = fileService.downloadPublicFile(fileDetailsId);
-        String contentType = fileDownloadDTO.getContentType();
-
-        String header;
-        if(inline != null && inline.equals("1")) {
-            header = "inline; filename=\"" + fileDownloadDTO.getFileName() + "\"";
-        } else {
-            header = "attachment; filename=\"" + fileDownloadDTO.getFileName() + "\"";
-        }
-
-
-
-
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(contentType))
-                .header(HttpHeaders.CONTENT_DISPOSITION, header)
-                .body(fileDownloadDTO.getResource());
+        return download(fileDownloadDTO, "1".equals(inline));
     }
 
 
@@ -343,19 +328,28 @@ public class FileController {
                 request.getMethod() + " " + path, "FileController.class", logMessage);
 
         FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId, principalId);
-        String contentType = fileDownloadDTO.getContentType();
+        return download(fileDownloadDTO, "1".equals(inline));
+    }
 
-        // The same preview the public page has: inline lets the browser show a PDF or an image in
-        // the tab instead of saving it. The bytes and the permission are the same either way.
-        String disposition = "1".equals(inline) ? "inline" : "attachment";
-        String header = disposition + "; filename=\"" + fileDownloadDTO.getFileName() + "\"";
-
-
-
+    /**
+     * One shape for every download (issue 13). {@code inline} is honoured only for a type the
+     * browser renders without running anything - the service decides which - so a stored SVG or
+     * anything mislabelled is saved, never executed on this origin. Two headers back that up:
+     * {@code nosniff} stops the browser second-guessing the declared type, and a
+     * {@code Content-Security-Policy} of {@code default-src 'none'} means that even a document
+     * that did contain script would have nowhere to load anything from. (Not {@code sandbox}:
+     * Chrome refuses to render a sandboxed PDF inline and downloads it instead, which would undo
+     * the preview for the one type it is most used for.)
+     */
+    private static ResponseEntity<?> download(FileDownloadDTO file, boolean inlineRequested) {
+        boolean inline = inlineRequested && file.isInlineSafe();
+        String disposition = (inline ? "inline" : "attachment") + "; filename=\"" + file.getFileName() + "\"";
         return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(contentType))
-                .header(HttpHeaders.CONTENT_DISPOSITION, header)
-                .body(fileDownloadDTO.getResource());
+                .contentType(MediaType.parseMediaType(file.getContentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "default-src 'none'")
+                .body(file.getResource());
     }
 
 

@@ -98,7 +98,11 @@ public class FileApi {
         // Checked before touching the multipart: the debug block below dereferences it, and this
         // method used to log it first, so a request without a file answered 500 instead of 400.
         if (bindingResult.hasErrors()) {
-            throw new InvalidDataException("invalid file data: " + bindingResult.getAllErrors());
+            // The field and the reason, one per line - not the binding result's toString, which
+            // named the DTO class and the object's hash and said nothing a caller could act on.
+            throw new InvalidDataException("invalid file data: " + bindingResult.getFieldErrors().stream()
+                    .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                    .collect(java.util.stream.Collectors.joining("; ")));
         }
 
         logger.debug("upload originalName={}, contentType={}, size={}, publicFile={}",
