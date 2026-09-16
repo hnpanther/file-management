@@ -8,6 +8,7 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 | Question | Read |
 |---|---|
 | How does this application work? | [docs/arch.md](docs/arch.md) |
+| What does the database look like right now? | [docs/schema.md](docs/schema.md) — generated; regenerate it with every migration |
 | Is this thing I found already known? | [docs/issues.md](docs/issues.md) — **check before "fixing"** |
 | What is it becoming? | [docs/target-architecture.md](docs/target-architecture.md) |
 | In what order? | [docs/roadmap.md](docs/roadmap.md) |

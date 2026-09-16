@@ -556,7 +556,9 @@ The disk write happens inside the transaction but is not part of it — see
 
 ## 10. Database schema
 
-Flyway migrations in `src/main/resources/db/migration`:
+The tables as they stand after every migration — columns, keys, indexes — are in
+[schema.md](schema.md), generated from the migrated database and checked on every build. The
+migrations themselves, in `src/main/resources/db/migration`:
 
 | Version | Contents |
 |---|---|

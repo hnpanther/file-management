@@ -1,0 +1,462 @@
+# Database schema
+
+The database as it is **now** — every table, column, key and index — after all migrations have
+run. The migrations in `src/main/resources/db/migration` are the history and the only thing that
+changes the schema; this file is the present, so nobody has to replay them in their head.
+
+**The table section below is generated, not written.** `SchemaDocumentationTest` migrates a fresh
+MySQL with Flyway, reads `information_schema`, renders it, and fails the build if what is committed
+here differs. When a migration changes the schema, regenerate and commit both together:
+
+```bash
+./mvnw test -Dtest=SchemaDocumentationTest -DargLine=-Dschema.doc.write=true
+```
+
+Everything above the marker is written by hand and kept short: what the tables are *for* is in
+[arch.md](arch.md#4-the-domain-model), and why each one is shaped the way it is lives in the
+comment block at the top of the migration that created it.
+
+## How the tables relate
+
+```
+                       user ──< user_role >── role ──< permission_role >── permission
+                        │                       │
+                        │ owner / grants        │ grants
+                        ▼                       ▼
+                   user_folder             role_folder                api_key ──< api_key_folder
+                        └──────────────┬────────┘                        │            │
+                                       ▼                                 │            ▼
+                                     folder  ◄───────────────────────────┴──── (folder)
+                                       ▲        one tree; mirrors the taxonomy today,
+                                       │        becomes the structure in Phase 7
+      general_tag ──< file_category ──< file_sub_category ──< main_tag_file
+            │               │                   │                  │
+            │               │                   ▼                  ▼
+            │               └────────────── file_info ──< file_details
+            │                                  │  │
+            │                        folder_id ┘  └──< file_tag >── tag >── tag_group
+            └────────────────────────────────────────────────────────────────┘
+                              (one tag_group per general_tag, by name)
+
+      action_history            every mutation, by entity and id
+      flyway_schema_history     Flyway's own ledger; not described below
+```
+
+Three groups:
+
+| Group | Tables | State |
+|---|---|---|
+| **Identity and permissions** | `user`, `role`, `user_role`, `permission`, `permission_role`, `api_key`, `api_key_folder` | stable |
+| **Where a file is** | `folder`, `role_folder`, `user_folder`, `file_info.folder_id` | the future structure; `folder` still mirrors the taxonomy (roadmap Phase 6–7) |
+| **What a file is, and about** | `file_info`, `file_details`, `tag_group`, `tag`, `file_tag` | stable; tags are derived from the taxonomy until Phase 7 step 3 |
+| **The taxonomy** | `general_tag`, `file_category`, `file_sub_category`, `main_tag_file` | **to be removed** in Phase 7 step 4, together with `folder.source_type` / `source_id` and the `file_path` / `relative_path` columns |
+
+Conventions that hold everywhere: `id INT AUTO_INCREMENT` primary keys; `created_at` / `updated_at`
+written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign keys to `user`
+(nullable where a migration, not a person, may have written the row); `enabled` and `state` are
+the magic-number columns described in [arch.md](arch.md#magic-number-columns).
+
+<!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
+_As of migration `V2.4`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
+
+### `action_history`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `entity_name` | `varchar(100)` | no |  |  |
+| `table_name` | `varchar(100)` | no |  |  |
+| `entity_id` | `int` | no |  |  |
+| `action` | `varchar(100)` | no |  |  |
+| `action_description` | `varchar(1000)` | yes |  |  |
+| `description` | `varchar(1000)` | yes |  |  |
+| `user_id` | `int` | no |  |  |
+| `enabled` | `int` | no |  |  |
+| `state` | `int` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+
+* **primary key** `id`
+* **foreign key** `fk_action_history_user_id` `user_id` → `user` (`id`)
+* **index** `ix_action_history_entity` (`entity_name`, `entity_id`)
+
+### `api_key`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `key_id` | `varchar(32)` | no |  |  |
+| `secret_hash` | `varchar(64)` | no |  |  |
+| `title` | `varchar(100)` | no |  |  |
+| `description` | `varchar(500)` | yes |  |  |
+| `enabled` | `int` | no | `1` |  |
+| `expires_at` | `datetime` | yes |  |  |
+| `revoked_at` | `datetime` | yes |  |  |
+| `last_used_at` | `datetime` | yes |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `created_by` | `int` | no |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_api_key_key_id` (`key_id`)
+* **foreign key** `fk_api_key_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_api_key_updated_by_user` `updated_by` → `user` (`id`)
+
+### `api_key_folder`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `api_key_id` | `int` | no |  |  |
+| `folder_id` | `int` | no |  |  |
+| `permission` | `varchar(10)` | no | `READ` |  |
+
+* **primary key** `api_key_id`, `folder_id`
+* **foreign key** `fk_api_key_folder_folder` `folder_id` → `folder` (`id`), on delete cascade
+* **foreign key** `fk_api_key_folder_key` `api_key_id` → `api_key` (`id`), on delete cascade
+* **index** `ix_api_key_folder_key` (`api_key_id`)
+
+### `file_category`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `category_name` | `varchar(100)` | no |  |  |
+| `category_name_description` | `varchar(200)` | no |  |  |
+| `description` | `varchar(1000)` | yes |  |  |
+| `path` | `varchar(100)` | no |  |  |
+| `relative_path` | `varchar(100)` | no |  |  |
+| `general_tag_id` | `int` | no |  |  |
+| `enabled` | `int` | no |  |  |
+| `state` | `int` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `created_by` | `int` | no |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_file_category_category_name` (`category_name`)
+* **foreign key** `fk_file_category_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_file_category_updated_by_user` `updated_by` → `user` (`id`)
+
+### `file_details`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `file_info_id` | `int` | no |  |  |
+| `hash_id` | `varchar(300)` | no |  |  |
+| `file_name` | `varchar(100)` | no |  |  |
+| `file_extension` | `varchar(10)` | no |  |  |
+| `content_type` | `varchar(100)` | no |  |  |
+| `version` | `int` | no |  |  |
+| `version_name` | `varchar(100)` | no |  |  |
+| `version_name_description` | `varchar(1000)` | yes |  |  |
+| `description` | `varchar(1000)` | no |  |  |
+| `file_path` | `varchar(1000)` | no |  |  |
+| `relative_path` | `varchar(1000)` | no |  |  |
+| `storage_key` | `varchar(1000)` | no |  |  |
+| `file_link` | `varchar(1000)` | yes |  |  |
+| `file_size` | `int` | no |  |  |
+| `enabled` | `int` | no |  |  |
+| `state` | `int` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `created_by` | `int` | no |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_file_details_hash_id` (`hash_id`)
+* **unique** `uq_file_details_version_format` (`file_info_id`, `version`, `file_extension`)
+* **foreign key** `fk_file_details_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_file_details_file_info_id` `file_info_id` → `file_info` (`id`)
+* **foreign key** `fk_file_details_updated_by_user` `updated_by` → `user` (`id`)
+* **index** `ix_file_details_file_info_version` (`file_info_id`, `version`)
+* **index** `ix_file_details_state` (`state`)
+
+### `file_info`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `file_name` | `varchar(100)` | no |  |  |
+| `code_name` | `varchar(300)` | no |  |  |
+| `file_name_description` | `varchar(500)` | no |  |  |
+| `description` | `varchar(1000)` | yes |  |  |
+| `file_path` | `varchar(1000)` | no |  |  |
+| `relative_path` | `varchar(1000)` | no |  |  |
+| `file_link` | `varchar(1000)` | yes |  |  |
+| `last_version` | `int` | no |  |  |
+| `file_sub_category_id` | `int` | no |  |  |
+| `main_tag_file_id` | `int` | no |  |  |
+| `folder_id` | `int` | yes |  |  |
+| `enabled` | `int` | no |  |  |
+| `state` | `int` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `created_by` | `int` | no |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_file_info_name_per_sub_category` (`file_sub_category_id`, `file_name`)
+* **foreign key** `fk_file_info_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_file_info_file_sub_category_id` `file_sub_category_id` → `file_sub_category` (`id`)
+* **foreign key** `fk_file_info_folder` `folder_id` → `folder` (`id`)
+* **foreign key** `fk_file_info_main_tag_file` `main_tag_file_id` → `main_tag_file` (`id`)
+* **foreign key** `fk_file_info_updated_by_user` `updated_by` → `user` (`id`)
+* **index** `ix_file_info_created_at` (`created_at`)
+* **index** `ix_file_info_folder` (`folder_id`)
+* **index** `ix_file_info_main_tag_file_id` (`main_tag_file_id`)
+* **index** `ix_file_info_state` (`state`)
+
+### `file_sub_category`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `sub_category_name` | `varchar(100)` | no |  |  |
+| `sub_category_name_description` | `varchar(200)` | no |  |  |
+| `file_category_id` | `int` | no |  |  |
+| `description` | `varchar(1000)` | yes |  |  |
+| `path` | `varchar(100)` | no |  |  |
+| `relative_path` | `varchar(100)` | no |  |  |
+| `enabled` | `int` | no |  |  |
+| `state` | `int` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `created_by` | `int` | no |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_file_sub_category_name_per_category` (`file_category_id`, `sub_category_name`)
+* **foreign key** `fk_file_sub_category_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_file_sub_category_file_category_id` `file_category_id` → `file_category` (`id`)
+* **foreign key** `fk_file_sub_category_updated_by_user` `updated_by` → `user` (`id`)
+
+### `file_tag`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `file_info_id` | `int` | no |  |  |
+| `tag_id` | `int` | no |  |  |
+
+* **primary key** `file_info_id`, `tag_id`
+* **foreign key** `fk_file_tag_file_info` `file_info_id` → `file_info` (`id`)
+* **foreign key** `fk_file_tag_tag` `tag_id` → `tag` (`id`)
+* **index** `ix_file_tag_tag` (`tag_id`)
+
+### `folder`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `parent_id` | `int` | yes |  |  |
+| `name` | `varchar(100)` | no |  |  |
+| `display_name` | `varchar(200)` | no |  |  |
+| `path` | `varchar(1000)` | no |  | ascii |
+| `depth` | `int` | no |  |  |
+| `kind` | `varchar(30)` | no |  |  |
+| `owner_user_id` | `int` | yes |  |  |
+| `general_tag_id` | `int` | yes |  |  |
+| `source_type` | `varchar(20)` | yes |  |  |
+| `source_id` | `int` | yes |  |  |
+| `enabled` | `int` | no |  |  |
+| `state` | `int` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `created_by` | `int` | yes |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_folder_sibling_name` (`parent_id`, `name`)
+* **unique** `uq_folder_source` (`source_type`, `source_id`)
+* **foreign key** `fk_folder_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_folder_general_tag` `general_tag_id` → `general_tag` (`id`)
+* **foreign key** `fk_folder_owner_user` `owner_user_id` → `user` (`id`)
+* **foreign key** `fk_folder_parent` `parent_id` → `folder` (`id`)
+* **foreign key** `fk_folder_updated_by_user` `updated_by` → `user` (`id`)
+* **index** `ix_folder_parent` (`parent_id`)
+* **index** `ix_folder_path` (`path`)
+
+### `general_tag`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `tag_name` | `varchar(100)` | no |  |  |
+| `tag_name_description` | `varchar(200)` | no |  |  |
+| `description` | `varchar(1000)` | yes |  |  |
+| `type` | `int` | no |  |  |
+| `enabled` | `int` | no |  |  |
+| `state` | `int` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `created_by` | `int` | no |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_general_tag_name` (`tag_name`)
+* **foreign key** `fk_general_tag_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_general_tag_updated_by_user` `updated_by` → `user` (`id`)
+
+### `main_tag_file`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `tag_name` | `varchar(100)` | no |  |  |
+| `tag_name_description` | `varchar(100)` | no |  |  |
+| `description` | `varchar(1000)` | yes |  |  |
+| `file_sub_category_id` | `int` | no |  |  |
+| `type` | `int` | no |  |  |
+| `enabled` | `int` | no |  |  |
+| `state` | `int` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `created_by` | `int` | no |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_main_tag_file_name_per_sub_category` (`file_sub_category_id`, `tag_name`)
+* **foreign key** `fk_main_tag_file_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_main_tag_file_sub_category_id` `file_sub_category_id` → `file_sub_category` (`id`)
+* **foreign key** `fk_main_tag_file_updated_by_user` `updated_by` → `user` (`id`)
+
+### `permission`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `permission_name` | `varchar(100)` | no |  |  |
+| `description` | `varchar(1500)` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_permission_permission` (`permission_name`)
+
+### `permission_role`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `role_id` | `int` | no |  |  |
+| `permission_id` | `int` | no |  |  |
+
+* **primary key** `id`
+* **unique** `uq_permission_role` (`role_id`, `permission_id`)
+* **foreign key** `fk_permission_role_permission_id` `permission_id` → `permission` (`id`)
+* **foreign key** `fk_permission_role_role_id` `role_id` → `role` (`id`)
+
+### `role`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `role_name` | `varchar(100)` | no |  |  |
+
+* **primary key** `id`
+* **unique** `uq_role_role_name` (`role_name`)
+
+### `role_folder`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `role_id` | `int` | no |  |  |
+| `folder_id` | `int` | no |  |  |
+| `permission` | `varchar(10)` | no | `READ` |  |
+
+* **primary key** `role_id`, `folder_id`
+* **foreign key** `fk_role_folder_folder` `folder_id` → `folder` (`id`), on delete cascade
+* **foreign key** `fk_role_folder_role` `role_id` → `role` (`id`), on delete cascade
+* **index** `ix_role_folder_role` (`role_id`)
+
+### `tag`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `group_id` | `int` | yes |  |  |
+| `name` | `varchar(100)` | no |  |  |
+| `title` | `varchar(200)` | no |  |  |
+| `enabled` | `int` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `created_by` | `int` | yes |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_tag_name_per_group` (`group_id`, `name`)
+* **foreign key** `fk_tag_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_tag_group` `group_id` → `tag_group` (`id`)
+* **foreign key** `fk_tag_updated_by_user` `updated_by` → `user` (`id`)
+
+### `tag_group`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `name` | `varchar(100)` | no |  |  |
+| `title` | `varchar(200)` | no |  |  |
+| `enabled` | `int` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `created_by` | `int` | yes |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_tag_group_name` (`name`)
+* **foreign key** `fk_tag_group_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_tag_group_updated_by_user` `updated_by` → `user` (`id`)
+
+### `user`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `username` | `varchar(150)` | no |  |  |
+| `personel_code` | `int` | no |  |  |
+| `national_code` | `varchar(10)` | no |  |  |
+| `email` | `varchar(150)` | yes |  |  |
+| `phone_number` | `varchar(15)` | yes |  |  |
+| `password` | `varchar(100)` | no |  |  |
+| `first_name` | `varchar(250)` | no |  |  |
+| `last_name` | `varchar(250)` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `login_type` | `int` | no | `0` |  |
+| `enabled` | `int` | no |  |  |
+| `state` | `int` | no |  |  |
+
+* **primary key** `id`
+* **unique** `uq_user_email` (`email`)
+* **unique** `uq_user_national_code` (`national_code`)
+* **unique** `uq_user_personel_code` (`personel_code`)
+* **unique** `uq_user_phone_number` (`phone_number`)
+* **unique** `uq_user_username` (`username`)
+* **index** `ix_user_created_at` (`created_at`)
+
+### `user_folder`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `user_id` | `int` | no |  |  |
+| `folder_id` | `int` | no |  |  |
+| `permission` | `varchar(10)` | no | `READ` |  |
+
+* **primary key** `user_id`, `folder_id`
+* **foreign key** `fk_user_folder_folder` `folder_id` → `folder` (`id`), on delete cascade
+* **foreign key** `fk_user_folder_user` `user_id` → `user` (`id`), on delete cascade
+* **index** `ix_user_folder_user` (`user_id`)
+
+### `user_role`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `user_id` | `int` | no |  |  |
+| `role_id` | `int` | no |  |  |
+
+* **primary key** `id`
+* **unique** `uq_user_role` (`user_id`, `role_id`)
+* **foreign key** `fk_user_role_role_id` `role_id` → `role` (`id`)
+* **foreign key** `fk_user_role_user_id` `user_id` → `user` (`id`)
+
+<!-- end of generated section -->

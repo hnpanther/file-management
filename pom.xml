@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.hnp</groupId>
 	<artifactId>file-management</artifactId>
-	<version>1.0.0</version>
+	<version>1.1.0</version>
 	<name>file-management</name>
 	<description>file-management</description>
 	<packaging>jar</packaging>
@@ -196,12 +196,26 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 				<!--
-				  Writes build-info.properties into the jar, which is what makes /actuator/info
-				  answer with the version and build time instead of an empty object. Without it,
-				  "which build is running?" can only be answered by looking at file timestamps -
-				  a question deployment.md tells operators to ask after every upgrade.
+				  Two goals, both deliberate.
+
+				  repackage turns target/file-management.jar into the executable "fat" jar: the
+				  application, every dependency and the embedded Tomcat behind JarLauncher, so that
+				  `java -jar` is the whole runtime and deployment copies one file. The parent POM
+				  binds it by default; it is named here so that the intent survives a parent change
+				  and so that nobody reads the absence as "a thin jar is fine".
+
+				  build-info writes build-info.properties into the jar, which is what makes
+				  /actuator/info answer with the version and build time instead of an empty object.
+				  Without it, "which build is running?" can only be answered by looking at file
+				  timestamps - a question deployment.md tells operators to ask after every upgrade.
 				-->
 				<executions>
+					<execution>
+						<id>repackage</id>
+						<goals>
+							<goal>repackage</goal>
+						</goals>
+					</execution>
 					<execution>
 						<goals>
 							<goal>build-info</goal>
