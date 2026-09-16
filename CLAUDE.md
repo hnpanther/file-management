@@ -38,8 +38,11 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   [the storage port design](docs/target-architecture.md#the-storage-port) instead.
 * **Adding a field to `ModelConverterUtil` can add joins to every list page**, because every
   `@ManyToOne` is `EAGER`.
-* **`schema-db/schema.sql` begins with `DROP DATABASE IF EXISTS file_management;`.** Never execute
-  it, never suggest executing it, and never use it as the schema reference — Flyway owns the schema.
+* **Flyway owns the schema; `docs/schema.md` describes it.** The old `schema-db/schema.sql`
+  (which began with `DROP DATABASE IF EXISTS file_management;`) was deleted in Phase 0. Never
+  recreate it, and never suggest a `DROP DATABASE` against anything but a throw-away local
+  database — the one place the reset is written down, with that warning, is
+  [docs/schema.md](docs/schema.md#a-throw-away-developer-database).
 * **`base-dir` is concatenated, not resolved.** It must end with a separator, and there is no
   path-containment check.
 

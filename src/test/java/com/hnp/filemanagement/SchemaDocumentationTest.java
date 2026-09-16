@@ -51,7 +51,11 @@ class SchemaDocumentationTest extends MySqlSupport {
     @DisplayName("docs/schema.md describes the migrated database exactly")
     void theDocumentMatchesTheMigratedSchema() throws IOException {
         String generated = render();
-        String document = Files.exists(DOCUMENT) ? Files.readString(DOCUMENT, StandardCharsets.UTF_8) : "";
+        // Line endings are the editor's business, not the schema's: git may check the file out
+        // with CRLF on Windows, and that must not read as a schema change.
+        String document = Files.exists(DOCUMENT)
+                ? Files.readString(DOCUMENT, StandardCharsets.UTF_8).replace("\r\n", "\n")
+                : "";
 
         if (Boolean.getBoolean("schema.doc.write")) {
             Files.writeString(DOCUMENT, replaceGeneratedSection(document, generated), StandardCharsets.UTF_8);
