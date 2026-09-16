@@ -11,7 +11,6 @@ import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderKind;
-import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.ChildCount;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
@@ -45,10 +44,13 @@ import java.util.stream.Collectors;
  * taxonomy-first: it answers "the sub-categories of this category", "the main tags of this
  * sub-category" — one kind of level at a time — and the folder id it is given is translated back
  * into a taxonomy id on arrival. This one is folder-first: child folders come straight out of the
- * {@code folder} table by {@code parent_id}, with no taxonomy involved at all. Only the files still
- * need it, and only because {@code file_info} has no {@code folder_id} yet (roadmap Phase 7,
- * step 1). When it gets one, the two references to {@code sourceId} below go and nothing else
- * changes — which is the point of writing it this way now rather than afterwards.
+ * {@code folder} table by {@code parent_id}, and since roadmap 7.2 step 3 the files come the same
+ * way, from {@code file_info.folder_id} — no taxonomy is involved at all. The only trace of it
+ * left is that a file can be *in* a {@code TAG} folder and nowhere else today, so the response
+ * still tells the client which folders can hold files from {@code kind}.
+ *
+ * <p>A file without a folder — a row that predates {@code V2.3} and escaped the backfill — is
+ * not listed, not counted and not placeable by search; it is logged rather than failing anything.
  *
  * <p><b>Folders are not paged, files are.</b> One level of folders is bounded by the taxonomy - the
  * widest node on the installation this was measured against holds 29 children - and paging them
@@ -62,6 +64,8 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(readOnly = true)
 public class FolderContentService {
+
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(FolderContentService.class);
 
     /** Enough that no real folder needs a second request today, small enough to bound the response. */
     static final int DEFAULT_PAGE_SIZE = 100;
@@ -150,28 +154,27 @@ public class FolderContentService {
                     pageInfoOf(null, pageRequest));
         }
 
-        Page<FileInfo> found = matches(term, tagFilter(access, scope), pageRequest);
+        Page<FileInfo> found = matches(term, folderFilter(access, scope), pageRequest);
 
         return new FolderSearchDTO(term, scope == null ? null : refOf(scope), hitsOf(found.getContent()),
                 pageInfoOf(found, pageRequest));
     }
 
     /**
-     * The tags a search may look in: everything, or a set.
+     * The folders a search may look in: everything, or a set.
      *
      * <p>An empty {@link Optional} means no restriction at all, an empty <em>set</em> means the
      * opposite — nothing can match. The distinction is {@code FolderAccessService}'s and is kept
      * here, because collapsing the two is the mistake that turns "you have no access" into "you have
      * all access".
      */
-    private Optional<Set<Integer>> tagFilter(FolderAccess access, Folder scope) {
-        Optional<Set<Integer>> readable = folderAccessService.readableMainTagIds(access);
+    private Optional<Set<Integer>> folderFilter(FolderAccess access, Folder scope) {
+        Optional<Set<Integer>> readable = folderAccessService.readableFolderIds(access);
         if (scope == null) {
             return readable;
         }
         Set<Integer> withinScope = folderRepository.findSubtree(scope.getPath()).stream()
-                .filter(folder -> folder.getSourceType() == FolderSourceType.MAIN_TAG)
-                .map(Folder::getSourceId)
+                .map(Folder::getId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
         if (readable.isEmpty()) {
@@ -181,49 +184,58 @@ public class FolderContentService {
         return Optional.of(withinScope);
     }
 
-    private Page<FileInfo> matches(String term, Optional<Set<Integer>> tagFilter, PageRequest pageRequest) {
+    private Page<FileInfo> matches(String term, Optional<Set<Integer>> folderFilter, PageRequest pageRequest) {
         Integer id = SearchTerms.asFileId(term);
-        if (tagFilter.isEmpty()) {
+        if (folderFilter.isEmpty()) {
             return fileInfoRepository.searchFiles(id, term, pageRequest);
         }
-        if (tagFilter.get().isEmpty()) {
+        if (folderFilter.get().isEmpty()) {
             // Not a query with an empty IN list, which is not valid SQL - and not a query at all,
             // because the answer is already known.
             return Page.empty(pageRequest);
         }
-        return fileInfoRepository.searchFilesWithinTags(id, term, tagFilter.get(), pageRequest);
+        return fileInfoRepository.searchFilesWithinFolders(id, term, folderFilter.get(), pageRequest);
     }
 
     /**
-     * Each match with the folder it lives in and the trail down to that folder — four queries for
-     * the whole page however many rows it has: the formats, the folders, their ancestors, and the
-     * search itself.
+     * Each match with the folder it lives in and the trail down to that folder — three queries for
+     * the whole page however many rows it has: the search itself (which fetches each file's
+     * folder), the formats, and the folders' ancestors.
      *
-     * <p>A file whose tag has no mirrored folder is left out rather than returned without a path.
-     * It should not be possible - the mirror is written in the same transaction as its source and
-     * asserted complete on every build - but a hit the client cannot navigate to is of no use to a
-     * search whose whole purpose is to navigate there, and one missing row must not fail the
-     * request.
+     * <p>A file with no folder is left out rather than returned without a path. Only a row that
+     * predates {@code V2.3} and escaped the backfill can be one; a hit the client cannot navigate
+     * to is of no use to a search whose whole purpose is to navigate there, and one such row must
+     * not fail the request. It is logged, once per page that had one.
      */
     private List<FolderSearchDTO.Hit> hitsOf(List<FileInfo> files) {
         if (files.isEmpty()) {
             return List.of();
         }
-        Map<Integer, Folder> foldersByTag = folderAccessService.foldersBySourceId(FolderSourceType.MAIN_TAG,
-                files.stream().map(file -> file.getMainTagFile().getId()).distinct().toList());
-        Map<Integer, List<FolderRef>> breadcrumbs = breadcrumbsFor(foldersByTag.values());
+        Map<Integer, Folder> foldersById = new LinkedHashMap<>();
+        for (FileInfo file : files) {
+            if (file.getFolder() != null) {
+                foldersById.putIfAbsent(file.getFolder().getId(), file.getFolder());
+            }
+        }
+        Map<Integer, List<FolderRef>> breadcrumbs = breadcrumbsFor(foldersById.values());
         Map<Integer, List<FileDetails>> latestByFile = latestVersionsOf(files);
 
         List<FolderSearchDTO.Hit> hits = new ArrayList<>();
+        boolean unplaceable = false;
         for (FileInfo file : files) {
-            Folder folder = foldersByTag.get(file.getMainTagFile().getId());
+            Folder folder = file.getFolder();
             if (folder == null) {
+                unplaceable = true;
                 continue;
             }
             hits.add(new FolderSearchDTO.Hit(
                     toEntry(file, latestByFile.getOrDefault(file.getId(), List.of())),
                     refOf(folder),
                     breadcrumbs.getOrDefault(folder.getId(), List.of())));
+        }
+        if (unplaceable) {
+            logger.warn("a search matched file(s) with no folder_id, which were left out; "
+                    + "run the V2.3 backfill (see the migration's header)");
         }
         return hits;
     }
@@ -324,9 +336,8 @@ public class FolderContentService {
      * The child folders this person may at least walk into, each with what is under it.
      *
      * <p>Three queries however wide the level is: the children, then one grouped count for the
-     * folders beneath them and one for the files. The counts are split by kind because only a
-     * {@code TAG} folder holds files today, so asking for the file counts of a category would be a
-     * query that can only return nothing.
+     * folders beneath them and one for the files directly in them - both by folder id, so a child
+     * of any kind gets the right numbers without the caller knowing which kinds hold files.
      */
     private List<FolderEntry> childFoldersOf(Folder folder, FolderAccess access) {
         List<Folder> children = folderRepository.findChildrenWithGeneralTag(folder.getId()).stream()
@@ -337,19 +348,9 @@ public class FolderContentService {
             return List.of();
         }
 
-        List<Integer> folderIds = children.stream()
-                .filter(child -> child.getKind() != FolderKind.TAG)
-                .map(Folder::getId)
-                .toList();
-        List<Integer> tagSourceIds = children.stream()
-                .filter(child -> child.getKind() == FolderKind.TAG && child.getSourceId() != null)
-                .map(Folder::getSourceId)
-                .toList();
-
-        Map<Integer, Long> folderCounts = folderIds.isEmpty()
-                ? Map.of() : countsOf(folderRepository.countChildFoldersByParent(folderIds));
-        Map<Integer, Long> fileCounts = tagSourceIds.isEmpty()
-                ? Map.of() : countsOf(fileInfoRepository.countFilesByMainTag(tagSourceIds));
+        List<Integer> childIds = children.stream().map(Folder::getId).toList();
+        Map<Integer, Long> folderCounts = countsOf(folderRepository.countChildFoldersByParent(childIds));
+        Map<Integer, Long> fileCounts = countsOf(fileInfoRepository.countFilesByFolder(childIds));
 
         return children.stream()
                 .map(child -> new FolderEntry(
@@ -359,7 +360,7 @@ public class FolderContentService {
                         child.getKind().name(),
                         noteOf(child),
                         folderCounts.getOrDefault(child.getId(), 0L),
-                        child.getSourceId() == null ? 0L : fileCounts.getOrDefault(child.getSourceId(), 0L)))
+                        fileCounts.getOrDefault(child.getId(), 0L)))
                 .toList();
     }
 
@@ -377,18 +378,19 @@ public class FolderContentService {
     // ------------------------------------------------------------------ files
 
     /**
-     * The page of files directly in this folder, or null when the folder cannot hold any.
+     * The page of files directly in this folder, by {@code file_info.folder_id}, or null when the
+     * folder cannot hold any.
      *
-     * <p>Null for anything but a {@code TAG} folder, because a file is filed under a main tag and
-     * nowhere else until Phase 7 gives {@code file_info} a {@code folder_id}. A category folder is
-     * therefore not "empty of files" - it cannot hold one - and the client tells the two apart from
-     * {@code kind} rather than from an empty list.
+     * <p>Null for anything but a {@code TAG} folder: uploading still files a document under a main
+     * tag and nowhere else (roadmap 7.2 step 5 changes that), so a category folder is not "empty of
+     * files" - it cannot hold one - and the client tells the two apart from {@code kind} rather than
+     * from an empty list. The read itself no longer cares about the kind.
      */
     private Page<FileInfo> filePageOf(Folder folder, PageRequest pageRequest) {
-        if (folder.getKind() != FolderKind.TAG || folder.getSourceId() == null) {
+        if (folder.getKind() != FolderKind.TAG) {
             return null;
         }
-        return fileInfoRepository.findByMainTagFileId(folder.getSourceId(), pageRequest);
+        return fileInfoRepository.findByFolderId(folder.getId(), pageRequest);
     }
 
     /**

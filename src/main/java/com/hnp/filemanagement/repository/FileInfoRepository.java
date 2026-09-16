@@ -182,18 +182,36 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     /** Tree view: the files filed under one main tag. */
     List<FileInfo> findByMainTagFileIdOrderByFileNameAsc(int mainTagFileId);
 
-    /** Every file under a set of main tags — the bucket walk the v2 listing does (roadmap 9.3). */
+    /** Every file under a set of main tags. Kept for the readers that have not moved to the folder yet. */
     List<FileInfo> findByMainTagFileIdIn(Collection<Integer> mainTagFileIds);
 
+    // ------------------------------------------------------------------ by folder (roadmap 7.2 step 3)
+
     /**
-     * The same files, one page at a time — what the explorer lists.
+     * Every file in a set of folders — what the v2 listing is made of, read from the file's own
+     * folder rather than translated through its main tag. A file whose {@code folder_id} is null
+     * is simply not here; the caller says so in the log rather than failing.
+     */
+    @Query("SELECT f FROM FileInfo f WHERE f.folder.id IN :folderIds")
+    List<FileInfo> findByFolderIdIn(@Param("folderIds") Collection<Integer> folderIds);
+
+    /** The file with this name in this folder. Names are unique per sub-category today, which implies per folder. */
+    @Query("SELECT f FROM FileInfo f WHERE f.folder.id = :folderId AND f.fileName = :name")
+    Optional<FileInfo> findByFolderIdAndFileName(@Param("folderId") int folderId, @Param("name") String name);
+
+    /** Files that predate {@code V2.3} and were never backfilled - the only way a folder read can miss one. */
+    long countByFolderIsNull();
+
+    /**
+     * The files directly in a folder, one page at a time — what the explorer lists (roadmap 7.2
+     * step 3, reader 2; it read {@code findByMainTagFileId} until then).
      *
-     * <p>The unpaged version above is kept for the tree, which renders a tag's files inside an
+     * <p>The unpaged tag version above is kept for the tree, which renders a tag's files inside an
      * already-open branch. A folder listing has no such bound: today a tag holds tens of files, but
      * roadmap Phase 7 moves every file into a folder, and one of them will eventually hold more than
      * anybody wants delivered in a single response ({@code docs/issues.md}, issue 71).
      */
-    Page<FileInfo> findByMainTagFileId(int mainTagFileId, Pageable pageable);
+    Page<FileInfo> findByFolderId(int folderId, Pageable pageable);
 
     /**
      * How many files sit under each of these main tags, in one query rather than one per tag.
@@ -208,6 +226,15 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             """)
     List<ChildCount> countFilesByMainTag(@Param("mainTagIds") Collection<Integer> mainTagIds);
 
+    /** How many files sit directly in each of these folders, in one query. A folder with none has no row. */
+    @Query("""
+            SELECT new com.hnp.filemanagement.repository.ChildCount(fi.folder.id, COUNT(fi.id))
+            FROM FileInfo fi
+            WHERE fi.folder.id IN :folderIds
+            GROUP BY fi.folder.id
+            """)
+    List<ChildCount> countFilesByFolder(@Param("folderIds") Collection<Integer> folderIds);
+
     /**
      * Explorer search: files whose id, name or description matches, a page at a time.
      *
@@ -216,12 +243,14 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
      * a filter over one flat table of everything; it is wrong for a folder tree, where matching the
      * category returns every file in the category and buries the one that was actually named.
      *
-     * <p>The tag is fetched with the row because every hit has to be resolved to the folder it lives
-     * in, and reading the association per row would be one query per result.
+     * <p>The folder is fetched with the row because every hit has to be shown with the folder it
+     * lives in, and reading the association per row would be one query per result. A {@code LEFT}
+     * join, so a file that has no folder (never backfilled) is still a hit; the caller decides what
+     * to do with one it cannot place.
      */
     @Query("""
             SELECT f FROM FileInfo f
-            JOIN FETCH f.mainTagFile mt
+            LEFT JOIN FETCH f.folder d
             WHERE (:id IS NOT NULL AND f.id = :id)
                OR f.fileName LIKE CONCAT('%', :term, '%')
                OR f.description LIKE CONCAT('%', :term, '%')
@@ -229,25 +258,26 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     Page<FileInfo> searchFiles(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
 
     /**
-     * The same search, restricted to a set of main tags — which is how both folder access and
+     * The same search, restricted to a set of folders — which is how both folder access and
      * "search inside this folder" are applied: as a filter in the query, never to the rows it
      * returned. Filtering afterwards would leave the total counting matches the caller may not see.
+     * (Roadmap 7.2 step 3, reader 2: the set used to be main-tag ids.)
      *
      * <p>Must not be called with an empty set, which is not valid SQL for {@code IN}. An empty set
      * means "nothing can match", and the caller answers that without a query.
      */
     @Query("""
             SELECT f FROM FileInfo f
-            JOIN FETCH f.mainTagFile mt
-            WHERE mt.id IN (:mainTagIds)
+            JOIN FETCH f.folder d
+            WHERE d.id IN (:folderIds)
               AND ((:id IS NOT NULL AND f.id = :id)
                OR f.fileName LIKE CONCAT('%', :term, '%')
                OR f.description LIKE CONCAT('%', :term, '%'))
             """)
-    Page<FileInfo> searchFilesWithinTags(@Param("id") Integer id,
-                                         @Param("term") String term,
-                                         @Param("mainTagIds") Collection<Integer> mainTagIds,
-                                         Pageable pageable);
+    Page<FileInfo> searchFilesWithinFolders(@Param("id") Integer id,
+                                            @Param("term") String term,
+                                            @Param("folderIds") Collection<Integer> folderIds,
+                                            Pageable pageable);
 
     /**
      * The files whose folder is not the one mirroring their main tag - or is missing (roadmap 7.2,

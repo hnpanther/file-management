@@ -11,7 +11,6 @@ import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderKind;
-import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -55,6 +54,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ObjectStoreService {
+
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ObjectStoreService.class);
 
     /** A listing returns at most this many keys, whatever the caller asks for. */
     static final int MAX_KEYS_LIMIT = 1000;
@@ -203,7 +204,7 @@ public class ObjectStoreService {
         // version to that other file - the caller's write access to the folder they named would be
         // checked, then the version would land somewhere else and the canonical key answered with
         // would not resolve. A conflict up front, before anything is stored.
-        if (existing != null && !existing.getMainTagFile().getId().equals(folder.getSourceId())) {
+        if (existing != null && (existing.getFolder() == null || !existing.getFolder().getId().equals(folder.getId()))) {
             throw new DuplicateResourceException("a file named " + parsed.fileName()
                     + " already exists under another folder of the same sub-category");
         }
@@ -313,14 +314,18 @@ public class ObjectStoreService {
         return value.toLowerCase(Locale.ROOT).replace('_', '-');
     }
 
+    /**
+     * The stored version a key names, looked up by the folder the key walked to (roadmap 7.2
+     * step 3). Until step 3 this went folder → main tag → sub-category → file and then checked the
+     * file's tag was the folder's; now the file's own {@code folder_id} answers in one query.
+     */
     private FileDetails requireObject(Folder folder, ObjectKeyDTO parsed) {
-        if (folder.getKind() != FolderKind.TAG || folder.getSourceId() == null) {
-            throw new ResourceNotFoundException("no such object: " + parsed.objectName());
-        }
         FileInfo fileInfo = fileInfoRepository
-                .findByNameAndSubCategoryId(subCategoryIdOf(folder), parsed.fileName())
-                .filter(candidate -> candidate.getMainTagFile().getId().equals(folder.getSourceId()))
-                .orElseThrow(() -> new ResourceNotFoundException("no such object: " + parsed.fileName()));
+                .findByFolderIdAndFileName(folder.getId(), parsed.fileName())
+                .orElseThrow(() -> {
+                    warnIfFilesLackAFolder();
+                    return new ResourceNotFoundException("no such object: " + parsed.fileName());
+                });
 
         return fileDetailsRepository.findLatestVersionOf(List.of(fileInfo.getId())).stream()
                 .filter(details -> details.getVersion() == parsed.version())
@@ -339,32 +344,42 @@ public class ObjectStoreService {
 
     /**
      * Every key in a bucket this person may read, in three queries: the subtree's folders, the files
-     * under the tag folders among them, and those files' versions.
+     * in the readable ones, and those files' versions.
+     *
+     * <p>Read from {@code file_info.folder_id} (roadmap 7.2 step 3). Before, the folders were
+     * translated to main-tag ids and the files fetched by tag, then each file's tag translated back
+     * to a folder to build its key - and every folder's ancestry was fetched again by id. Now the
+     * subtree is the whole vocabulary: a file's folder is in it, and so is every ancestor between
+     * that folder and the bucket, so the key is built from a map and the third query is the last.
      */
     private List<ObjectListingDTO.ObjectSummary> keysIn(Folder bucketFolder, FolderAccess access) {
-        List<Folder> subtree = folderRepository.findSubtree(bucketFolder.getPath()).stream()
+        Map<Integer, Folder> subtree = folderRepository.findSubtree(bucketFolder.getPath()).stream()
+                .collect(Collectors.toMap(Folder::getId, folder -> folder, (a, b) -> a, java.util.LinkedHashMap::new));
+        List<Integer> readable = subtree.values().stream()
                 .filter(folder -> access.canRead(folder.getPath()))
-                .filter(folder -> folder.getKind() == FolderKind.TAG && folder.getSourceId() != null)
+                .map(Folder::getId)
                 .toList();
-        if (subtree.isEmpty()) {
+        if (readable.isEmpty()) {
             return List.of();
         }
 
-        Map<Integer, List<String>> pathsByTag = subtree.stream().collect(Collectors.toMap(
-                Folder::getSourceId, folder -> relativeNames(bucketFolder, folder), (a, b) -> a));
-
-        List<FileInfo> files = fileInfoRepository.findByMainTagFileIdIn(pathsByTag.keySet());
+        List<FileInfo> files = fileInfoRepository.findByFolderIdIn(readable);
         if (files.isEmpty()) {
+            warnIfFilesLackAFolder();
             return List.of();
         }
 
         Map<Integer, FileInfo> filesById = files.stream()
                 .collect(Collectors.toMap(FileInfo::getId, file -> file, (a, b) -> a));
+        Map<Integer, List<String>> namesByFolder = new java.util.HashMap<>();
 
         return fileDetailsRepository.findByFileInfoIdIn(filesById.keySet()).stream()
                 .map(details -> {
                     FileInfo file = filesById.get(details.getFileInfo().getId());
-                    List<String> folders = pathsByTag.get(file.getMainTagFile().getId());
+                    // A proxy's id needs no load; the names come from the subtree already in hand.
+                    int folderId = file.getFolder().getId();
+                    List<String> folders = namesByFolder.computeIfAbsent(folderId,
+                            id -> relativeNames(bucketFolder, subtree.get(id), subtree));
                     return new ObjectListingDTO.ObjectSummary(
                             ObjectKeyDTO.of(folders, file.getFileName(), details.getVersion(), details.getFileName()),
                             sizeOf(details), eTagOf(details), details.getCreatedAt());
@@ -372,27 +387,46 @@ public class ObjectStoreService {
                 .toList();
     }
 
-    /** The folder names between the bucket and this folder, outermost first. */
-    private List<String> relativeNames(Folder bucketFolder, Folder folder) {
-        List<Integer> ids = new ArrayList<>();
+    /**
+     * The folder names between the bucket and this folder, outermost first, read off the
+     * materialised path with the subtree as the dictionary - no query.
+     */
+    private static List<String> relativeNames(Folder bucketFolder, Folder folder, Map<Integer, Folder> subtree) {
+        List<String> names = new ArrayList<>();
+        boolean belowBucket = false;
         for (String segment : folder.getPath().split("/")) {
-            if (!segment.isBlank()) {
-                ids.add(Integer.valueOf(segment));
+            if (segment.isBlank()) {
+                continue;
+            }
+            int id = Integer.parseInt(segment);
+            if (belowBucket) {
+                Folder ancestor = subtree.get(id);
+                if (ancestor != null) {
+                    names.add(ancestor.getName());
+                }
+            } else if (id == bucketFolder.getId()) {
+                belowBucket = true;
             }
         }
-        int bucketAt = ids.indexOf(bucketFolder.getId());
-        List<Integer> below = ids.subList(bucketAt + 1, ids.size());
-        if (below.isEmpty()) {
-            return List.of();
+        return names;
+    }
+
+    /**
+     * A file without a folder is one that predates {@code V2.3} and was never backfilled, which
+     * the migration's verification query would have shown. The folder readers do not see such a
+     * file; this says so, once per read that came up short, rather than failing the request.
+     */
+    private void warnIfFilesLackAFolder() {
+        long orphans = fileInfoRepository.countByFolderIsNull();
+        if (orphans > 0) {
+            logger.warn("{} file(s) have no folder_id and are invisible to folder-based reads; "
+                    + "run the V2.3 backfill (see the migration's header)", orphans);
         }
-        Map<Integer, Folder> byId = folderRepository.findAllById(below).stream()
-                .collect(Collectors.toMap(Folder::getId, f -> f));
-        return below.stream().map(byId::get).filter(java.util.Objects::nonNull).map(Folder::getName).toList();
     }
 
     private String latestKeyOf(Folder folder, ObjectKeyDTO parsed, int principalId) {
         FileInfo fileInfo = fileInfoRepository
-                .findByNameAndSubCategoryId(subCategoryIdOf(folder), parsed.fileName())
+                .findByFolderIdAndFileName(folder.getId(), parsed.fileName())
                 .orElseThrow(() -> new ResourceNotFoundException("the file was not stored: " + parsed.fileName()));
         return ObjectKeyDTO.of(parsed.folders(), parsed.fileName(),
                 fileInfo.getLastVersion(), parsed.objectName());

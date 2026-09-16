@@ -804,7 +804,7 @@ Each is independently shippable, and only the fourth cannot be undone.
 | 0 | `file_details.storage_key`, backfilled from `relative_path`; adapter maps key → path — **done** | `V2.2` | an unused column |
 | 1 | `file_info.folder_id`, nullable, backfilled to the folder mirroring the file's main tag; written alongside the old foreign keys — **done** | `V2.3` | an unused column |
 | 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under — **done** | `V2.4` | `DROP TABLE` |
-| 3 | **Reads move to the folder**: tree, upload, file list, search | — | revert the code |
+| 3 | **Reads move to the folder**: tree, upload, file list, search — **in progress**, one reader per commit; readers 1 (API v2) and 2 (explorer) done | — | revert the code |
 | 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` | `V2.5` | ⚠️ **none** |
 | 5 | Folder operations: create, rename, move, delete — and drag-and-drop | `V2.x` | — |
 
@@ -825,6 +825,31 @@ Each is independently shippable, and only the fourth cannot be undone.
 > group and all, then runs them again to prove the second pass is a no-op. The v1 API round trip
 > is asserted unchanged in the same test. Two things were decided while doing it, both recorded
 > in §7.3 below.
+>
+> **Step 3, reader 1 done — the v2 object store.** `ObjectStoreService` lists a bucket from
+> `file_info.folder_id`: the subtree's folders, the files in the readable ones, their versions —
+> three queries, and the key is built from the subtree already in hand instead of translating
+> each file's tag back to a folder and fetching its ancestry by id. A key resolves to its file by
+> `findByFolderIdAndFileName` rather than by sub-category-and-tag. The write path (`put`) still
+> creates files through the taxonomy triple; that is reader 5. Two rules set here for every
+> reader that follows: a file without a `folder_id` is invisible to the folder read and logged as
+> such (`countByFolderIsNull`), never a 500; and equivalence is asserted against the taxonomy
+> rows themselves, not against the previous implementation — `ObjectStoreFolderReadTest` builds
+> the expected key of every stored version from the category, sub-category, tag and file rows and
+> compares. The order for the rest: 2 explorer, 3 folder access in `FileService` (download, list,
+> search), 4 tree, 5 upload with `folderId` alongside the triple.
+>
+> **Step 3, reader 2 done — the explorer.** `FolderContentService` lists a folder's files by
+> `findByFolderId`, counts the files of every child by folder id in one grouped query (no more
+> splitting children by kind), and searches within `readableFolderIds(access)` ∩ the scope's
+> subtree — folder ids, where it used to intersect main-tag ids and then translate each hit's tag
+> back to a folder. A hit's folder now arrives with the row (`JOIN FETCH f.folder`), one query
+> fewer per page. The `kind == TAG` gate on "can this folder hold files" stays until step 5, since
+> uploading still files under a main tag. The class comment's promise — "when `file_info` gets a
+> `folder_id`, the two references to `sourceId` go and nothing else changes" — held: the six
+> existing tests changed only their fixture, which had inserted a file straight through the
+> repository and therefore, like a pre-`V2.3` row, without a folder. `FolderContentFolderReadTest`
+> is the oracle test (listing, counts, search, a single-folder grant, the orphan case).
 
 Steps 0–2 only add data and change no behaviour, so they can ship early and sit in production while
 step 3 is written. Step 3 is where the application actually changes. Step 4 should follow only after

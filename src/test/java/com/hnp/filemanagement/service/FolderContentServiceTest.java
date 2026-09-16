@@ -116,6 +116,11 @@ class FolderContentServiceTest extends MySqlSupport {
         MainTagFile tag = mainTagFileRepository.findById(tagId).orElseThrow();
         fileName = "report" + TestData.nextSequence();
         FileInfo fileInfo = TestData.fileInfo(owner, tag, fileName);
+        // Written through the repository, the file has no folder - exactly a row from before V2.3
+        // that the backfill missed - and the explorer reads files by folder now (roadmap 7.2 step 3),
+        // so such a row is deliberately invisible (FolderContentFolderReadTest). Link it as the
+        // backfill would.
+        fileInfo.setFolder(folderRepository.findBySourceTypeAndSourceId(FolderSourceType.MAIN_TAG, tagId).orElseThrow());
         TestData.fileDetails(owner, fileInfo, 1, "pdf");
         TestData.fileDetails(owner, fileInfo, 2, "docx");
         TestData.fileDetails(owner, fileInfo, 2, "pdf");
