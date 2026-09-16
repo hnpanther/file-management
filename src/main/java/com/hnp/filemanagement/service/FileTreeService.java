@@ -51,6 +51,8 @@ import java.util.stream.Collectors;
 @Service
 public class FileTreeService {
 
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(FileTreeService.class);
+
     private final FileCategoryRepository fileCategoryRepository;
     private final FileSubCategoryRepository fileSubCategoryRepository;
     private final MainTagFileRepository mainTagFileRepository;
@@ -139,12 +141,14 @@ public class FileTreeService {
                 if (!access.canRead(folder.getPath())) {
                     throw new AccessDeniedException("no folder access to folder id=" + id);
                 }
-                yield filesOf(folder.getSourceId());
+                yield filesOf(folder.getId());
             }
-            // The remaining special case: a file is not a folder yet, so it is still addressed by
-            // its own id and authorised through the tag it is filed under.
+            // A file is addressed by its own id and authorised through its own folder (roadmap 7.2
+            // step 3) - no longer through the tag it is filed under.
             case FILE -> {
-                folderAccessService.requireAccess(access, FolderSourceType.MAIN_TAG, mainTagIdOf(id));
+                FileInfo fileInfo = fileInfoRepository.findById(id)
+                        .orElseThrow(() -> new InvalidDataException("file not found, id=" + id));
+                folderAccessService.requireReadAccess(access, fileInfo);
                 yield versionsOf(id);
             }
             case VERSION -> throw new InvalidDataException(
@@ -193,13 +197,6 @@ public class FileTreeService {
                 .toList();
     }
 
-    private int mainTagIdOf(int fileInfoId) {
-        return fileInfoRepository.findById(fileInfoId)
-                .orElseThrow(() -> new InvalidDataException("file not found, id=" + fileInfoId))
-                .getMainTagFile()
-                .getId();
-    }
-
     /**
      * "Find a file" search, for when a label alone cannot say where a file lives — see issue 73:
      * the taxonomy lets a main tag carry the exact name of an unrelated sub-category elsewhere in
@@ -215,11 +212,16 @@ public class FileTreeService {
         }
         FolderAccess access = folderAccessService.accessFor(principalId);
         Integer id = SearchTerms.asFileId(term);
-        return fileInfoRepository.searchForTree(id, term, PageRequest.of(0, 20)).stream()
-                // Search reaches across the whole taxonomy, so unlike opening a folder it can turn
-                // up something outside every grant. A hit is only offered if its tag is reachable.
-                .filter(fileInfo -> folderAccessService.allows(
-                        access, FolderSourceType.MAIN_TAG, fileInfo.getMainTagFile().getId()))
+        List<FileInfo> matches = fileInfoRepository.searchForTree(id, term, PageRequest.of(0, 20));
+        if (matches.stream().anyMatch(fileInfo -> fileInfo.getFolder() == null)) {
+            logger.warn("a tree search matched file(s) with no folder_id, which were left out; "
+                    + "run the V2.3 backfill (see the migration's header)");
+        }
+        return matches.stream()
+                .filter(fileInfo -> fileInfo.getFolder() != null)
+                // Search reaches across the whole tree, so unlike opening a folder it can turn up
+                // something outside every grant. A hit is only offered if its folder is readable.
+                .filter(fileInfo -> folderAccessService.allowsRead(access, fileInfo))
                 .map(this::toSearchHit)
                 .flatMap(Optional::stream)
                 .toList();
@@ -227,24 +229,20 @@ public class FileTreeService {
 
     /**
      * A hit carries the <em>folder</em> ids of the branch down to the file, because those are what
-     * the page opens on the way to revealing it — the same ids the tree itself renders.
+     * the page opens on the way to revealing it — the same ids the tree itself renders. Since
+     * roadmap 7.2 step 3 the branch is read off the file's own folder and its two ancestors, all
+     * fetched with the search; the titles are the folders' display names, which the mirror keeps
+     * equal to the taxonomy labels.
      *
-     * <p>Empty when any level of that branch has no mirrored folder. A hit the tree could not
-     * navigate to is of no use to a search whose whole purpose is to navigate there, and one
-     * unmirrored row must not turn the entire search into an error. Drift is caught by the
-     * reconciliation test, which is a better place for it than a user's search box.
+     * <p>Empty when the branch is shorter than the three levels the tree page expects - which
+     * cannot happen while every file sits in a tag folder, and will be revisited when Phase 7
+     * lets a folder be any depth. One odd row must not turn the entire search into an error.
      */
     private Optional<TreeSearchHitDTO> toSearchHit(FileInfo fileInfo) {
-        MainTagFile mainTag = fileInfo.getMainTagFile();
-        FileSubCategory subCategory = mainTag.getFileSubCategory();
-        FileCategory category = subCategory.getFileCategory();
-
-        Optional<Folder> categoryFolder = folderAccessService.folderOf(FolderSourceType.CATEGORY, category.getId());
-        Optional<Folder> subCategoryFolder =
-                folderAccessService.folderOf(FolderSourceType.SUB_CATEGORY, subCategory.getId());
-        Optional<Folder> tagFolder = folderAccessService.folderOf(FolderSourceType.MAIN_TAG, mainTag.getId());
-
-        if (categoryFolder.isEmpty() || subCategoryFolder.isEmpty() || tagFolder.isEmpty()) {
+        Folder tagFolder = fileInfo.getFolder();
+        Folder subCategoryFolder = tagFolder.getParent();
+        Folder categoryFolder = subCategoryFolder == null ? null : subCategoryFolder.getParent();
+        if (subCategoryFolder == null || categoryFolder == null) {
             return Optional.empty();
         }
 
@@ -252,19 +250,20 @@ public class FileTreeService {
         hit.setFileId(fileInfo.getId());
         hit.setFileName(fileInfo.getFileName());
         hit.setFileTitle(fileInfo.getDescription());
-        hit.setCategoryId(categoryFolder.get().getId());
-        hit.setCategoryTitle(category.getCategoryNameDescription());
-        hit.setSubCategoryId(subCategoryFolder.get().getId());
-        hit.setSubCategoryTitle(subCategory.getSubCategoryNameDescription());
-        hit.setMainTagId(tagFolder.get().getId());
-        hit.setMainTagTitle(mainTag.getTagNameDescription());
+        hit.setCategoryId(categoryFolder.getId());
+        hit.setCategoryTitle(categoryFolder.getDisplayName());
+        hit.setSubCategoryId(subCategoryFolder.getId());
+        hit.setSubCategoryTitle(subCategoryFolder.getDisplayName());
+        hit.setMainTagId(tagFolder.getId());
+        hit.setMainTagTitle(tagFolder.getDisplayName());
         return Optional.of(hit);
     }
 
     // ------------------------------------------------------------------ levels
 
-    private List<TreeNodeDTO> filesOf(int mainTagId) {
-        return fileInfoRepository.findByMainTagFileIdOrderByFileNameAsc(mainTagId).stream()
+    /** The files in a tag folder, by the file's own {@code folder_id} (roadmap 7.2 step 3). */
+    private List<TreeNodeDTO> filesOf(int folderId) {
+        return fileInfoRepository.findByFolderIdOrderByFileNameAsc(folderId).stream()
                 .map(this::toFileNode)
                 .toList();
     }
@@ -314,8 +313,7 @@ public class FileTreeService {
         // Shown as a folder even though it creates no directory yet - see the class comment.
         TreeNodeDTO node = base(NodeType.MAIN_TAG, folderId, mainTag.getTagName(),
                 mainTag.getTagNameDescription(), "bi-folder2");
-        // COUNT never returns null; the repository signature is int, so no null branch is needed.
-        node.setChildCount(fileInfoRepository.countFileWithTagId(mainTag.getId()));
+        node.setChildCount((int) fileInfoRepository.countByFolderId(folderId));
         node.setExpandable(node.getChildCount() > 0);
         return node;
     }

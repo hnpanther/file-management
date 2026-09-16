@@ -11,7 +11,8 @@ import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.FolderSourceType;
+import com.hnp.filemanagement.entity.Folder;
+import com.hnp.filemanagement.entity.FolderKind;
 import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
@@ -135,24 +136,22 @@ public class FileService {
         String name = ModelConverterUtil.getFileNameWithoutExtension(originalFilename);
         String extension = getFileExtension(originalFilename);
 
-        MainTagFile mainTagFile = mainTagFileService.getMainTagFileEntity(fileInfoDTO.getMainTagFileId());
+        // Where the file goes: a folder, named either directly or through the taxonomy triple
+        // (roadmap 7.2 step 3, reader 5). Resolved first, then the access check, then the
+        // consistency of whatever else the caller sent - in that order, so that somebody who may
+        // not write here is told nothing about which combinations would have been consistent.
+        Folder folder = targetFolderOf(fileInfoDTO);
+        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), folder);
 
-        // Before the chain is validated, not after: answering "that triple is inconsistent" to
-        // somebody who may not write here would tell them which triples are consistent.
-        folderAccessService.requireWriteAccess(principalId, FolderSourceType.MAIN_TAG, mainTagFile.getId());
-
+        MainTagFile mainTagFile = mainTagFileService.getMainTagFileEntity(folder.getSourceId());
         FileSubCategory subCategory = mainTagFile.getFileSubCategory();
+        requireConsistentAddressing(fileInfoDTO, mainTagFile, subCategory);
 
-        // The upload form posts all three levels; they have to describe one chain, or the file
-        // would be filed under a tag that belongs somewhere else entirely.
-        if (!Objects.equals(subCategory.getId(), fileInfoDTO.getFileSubCategoryId())
-                || !Objects.equals(subCategory.getFileCategory().getId(), fileInfoDTO.getFileCategoryId())) {
-            throw new InvalidDataException("invalid category and sub category");
-        }
-
-        if (isDuplicate(name, fileInfoDTO.getFileSubCategoryId())) {
+        // The uniqueness scope is the sub-category the resolved folder sits in - not whatever the
+        // request said, which may be absent when the folder alone named the place.
+        if (isDuplicate(name, subCategory.getId())) {
             throw new DuplicateResourceException(
-                    "file with name=" + name + " exists in sub category with id=" + fileInfoDTO.getFileSubCategoryId());
+                    "file with name=" + name + " exists in sub category with id=" + subCategory.getId());
         }
 
         FileInfo fileInfo = new FileInfo();
@@ -168,8 +167,7 @@ public class FileService {
         fileInfo.setCreatedBy(userRepository.getReferenceById(principalId));
         fileInfo.setMainTagFile(mainTagFile);
         fileInfo.setFileSubCategory(subCategory);
-        // Written alongside the taxonomy keys, read by nothing yet (roadmap 7.2, steps 1 and 2).
-        fileInfo.setFolder(folderMirrorService.folderOf(mainTagFile));
+        fileInfo.setFolder(folder);
         tagMirrorService.retag(fileInfo);
 
         FileDetails fileDetails = newFileDetails(fileInfo, multipartFile, 1, "V1",
@@ -190,6 +188,55 @@ public class FileService {
         fileStorageService.saveByKey(fileDetails.getStorageKey(), multipartFile);
 
         return result;
+    }
+
+    /**
+     * The folder a new file is filed into, from whichever addressing the request used.
+     *
+     * <p>{@code folderId} names it directly. Without one, the main tag names it - the taxonomy
+     * triple every existing caller sends - and the folder is the tag's mirror, created on the spot
+     * if a tag was written behind the services. Neither is a 400 that says what to send. A folder
+     * that is not a tag folder is refused as well: until Phase 7 step 5, a document sits under a
+     * main tag and nowhere else, whichever way the caller named the place.
+     */
+    private Folder targetFolderOf(FileInfoDTO fileInfoDTO) {
+        if (fileInfoDTO.getFolderId() != null) {
+            Folder folder = folderAccessService.requireFolder(fileInfoDTO.getFolderId());
+            if (folder.getKind() != FolderKind.TAG || folder.getSourceId() == null) {
+                throw new InvalidDataException("folder id=" + folder.getId() + " is a " + folder.getKind()
+                        + "; a document can only be filed into a tag folder");
+            }
+            return folder;
+        }
+        if (fileInfoDTO.getMainTagFileId() == null) {
+            throw new InvalidDataException("no target: send folderId, or fileCategoryId, fileSubCategoryId and mainTagFileId");
+        }
+        return folderMirrorService.folderOf(mainTagFileService.getMainTagFileEntity(fileInfoDTO.getMainTagFileId()));
+    }
+
+    /**
+     * Whatever else the request said about the place must agree with the folder it resolved to.
+     *
+     * <p>The upload form posts all three taxonomy levels, and they have to describe one chain, or
+     * the file would be filed under a tag that belongs somewhere else entirely. A request that
+     * sends a {@code folderId} <em>and</em> some of the triple is held to the same rule - two ways
+     * of naming one place must name the same place - while a request that sends only one of the
+     * two is checked only on what it sent.
+     */
+    private static void requireConsistentAddressing(FileInfoDTO fileInfoDTO, MainTagFile mainTagFile,
+                                                    FileSubCategory subCategory) {
+        if (fileInfoDTO.getMainTagFileId() != null
+                && !Objects.equals(mainTagFile.getId(), fileInfoDTO.getMainTagFileId())) {
+            throw new InvalidDataException("folderId and mainTagFileId name different places");
+        }
+        if (fileInfoDTO.getFileSubCategoryId() != null
+                && !Objects.equals(subCategory.getId(), fileInfoDTO.getFileSubCategoryId())) {
+            throw new InvalidDataException("invalid category and sub category");
+        }
+        if (fileInfoDTO.getFileCategoryId() != null
+                && !Objects.equals(subCategory.getFileCategory().getId(), fileInfoDTO.getFileCategoryId())) {
+            throw new InvalidDataException("invalid category and sub category");
+        }
     }
 
     /**
