@@ -4,7 +4,12 @@ import com.hnp.filemanagement.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.AuthenticationServiceException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
@@ -80,8 +85,21 @@ public class ActiveDirectoryCustomAuthenticationProvider implements Authenticati
     @Value("${filemanagement.auth.ldap.activedirectory.verify-certificate:true}")
     private boolean verifyCertificate;
 
+    /** {@code user.login_type}: either backend, the local password only, or the directory only. */
+    private static final int LOGIN_TYPE_ANY = 0;
+    private static final int LOGIN_TYPE_LOCAL_ONLY = 1;
+    private static final int LOGIN_TYPE_AD_ONLY = 2;
+
     /** The provider URL as JNDI wants it: every configured server, space-separated. */
     private String providerUrl;
+
+    /**
+     * The Spring provider that does the bind, built once in {@link #prepare()} (issue 8: it used to
+     * be built on every login attempt). {@code null} means Active Directory is not configured, in
+     * which case this provider has no opinion and says so with {@code null}, the one place that
+     * answer is still the right one.
+     */
+    private AuthenticationProvider delegate;
 
     private final UserDetailsService userDetailsService;
 
@@ -132,6 +150,21 @@ public class ActiveDirectoryCustomAuthenticationProvider implements Authenticati
         }
         logger.info("Active Directory authentication: domain={}, servers={}, connect timeout {} ms, read timeout {} ms",
                 domain, providerUrl, connectTimeoutMs, readTimeoutMs);
+        delegate = newDelegate();
+    }
+
+    private ActiveDirectoryLdapAuthenticationProvider newDelegate() {
+        ActiveDirectoryLdapAuthenticationProvider provider =
+                new ActiveDirectoryLdapAuthenticationProvider(domain, providerUrl != null ? providerUrl : providerUrlOf(url));
+        // to parse AD failed credentails error message due to account - expiry,lock, credentialis - expiry,lock
+        provider.setConvertSubErrorCodesToExceptions(true);
+        provider.setContextEnvironmentProperties(contextEnvironment());
+        return provider;
+    }
+
+    /** For tests: stand something in for the directory. */
+    void useDelegate(AuthenticationProvider delegate) {
+        this.delegate = delegate;
     }
 
     /** Spaces or commas between servers in the configuration; one space between them for JNDI. */
@@ -156,51 +189,70 @@ public class ActiveDirectoryCustomAuthenticationProvider implements Authenticati
     }
 
 
+    /**
+     * Binds as the user, then decides from the local row whether that bind may sign them in.
+     *
+     * <p>Every refusal is an exception with its reason, never {@code null} (issue 8). What each one
+     * makes {@code ProviderManager} do next is the point:
+     *
+     * <ul>
+     *   <li>{@link DisabledException} for a disabled account stops the chain at once. Until this fix
+     *       the answer was {@code null}, which means "no opinion", and the manager went on to try
+     *       the same password against the local hash - so a disabled AD user was not refused, only
+     *       re-tested against a backend that was never meant to know them.</li>
+     *   <li>{@link BadCredentialsException} for a wrong password, an unknown account, or an account
+     *       marked local-only lets the manager try the local provider next. For a local-only user
+     *       that is the right backend; for the other two it fails there as well, with the same
+     *       message, and the reason is in this log.</li>
+     *   <li>{@link AuthenticationServiceException} when the directory cannot be reached. Spring's
+     *       provider reports that as an {@code InternalAuthenticationServiceException}, which the
+     *       manager rethrows without trying anyone else - so an outage of the directory would have
+     *       locked out every local account, the administrator's included. Re-thrown as the plain
+     *       service exception, the local provider still gets its turn, and the outage is in the
+     *       log at ERROR.</li>
+     * </ul>
+     */
     @Override
     public Authentication authenticate(Authentication authentication) throws AuthenticationException {
-
-
         logger.debug("enter into active directory auth provider");
+        if (delegate == null) {
+            // Not configured: no opinion, and the local provider decides.
+            return null;
+        }
         String username = authentication.getName();
         String password = authentication.getCredentials().toString();
-//
-//        String domain = "hnp.local";
-//        String url =  "ldap://172.29.76.9";
 
-        ActiveDirectoryLdapAuthenticationProvider activeDirectoryLdapAuthenticationProvider =
-                new ActiveDirectoryLdapAuthenticationProvider(domain, providerUrl != null ? providerUrl : providerUrlOf(url));
-
-        // to parse AD failed credentails error message due to account - expiry,lock, credentialis - expiry,lock
-        activeDirectoryLdapAuthenticationProvider.setConvertSubErrorCodesToExceptions(true);
-        activeDirectoryLdapAuthenticationProvider.setContextEnvironmentProperties(contextEnvironment());
-
-
-        Authentication authenticate = activeDirectoryLdapAuthenticationProvider.authenticate(new UsernamePasswordAuthenticationToken(username, password));
-
-        if(authenticate.isAuthenticated()) {
-            LdapUserDetails ldapUserDetails = (LdapUserDetails) authenticate.getPrincipal();
-            logger.debug("extracted username from active directory=" + ldapUserDetails.getUsername());
-//            UserDetailsImpl userDetails = (UserDetailsImpl) userDetailsService.loadUserByUsername(ldapUserDetails.getUsername());
-            UserDetailsImpl userDetails = (UserDetailsImpl) userService.createUserDetailsFromUser(ldapUserDetails.getUsername());
-
-//            logger.debug("login type => " + userDetails.getLoginType());
-            if(userDetails.getLoginType() != 0 && userDetails.getLoginType() != 2) {
-                return null;
-            }
-
-
-//            userDetails.getPermissions().forEach(System.out::println);
-//            logger.debug("enabled ? => " + userDetails.getEnabled());
-
-
-            if(userDetails.getEnabled() == 1) {
-                return new UsernamePasswordAuthenticationToken
-                        (userDetails, null, userDetails.getAuthorities());
-            }
+        Authentication bound;
+        try {
+            bound = delegate.authenticate(new UsernamePasswordAuthenticationToken(username, password));
+        } catch (InternalAuthenticationServiceException e) {
+            logger.error("Active Directory is unreachable; local accounts can still sign in. username={}", username, e);
+            throw new AuthenticationServiceException("Active Directory is unreachable", e);
+        }
+        if (bound == null || !bound.isAuthenticated()) {
+            throw new BadCredentialsException("Active Directory did not authenticate " + username);
         }
 
+        LdapUserDetails ldapUserDetails = (LdapUserDetails) bound.getPrincipal();
+        logger.debug("extracted username from active directory=" + ldapUserDetails.getUsername());
 
-        return null;
+        UserDetailsImpl userDetails;
+        try {
+            userDetails = userService.createUserDetailsFromUser(ldapUserDetails.getUsername());
+        } catch (ResourceNotFoundException e) {
+            logger.warn("Active Directory authenticated {} but this application has no such account", ldapUserDetails.getUsername());
+            throw new BadCredentialsException("no such account: " + ldapUserDetails.getUsername());
+        }
+
+        if (userDetails.getLoginType() != LOGIN_TYPE_ANY && userDetails.getLoginType() != LOGIN_TYPE_AD_ONLY) {
+            logger.info("Active Directory authenticated {} but the account is local-password only; the local provider decides", username);
+            throw new BadCredentialsException("account is restricted to its local password: " + username);
+        }
+        if (!userDetails.isEnabled()) {
+            logger.warn("Active Directory authenticated {} but the account is disabled", username);
+            throw new DisabledException("account is disabled: " + username);
+        }
+        return new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
     }
 
     @Override

@@ -12,6 +12,7 @@ import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import com.hnp.filemanagement.validation.InsertValidation;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
@@ -50,6 +51,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/files")
 public class FileApi {
+
+    /** One fixed string per upload still addressed by category, sub-category and tag - the step-4 readiness signal. */
+    public static final String TRIPLE_ADDRESSING_MARKER = "v1-upload-by-triple";
 
     private static final Logger logger = LoggerFactory.getLogger(FileApi.class);
 
@@ -90,10 +94,20 @@ public class FileApi {
                                            @RequestParam(value = "public-file", required = false) String publicFile,
                                            @ModelAttribute @Validated(InsertValidation.class) FileInfoDTO fileInfoDTO,
                                            BindingResult bindingResult,
-                                           HttpServletRequest request) {
+                                           HttpServletRequest request,
+                                           HttpServletResponse response) {
 
         globalGeneralLogging.controllerLogging(userDetails, request, FileApi.class,
                 "save new file name=" + fileInfoDTO.getFileName());
+
+        // The taxonomy triple goes in Phase 7 step 4. Until then a caller that still sends it is
+        // told so on the wire, and named in the log so the operator can see who has yet to move -
+        // grep for the marker before deciding step 4 is safe (docs/deployment.md).
+        if (fileInfoDTO.getFolderId() == null) {
+            response.setHeader("Deprecation", "true");
+            logger.info("{} principal={} mainTagFileId={} fileName={}", TRIPLE_ADDRESSING_MARKER,
+                    userDetails.getUsername(), fileInfoDTO.getMainTagFileId(), fileInfoDTO.getFileName());
+        }
 
         // Checked before touching the multipart: the debug block below dereferences it, and this
         // method used to log it first, so a request without a file answered 500 instead of 400.

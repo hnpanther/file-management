@@ -29,23 +29,22 @@ import java.util.Comparator;
  * version was a file name rather than a directory. It never was: {@code save} has always built
  * {@code level2Dir = level1Dir + "/v" + version}.)
  *
- * <p>Two properties of this class are worth knowing before changing it:
+ * <p>Every path this class touches goes through {@link #within}: the root is resolved to an
+ * absolute, normalised path once, the relative part is resolved beneath it and normalised, and a
+ * result that is not still under the root - or that <em>is</em> the root - is refused before any
+ * filesystem call. That is the containment check issue 16 asked for, in one place, for both
+ * halves of the class; it does not depend on how a name is spelled, which is why it sits
+ * alongside the spelling rules ({@code checkCorrectFileName}, {@code checkCorrectDirectoryName})
+ * rather than replacing them. The spelling rules still reject rather than sanitise, and the
+ * address rule is applied per segment, which is what the guard issue 4 described was meant to do.
  *
- * <ul>
- *   <li>{@code base-dir} is concatenated, not resolved. The constructor appends a separator when
- *       the configured value lacks one, so {@code E:\files\main} and {@code E:\files\main\} now
- *       mean the same directory - they did not, and the first production deployment of 1.1.0 found
- *       out: uploads went through the key-shaped half, which resolves, into {@code main\IMS\...},
- *       while a delete went through this half into {@code mainIMS/...} and answered 404;</li>
- *   <li>there is no path-containment check, so a name containing {@code ..} would escape the root.
- *       {@code checkCorrectFileName} and {@code checkCorrectDirectoryName} are what stand between
- *       the caller and that, which is why they reject rather than sanitise.</li>
- * </ul>
- *
- * <p>Both are catalogued in {@code docs/issues.md} and fixed in Phase 2 along with the storage
- * port. Neither applies to the key-shaped methods added for roadmap 7.1: {@code resolveKey}
- * resolves against an absolute, normalised root and refuses a key that would leave it, so those
- * three need no separator convention and no name spelling rule.
+ * <p>{@code base-dir} is still concatenated, not resolved, by the path-shaped half. The
+ * constructor appends a separator when the configured value lacks one, so {@code E:\files\main}
+ * and {@code E:\files\main\} mean the same directory - they did not, and the first production
+ * deployment of 1.1.0 found out: uploads went through the key-shaped half, which resolves, into
+ * {@code main\IMS\...}, while a delete went through this half into {@code mainIMS/...} and
+ * answered 404. The key-shaped methods added for roadmap 7.1 need no separator convention and no
+ * spelling rule; the path-shaped half goes with the taxonomy in Phase 7 step 4.
  */
 @Service("fileSystem")
 @Primary
@@ -74,33 +73,57 @@ public class FileStorageFileSystemService implements FileStorageService {
         return last == '/' || last == '\\' ? baseDir : baseDir + java.io.File.separator;
     }
 
-    // ---------------------------------------------------------------- key-shaped (roadmap 7.1)
+    // ---------------------------------------------------------------- the boundary
 
     /**
-     * Resolves a storage key to a path inside the root, and refuses anything that would leave it.
+     * The one place a relative path becomes an absolute one. The root is resolved to an absolute,
+     * normalised path, the relative part is resolved beneath it and normalised - which is what
+     * folds {@code ..} - and the result must still start with the root and must not be the root
+     * itself. Anything else is refused here, before a filesystem call, whatever the caller spelled.
      *
-     * <p><b>This check does not exist on the path-shaped methods below</b>, which is catalogued: a
-     * name containing {@code ..} escapes the root there, and only {@code checkCorrectFileName} and
-     * {@code checkCorrectDirectoryName} stand in the way. The new methods do not inherit that. The
-     * root is resolved to an absolute, normalised path and the target must still be beneath it after
-     * normalisation, which is the containment test rather than a spelling test on the input.
-     *
-     * <p>It also removes the {@code base-dir} trailing-separator trap for these methods: {@code
-     * resolve} joins with a separator whether or not the configured value ends with one.
+     * <p>{@code resolve} joins with a separator whether or not the root ends with one, so nothing
+     * here depends on the trailing-separator convention the string-built messages still follow.
      */
+    private Path within(String relative) {
+        if (relative == null || relative.isBlank()) {
+            throw new BusinessException("storage path is empty");
+        }
+        Path root = Paths.get(baseDir).toAbsolutePath().normalize();
+        Path target = root.resolve(relative).normalize();
+        if (!target.startsWith(root)) {
+            throw new BusinessException("storage path escapes the storage root: " + relative);
+        }
+        if (target.equals(root)) {
+            throw new BusinessException("storage path names the storage root itself: " + relative);
+        }
+        return target;
+    }
+
+    /**
+     * An address is {@code {category}/{subCategory}[/{fileName}]}: every segment must be a
+     * directory name by the same rule the taxonomy services apply when they create one. Empty
+     * segments (a doubled or trailing slash) are tolerated, since {@link #within} normalises them
+     * away; a segment with a dot or a space in it is not.
+     */
+    private void requireCorrectAddress(String address) {
+        if (address == null) {
+            throw new BusinessException("address is null");
+        }
+        for (String segment : address.split("/")) {
+            if (!segment.isEmpty() && !checkCorrectDirectoryName(segment)) {
+                throw new BusinessException("character '.' and space and '/' not allow in directory name, address=" + address);
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- key-shaped (roadmap 7.1)
+
+    /** A storage key is a relative path with no spelling rule of its own; containment is the test. */
     private Path resolveKey(String storageKey) {
         if (storageKey == null || storageKey.isBlank()) {
             throw new BusinessException("storage key is empty");
         }
-        Path root = Paths.get(baseDir).toAbsolutePath().normalize();
-        Path target = root.resolve(storageKey).normalize();
-        if (!target.startsWith(root)) {
-            throw new BusinessException("storage key escapes the storage root: " + storageKey);
-        }
-        if (target.equals(root)) {
-            throw new BusinessException("storage key names the storage root itself: " + storageKey);
-        }
-        return target;
+        return within(storageKey);
     }
 
     @Override
@@ -170,49 +193,45 @@ public class FileStorageFileSystemService implements FileStorageService {
             throw new BusinessException("version must be greater than 0");
         }
 
-        String directoryPath = baseDir + address;
         String fileName = file.getOriginalFilename();
         String fileNameWithoutExtension = fileName.replaceFirst("[.][^.]+$", "");
 
         if(!checkCorrectFileName(fileName)) {
             throw new BusinessException("file name should contain just one '.' and no space and no '/', your file name=" + fileName);
         }
-
-        String level1Dir = directoryPath + "/" + fileNameWithoutExtension;
-        String level2Dir = level1Dir + "/v" + version;
-        String completePath = level2Dir + "/" + fileName;
+        requireCorrectAddress(address);
 
         int index = fileName.lastIndexOf(".");
         if(!extension.equals(fileName.substring(index + 1))) {
             throw new BusinessException("file extension and parameter extension is different: file name=" + fileName + ",extension=" + extension);
         }
 
-        logger.debug("FileStorageFileSystemService.save() -> saving new file=" + completePath);
-        logger.debug("FileStorageFileSystemService.save() -> level1Dir=" + level1Dir);
-        logger.debug("FileStorageFileSystemService.save() -> level2Dir=" + level2Dir);
-
-//        if(!checkCorrectDirectoryName(address) || !checkCorrectDirectoryName(fileNameWithoutExtension)) {
-//            throw new BusinessException("character '.' and '/' and space not allow in directory name");
-//        }
-
         if(!checkCorrectDirectoryName(fileNameWithoutExtension)) {
             throw new BusinessException("character '.' and '/' and space not allow in directory name");
         }
 
+        Path level1Dir = within(address + "/" + fileNameWithoutExtension);
+        Path level2Dir = within(address + "/" + fileNameWithoutExtension + "/v" + version);
+        Path targetPath = within(address + "/" + fileNameWithoutExtension + "/v" + version + "/" + fileName);
+        String completePath = targetPath.toString();
+
+        logger.debug("FileStorageFileSystemService.save() -> saving new file=" + completePath);
+        logger.debug("FileStorageFileSystemService.save() -> level1Dir=" + level1Dir);
+        logger.debug("FileStorageFileSystemService.save() -> level2Dir=" + level2Dir);
 
         //create directories - level1
-        if(Files.notExists(Paths.get(level1Dir))) {
+        if(Files.notExists(level1Dir)) {
             try {
-                Files.createDirectory(Paths.get(level1Dir));
+                Files.createDirectory(level1Dir);
             } catch (IOException e) {
                 logger.error("FileStorageFileSystemService.save() -> IOException in create level1Dir=" + level1Dir, e);
                 throw new BusinessException("can not create file:" + fileName + ", please check logs");
             }
 
         }
-        if(Files.notExists(Paths.get(level2Dir))) {
+        if(Files.notExists(level2Dir)) {
             try {
-                Files.createDirectory(Paths.get(level2Dir));
+                Files.createDirectory(level2Dir);
             } catch (IOException e) {
                 logger.error("FileStorageFileSystemService.save() -> IOException in create level2Dir=" + level2Dir, e);
                 throw new BusinessException("can not create file:" + fileName + ", please check logs");
@@ -220,7 +239,6 @@ public class FileStorageFileSystemService implements FileStorageService {
         }
 
 
-        Path targetPath = Paths.get(completePath);
         if(Files.notExists(targetPath)) {
             try {
                 Files.copy(file.getInputStream(), targetPath);
@@ -244,19 +262,22 @@ public class FileStorageFileSystemService implements FileStorageService {
             throw new BusinessException("file extension and parameter extension is different: file name=" + fileName + ",extension=" + extension);
         }
 
-        if(!checkCorrectDirectoryName(address) && !checkCorrectFileName(fileName)) {
+        // Was `&&` until issue 4: the address always holds a '/', so the directory half was always
+        // "wrong" and the condition collapsed to the file-name check alone. Each is a reason on its own.
+        if(!checkCorrectFileName(fileName)) {
             throw new BusinessException("invalid directory and file name, directory=" + address + ", file name=" + fileName + "." + extension);
         }
+        requireCorrectAddress(address);
 
         if(version < 1) {
             throw new BusinessException("version must be greater than 0");
         }
 
         String fileNameWithoutExtension = fileName.replaceFirst("[.][^.]+$", "");
-        String completePath = baseDir + address + "/" + fileNameWithoutExtension + "/v" + version + "/" + fileName;
+        Path path = within(address + "/" + fileNameWithoutExtension + "/v" + version + "/" + fileName);
+        String completePath = path.toString();
         logger.debug("FileStorageFileSystemService.load() -> loading file=" + completePath);
 
-        Path path = Paths.get(completePath);
         Path foundFile = null;
         if(Files.exists(path)) {
             foundFile = path;
@@ -288,8 +309,9 @@ public class FileStorageFileSystemService implements FileStorageService {
 
 
 
-        String completePath = baseDir + address;
-        Path pathDir = Paths.get(completePath);
+        requireCorrectAddress(address);
+        Path pathDir = within(address);
+        String completePath = pathDir.toString();
         if(Files.exists(pathDir)) {
 
             try {
@@ -327,13 +349,14 @@ public class FileStorageFileSystemService implements FileStorageService {
             throw new BusinessException("file name should contain just one '.' and no space and no '/', your file name=" + fileName);
         }
 
-        String fileNameWithoutExtension = fileName.replaceFirst("[.][^.]+$", "");
-        String completePath = baseDir + address + "/" + fileNameWithoutExtension + "/v" + version + "/" + fileName;
+        requireCorrectAddress(address);
 
+        String fileNameWithoutExtension = fileName.replaceFirst("[.][^.]+$", "");
+        Path path = within(address + "/" + fileNameWithoutExtension + "/v" + version + "/" + fileName);
+        String completePath = path.toString();
 
         try {
 
-            Path path = Paths.get(completePath);
             if(Files.exists(path)) {
                 Files.delete(path);
             } else {
@@ -358,10 +381,10 @@ public class FileStorageFileSystemService implements FileStorageService {
         }
 
 
-//        String directoryPath = baseDir + "/" + title;
-        String directoryPath = baseDir +  title;
+        requireCorrectAddress(title);
+        Path path = within(title);
+        String directoryPath = path.toString();
         logger.debug("FileStorageFileSystemService.createDirectory() -> creating new directory: " + directoryPath);
-        Path path = Paths.get(directoryPath);
         if(Files.notExists(path)) {
             try {
                 Files.createDirectory(path);

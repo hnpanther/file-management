@@ -92,6 +92,13 @@ never runs. The operator should be `||`, and the directory check should be appli
 Not currently exploitable — `address` is derived from DB rows written through validated services —
 but it is a dead guard on the file-read path, and the new storage layer must not inherit it.
 
+> **Fixed.** The two checks are separate statements, each a refusal on its own, and the directory
+> rule is applied per segment of the address (`requireCorrectAddress`) on `save`, `load`, both
+> deletes and `createDirectory` - the sub-directory form of which had skipped the spelling check
+> entirely. Behind both spelling rules now stands the containment check of
+> [issue 16](#16-no-path-containment-check-at-the-storage-boundary--s2), which is what the guard
+> was for. `StorageContainmentTest`.
+
 ### 5. `FileDAO.isDuplicateNewFile` contains SQL that cannot execute — **S2**
 
 > **Resolved in Phase 0.** `FileDAO` deleted.
@@ -142,6 +149,17 @@ It also constructs a fresh `ActiveDirectoryLdapAuthenticationProvider` (and ther
 context factory) on **every** login attempt.
 
 Fix: throw `DisabledException` / `BadCredentialsException`, and make the delegate a singleton bean.
+
+> **Fixed.** The delegate is built once in `prepare()`. Every refusal is an exception chosen for
+> what `ProviderManager` does next: `DisabledException` for a disabled account stops the chain
+> (the account is no longer re-tested against its local hash); `BadCredentialsException` for a
+> wrong password, an unknown account or a local-only account lets the local provider have its
+> turn, which for a local-only account is the right backend. `null` remains only for "not
+> configured". One more case was found while doing it: Spring's provider reports an unreachable
+> directory as `InternalAuthenticationServiceException`, which the manager rethrows without
+> asking anyone else - so a directory outage locked out every local account, the administrator's
+> included. It is rethrown as a plain `AuthenticationServiceException` and logged at `ERROR`,
+> and local accounts sign in through the outage. `ActiveDirectoryProviderOutcomeTest`.
 
 ### 9. `UserService`'s logger is bound to the wrong class — **S3**
 
@@ -296,10 +314,28 @@ future caller and `../../` is a character-counting helper.
 
 Fix: resolve against a canonical base and assert containment, in one place, unconditionally.
 
+> **Fixed.** `FileStorageFileSystemService.within(relative)` is the one place a relative path
+> becomes an absolute one: the root is made absolute and normalised, the relative part is
+> resolved beneath it and normalised, and the result must still start with the root and must not
+> *be* the root - which an empty address used to concatenate to, in front of a recursive delete.
+> Every method of both halves goes through it before a filesystem call; `resolveKey` is now a
+> name for it. The string-built paths in the log messages are gone with the concatenation.
+> `StorageContainmentTest` tries every method with `..`, a sub-directory title that climbs, an
+> empty address and a lone `/`, against a root that has a sibling to land in.
+
 ### 17. No transport security configuration — **S2**
 
 HTTP Basic on `/api/**` with no `requiresChannel().requiresSecure()`, no HSTS configuration, and no
 documented TLS termination. Credentials are one misconfigured proxy away from the wire.
+
+> **Narrowed.** TLS termination is documented (`deployment.md`, "Windows firewall"): the proxy
+> holds the certificate and forwards to loopback with `X-Forwarded-*`, and
+> `server.forward-headers-strategy=native` makes the application honour those headers from
+> loopback and private addresses only. Once a request is known to be secure, Spring Security's
+> defaults send `Strict-Transport-Security` and mark the session cookie `Secure` - the HSTS half
+> of this issue needed the forwarded headers, not configuration of its own. What remains is
+> that nothing *refuses* a plain-http request: `requiresSecure()` would break every
+> loopback-only deployment that has no proxy, so it stays a deployment rule rather than code.
 
 ### CSRF — verified, no issue
 
