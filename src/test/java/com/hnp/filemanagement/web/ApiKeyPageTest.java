@@ -181,15 +181,24 @@ class ApiKeyPageTest extends MySqlSupport {
     /**
      * A key holds its own authorities, not its creator's. Nothing about the person who made it can
      * widen what it reaches — which is the whole reason a key exists rather than a shared password.
+     * The v1 <em>file</em> operations it does hold (since 1.2.0), scoped to its grants like v2 -
+     * {@code FileApiByIdTest} and {@code ApiKeyScopeWithFlagOffTest} - but nothing else of the
+     * account's set: the taxonomy and user endpoints stay closed to it.
      */
     @Test
-    @DisplayName("a key does not inherit the v1 file permissions")
-    void aKeyCannotReachTheV1FileEndpoints() throws Exception {
+    @DisplayName("a key does not inherit the creator's permissions beyond the file operations")
+    void aKeyCannotReachTheRestOfTheApi() throws Exception {
         String credential = apiKeyService.create(request("limited"), principalId).credential();
 
+        // The browser chain does not know a Bearer credential at all: a key is not a session, and
+        // the pages and their resource endpoints are sent to the login page like any anonymous call.
+        mockMvc.perform(get("/resource/files/tree")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
+                .andExpect(status().is3xxRedirection());
+        // A file operation it may attempt; with no grant it reaches no folder, so nothing is found.
         mockMvc.perform(get("/api/v1/files/file-info/1/file-details/1/download")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isNotFound());
     }
 
     @Test

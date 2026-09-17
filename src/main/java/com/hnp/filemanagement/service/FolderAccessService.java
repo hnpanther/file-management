@@ -41,8 +41,10 @@ import java.util.stream.Collectors;
  * Switching it on before any grant rows exist would empty the tree for every non-administrator at
  * once, so the order is: grant the folders on the role edit page
  * ({@code RoleService.updateFoldersOfRole}), check what each role reaches, then turn it on. With the
- * flag off, {@link #accessFor(int)} answers "unrestricted" for everyone and the behaviour is exactly
- * what it was; with it on, access is closed until granted. Administrators are unaffected either way.
+ * flag off, {@link #accessFor(int)} answers "unrestricted" for every <em>person</em> and the
+ * behaviour is exactly what it was; with it on, access is closed until granted. Administrators are
+ * unaffected either way. An API key is outside the flag: it reaches its own grants and nothing
+ * else, on every route, whatever the flag says.
  */
 @Service
 @Transactional(readOnly = true)
@@ -76,16 +78,19 @@ public class FolderAccessService {
      * every item of every list, and — worse — could answer differently halfway through one page.
      */
     public FolderAccess accessFor(int principalId) {
-        if (!enforced) {
-            return FolderAccess.everything();
-        }
-
-        // Deliberately before the administrator shortcut. A request made with an API key reaches
-        // what the key was granted and nothing else, however powerful the person who created it -
-        // and that person is who `principalId` names, because the audit trail has to land on them.
+        // Before the flag, and before the administrator shortcut. A request made with an API key
+        // reaches what the key was granted and nothing else, however powerful the person who
+        // created it - and that person is who `principalId` names, because the audit trail has to
+        // land on them. The flag below exists so that switching enforcement on cannot lock people
+        // out before their roles have grants; a key is created with its grants, on a page that
+        // offers nothing else, so there is no such moment for it and its scope always applies.
         Integer apiKeyId = currentApiKeyId();
         if (apiKeyId != null) {
             return accessForApiKey(apiKeyId);
+        }
+
+        if (!enforced) {
+            return FolderAccess.everything();
         }
 
         if (roleRepository.userHasRole(principalId, ADMIN_ROLE)) {
@@ -130,11 +135,12 @@ public class FolderAccessService {
         return apiKeyId == null ? accessFor(principalId) : accessForApiKey(apiKeyId);
     }
 
-    /** Everything one API key may reach, resolved the same way and reduced the same way. */
+    /**
+     * Everything one API key may reach, resolved the same way and reduced the same way - and
+     * whatever the enforcement flag says: a key is created with its grants, so there is no
+     * "before the grants exist" moment the flag protects people from.
+     */
     public FolderAccess accessForApiKey(int apiKeyId) {
-        if (!enforced) {
-            return FolderAccess.everything();
-        }
         // No administrator shortcut here, deliberately. A key is scoped to what it was granted and
         // to nothing else, however powerful the person who created it happens to be.
         return FolderAccess.of(folderRepository.findGrantsOfApiKey(apiKeyId));

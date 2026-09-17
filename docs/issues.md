@@ -1165,3 +1165,17 @@ Not fixed here because it is a change to the security chain rather than to one s
 existing page that calls a resource endpoint has the same behaviour today. Asserted as it stands by
 `FolderContentEndpointTest.anonymousCallersAreSentToLoginRatherThanRefused`, so a fix will show up
 as a failing test rather than as a silent change.
+
+### 78. The v1 delete skipped folder access — **S2**
+
+`FileService.deleteFileDetails` removed a version on the endpoint permission alone. The download,
+the file page and a new version were moved onto the file's own `folder_id` in Phase 7 step 3
+(reader 3), but the delete was not, so with folder access on, a caller holding
+`API_DELETE_FILE_DETAILS` - the shared `api` account - could remove any file in the system,
+whatever its grants. The v2 delete was unaffected: `ObjectStoreService.delete` checks the
+folder before calling the service.
+
+> **Fixed.** Both forms of the delete (`file-info/{f}/file-details/{d}` and the id-only
+> `file-details/{d}`) go through one private method that asks `requireWriteAccess` on the
+> file's folder first, failing closed on a folderless file like the other readers.
+> `FileApiByIdTest.deleteIsSubjectToFolderAccess`.

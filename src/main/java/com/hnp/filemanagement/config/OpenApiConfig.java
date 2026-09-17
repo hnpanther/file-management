@@ -83,14 +83,18 @@ public class OpenApiConfig {
                 .build();
     }
 
-    /** The original file API, kept for the integrations already built on it. */
+    /**
+     * The original file API, kept for the integrations already built on it. Two security items
+     * means "either": the shared account's password, or an API key, which reaches its own folders.
+     */
     @Bean
     public GroupedOpenApi legacyFileApiGroup() {
         return GroupedOpenApi.builder()
                 .group("v1-files")
                 .pathsToMatch("/api/v1/**")
-                .addOpenApiCustomizer(api -> api.addSecurityItem(
-                        new SecurityRequirement().addList(BASIC_SCHEME)))
+                .addOpenApiCustomizer(api -> api
+                        .addSecurityItem(new SecurityRequirement().addList(BASIC_SCHEME))
+                        .addSecurityItem(new SecurityRequirement().addList(API_KEY_SCHEME)))
                 .build();
     }
 }

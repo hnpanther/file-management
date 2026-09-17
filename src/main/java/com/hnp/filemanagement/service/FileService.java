@@ -511,7 +511,30 @@ public class FileService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "fileDetails with id=" + fileDetailsId + " and fileInfoId=" + fileInfoId + " not exists"));
 
+        deleteFileDetails(fileDetails, principalId);
+    }
+
+    /**
+     * The same delete, addressed by the version's id alone - which is unique on its own; the
+     * file's id in the other form only keeps the URL parallel. This is the form an integration
+     * keeps after Phase 7 step 4: nothing here touches the taxonomy.
+     */
+    @Transactional
+    public void deleteFileDetails(int fileDetailsId, int principalId) {
+        FileDetails fileDetails = fileDetailsRepository.findByIdWithFileInfo(fileDetailsId)
+                .orElseThrow(() -> new ResourceNotFoundException("fileDetails with id=" + fileDetailsId + " not exists"));
+        deleteFileDetails(fileDetails, principalId);
+    }
+
+    private void deleteFileDetails(FileDetails fileDetails, int principalId) {
+        int fileDetailsId = fileDetails.getId();
+        int fileInfoId = fileDetails.getFileInfo().getId();
         FileInfo fileInfo = getFileInfoWithFileDetails(fileInfoId);
+
+        // Removing a version is a write into the file's folder, judged like a new version is: on
+        // the file's own folder_id, failing closed. The v1 delete used to skip this - with folder
+        // access on, the endpoint permission alone let a caller remove any file in the system.
+        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), fileInfo);
 
         if (fileInfo.getFileDetailsList().size() == 1) {
             // Joins the transaction this method already opened, so the two deletes commit together.

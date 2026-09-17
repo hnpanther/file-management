@@ -295,9 +295,11 @@ public enum PermissionEnum {
     API_SAVE_NEW_FILE,
 
 //    @DeleteMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}")
+//    @DeleteMapping("file-details/{fileDetailsId}")  - the same delete, by the version's id alone
     API_DELETE_FILE_DETAILS,
 
 //    @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
+//    @GetMapping("file-details/{fileDetailsId}/download")  - the same download, by the version's id alone
     API_DOWNLOAD_FILE
 
 
