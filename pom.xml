@@ -21,6 +21,7 @@
 		     JDK 25 javac. Override until the platform upgrade (docs/roadmap.md, Phase 1). -->
 		<lombok.version>1.18.48</lombok.version>
 		<springdoc.version>3.1.0</springdoc.version>
+		<tika.version>3.3.2</tika.version>
 		<!-- Boot 3.2.1 pins Testcontainers 1.19.3, which predates Docker context support and
 		     cannot find a Docker Desktop daemon that only exposes dockerDesktopLinuxEngine. -->
 		<testcontainers.version>1.21.4</testcontainers.version>
@@ -88,6 +89,19 @@
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
 			<version>${springdoc.version}</version>
+		</dependency>
+
+		<!--
+		  Content detection by magic bytes, for the "what is this file" probe on the content-kinds
+		  settings page: an administrator hands it a sample and gets the media type and the first
+		  bytes to define a new kind from. tika-core only - the parsers module is the heavy one and
+		  nothing here needs it. Detection of an upload's kind stays with ContentTypes: the probe
+		  suggests, the registry decides.
+		-->
+		<dependency>
+			<groupId>org.apache.tika</groupId>
+			<artifactId>tika-core</artifactId>
+			<version>${tika.version}</version>
 		</dependency>
 
 		<!--

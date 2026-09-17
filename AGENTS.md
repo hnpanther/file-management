@@ -208,7 +208,9 @@ Hibernate will refuse to start on a mismatch.
   the type from the extension and the first bytes, stores that, and serves downloads by
   extension; which of its kinds a person may upload, and how large, is `UploadPolicyService`,
   asked once in `FileService.newFileDetails`. Do not add a code path that consults the declared
-  type, and do not add a kind to `ContentTypes` without a byte signature to verify it by.
+  type, and do not add a kind - built-in in `ContentTypes`, or custom through `ContentKindService`
+  - without a byte signature (or the text rule) to verify it by. `html`, `svg`, `xml`, `js` and
+  their relatives are refused as kinds outright (`ContentTypes.isBrowserActive`); keep it so.
 * **Do not widen the `permitAll` list** in `SecurityConfig` without saying why in the commit message.
 * **Do not add `inline` content disposition** to any new download path. Every download goes
   through `FileController.download(FileDownloadDTO, boolean)`, which honours `?inline=1` only for

@@ -245,6 +245,13 @@
                px-2 py-0.5 text-xs font-medium text-ink-600;
     }
     .badge-secondary { @apply border-ink-200 bg-ink-100 text-ink-700; }
+    .badge-success   { @apply border-brand-300 bg-brand-50 text-brand-800; }
+    .badge-danger    { @apply border-red-200 bg-red-50 text-red-700; }
+
+    /* The probe's answer on the content-kinds page: a two-column definition list. */
+    .probe-result { @apply grid gap-2 text-sm; }
+    .probe-result > div { @apply grid grid-cols-[9rem_1fr] items-start gap-2 border-b border-ink-100 pb-2; }
+    .probe-result dt { @apply text-ink-500; }
 
     /* ---------------------------------------------------------- pagination */
     .pagination { @apply flex flex-wrap items-center justify-center gap-1 p-0 list-none; }

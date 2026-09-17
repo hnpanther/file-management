@@ -25,6 +25,7 @@ download and delete.
 | Schema | Flyway (`flyway-core` + `flyway-mysql`) | |
 | Security | Spring Security 6, optional Active Directory via `spring-security-ldap` | |
 | Boilerplate | Lombok | |
+| Content detection | Apache Tika (`tika-core` only: magic-byte detection for the content-kinds probe; no parsers) | 3.3.2 |
 | Build | Maven wrapper | 3.9.5 |
 
 ## 3. Package layout
@@ -283,7 +284,7 @@ There are four parallel HTTP surfaces over the same services:
 
 | Package | Base path | Returns | Auth | Purpose |
 |---|---|---|---|---|
-| `controller/` | `/files`, `/file-categories`, `/file-sub-categories`, `/main-tags`, `/general-tags`, `/users`, `/roles`, `/api-keys`, `/settings/upload`, `/file-explorer`, `/` | Thymeleaf view names | form login, session | the UI |
+| `controller/` | `/files`, `/file-categories`, `/file-sub-categories`, `/main-tags`, `/general-tags`, `/users`, `/roles`, `/api-keys`, `/settings/upload`, `/settings/content-kinds`, `/file-explorer`, `/` | Thymeleaf view names | form login, session | the UI |
 | `resource/` | `/resource/**` | JSON (`ApiResult` or a DTO) | form login, session, CSRF | AJAX called by the pages themselves |
 | `api/` | `/api/v1/files` | JSON | HTTP Basic, stateless | external integrations (the shared machine account) |
 | `api/` | `/api/v2/{bucket}` | JSON, S3-style | `Authorization: Bearer fmk_…` (an API key), stateless | external integrations, scoped to folders |
@@ -528,7 +529,7 @@ that role alone. The rules:
 
 * **What is on offer is the catalogue, never more.** `ContentTypes` lists the kinds it can
   recognise from their first bytes; the policy chooses among them and sets a size. A kind the
-  application cannot verify (`.html`, `.svg`, `.exe`) cannot be allowed by any setting.
+  application cannot verify cannot be allowed by any setting.
 * **A role without a policy of its own is governed by the system-wide one; with one, by that
   alone.** An own policy that lists nothing means the role may upload nothing.
 * **Across several roles, the union**: a person may upload what any of their roles allows, up to
@@ -543,6 +544,30 @@ that role alone. The rules:
   the person's own limits and restricts the file picker to them.
 * **The server's cap is the ceiling.** `spring.servlet.multipart.max-file-size` is enforced by the
   container before any of this; a limit above it is refused on save, and the pages show it.
+
+### The content catalogue
+
+What `ContentTypes` can recognise has two halves. The **built-in** kinds are in code, each with
+its signature (`%PDF-`, the PNG header, the ZIP and OLE2 containers, `ftyp`, ...); they cannot be
+edited or removed, and they are the only kinds a browser may ever render inline. The **custom**
+kinds are rows of `content_kind` (`V2.7`), added on `/settings/content-kinds` (`CONTENT_KIND_PAGE`,
+`SAVE_CONTENT_KIND`, `DELETE_CONTENT_KIND`) and registered into the same static registry by
+`ContentKindService` at start-up and after every change, so an upload route cannot tell the two
+apart: same extension check, same byte check, same served type. A custom kind is an extension, a
+media type and a rule - a signature of at least two bytes at an offset, or "text only" (no NUL in
+the first block). It is never inline-safe.
+
+The page has a **probe**: hand it a sample and it answers, without storing a byte, with the
+extension, what Tika makes of the first bytes (`tika-core`, detection only), the bytes as hex,
+whether the catalogue already knows the extension and whether the bytes would pass its rule. The
+add-form is prefilled from that answer; what gets stored is what the person submits.
+
+Two things can never become a kind: a built-in extension, and anything a browser would execute
+as a document of this origin (`html htm xhtml shtml svg xml xsl xslt js mjs`,
+`ContentTypes.isBrowserActive`) - refused by the service and, as a second line, skipped by the
+registry. A new kind is on the upload-policy pages from then on, allowed for nobody until ticked;
+deleting one also deletes every policy rule that named it, and files already stored under it
+keep their rows and are served as `application/octet-stream` attachments.
 
 ### Bootstrap
 
@@ -628,6 +653,7 @@ migrations themselves, in `src/main/resources/db/migration`:
 | `V2.4__Add_Tags.sql` | `tag_group` (one per general tag), `tag` (unique per group), `file_tag`; backfilled from the three levels beneath each general tag, names merging within a group; re-runnable (roadmap 7.2 step 2) |
 | `V2.5__Normalise_Content_Type.sql` | data only: `file_details.content_type` rewritten from the extension for the nine accepted kinds, so the column holds the server's word rather than the client's (issues 12, 13) |
 | `V2.6__Add_Upload_Policy.sql` | `upload_policy` (one system-wide row, `role_id` null; one per role that has its own), `upload_policy_rule` (extension → `max_size_bytes`); the system-wide row seeded with the nine default kinds at 20 MB |
+| `V2.7__Add_Content_Kind.sql` | `content_kind`: the custom half of the content catalogue - extension, media type, and a byte signature at an offset or "text only"; empty until an administrator adds one |
 
 `V1.3` turns four rules that lived only in application code into constraints: a sub-category name is
 unique per category, a main-tag name per sub-category, a file name per sub-category, and a

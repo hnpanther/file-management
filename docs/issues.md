@@ -231,6 +231,10 @@ declared type, and store the sniffed value. Add an AV scan hook for untrusted up
 > Since `V2.6` the allow-list is a setting within that catalogue - the upload policy, system-wide
 > and per role (`docs/arch.md`, "The upload policy") - and a few more verifiable kinds were
 > catalogued (`gif csv doc xls ppt zip rar 7z`), allowed only when an administrator ticks them.
+> Since `V2.7` the catalogue itself can grow at run time: a custom kind with its own byte
+> signature, defined from a sample on `/settings/content-kinds` ("The content catalogue"). The
+> rule that made this issue an issue is unchanged - nothing is stored that its bytes do not vouch
+> for - and a browser-executable extension can never be a kind, built-in or custom.
 
 ### 13. `inline` disposition on the public download endpoint — **S1**
 

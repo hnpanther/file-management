@@ -106,7 +106,7 @@ Three groups:
 
 | Group | Tables | State |
 |---|---|---|
-| **Identity and permissions** | `user`, `role`, `user_role`, `permission`, `permission_role`, `api_key`, `api_key_folder`, `upload_policy`, `upload_policy_rule` | stable |
+| **Identity and permissions** | `user`, `role`, `user_role`, `permission`, `permission_role`, `api_key`, `api_key_folder`, `upload_policy`, `upload_policy_rule`, `content_kind` | stable |
 | **Where a file is** | `folder`, `role_folder`, `user_folder`, `file_info.folder_id` | the future structure; `folder` still mirrors the taxonomy (roadmap Phase 6–7) |
 | **What a file is, and about** | `file_info`, `file_details`, `tag_group`, `tag`, `file_tag` | stable; tags are derived from the taxonomy until Phase 7 step 3 |
 | **The taxonomy** | `general_tag`, `file_category`, `file_sub_category`, `main_tag_file` | **to be removed** in Phase 7 step 4, together with `folder.source_type` / `source_id` and the `file_path` / `relative_path` columns |
@@ -117,7 +117,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V2.6`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
+_As of migration `V2.7`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
 
 ### `action_history`
 
@@ -174,6 +174,27 @@ _As of migration `V2.6`. Types and defaults are MySQL's own; every table is Inno
 * **foreign key** `fk_api_key_folder_folder` `folder_id` → `folder` (`id`), on delete cascade
 * **foreign key** `fk_api_key_folder_key` `api_key_id` → `api_key` (`id`), on delete cascade
 * **index** `ix_api_key_folder_key` (`api_key_id`)
+
+### `content_kind`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `extension` | `varchar(16)` | no |  |  |
+| `media_type` | `varchar(255)` | no |  |  |
+| `signature_hex` | `varchar(64)` | yes |  |  |
+| `signature_offset` | `int` | no | `0` |  |
+| `text_only` | `tinyint(1)` | no | `0` |  |
+| `description` | `varchar(500)` | yes |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `created_by` | `int` | yes |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_content_kind_extension` (`extension`)
+* **foreign key** `fk_content_kind_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_content_kind_updated_by_user` `updated_by` → `user` (`id`)
 
 ### `file_category`
 
