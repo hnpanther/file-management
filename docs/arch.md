@@ -249,9 +249,14 @@ void     deleteByKey(String storageKey);
 
 Every read and write of a single file goes through these, so **where the bytes are is what was
 recorded when they were written**, not something rebuilt from the taxonomy at read time. That is
-what lets Phase 7 rename and move folders without moving a byte or orphaning a file. These three
-also resolve against an absolute, normalised root and refuse a key that would leave it, so the
-containment gap and the trailing-separator convention below do not apply to them.
+what lets Phase 7 rename and move folders without moving a byte or orphaning a file.
+
+**One boundary for both halves.** Every method, key-shaped or path-shaped, turns its relative
+input into an absolute path through `within(relative)`: the root is resolved to an absolute,
+normalised path, the relative part is resolved beneath it and normalised (which folds `..`), and
+the result must still start with the root and must not *be* the root. Anything else is refused
+before a filesystem call, whatever the caller spelled (issues 4 and 16). The spelling rules below
+still apply on top, per segment.
 
 **Path-shaped, for directories.** What is left on these is directory work — creating a
 category's folder, removing an emptied one — which is genuinely path-shaped:
@@ -268,8 +273,9 @@ directory deletes) and is rebuilt by walking the entity graph at every call site
 signature bakes in "directory + version + extension", it cannot express an object-store key without
 change — this is the first thing the S3 work has to fix.
 
-Name rules enforced at the storage boundary: directory names must contain **zero** of `.`, ` `, `/`;
-file names must contain **exactly one** `.` and zero of ` `, `/`.
+Name rules enforced at the storage boundary: directory names must contain **zero** of `.`, ` `, `/`,
+applied to every segment of an address; file names must contain **exactly one** `.` and zero of
+` `, `/`.
 
 ## 6. HTTP layers
 
@@ -387,7 +393,7 @@ document, so a browser navigation still lands on a page.
 | Method | Path | Permission |
 |---|---|---|
 | GET | `/health-test` | `API_HEALTH_TEST` |
-| POST | `/` (multipart, `?public-file=0` for private; the place as `fileCategoryId` + `fileSubCategoryId` + `mainTagFileId`, or as `folderId`, or both agreeing) | `API_SAVE_NEW_FILE` |
+| POST | `/` (multipart, `?public-file=0` for private; the place as `fileCategoryId` + `fileSubCategoryId` + `mainTagFileId`, or as `folderId`, or both agreeing; a request without `folderId` is answered with `Deprecation: true` and logged as `v1-upload-by-triple`, since the triple goes in Phase 7 step 4) | `API_SAVE_NEW_FILE` |
 | DELETE | `/file-info/{fileInfoId}/file-details/{fileDetailsId}` | `API_DELETE_FILE_DETAILS` |
 | GET | `/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` |
 
@@ -515,9 +521,13 @@ included (issue 14) — the endpoint permission is then the only check there is.
 
 ### Bootstrap
 
-`FileManagementApplication.runner` runs only when `spring.profiles.active=prod`. It inserts any
-missing `PermissionEnum` value, creates the `ADMIN` and `USER` roles, and creates user
-`Admin` / `admin` with the `ADMIN` role if absent.
+`BootstrapConfig`'s runner runs only when `spring.profiles.active=prod`. `DataInitializer`
+inserts any missing `PermissionEnum` value, creates the `ADMIN` and `USER` roles, and creates the
+`Admin` account if absent (password from `filemanagement.bootstrap.admin-password`, or generated
+and logged once). `FolderReadinessReport` then asks the Phase 7 step 4 pre-flight queries -
+files without a folder, files whose folder is not their tag's mirror, files whose tags disagree
+with the taxonomy, names shared within a folder - and logs one line, INFO when every figure is
+zero and WARN with the figures otherwise. It changes nothing.
 
 ## 8. Cross-cutting concerns
 

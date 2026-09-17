@@ -49,6 +49,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -150,6 +151,8 @@ class FileUploadAddressingTest extends MySqlSupport {
                 "fileCategoryId", categoryId, "fileSubCategoryId", subCategoryId, "mainTagFileId", tagId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.fileName").value("triple.txt"))
+                // ...and is told, on the wire, that this way of addressing goes in step 4.
+                .andExpect(header().string("Deprecation", "true"))
                 .andReturn().getResponse().getContentAsString();
 
         FileInfo file = stored(body);
@@ -162,6 +165,7 @@ class FileUploadAddressingTest extends MySqlSupport {
     void aFolderIdAloneIsEnough() throws Exception {
         String body = upload("byfolder.txt", Map.of("folderId", tagFolderId))
                 .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("Deprecation"))
                 .andReturn().getResponse().getContentAsString();
 
         FileInfo file = stored(body);

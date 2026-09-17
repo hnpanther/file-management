@@ -34,11 +34,14 @@ public class BootstrapConfig {
     private static final String PROD_PROFILE = "prod";
 
     @Bean
-    public CommandLineRunner dataInitializerRunner(Environment environment, DataInitializer dataInitializer) {
+    public CommandLineRunner dataInitializerRunner(Environment environment, DataInitializer dataInitializer,
+                                                   FolderReadinessReport folderReadinessReport) {
         return args -> {
             if (Arrays.asList(environment.getActiveProfiles()).contains(PROD_PROFILE)) {
                 logger.info("running with profile {}, seeding reference data", PROD_PROFILE);
                 dataInitializer.initialize();
+                // Read-only, after the seed: where the data stands relative to Phase 7 step 4.
+                folderReadinessReport.report();
             } else {
                 logger.info("running with profiles {}, skipping reference data",
                         Arrays.toString(environment.getActiveProfiles()));

@@ -43,9 +43,10 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   recreate it, and never suggest a `DROP DATABASE` against anything but a throw-away local
   database — the one place the reset is written down, with that warning, is
   [docs/schema.md](docs/schema.md#a-throw-away-developer-database).
-* **`base-dir` is concatenated, not resolved**, by the path-shaped half of `FileStorageFileSystemService`.
-  The constructor appends a separator when the value lacks one, so both spellings now name the
-  same root - but there is still no path-containment check on that half.
+* **Every storage path is resolved by `FileStorageFileSystemService.within`** against the
+  absolute, normalised `base-dir`, and refused if it lands outside it or on the root itself. Do
+  not build a `Path` from `baseDir` anywhere else. The constructor appends a separator when the
+  value lacks one, so both spellings name the same root.
 
 ## When adding an endpoint
 

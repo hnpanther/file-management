@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.config.bootstrap.FolderReadinessReport;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileDetailsDTO;
@@ -83,6 +84,8 @@ class FileFolderLinkTest extends MySqlSupport {
 
     @Autowired
     private FileInfoRepository fileInfoRepository;
+    @Autowired
+    private FolderReadinessReport folderReadinessReport;
     @Autowired
     private FolderRepository folderRepository;
     @Autowired
@@ -263,6 +266,60 @@ class FileFolderLinkTest extends MySqlSupport {
         assertThat(fileInfoRepository.findById(second.getFileInfoId()).orElseThrow().getFolder().getId()).isEqualTo(mirror.getId());
     }
 
+    // ---------------------------------------------------------------- the step-4 pre-flight
+
+    /**
+     * Step 4 puts a unique constraint over (folder, name). The rule is per sub-category today and
+     * a tag folder is narrower than a sub-category, so the query is empty on data the services
+     * wrote - and the test plants the one shape that would break the constraint (two files of one
+     * name, in two sub-categories, one of them re-pointed at the other's folder) to prove the
+     * query would report it.
+     */
+    @Test
+    @DisplayName("the per-folder name pre-flight is empty on data the services wrote, and reports a planted collision")
+    void thePerFolderNamePreflightReportsACollision() {
+        FileDetailsDTO here = fileService.createNewFile(uploadRequest("same-name.txt", mainTagId), principalId, 1);
+        int otherTagId = anotherTagInAnotherSubCategory();
+        FileDetailsDTO there = fileService.createNewFile(uploadRequest("same-name.txt", otherTagId), principalId, 1);
+        flushAndClear();
+
+        assertThat(fileInfoRepository.findFileNamesSharedWithinAFolder())
+                .as("two sub-categories, two folders: no collision")
+                .isEmpty();
+
+        Folder hereFolder = fileInfoRepository.findById(here.getFileInfoId()).orElseThrow().getFolder();
+        jdbcTemplate.update("UPDATE file_info SET folder_id = ? WHERE id = ?", hereFolder.getId(), there.getFileInfoId());
+        entityManager.clear();
+
+        assertThat(fileInfoRepository.findFileNamesSharedWithinAFolder())
+                .as("the planted collision, as (folder id, name, count)")
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row[0]).isEqualTo(hereFolder.getId());
+                    assertThat(row[1]).isEqualTo("same-name");
+                    assertThat(((Number) row[2]).intValue()).isEqualTo(2);
+                });
+    }
+
+    /** The start-up figures are these same queries; ready on data the services wrote, not once a row is un-linked. */
+    @Test
+    @DisplayName("the start-up readiness report is all zeros on data the services wrote, and counts a row that is not")
+    void theReadinessReportCountsWhatTheQueriesFind() {
+        FileDetailsDTO file = fileService.createNewFile(uploadRequest("counted.txt", mainTagId), principalId, 1);
+        flushAndClear();
+
+        assertThat(folderReadinessReport.figures().ready()).isTrue();
+
+        jdbcTemplate.update("UPDATE file_info SET folder_id = NULL WHERE id = ?", file.getFileInfoId());
+        entityManager.clear();
+
+        FolderReadinessReport.Figures figures = folderReadinessReport.figures();
+        assertThat(figures.ready()).isFalse();
+        assertThat(figures.filesWithoutFolder()).isEqualTo(1);
+        assertThat(figures.filesWhoseFolderDisagrees()).isEqualTo(1);
+        assertThat(figures.namesSharedWithinAFolder()).isZero();
+    }
+
     // ---------------------------------------------------------------- what the key enforces
 
     /**
@@ -296,6 +353,29 @@ class FileFolderLinkTest extends MySqlSupport {
         request.setMultipartFile(new MockMultipartFile("file", fileName, "text/plain",
                 ("content of " + fileName).getBytes(StandardCharsets.UTF_8)));
         return request;
+    }
+
+    /** A second sub-category under the same category, with one tag in it, through the services. */
+    private int anotherTagInAnotherSubCategory() {
+        FileSubCategoryDTO subCategory = new FileSubCategoryDTO();
+        subCategory.setSubCategoryName("Sub" + TestData.nextSequence());
+        subCategory.setSubCategoryNameDescription(subCategory.getSubCategoryName() + " label");
+        subCategory.setDescription("another sub-category");
+        subCategory.setFileCategoryId(categoryId);
+        fileSubCategoryService.createFileSubCategory(subCategory, principalId);
+        int otherSubCategoryId = fileSubCategoryRepository.findAll().stream()
+                .filter(sc -> sc.getSubCategoryName().equals(subCategory.getSubCategoryName())).findFirst().orElseThrow().getId();
+
+        MainTagFileDTO tag = new MainTagFileDTO();
+        tag.setTagName("Tag" + TestData.nextSequence());
+        tag.setTagNameDescription(tag.getTagName() + " label");
+        tag.setDescription("a tag " + tag.getTagName());
+        tag.setFileSubCategoryId(otherSubCategoryId);
+        tag.setFileCategoryId(categoryId);
+        tag.setType(0);
+        mainTagFileService.createMainTagFile(tag, principalId);
+        return mainTagFileRepository.findAll().stream()
+                .filter(t -> t.getTagName().equals(tag.getTagName())).findFirst().orElseThrow().getId();
     }
 
     private void flushAndClear() {

@@ -237,6 +237,22 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     long countByFolderIsNull();
 
     /**
+     * Folder and name pairs that more than one file shares - the rows Phase 7 step 4 cannot put a
+     * per-folder unique constraint over. Empty is the only acceptable answer. Today the rule is
+     * per sub-category and a folder is narrower than one, so this can only be non-empty once a
+     * file has been moved behind the services; it is the pre-flight roadmap 7.4 asks for, and
+     * {@code deployment.md} gives the same statement in SQL for production.
+     */
+    @Query("""
+            SELECT f.folder.id, f.fileName, COUNT(f)
+            FROM FileInfo f
+            WHERE f.folder IS NOT NULL
+            GROUP BY f.folder.id, f.fileName
+            HAVING COUNT(f) > 1
+            """)
+    List<Object[]> findFileNamesSharedWithinAFolder();
+
+    /**
      * The files directly in a folder, one page at a time — what the explorer lists (roadmap 7.2
      * step 3, reader 2; it read {@code findByMainTagFileId} until then).
      *

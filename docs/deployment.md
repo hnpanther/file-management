@@ -550,6 +550,110 @@ operation: the old code's Flyway sees eight migrations it does not know and refu
 and the old schema validation would refuse the new columns anyway. A rollback after users have
 uploaded files loses those uploads — which is why the pre-flight above exists.
 
+### Upgrading from 1.1.0 to 1.2.0
+
+A jar swap with one data-only migration and four behaviour changes worth knowing about. Take the
+database backup first, as always.
+
+1. **`V2.5` rewrites `file_details.content_type`** from the file extension, for the nine
+   accepted kinds. Nothing structural; the verification query is at the top of
+   `V2.5__Normalise_Content_Type.sql` and must return nothing afterwards.
+
+2. **Uploads are judged by their bytes.** The type a client declares is ignored; the extension
+   must be one of `pdf png jpg jpeg docx xlsx pptx mp4 mp3 txt`, and the first bytes must match
+   it. An integration that uploads a renamed file, or a `.html` / `.svg` / `.xml`, gets a `400`
+   whose `detail` says which rule it broke - it always should have. Downloads are served with
+   the extension's type, `nosniff`, and a `Content-Security-Policy`; `?inline=1` is honoured only
+   for PDF, images, text, mp4 and mp3.
+
+3. **Active Directory logins answer with a reason.** A disabled account is refused as disabled
+   and is no longer re-tested against its local password. An account marked local-only (`login_type
+   = 1`) is handed to the local provider. If the directory is unreachable, local accounts -
+   the administrator's included - can still sign in, and the outage is in the log at `ERROR`;
+   previously an unreachable directory locked everyone out.
+
+4. **`/api/v1/files` uploads that still send `fileCategoryId` / `fileSubCategoryId` /
+   `mainTagFileId` get a `Deprecation: true` response header** and a log line. They still work;
+   the header and the log are how you find out who has not moved to `folderId` before Phase 7
+   step 4 removes the triple - see [the readiness check](#readiness-for-phase-7-step-4).
+
+5. **Every storage path is checked to lie inside `base-dir`** before it is touched. No change for
+   data the application wrote; a row whose path somehow climbed out would now be refused rather
+   than acted on.
+
+6. **Set `server.forward-headers-strategy=native`** if your external `application.properties`
+   overrides the shipped one - it is in the shipped file - and check that the proxy sends
+   `X-Forwarded-Proto` ([section 9](#9-windows-firewall)).
+
+**Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
+structure - but the content types it rewrote stay rewritten, which is harmless.
+
+### Readiness for Phase 7 step 4
+
+Step 4 of the roadmap (`docs/roadmap.md`, 7.2) is the point of no return: `file_info.folder_id`
+becomes `NOT NULL`, the four taxonomy tables are dropped, and `/api/v1/files` stops accepting the
+category / sub-category / tag triple. Run it only when all of the following hold on the production
+database and log, in this order.
+
+1. **Every file has a folder, and it is the right one.** Both must return nothing (they are the
+   `V2.3` verification, unchanged):
+
+   ```sql
+   SELECT COUNT(*) FROM file_info WHERE folder_id IS NULL;
+
+   SELECT fi.id FROM file_info fi LEFT JOIN folder f ON f.id = fi.folder_id
+   WHERE fi.folder_id IS NULL OR f.source_type <> 'MAIN_TAG' OR f.source_id <> fi.main_tag_file_id;
+   ```
+
+   The application asks these same questions at every start (`FolderReadinessReport`) and logs
+   one line: `Phase 7 step 4 readiness: ...` at INFO when every figure is zero, at WARN with the
+   figures when not. A non-zero count of files without a folder means the backfill has not run
+   on some rows - `V2.3`'s `UPDATE` can be re-run by hand.
+
+2. **Every file has its tags.** The verification query at the top of `V2.4__Add_Tags.sql` must
+   return nothing; its backfill statements are re-runnable if it does not.
+
+3. **No two files share a name inside one folder.** Step 4 replaces the per-sub-category unique
+   constraint with a per-folder one, and the migration fails if the data violates it:
+
+   ```sql
+   SELECT folder_id, file_name, COUNT(*) FROM file_info
+   WHERE folder_id IS NOT NULL
+   GROUP BY folder_id, file_name HAVING COUNT(*) > 1;
+   ```
+
+   On data the application wrote this is empty by construction (a folder is narrower than a
+   sub-category); the query is here for anything that was moved behind the services.
+
+4. **No integration still uploads by the triple.** Since 1.2.0 every such upload logs one line
+   with a fixed marker. Over a period that covers every integration's schedule - a month is the
+   usual answer, since some jobs run monthly - this must find nothing:
+
+   ```powershell
+   Select-String -Path "D:\MyApp\file-management\logs\*.log" -Pattern "v1-upload-by-triple"
+   ```
+
+   ```bash
+   grep -r "v1-upload-by-triple" /var/log/file-management/
+   ```
+
+   Each hit names the principal and the tag it sent, which is who to contact. The same uploads
+   carry a `Deprecation: true` response header, for an integration that checks its responses.
+   What an integration has to change is one field - send `folderId` instead of the three ids;
+   the folder that stands for a tag is `SELECT id FROM folder WHERE source_type = 'MAIN_TAG' AND
+   source_id = <mainTagFileId>`, a stable id that survives step 4 - and nothing else: the
+   response (`fileId`, `fileDetailsId`), the delete URL and the credential are unchanged.
+
+5. **Folder access is on, and has been, with the grants you mean.** After step 4 there is no
+   taxonomy to fall back on; the folder grants are the only structure.
+
+6. **The `action_history` rows that name category, sub-category and main-tag ids stay as they
+   are.** They are a log of what happened, the ids in them stop resolving to anything, and that
+   is accepted rather than rewritten (roadmap 7.4).
+
+7. **Back up both halves**, then stop, replace the jar, start. Step 4's migration is the one
+   migration in this project that a restored backup is the only way back from.
+
 ---
 
 # Windows — WinSW
@@ -794,6 +898,16 @@ application cannot start":
 
 Only if browsers reach 8122 directly. With a reverse proxy in front, **do not open 8122 at all** —
 the proxy connects over loopback.
+
+The proxy is also where TLS ends. The application speaks plain HTTP on 8122 and is meant to be
+reached only through a proxy (IIS with ARR, nginx, or the load balancer) that holds the
+certificate, listens on 443 and forwards to `127.0.0.1:8122` with the standard headers -
+`X-Forwarded-Proto`, `X-Forwarded-For`, `X-Forwarded-Host`. The application honours those
+headers from loopback and private addresses (`server.forward-headers-strategy=native`), and once
+it knows a request came in over https it marks the session cookie `Secure`, redirects to `https://`
+after login, and sends `Strict-Transport-Security` on its own. API credentials - Basic and Bearer
+alike - cross the wire in the clear on any hop that is not TLS, which is the whole reason for the
+rule above about not opening 8122.
 
 ```powershell
 New-NetFirewallRule -DisplayName "File Management 8122" -Direction Inbound -LocalPort 8122 `
