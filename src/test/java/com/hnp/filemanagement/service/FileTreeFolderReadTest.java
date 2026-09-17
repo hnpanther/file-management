@@ -95,6 +95,7 @@ class FileTreeFolderReadTest extends MySqlSupport {
     private int subAId;
     private int tagA1;
     private int tagA2;
+    private String token;
     private FileDetailsDTO alpha;
     private FileDetailsDTO beta;
     private FileDetailsDTO gamma;
@@ -113,9 +114,13 @@ class FileTreeFolderReadTest extends MySqlSupport {
         tagA1 = createMainTag("TagA1" + TestData.nextSequence(), subAId);
         tagA2 = createMainTag("TagA2" + TestData.nextSequence(), subAId);
 
-        alpha = upload("alpha-report.txt", tagA1);
-        beta = upload("beta-report.txt", tagA1);
-        gamma = upload("gamma-report.txt", tagA2);
+        // A token of this run in every name: the search below is unrestricted for the
+        // administrator and would otherwise also find "report" files that committed tests left
+        // behind, which depends on the order the classes ran in.
+        token = "rep" + TestData.nextSequence();
+        alpha = upload("alpha-" + token + ".txt", tagA1);
+        beta = upload("beta-" + token + ".txt", tagA1);
+        gamma = upload("gamma-" + token + ".txt", tagA2);
         flushAndClear();
     }
 
@@ -158,7 +163,7 @@ class FileTreeFolderReadTest extends MySqlSupport {
     @Test
     @DisplayName("a search hit carries the folder ids and labels of the branch the taxonomy puts the file on")
     void aSearchHitIsPlacedOnItsBranch() {
-        List<TreeSearchHitDTO> hits = underTest.search("gamma", adminId);
+        List<TreeSearchHitDTO> hits = underTest.search("gamma-" + token, adminId);
 
         assertThat(hits).hasSize(1);
         TreeSearchHitDTO hit = hits.getFirst();
@@ -175,14 +180,14 @@ class FileTreeFolderReadTest extends MySqlSupport {
     @Test
     @DisplayName("search offers only the hits whose folder the person may read")
     void searchIsBoundedByTheFilesFolder() {
-        assertThat(underTest.search("report", readerId)).as("no grant, no hits").isEmpty();
+        assertThat(underTest.search(token, readerId)).as("no grant, no hits").isEmpty();
 
         grant(readerId, FolderSourceType.MAIN_TAG, tagA2, FolderPermission.READ);
 
-        assertThat(underTest.search("report", readerId)).extracting(TreeSearchHitDTO::getFileName)
-                .containsExactly("gamma-report");
-        assertThat(underTest.search("report", adminId)).extracting(TreeSearchHitDTO::getFileName)
-                .containsExactlyInAnyOrder("alpha-report", "beta-report", "gamma-report");
+        assertThat(underTest.search(token, readerId)).extracting(TreeSearchHitDTO::getFileName)
+                .containsExactly("gamma-" + token);
+        assertThat(underTest.search(token, adminId)).extracting(TreeSearchHitDTO::getFileName)
+                .containsExactlyInAnyOrder("alpha-" + token, "beta-" + token, "gamma-" + token);
     }
 
     // ---------------------------------------------------------------- the one way a folder read can miss
@@ -195,14 +200,14 @@ class FileTreeFolderReadTest extends MySqlSupport {
         entityManager.clear();
 
         assertThat(underTest.getChildren(NodeType.MAIN_TAG, folderOf(tagA1), readerId))
-                .extracting(TreeNodeDTO::getName).containsExactly("alpha-report");
+                .extracting(TreeNodeDTO::getName).containsExactly("alpha-" + token);
         assertThat(underTest.getChildren(NodeType.SUB_CATEGORY, folderOf(FolderSourceType.SUB_CATEGORY, subAId), readerId))
                 .filteredOn(node -> node.getId() == folderOf(tagA1)).singleElement()
                 .extracting(TreeNodeDTO::getChildCount).isEqualTo(1);
         assertThatThrownBy(() -> underTest.getChildren(NodeType.FILE, beta.getFileInfoId(), readerId))
                 .as("fail closed, even inside the grant")
                 .isInstanceOf(AccessDeniedException.class);
-        assertThat(underTest.search("beta", readerId)).isEmpty();
+        assertThat(underTest.search("beta-" + token, readerId)).isEmpty();
         assertThat(output.getOut()).contains("no folder_id, which were left out");
 
         assertThat(underTest.getChildren(NodeType.FILE, beta.getFileInfoId(), adminId))

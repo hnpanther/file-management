@@ -90,6 +90,7 @@ class FolderContentFolderReadTest extends MySqlSupport {
     private int adminId;
     private int categoryId;
     private int subAId;
+    private String token;
     private int tagA1;
     private int tagA2;
     private int tagB1;
@@ -109,11 +110,14 @@ class FolderContentFolderReadTest extends MySqlSupport {
         tagA2 = createMainTag("TagA2" + TestData.nextSequence(), subAId);
         tagB1 = createMainTag("TagB1" + TestData.nextSequence(), subBId);
 
-        upload("alpha-report.txt", tagA1);
-        upload("beta-report.txt", tagA1);
-        upload("gamma-report.txt", tagA2);
+        // A token of this run in every name: the administrator's search is unrestricted and would
+        // otherwise also find "report" files that committed tests left behind - an order dependency.
+        token = "rep" + TestData.nextSequence();
+        upload("alpha-" + token + ".txt", tagA1);
+        upload("beta-" + token + ".txt", tagA1);
+        upload("gamma-" + token + ".txt", tagA2);
         upload("delta-note.txt", tagB1);
-        upload("epsilon-report.txt", tagB1);
+        upload("epsilon-" + token + ".txt", tagB1);
         flushAndClear();
     }
 
@@ -145,15 +149,15 @@ class FolderContentFolderReadTest extends MySqlSupport {
     @Test
     @DisplayName("a search places every hit in the folder its tag mirrors, within the scope asked for")
     void searchPlacesHitsInTheirFolder() {
-        FolderSearchDTO everywhere = underTest.search("report", null, 0, 50, adminId);
-        FolderSearchDTO withinSubA = underTest.search("report", folderOf(FolderSourceType.SUB_CATEGORY, subAId), 0, 50, adminId);
+        FolderSearchDTO everywhere = underTest.search(token, null, 0, 50, adminId);
+        FolderSearchDTO withinSubA = underTest.search(token, folderOf(FolderSourceType.SUB_CATEGORY, subAId), 0, 50, adminId);
 
         assertThat(everywhere.hits()).extracting(hit -> hit.file().name())
-                .containsExactlyInAnyOrder("alpha-report", "beta-report", "gamma-report", "epsilon-report");
+                .containsExactlyInAnyOrder("alpha-" + token, "beta-" + token, "gamma-" + token, "epsilon-" + token);
         assertThat(everywhere.hits()).allSatisfy(hit ->
                 assertThat(hit.folder().id()).isEqualTo(folderOf(fileInfoRepository.findById(hit.file().id()).orElseThrow().getMainTagFile().getId())));
         assertThat(withinSubA.hits()).extracting(hit -> hit.file().name())
-                .containsExactlyInAnyOrder("alpha-report", "beta-report", "gamma-report");
+                .containsExactlyInAnyOrder("alpha-" + token, "beta-" + token, "gamma-" + token);
     }
 
     @Test
@@ -167,9 +171,9 @@ class FolderContentFolderReadTest extends MySqlSupport {
 
         assertThat(names(underTest.contentOf(folderOf(tagA2), 0, 50, reader.getId())))
                 .containsExactlyInAnyOrderElementsOf(expectedNames(tagA2));
-        assertThat(underTest.search("report", null, 0, 50, reader.getId()).hits())
+        assertThat(underTest.search(token, null, 0, 50, reader.getId()).hits())
                 .extracting(hit -> hit.file().name())
-                .containsExactly("gamma-report");
+                .containsExactly("gamma-" + token);
     }
 
     // ---------------------------------------------------------------- the one way a folder read can miss
@@ -178,16 +182,16 @@ class FolderContentFolderReadTest extends MySqlSupport {
     @DisplayName("a file without a folder is not listed, not counted, not placed by search - and logged, not fatal")
     void aFileWithoutAFolderIsInvisibleNotFatal(CapturedOutput output) {
         int orphan = fileInfoRepository.findAll().stream()
-                .filter(f -> f.getFileName().equals("beta-report")).findFirst().orElseThrow().getId();
+                .filter(f -> f.getFileName().equals("beta-" + token)).findFirst().orElseThrow().getId();
         jdbcTemplate.update("UPDATE file_info SET folder_id = NULL WHERE id = ?", orphan);
         entityManager.clear();
 
-        assertThat(names(underTest.contentOf(folderOf(tagA1), 0, 50, adminId))).containsExactly("alpha-report");
+        assertThat(names(underTest.contentOf(folderOf(tagA1), 0, 50, adminId))).containsExactly("alpha-" + token);
         FolderContentDTO parent = underTest.contentOf(folderOf(FolderSourceType.SUB_CATEGORY, subAId), 0, 50, adminId);
         assertThat(parent.folders()).filteredOn(entry -> entry.name().equals(tagName(tagA1)))
                 .singleElement().extracting(FolderContentDTO.FolderEntry::fileCount).isEqualTo(1L);
 
-        FolderSearchDTO search = underTest.search("beta", null, 0, 50, adminId);
+        FolderSearchDTO search = underTest.search("beta-" + token, null, 0, 50, adminId);
         assertThat(search.hits()).isEmpty();
         assertThat(output.getOut()).contains("no folder_id, which were left out");
     }
