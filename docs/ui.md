@@ -304,6 +304,12 @@ two-way radio (system-wide / own) through an Alpine `mode` and is disabled while
 governed by the system-wide policy; on the settings page there is no Alpine scope and the same
 binding is inert.
 
+The content-kinds page (`settings/content-kinds.html`) is three cards: a probe form (one file
+input, posts multipart to `/probe`, re-renders the page with a `probe-result` definition list), the
+add-kind form (prefilled from the probe when there was one; only for `SAVE_CONTENT_KIND`), and the
+catalogue table with a built-in / custom badge and a delete button on custom rows. The probe's
+hex and media types are `technical` and `dir="ltr"`; everything else follows the page direction.
+
 The upload form has two modes. Opened plainly, it asks for the place with three dependent selects
 (category, sub-category, tag). Opened from the explorer's "upload here" button - `/files/create?folderId=` -
 the place is fixed: the path down to the folder is shown read-only with a "change target" link back

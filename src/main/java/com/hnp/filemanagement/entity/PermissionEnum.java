@@ -102,6 +102,18 @@ public enum PermissionEnum {
 
     // ===================================================================================================
 
+    // ContentKindController @RequestMapping("/settings/content-kinds") ================================
+
+    //@GetMapping, and @PostMapping("/probe") - the catalogue page and the sample probe, which stores nothing
+    CONTENT_KIND_PAGE,
+    //@PostMapping - adds a custom kind
+    SAVE_CONTENT_KIND,
+    //@PostMapping("/{extension}/delete")
+    DELETE_CONTENT_KIND,
+
+
+    // ===================================================================================================
+
     // UserController @RequestMapping("/users")===========================================================
 
     //@GetMapping("/create")

@@ -23,6 +23,11 @@ public interface UploadPolicyRepository extends JpaRepository<UploadPolicy, Inte
     @Query("SELECT DISTINCT p FROM UploadPolicy p LEFT JOIN FETCH p.rules WHERE p.role.id IN :roleIds")
     List<UploadPolicy> findByRoleIdIn(@Param("roleIds") Collection<Integer> roleIds);
 
+    /** Removes every rule naming this extension, from every policy - what deleting a custom kind does. */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("DELETE FROM UploadRule r WHERE r.extension = :extension")
+    int deleteRulesForExtension(@Param("extension") String extension);
+
     /** The ids of this person's roles, for the resolution across them. */
     @Query("SELECT r.id FROM User u JOIN u.roles r WHERE u.id = :userId")
     List<Integer> findRoleIdsOfUser(@Param("userId") int userId);

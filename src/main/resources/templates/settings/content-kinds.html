@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{contentKind.pageTitle}">انواع فایل | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The content catalogue. Three things on one page, in the order a person uses them:
+
+  1. the probe - hand it a sample and it says what the file is (extension, what Tika makes of
+     the bytes, the first bytes as hex) without storing it, and prefills the add-form;
+  2. the add-form - a new kind is an extension, a media type and the rule that recognises its
+     bytes: a signature at an offset, or "any text";
+  3. the catalogue - built-in kinds (in code, not editable) and custom ones (removable).
+
+  A new kind is on the upload-policy pages from then on, allowed for nobody until ticked there.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{uploadPolicy.kicker}">تنظیمات</div>
+        <h1 th:text="#{contentKind.heading}">انواع فایل</h1>
+        <p class="page-description" th:text="#{contentKind.description}">
+            انواع فایلی که سامانه می‌شناسد. یک نمونه بدهید تا نوع فایل و نوع محتوایش را بگوید؛ بعد در صورت نیاز آن را به فهرست اضافه کنید.
+        </p>
+    </header>
+
+    <div th:if="${showMessage && valid}" class="alert alert-success mb-5" role="status"
+         id="success_message" th:text="${message}"></div>
+    <div th:if="${showMessage && !valid}" class="alert alert-warning mb-5" role="alert"
+         id="warning_message" th:text="${message}"></div>
+
+    <div class="grid gap-5 lg:grid-cols-2">
+
+        <!-- 1. the probe -->
+        <section class="card" aria-labelledby="probe-title">
+            <div class="card-body">
+                <h2 id="probe-title" class="mb-1 text-base font-semibold" th:text="#{contentKind.probe.title}">این فایل چیست؟</h2>
+                <p class="mb-4 text-sm text-ink-500" th:text="#{contentKind.probe.hint}">
+                    فایل ذخیره نمی‌شود؛ فقط چند بایت اولش خوانده می‌شود.
+                </p>
+                <form th:action="@{/settings/content-kinds/probe}" method="post" enctype="multipart/form-data" id="probeForm">
+                    <div class="form-group">
+                        <label for="sample" th:text="#{contentKind.probe.sample}">فایل نمونه</label>
+                        <div class="file-picker">
+                            <input type="file" class="file-picker-input" name="sample" id="sample" required>
+                            <label for="sample" class="file-picker-button">
+                                <i class="bi bi-paperclip" aria-hidden="true"></i>
+                                <span th:text="#{file.upload.choose}">انتخاب فایل</span>
+                            </label>
+                            <span id="sampleFileName" class="file-picker-name" th:text="#{file.upload.none}">فایلی انتخاب نشده است</span>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-outline-secondary">
+                            <i class="bi bi-search" aria-hidden="true"></i>
+                            <span th:text="#{contentKind.probe.submit}">بررسی</span>
+                        </button>
+                    </div>
+                </form>
+
+                <dl th:if="${probe != null}" class="probe-result mt-5" id="probeResult">
+                    <div><dt th:text="#{contentKind.probe.fileName}">نام فایل</dt><dd class="technical" dir="ltr" th:text="${probe.fileName()}"></dd></div>
+                    <div><dt th:text="#{contentKind.probe.extension}">پسوند</dt><dd class="technical" dir="ltr" th:text="${#strings.isEmpty(probe.extension())} ? '—' : '.' + ${probe.extension()}"></dd></div>
+                    <div><dt th:text="#{contentKind.probe.detectedType}">نوع محتوا (از روی بایت‌ها)</dt><dd class="technical" dir="ltr" th:text="${probe.detectedType()}"></dd></div>
+                    <div><dt th:text="#{contentKind.probe.declaredType}">نوع اعلام‌شده توسط مرورگر</dt><dd class="technical text-ink-500" dir="ltr" th:text="${probe.declaredType()}"></dd></div>
+                    <div><dt th:text="#{contentKind.probe.size}">حجم</dt><dd class="technical" dir="ltr" th:text="${probe.size()} + ' B'"></dd></div>
+                    <div><dt th:text="#{contentKind.probe.head}">بایت‌های اول</dt><dd class="technical break-all text-xs" dir="ltr" th:text="${probe.headHex()}"></dd></div>
+                    <div><dt th:text="#{contentKind.probe.text}">متنی؟</dt><dd th:text="${probe.looksLikeText()} ? #{contentKind.probe.yes} : #{contentKind.probe.no}"></dd></div>
+                    <div th:if="${probe.knownAs() != null}">
+                        <dt th:text="#{contentKind.probe.knownAs}">در فهرست</dt>
+                        <dd>
+                            <span class="technical" dir="ltr" th:text="${probe.knownAs()}"></span>
+                            <span class="badge" th:classappend="${probe.bytesMatchKnown()} ? 'badge-success' : 'badge-danger'"
+                                  th:text="${probe.bytesMatchKnown()} ? #{contentKind.probe.bytesMatch} : #{contentKind.probe.bytesMismatch}"></span>
+                        </dd>
+                    </div>
+                    <div th:if="${probe.knownAs() == null && probe.refused() == null}">
+                        <dt th:text="#{contentKind.probe.knownAs}">در فهرست</dt>
+                        <dd th:text="#{contentKind.probe.unknown}">نه - می‌توانید با فرم روبه‌رو اضافه‌اش کنید.</dd>
+                    </div>
+                    <div th:if="${probe.refused() != null}">
+                        <dt th:text="#{contentKind.probe.knownAs}">در فهرست</dt>
+                        <dd class="text-red-600" th:text="#{contentKind.probe.refused}">این پسوند هرگز نمی‌تواند به فهرست اضافه شود.</dd>
+                    </div>
+                </dl>
+            </div>
+        </section>
+
+        <!-- 2. the add-form -->
+        <section class="card" aria-labelledby="add-title" sec:authorize="hasAuthority('SAVE_CONTENT_KIND') || hasAuthority('ADMIN')">
+            <div class="card-body">
+                <h2 id="add-title" class="mb-1 text-base font-semibold" th:text="#{contentKind.add.title}">افزودن نوع فایل</h2>
+                <p class="mb-4 text-sm text-ink-500" th:text="#{contentKind.add.hint}">
+                    امضای بایتی چیزی است که هر فایل از این نوع با آن شروع می‌شود.
+                </p>
+                <form th:action="@{/settings/content-kinds}" method="post" id="contentKindForm" th:object="${form}">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="extension" th:text="#{contentKind.field.extension}">پسوند</label>
+                            <input id="extension" th:field="*{extension}" class="form-control technical" dir="ltr"
+                                   type="text" required maxlength="16" pattern="[A-Za-z0-9.]{1,17}" placeholder="dwg">
+                        </div>
+                        <div class="form-group">
+                            <label for="mediaType" th:text="#{contentKind.field.mediaType}">نوع محتوا</label>
+                            <input id="mediaType" th:field="*{mediaType}" class="form-control technical" dir="ltr"
+                                   type="text" required maxlength="255" placeholder="application/acad">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="flex items-center gap-2 text-sm">
+                            <input type="checkbox" th:field="*{textOnly}" id="textOnly">
+                            <span th:text="#{contentKind.field.textOnly}">فایل متنی است (امضا لازم ندارد)</span>
+                        </label>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="signatureHex" th:text="#{contentKind.field.signature}">امضای بایتی (هگز)</label>
+                            <input id="signatureHex" th:field="*{signatureHex}" class="form-control technical" dir="ltr"
+                                   type="text" maxlength="95" placeholder="41 43 31 30">
+                        </div>
+                        <div class="form-group">
+                            <label for="signatureOffset" th:text="#{contentKind.field.offset}">از بایت شمارهٔ</label>
+                            <input id="signatureOffset" th:field="*{signatureOffset}" class="form-control technical" dir="ltr"
+                                   type="number" min="0" max="1024" step="1">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="description" th:text="#{contentKind.field.description}">توضیح</label>
+                        <input id="description" th:field="*{description}" class="form-control" type="text" maxlength="500">
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                            <span th:text="#{contentKind.add.submit}">افزودن به فهرست</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+    </div>
+
+    <!-- 3. the catalogue -->
+    <section class="card mt-5" aria-labelledby="catalogue-title">
+        <div class="card-body">
+            <div class="card-title">
+                <h2 id="catalogue-title" class="text-base font-semibold" th:text="#{contentKind.list.title}">فهرست انواع فایل</h2>
+                <a th:href="@{/settings/upload}" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-sliders" aria-hidden="true"></i>
+                    <span th:text="#{nav.access.uploadPolicy}">قوانین بارگذاری</span>
+                </a>
+            </div>
+            <p class="mb-3 text-sm text-ink-500" th:text="#{contentKind.list.hint}">
+                نوع جدید تا وقتی در «قوانین بارگذاری» تیک نخورد برای کسی مجاز نیست.
+            </p>
+            <div class="overflow-x-auto">
+                <table class="table content-kinds">
+                    <thead>
+                    <tr>
+                        <th th:text="#{uploadPolicy.column.kind}">نوع فایل</th>
+                        <th th:text="#{uploadPolicy.column.mediaType}">نوع محتوا</th>
+                        <th th:text="#{contentKind.column.rule}">قاعدهٔ تشخیص</th>
+                        <th th:text="#{contentKind.column.inline}">نمایش در مرورگر</th>
+                        <th th:text="#{contentKind.column.origin}">منشأ</th>
+                        <th sec:authorize="hasAuthority('DELETE_CONTENT_KIND') || hasAuthority('ADMIN')"
+                            th:text="#{apiKey.column.actions}">عملیات</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="k : ${kinds}">
+                        <td class="technical font-semibold" dir="ltr" th:text="'.' + ${k.extension()}"></td>
+                        <td class="technical max-w-xs whitespace-normal break-all text-xs text-ink-500" dir="ltr" th:text="${k.mediaType()}"></td>
+                        <td class="technical text-xs text-ink-500" dir="ltr" th:text="${k.matchDescription()}"></td>
+                        <td th:text="${k.inlineSafe()} ? #{contentKind.probe.yes} : #{contentKind.probe.no}"></td>
+                        <td>
+                            <span th:if="${k.builtIn()}" class="badge" th:text="#{contentKind.origin.builtIn}">پیش‌ساخته</span>
+                            <span th:unless="${k.builtIn()}" class="badge badge-success" th:text="#{contentKind.origin.custom}">افزوده‌شده</span>
+                        </td>
+                        <td sec:authorize="hasAuthority('DELETE_CONTENT_KIND') || hasAuthority('ADMIN')">
+                            <form th:unless="${k.builtIn()}" th:action="@{/settings/content-kinds/{ext}/delete(ext=${k.extension()})}"
+                                  method="post" class="inline">
+                                <button type="submit" class="btn btn-danger btn-sm">
+                                    <i class="bi bi-trash" aria-hidden="true"></i>
+                                    <span th:text="#{action.delete}">حذف</span>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+<script>
+    document.getElementById("sample").addEventListener("change", function () {
+        document.getElementById("sampleFileName").textContent = this.files.length ? this.files[0].name : document.getElementById("sampleFileName").textContent;
+    });
+</script>
+</body>
+</html>
