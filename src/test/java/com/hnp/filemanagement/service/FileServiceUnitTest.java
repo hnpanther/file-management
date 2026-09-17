@@ -72,6 +72,9 @@ class FileServiceUnitTest {
     private FolderMirrorService folderMirrorService;
     @Mock
     private TagMirrorService tagMirrorService;
+    /** Lenient and silent: a mock refuses nothing, so the guards below are tested on their own. */
+    @Mock
+    private UploadPolicyService uploadPolicyService;
 
     @InjectMocks
     private FileService underTest;

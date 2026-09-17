@@ -206,7 +206,9 @@ Hibernate will refuse to start on a mismatch.
 * **Do not trust `MultipartFile.getContentType()`** for anything security-relevant. It is a
   header the client wrote. Nothing in the application reads it any more: `ContentTypes` decides
   the type from the extension and the first bytes, stores that, and serves downloads by
-  extension. Do not add a code path that consults the declared type.
+  extension; which of its kinds a person may upload, and how large, is `UploadPolicyService`,
+  asked once in `FileService.newFileDetails`. Do not add a code path that consults the declared
+  type, and do not add a kind to `ContentTypes` without a byte signature to verify it by.
 * **Do not widen the `permitAll` list** in `SecurityConfig` without saying why in the commit message.
 * **Do not add `inline` content disposition** to any new download path. Every download goes
   through `FileController.download(FileDownloadDTO, boolean)`, which honours `?inline=1` only for

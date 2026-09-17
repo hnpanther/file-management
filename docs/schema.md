@@ -106,7 +106,7 @@ Three groups:
 
 | Group | Tables | State |
 |---|---|---|
-| **Identity and permissions** | `user`, `role`, `user_role`, `permission`, `permission_role`, `api_key`, `api_key_folder` | stable |
+| **Identity and permissions** | `user`, `role`, `user_role`, `permission`, `permission_role`, `api_key`, `api_key_folder`, `upload_policy`, `upload_policy_rule` | stable |
 | **Where a file is** | `folder`, `role_folder`, `user_folder`, `file_info.folder_id` | the future structure; `folder` still mirrors the taxonomy (roadmap Phase 6–7) |
 | **What a file is, and about** | `file_info`, `file_details`, `tag_group`, `tag`, `file_tag` | stable; tags are derived from the taxonomy until Phase 7 step 3 |
 | **The taxonomy** | `general_tag`, `file_category`, `file_sub_category`, `main_tag_file` | **to be removed** in Phase 7 step 4, together with `folder.source_type` / `source_id` and the `file_path` / `relative_path` columns |
@@ -117,7 +117,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V2.5`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
+_As of migration `V2.6`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
 
 ### `action_history`
 
@@ -465,6 +465,36 @@ _As of migration `V2.5`. Types and defaults are MySQL's own; every table is Inno
 * **unique** `uq_tag_group_name` (`name`)
 * **foreign key** `fk_tag_group_created_by_user` `created_by` → `user` (`id`)
 * **foreign key** `fk_tag_group_updated_by_user` `updated_by` → `user` (`id`)
+
+### `upload_policy`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `role_id` | `int` | yes |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `created_by` | `int` | yes |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_upload_policy_role` (`role_id`)
+* **foreign key** `fk_upload_policy_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_upload_policy_role` `role_id` → `role` (`id`), on delete cascade
+* **foreign key** `fk_upload_policy_updated_by_user` `updated_by` → `user` (`id`)
+
+### `upload_policy_rule`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `policy_id` | `int` | no |  |  |
+| `extension` | `varchar(16)` | no |  |  |
+| `max_size_bytes` | `bigint` | no |  |  |
+
+* **primary key** `id`
+* **unique** `uq_upload_policy_rule` (`policy_id`, `extension`)
+* **foreign key** `fk_upload_policy_rule_policy` `policy_id` → `upload_policy` (`id`), on delete cascade
 
 ### `user`
 

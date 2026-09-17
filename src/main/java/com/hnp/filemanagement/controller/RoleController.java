@@ -8,6 +8,7 @@ import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.RoleService;
+import com.hnp.filemanagement.service.UploadPolicyService;
 import com.hnp.filemanagement.service.UserService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
@@ -41,6 +42,7 @@ public class RoleController {
     private final GlobalGeneralLogging globalGeneralLogging;
 
     private final RoleService roleService;
+    private final UploadPolicyService uploadPolicyService;
 
     private final UserService userService;
 
@@ -49,9 +51,10 @@ public class RoleController {
     @Value("${filemanagement.default.element-size:50}")
     private int defaultElementSize;
 
-    public RoleController(GlobalGeneralLogging globalGeneralLogging, RoleService roleService, UserService userService) {
+    public RoleController(GlobalGeneralLogging globalGeneralLogging, RoleService roleService, UserService userService, UploadPolicyService uploadPolicyService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.roleService = roleService;
+        this.uploadPolicyService = uploadPolicyService;
         this.userService = userService;
     }
 
@@ -143,6 +146,7 @@ public class RoleController {
         model.addAttribute("role", roleDTO);
         model.addAttribute("permissions", permissionDTOList);
         model.addAttribute("folders", roleService.getFolderTreeForRole(roleId));
+        addUploadPolicy(model, roleId);
         model.addAttribute("showMessage", false);
         model.addAttribute("valid", false);
         model.addAttribute("message", "");
@@ -178,6 +182,14 @@ public class RoleController {
                         roleDTO.getPermissionDTOListId(), principalId);
                 // What the role may do, and where - the two halves of the same form.
                 roleService.updateFoldersOfRole(roleDTO.getId(), roleDTO.getFolderGrants(), principalId);
+                // And what it may upload, when the page showed that section and the editor may set it.
+                if (roleDTO.getUploadPolicyMode() != null && maySetUploadPolicy(userDetails)) {
+                    uploadPolicyService.saveForRole(roleDTO.getId(),
+                            "OWN".equals(roleDTO.getUploadPolicyMode())
+                                    ? UploadPolicyService.limitsFrom(roleDTO.getUploadAllowed(), roleDTO.getUploadMax())
+                                    : null,
+                            principalId);
+                }
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
             } catch (ResourceNotFoundException e) {
@@ -197,6 +209,7 @@ public class RoleController {
 
         model.addAttribute("permissions", permissionDTOList);
         model.addAttribute("folders", roleService.getFolderTreeForRole(roleDTO.getId()));
+        addUploadPolicy(model, roleDTO.getId());
         model.addAttribute("role", roleDTO);
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);
@@ -206,6 +219,23 @@ public class RoleController {
         return "role/save-role.html";
     }
 
+
+    /**
+     * The role's upload policy for the edit page: whether it has one of its own, and the rules
+     * table filled from it - or from the system-wide policy, as the starting point for one.
+     */
+    private void addUploadPolicy(Model model, int roleId) {
+        java.util.Optional<java.util.Map<String, Long>> own = uploadPolicyService.roleLimits(roleId);
+        model.addAttribute("uploadOwn", own.isPresent());
+        model.addAttribute("uploadRows", uploadPolicyService.rowsFor(own.orElseGet(uploadPolicyService::globalLimits)));
+        model.addAttribute("serverCapMb", uploadPolicyService.serverCapMb());
+    }
+
+    private static boolean maySetUploadPolicy(UserDetailsImpl userDetails) {
+        return userDetails.getAuthorities().stream()
+                .map(Object::toString)
+                .anyMatch(a -> a.equals("SAVE_UPLOAD_POLICY") || a.equals("ADMIN"));
+    }
 
     //GET_ALL_ROLE_PAGE
     @PreAuthorize("hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('ADMIN')")

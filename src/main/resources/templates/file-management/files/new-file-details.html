@@ -47,7 +47,7 @@
                         <label for="multipartFile" th:text="#{field.chooseFile}">فایل موردنظر</label>
                         <div class="file-picker">
                             <input type="file" class="file-picker-input" name="multipartFile" id="multipartFile"
-                                   accept=".jpg,.xlsx,.docx,.pdf,.txt" required>
+                                   th:accept="${uploadAccept}" required>
                             <label for="multipartFile" class="file-picker-button">
                                 <i class="bi bi-paperclip" aria-hidden="true"></i>
                                 <span th:text="#{file.upload.choose}">انتخاب فایل</span>
@@ -55,7 +55,17 @@
                             <span id="selectedFileName" class="file-picker-name"
                                   th:text="#{file.upload.none}">فایلی انتخاب نشده است</span>
                         </div>
-                        <small class="form-text" th:utext="#{fileDetails.upload.hint}">فرمت‌ها و حداکثر حجم مجاز</small>
+                        <small class="form-text">
+                            <th:block th:if="${#maps.isEmpty(uploadLimits)}">
+                                <span th:text="#{file.upload.nothingAllowed}">برای شما هیچ نوع فایلی برای بارگذاری مجاز نیست.</span>
+                            </th:block>
+                            <th:block th:unless="${#maps.isEmpty(uploadLimits)}">
+                                <span th:text="#{file.upload.allowedTypes}">فرمت‌های مجاز و حداکثر حجم:</span>
+                                <span class="technical" dir="ltr">
+                                    <th:block th:each="l, st : ${uploadLimits}"><span class="inline-block" th:text="${l.key} + ' ≤ ' + ${l.value} + ' MB'"></span><span th:unless="${st.last}">, </span></th:block>
+                                </span>
+                            </th:block>
+                        </small>
                     </div>
                     <div class="form-group">
                         <label for="version" th:text="${#strings.equals(pageType, 'version')} ? #{file.newVersion} : #{field.version}">نسخه</label>

@@ -15,7 +15,8 @@ public enum EntityEnum {
     UserRole("user_role"),
     PermissionRole("permission_role"),
     RoleFolder("role_folder"),
-    ApiKey("api_key")
+    ApiKey("api_key"),
+    UploadPolicy("upload_policy")
     ;
 
 

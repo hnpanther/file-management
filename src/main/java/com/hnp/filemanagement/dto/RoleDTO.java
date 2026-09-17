@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 public class RoleDTO {
@@ -38,4 +39,16 @@ public class RoleDTO {
      * describe the same folders, and nothing could make them.
      */
     List<String> folderGrants;
+
+    /**
+     * The role's upload policy as the edit page posts it: {@code GLOBAL} to be governed by the
+     * system-wide policy, {@code OWN} to have one of its own made of {@code uploadAllowed} and
+     * {@code uploadMax}. Null when the page did not show the section (the editor lacks the
+     * permission), in which case nothing about the policy changes.
+     */
+    private String uploadPolicyMode;
+
+    private List<String> uploadAllowed;
+
+    private Map<String, Long> uploadMax;
 }
