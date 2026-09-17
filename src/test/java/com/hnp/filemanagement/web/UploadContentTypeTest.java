@@ -172,7 +172,7 @@ class UploadContentTypeTest extends MySqlSupport {
                 .andExpect(jsonPath("$.detail").value(containsString("not a .png")));
         uploadV1("page.html", "text/plain", "hello".getBytes(StandardCharsets.UTF_8))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value(containsString("not accepted")));
+                .andExpect(jsonPath("$.detail").value(containsString("not recognised")));
         uploadV1("icon.svg", "image/png", "<svg onload=alert(1)/>".getBytes(StandardCharsets.UTF_8))
                 .andExpect(status().isBadRequest());
         uploadV1("tool.pdf", "application/pdf", new byte[]{'M', 'Z', (byte) 0x90, 0})

@@ -293,6 +293,17 @@ permissions, use `permission-grid`; identifiers must be allowed to wrap rather t
 File uploads use the `file-picker` pattern so the action and empty state remain Persian instead of
 depending on browser-native English copy.
 
+The upload form's hint and its file picker's `accept` come from the person's own upload limits
+(`uploadLimits` / `uploadAccept` in the model), not from a fixed list; a refusal by the policy is
+rendered as the form's warning message with the kind or the size and the limit.
+
+The upload policy is one table, the `upload-rules` fragment in `fragments.html`, rendered by the settings page for the
+system-wide policy and by the role page for a role's own: one row per catalogued kind, a checkbox
+that allows it and a number input for its limit in megabytes. On the role page the table follows a
+two-way radio (system-wide / own) through an Alpine `mode` and is disabled while the role is
+governed by the system-wide policy; on the settings page there is no Alpine scope and the same
+binding is inert.
+
 The upload form has two modes. Opened plainly, it asks for the place with three dependent selects
 (category, sub-category, tag). Opened from the explorer's "upload here" button - `/files/create?folderId=` -
 the place is fixed: the path down to the folder is shown read-only with a "change target" link back

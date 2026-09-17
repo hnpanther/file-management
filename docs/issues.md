@@ -228,6 +228,10 @@ via `MediaType.parseMediaType(contentType)`, so the server tells the browser to 
 Fix: sniff the magic bytes (Apache Tika), verify the sniffed type against the extension **and** the
 declared type, and store the sniffed value. Add an AV scan hook for untrusted uploads.
 
+> Since `V2.6` the allow-list is a setting within that catalogue - the upload policy, system-wide
+> and per role (`docs/arch.md`, "The upload policy") - and a few more verifiable kinds were
+> catalogued (`gif csv doc xls ppt zip rar 7z`), allowed only when an administrator ticks them.
+
 ### 13. `inline` disposition on the public download endpoint — **S1**
 
 > **Fixed.** Every download - private, public and v2 - is served with the type the extension maps

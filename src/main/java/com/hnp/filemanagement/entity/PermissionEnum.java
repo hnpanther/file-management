@@ -92,6 +92,16 @@ public enum PermissionEnum {
 
     // ===================================================================================================
 
+    // UploadPolicyController @RequestMapping("/settings/upload") =======================================
+
+    //@GetMapping - the system-wide upload policy page; also unlocks the role page's own-policy section
+    UPLOAD_POLICY_PAGE,
+    //@PostMapping - saves the system-wide policy; with SAVE_UPDATED_ROLE, a role's own policy too
+    SAVE_UPLOAD_POLICY,
+
+
+    // ===================================================================================================
+
     // UserController @RequestMapping("/users")===========================================================
 
     //@GetMapping("/create")

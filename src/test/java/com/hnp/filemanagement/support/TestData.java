@@ -60,9 +60,13 @@ public final class TestData {
             case "pdf" -> "%PDF-1.4 ".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
             case "png" -> new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
             case "jpg", "jpeg" -> new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0};
-            case "docx", "xlsx", "pptx" -> new byte[]{'P', 'K', 0x03, 0x04};
+            case "gif" -> "GIF89a".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            case "docx", "xlsx", "pptx", "zip" -> new byte[]{'P', 'K', 0x03, 0x04};
+            case "doc", "xls", "ppt" -> new byte[]{(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1};
             case "mp4" -> new byte[]{0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'm', 'p', '4', '2'};
             case "mp3" -> new byte[]{'I', 'D', '3'};
+            case "rar" -> "Rar!".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            case "7z" -> new byte[]{'7', 'z', (byte) 0xBC, (byte) 0xAF, 0x27, 0x1C};
             default -> new byte[0];
         };
         byte[] bytes = new byte[signature.length + body.length];

@@ -26,7 +26,9 @@ Renumbering instead would break every reference in `docs/`, in issue entries and
 
 **Already done, outside a phase:** the Active Directory connection is documented with a worked
 example in `application.properties` - domain, URL, the `login_type` gate, and why the two
-properties default to empty rather than being absent.
+properties default to empty rather than being absent. And the upload policy (`V2.6`): which kinds
+of file may be uploaded and how large, system-wide and per role, edited by the administrator -
+`docs/arch.md`, "The upload policy".
 
 Phase 0 was not one of those goals, but every later phase is a large refactor of code that had **no**
 automated verification at all (issues 36–38). Doing it first is what made the rest safe.
@@ -805,7 +807,7 @@ Each is independently shippable, and only the fourth cannot be undone.
 | 1 | `file_info.folder_id`, nullable, backfilled to the folder mirroring the file's main tag; written alongside the old foreign keys — **done** | `V2.3` | an unused column |
 | 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under — **done** | `V2.4` | `DROP TABLE` |
 | 3 | **Reads move to the folder**: tree, upload, file list, search — **done**, one reader per commit: 1 API v2, 2 explorer, 3 folder access on download / file page / list / new version, 4 tree, 5 upload by `folderId` alongside the triple | — | revert the code |
-| 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` | `V2.6` (`V2.5` went to the content-type fix, issues 12/13) | ⚠️ **none** |
+| 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` | `V2.7` (`V2.5` went to the content-type fix, `V2.6` to the upload policy) | ⚠️ **none** |
 | 5 | Folder operations: create, rename, move, delete — and drag-and-drop. **Started**: uploading into a folder from the explorer (5a) | `V2.x` | — |
 
 > **Step 1 done.** `FileInfo.folder` is set from `FolderMirrorService.folderOf(mainTag)` on every

@@ -283,7 +283,7 @@ There are four parallel HTTP surfaces over the same services:
 
 | Package | Base path | Returns | Auth | Purpose |
 |---|---|---|---|---|
-| `controller/` | `/files`, `/file-categories`, `/file-sub-categories`, `/main-tags`, `/general-tags`, `/users`, `/roles`, `/api-keys`, `/file-explorer`, `/` | Thymeleaf view names | form login, session | the UI |
+| `controller/` | `/files`, `/file-categories`, `/file-sub-categories`, `/main-tags`, `/general-tags`, `/users`, `/roles`, `/api-keys`, `/settings/upload`, `/file-explorer`, `/` | Thymeleaf view names | form login, session | the UI |
 | `resource/` | `/resource/**` | JSON (`ApiResult` or a DTO) | form login, session, CSRF | AJAX called by the pages themselves |
 | `api/` | `/api/v1/files` | JSON | HTTP Basic, stateless | external integrations (the shared machine account) |
 | `api/` | `/api/v2/{bucket}` | JSON, S3-style | `Authorization: Bearer fmk_…` (an API key), stateless | external integrations, scoped to folders |
@@ -519,6 +519,31 @@ off, `accessFor` answers "unrestricted" for everyone.
 With the flag off, holding `DOWNLOAD_FILE` still grants download of every file, private ones
 included (issue 14) — the endpoint permission is then the only check there is.
 
+### The upload policy
+
+Which kinds of file may be uploaded, and how large each may be, is a setting rather than a
+constant: `upload_policy` and `upload_policy_rule` (`V2.6`), edited on `/settings/upload`
+(`UPLOAD_POLICY_PAGE`, `SAVE_UPLOAD_POLICY`) for the whole system, and on a role's edit page for
+that role alone. The rules:
+
+* **What is on offer is the catalogue, never more.** `ContentTypes` lists the kinds it can
+  recognise from their first bytes; the policy chooses among them and sets a size. A kind the
+  application cannot verify (`.html`, `.svg`, `.exe`) cannot be allowed by any setting.
+* **A role without a policy of its own is governed by the system-wide one; with one, by that
+  alone.** An own policy that lists nothing means the role may upload nothing.
+* **Across several roles, the union**: a person may upload what any of their roles allows, up to
+  the largest limit any of them gives for that kind — the same way permissions combine. A person
+  with no role, and an API key (which holds none), have the system-wide limits. Nobody is exempt,
+  the administrator included: being governed by a policy that can only narrow the catalogue costs
+  nothing that could otherwise be had.
+* **One enforcement point.** `UploadPolicyService.requireAllowed` is called in
+  `FileService.newFileDetails`, which every route that stores a file passes through — the form,
+  v1, v2, a new version. A refusal is `UploadRefusedException` (a 400 whose `detail` names the
+  kind or the size and the limit); the pages say the same in Persian, and the upload form shows
+  the person's own limits and restricts the file picker to them.
+* **The server's cap is the ceiling.** `spring.servlet.multipart.max-file-size` is enforced by the
+  container before any of this; a limit above it is refused on save, and the pages show it.
+
 ### Bootstrap
 
 `BootstrapConfig`'s runner runs only when `spring.profiles.active=prod`. `DataInitializer`
@@ -565,14 +590,15 @@ beside it, which a status code cannot do.
 POST /files (multipart)
   └─ FileController.saveNewFile
        ├─ @PreAuthorize SAVE_NEW_FILE || ADMIN
-       ├─ @Validated(InsertValidation) → @ValidFile asks ContentTypes (extension allow-list + first bytes)
+       ├─ @Validated(InsertValidation) → @ValidFile asks ContentTypes (catalogued extension + first bytes)
        └─ FileService.createNewFile(dto, principalId, publicFile)          @Transactional
             ├─ MainTagFileService.getMainTagFileByIdOrTagName
             ├─ verify tag.subCategory / tag.subCategory.category match the form
             ├─ isDuplicate(baseName, subCategoryId)
             ├─ ValidationUtil.checkCorrectFileName
             ├─ build FileInfo (paths, state, lastVersion = 1)
-            ├─ build FileDetails v1 (hashId = random UUID, storageKey, content_type = ContentTypes.detect)
+            ├─ build FileDetails v1: UploadPolicyService.requireAllowed(principal, file) → kind and size for this person
+            │                        then hashId = random UUID, storageKey, content_type = ContentTypes.detect
             ├─ fileInfoRepository.save(fileInfo)          ← cascades to FileDetails
             ├─ actionHistoryService.saveActionHistory × 2
             └─ fileStorageService.saveByKey(fileDetails.storageKey, multipartFile)  ← disk write, LAST
@@ -601,6 +627,7 @@ migrations themselves, in `src/main/resources/db/migration`:
 | `V2.3__Add_Folder_To_File_Info.sql` | `file_info.folder_id`, nullable, indexed, backfilled to the folder mirroring the file's main tag; written on every upload, read by the v2 API since step 3 (roadmap 7.2 step 1) |
 | `V2.4__Add_Tags.sql` | `tag_group` (one per general tag), `tag` (unique per group), `file_tag`; backfilled from the three levels beneath each general tag, names merging within a group; re-runnable (roadmap 7.2 step 2) |
 | `V2.5__Normalise_Content_Type.sql` | data only: `file_details.content_type` rewritten from the extension for the nine accepted kinds, so the column holds the server's word rather than the client's (issues 12, 13) |
+| `V2.6__Add_Upload_Policy.sql` | `upload_policy` (one system-wide row, `role_id` null; one per role that has its own), `upload_policy_rule` (extension → `max_size_bytes`); the system-wide row seeded with the nine default kinds at 20 MB |
 
 `V1.3` turns four rules that lived only in application code into constraints: a sub-category name is
 unique per category, a main-tag name per sub-category, a file name per sub-category, and a

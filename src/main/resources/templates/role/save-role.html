@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org">
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 <head>
     <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
     <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{role.create.pageTitle}">ایجاد نقش</title>
@@ -106,6 +107,41 @@
                                         th:text="#{role.folders.write}">خواندن و نوشتن</option>
                             </select>
                         </label>
+                    </div>
+                </fieldset>
+
+                <!--
+                  What the role may upload. Governed by the system-wide policy unless "own" is
+                  chosen, in which case the table below is that role's policy and nothing else -
+                  an own policy with nothing ticked means the role may upload nothing. Only shown
+                  to somebody who may edit the system-wide policy too; without the section, the
+                  post carries no uploadPolicyMode and the policy is left as it was.
+                -->
+                <fieldset th:if="${#strings.equals(pageType, 'update')}"
+                          sec:authorize="hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('ADMIN')"
+                          class="mt-8" th:attr="x-data=|{ mode: '${uploadOwn ? 'OWN' : 'GLOBAL'}' }|">
+                    <legend class="mb-1 text-base font-semibold text-ink-900"
+                            th:text="#{field.uploadPolicy}">قوانین بارگذاری</legend>
+                    <p class="mb-4 text-sm text-ink-500" th:text="#{role.upload.hint}">
+                        نوع فایل‌های مجاز و حداکثر حجم هر نوع برای این نقش.
+                    </p>
+
+                    <div class="mb-4 flex flex-wrap gap-4">
+                        <label class="flex items-center gap-2 text-sm">
+                            <input type="radio" name="uploadPolicyMode" value="GLOBAL" x-model="mode">
+                            <span th:text="#{role.upload.global}">پیش‌فرض سامانه</span>
+                        </label>
+                        <label class="flex items-center gap-2 text-sm">
+                            <input type="radio" name="uploadPolicyMode" value="OWN" x-model="mode">
+                            <span th:text="#{role.upload.own}">اختصاصی این نقش</span>
+                        </label>
+                    </div>
+
+                    <p class="mb-3 text-xs text-ink-500" th:text="#{uploadPolicy.hint(${serverCapMb})}">
+                        سقف سرور برای هر فایل ۲۰ مگابایت است.
+                    </p>
+                    <div class="overflow-x-auto">
+                        <div th:replace="~{fragments.html :: upload-rules(rows=${uploadRows}, allowedName='uploadAllowed', maxName='uploadMax', serverCapMb=${serverCapMb})}"></div>
                     </div>
                 </fieldset>
 

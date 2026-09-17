@@ -4,8 +4,10 @@ import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
+import com.hnp.filemanagement.exception.UploadRefusedException;
 import com.hnp.filemanagement.service.FileCategoryService;
 import com.hnp.filemanagement.service.FileService;
+import com.hnp.filemanagement.service.UploadPolicyService;
 import com.hnp.filemanagement.service.FileSubCategoryService;
 import com.hnp.filemanagement.service.MainTagFileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
@@ -55,6 +57,7 @@ public class FileController {
     private final MainTagFileService mainTagFileService;
 
     private final FileService fileService;
+    private final UploadPolicyService uploadPolicyService;
 
     @Value("${filemanagement.default.page-size:50}")
     private int defaultPageSize;
@@ -63,12 +66,37 @@ public class FileController {
     private int defaultElementSize;
 
 
-    public FileController(GlobalGeneralLogging globalGeneralLogging, FileCategoryService fileCategoryService, FileSubCategoryService fileSubCategoryService, MainTagFileService mainTagFileService, FileService fileService) {
+    public FileController(GlobalGeneralLogging globalGeneralLogging, FileCategoryService fileCategoryService, FileSubCategoryService fileSubCategoryService, MainTagFileService mainTagFileService, FileService fileService, UploadPolicyService uploadPolicyService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.fileCategoryService = fileCategoryService;
         this.fileSubCategoryService = fileSubCategoryService;
         this.mainTagFileService = mainTagFileService;
         this.fileService = fileService;
+        this.uploadPolicyService = uploadPolicyService;
+    }
+
+    /**
+     * What this person may upload, for the form's hint and the file picker's {@code accept}:
+     * extension → megabytes, and the same as one {@code .pdf,.png} string.
+     */
+    private void addUploadLimits(Model model, int principalId) {
+        java.util.Map<String, Long> limitsMb = new java.util.LinkedHashMap<>();
+        uploadPolicyService.effectiveLimitsFor(principalId)
+                .forEach((extension, bytes) -> limitsMb.put(extension, UploadPolicyService.megabytesOf(bytes)));
+        model.addAttribute("uploadLimits", limitsMb);
+        model.addAttribute("uploadAccept", limitsMb.keySet().stream().map(e -> "." + e)
+                .collect(java.util.stream.Collectors.joining(",")));
+    }
+
+    /** The refusal in the page's language, with the facts the exception carries. */
+    private static String uploadRefusedMessage(UploadRefusedException e) {
+        if (e.getReason() == UploadRefusedException.Reason.TOO_LARGE) {
+            return "حجم فایل " + UploadPolicyService.megabytesOf(e.getSizeBytes()) + " مگابایت است؛ حداکثر مجاز برای ."
+                    + e.getExtension() + " " + UploadPolicyService.megabytesOf(e.getLimitBytes()) + " مگابایت است";
+        }
+        return e.getAllowed().isEmpty()
+                ? "برای شما هیچ نوع فایلی برای بارگذاری مجاز نیست"
+                : "نوع فایل ." + e.getExtension() + " برای شما مجاز نیست؛ انواع مجاز: " + String.join(", ", e.getAllowed());
     }
 
     /**
@@ -116,6 +144,7 @@ public class FileController {
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", false);
         model.addAttribute("message", message);
+        addUploadLimits(model, principalId);
 
         return "file-management/files/save-file.html";
     }
@@ -159,6 +188,11 @@ public class FileController {
                 FileDetailsDTO fileDetailsDTO = fileService.createNewFile(fileInfoDTO, principalId, 1);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
+            } catch (UploadRefusedException e) {
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "FileController.class",
+                        "UploadRefusedException:" + e.getMessage());
+                message = uploadRefusedMessage(e);
             } catch (InvalidDataException e) {
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,
                         request.getMethod() + " " + path, "FileController.class",
@@ -193,6 +227,7 @@ public class FileController {
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);
         model.addAttribute("message", message);
+        addUploadLimits(model, principalId);
 
         return "file-management/files/save-file.html";
     }
@@ -397,6 +432,7 @@ public class FileController {
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);
         model.addAttribute("message", message);
+        addUploadLimits(model, principalId);
 
 
         return "file-management/files/new-file-details.html";
@@ -447,6 +483,12 @@ public class FileController {
             try {
                 fileService.createNewFileDetails(fileUploadDTO, principalId);
                 valid = true;
+            } catch (UploadRefusedException e) {
+                fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "FileController.class",
+                        "UploadRefusedException:" + e.getMessage());
+                message = uploadRefusedMessage(e);
             } catch (InvalidDataException e) {
                 fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,
@@ -469,6 +511,7 @@ public class FileController {
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);
         model.addAttribute("message", message);
+        addUploadLimits(model, principalId);
 
 
         return "file-management/files/new-file-details.html";

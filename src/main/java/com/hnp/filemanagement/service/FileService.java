@@ -94,6 +94,7 @@ public class FileService {
     private final ActionHistoryService actionHistoryService;
     private final FolderAccessService folderAccessService;
     private final FolderMirrorService folderMirrorService;
+    private final UploadPolicyService uploadPolicyService;
     private final TagMirrorService tagMirrorService;
 
     public FileService(FileInfoRepository fileInfoRepository,
@@ -104,7 +105,8 @@ public class FileService {
                        ActionHistoryService actionHistoryService,
                        FolderAccessService folderAccessService,
                        FolderMirrorService folderMirrorService,
-                       TagMirrorService tagMirrorService) {
+                       TagMirrorService tagMirrorService,
+                       UploadPolicyService uploadPolicyService) {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
@@ -113,6 +115,7 @@ public class FileService {
         this.actionHistoryService = actionHistoryService;
         this.folderAccessService = folderAccessService;
         this.folderMirrorService = folderMirrorService;
+        this.uploadPolicyService = uploadPolicyService;
         this.tagMirrorService = tagMirrorService;
     }
 
@@ -383,6 +386,10 @@ public class FileService {
      */
     private FileDetails newFileDetails(FileInfo fileInfo, MultipartFile multipartFile, int version,
                                        String versionName, String description, int principalId) {
+
+        // The policy first - is this kind allowed for this principal, and is the file small
+        // enough - then the bytes. Every route that stores a file passes through here.
+        uploadPolicyService.requireAllowed(principalId, multipartFile);
 
         String originalFilename = multipartFile.getOriginalFilename();
         String name = ModelConverterUtil.getFileNameWithoutExtension(originalFilename);

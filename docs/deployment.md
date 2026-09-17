@@ -552,12 +552,15 @@ uploaded files loses those uploads — which is why the pre-flight above exists.
 
 ### Upgrading from 1.1.0 to 1.2.0
 
-A jar swap with one data-only migration and four behaviour changes worth knowing about. Take the
-database backup first, as always.
+A jar swap with two migrations and a handful of behaviour changes worth knowing about. Take the
+database backup first, as always. Watch the log for `Successfully applied 2 migrations` and for
+the `seeded 2 new permission(s)` line.
 
 1. **`V2.5` rewrites `file_details.content_type`** from the file extension, for the nine
    accepted kinds. Nothing structural; the verification query is at the top of
-   `V2.5__Normalise_Content_Type.sql` and must return nothing afterwards.
+   `V2.5__Normalise_Content_Type.sql` and must return nothing afterwards. **`V2.6` adds the
+   upload policy** - two small tables, and a system-wide row seeded with the nine kinds the form
+   always offered, each at 20 MB, so nothing changes until somebody edits it.
 
 2. **Uploads are judged by their bytes.** The type a client declares is ignored; the extension
    must be one of `pdf png jpg jpeg docx xlsx pptx mp4 mp3 txt`, and the first bytes must match
@@ -584,6 +587,13 @@ database backup first, as always.
 6. **Set `server.forward-headers-strategy=native`** if your external `application.properties`
    overrides the shipped one - it is in the shipped file - and check that the proxy sends
    `X-Forwarded-Proto` ([section 9](#9-windows-firewall)).
+
+7. **Grant the two new permissions** to whoever manages settings: `UPLOAD_POLICY_PAGE` and
+   `SAVE_UPLOAD_POLICY` (`ADMIN` needs nothing). They unlock `/settings/upload` - which kinds of
+   file may be uploaded and how large, for the whole system - and the same table on each role's
+   edit page for a role's own policy. Until edited, every role is governed by the system-wide
+   policy, which starts as the old behaviour. The catalogue also grew: `gif csv doc xls ppt zip
+   rar 7z` can now be *allowed*, but are not until you tick them.
 
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{uploadPolicy.pageTitle}">قوانین بارگذاری | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The system-wide upload policy: which kinds of file may be uploaded, and how large each may be.
+  The table is a fragment, because the role page shows the same table for a role's own policy.
+
+  What is on offer is the application's catalogue - the kinds it can recognise from their bytes -
+  and nothing else: a kind that is not here cannot be allowed by any setting, which is the point.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{uploadPolicy.kicker}">تنظیمات</div>
+        <h1 th:text="#{uploadPolicy.heading}">قوانین بارگذاری</h1>
+        <p class="page-description" th:text="#{uploadPolicy.description}">
+            انواع فایل مجاز برای بارگذاری و حداکثر حجم هر نوع را برای کل سامانه تعیین کنید.
+        </p>
+    </header>
+
+    <section class="card mx-auto max-w-4xl" aria-labelledby="upload-policy-title">
+        <div class="card-body">
+            <h2 id="upload-policy-title" class="sr-only" th:text="#{uploadPolicy.heading}">قوانین بارگذاری</h2>
+
+            <form th:action="@{/settings/upload}" method="post" id="uploadPolicyForm">
+                <p class="mb-4 text-sm text-ink-500" th:text="#{uploadPolicy.hint(${serverCapMb})}">
+                    نوع‌هایی که تیک دارند قابل بارگذاری‌اند. سقف سرور برای هر فایل ۲۰ مگابایت است.
+                </p>
+
+                <div class="overflow-x-auto">
+                    <div th:replace="~{fragments.html :: upload-rules(rows=${rows}, allowedName='allowed', maxName='max', serverCapMb=${serverCapMb})}"></div>
+                </div>
+
+                <div th:if="${showMessage && valid}" class="alert alert-success mt-5" role="status"
+                     id="success_message" th:text="#{message.saved}">اطلاعات با موفقیت ذخیره شد.</div>
+                <div th:if="${showMessage && !valid}" class="alert alert-warning mt-5" role="alert"
+                     id="warning_message" th:text="${message}"></div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

@@ -51,5 +51,41 @@
     <script th:src="@{/vendor/select2/select2.min.js}"></script>
     <script th:src="@{/js/app.js}"></script>
 </th:block>
+
+<!--
+  The rules table. One row per catalogued kind: a checkbox that allows it, and its limit in whole
+  megabytes. On the role page the whole table follows a mode radio and is disabled while the
+  role is governed by the system-wide policy: the Alpine scope that owns `mode` is the role
+  page's, and on the settings page there is no such scope, so the binding is inert there.
+-->
+<table th:fragment="upload-rules(rows, allowedName, maxName, serverCapMb)" class="table upload-rules">
+    <thead>
+    <tr>
+        <th class="w-12"><span class="sr-only" th:text="#{uploadPolicy.column.allowed}">مجاز</span></th>
+        <th th:text="#{uploadPolicy.column.kind}">نوع فایل</th>
+        <th th:text="#{uploadPolicy.column.mediaType}">نوع محتوا</th>
+        <th th:text="#{uploadPolicy.column.max}">حداکثر حجم (مگابایت)</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="r : ${rows}">
+        <td>
+            <input type="checkbox" th:id="|${allowedName}-${r.extension}|" th:checked="${r.allowed}"
+                   th:name="${allowedName}" th:value="${r.extension}"
+                   x-bind:disabled="typeof mode !== 'undefined' && mode !== 'OWN'">
+        </td>
+        <td>
+            <label class="technical font-semibold" dir="ltr" th:for="|${allowedName}-${r.extension}|"
+                   th:text="'.' + ${r.extension}">.pdf</label>
+        </td>
+        <td class="technical max-w-xs whitespace-normal break-all text-xs text-ink-500" dir="ltr" th:text="${r.mediaType}">application/pdf</td>
+        <td>
+            <input type="number" class="form-control technical w-28" dir="ltr" min="1" step="1"
+                   th:max="${serverCapMb}" th:name="|${maxName}[${r.extension}]|" th:value="${r.maxMb}"
+                   x-bind:disabled="typeof mode !== 'undefined' && mode !== 'OWN'">
+        </td>
+    </tr>
+    </tbody>
+</table>
 </body>
 </html>

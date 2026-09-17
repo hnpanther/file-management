@@ -33,6 +33,14 @@ class ContentTypesTest {
             "clip.mp4, video/mp4",
             "song.mp3, audio/mpeg",
             "note.txt, text/plain",
+            "photo.gif, image/gif",
+            "table.csv, text/csv",
+            "letter.doc, application/msword",
+            "figures.xls, application/vnd.ms-excel",
+            "slides.ppt, application/vnd.ms-powerpoint",
+            "bundle.zip, application/zip",
+            "bundle.rar, application/vnd.rar",
+            "bundle.7z, application/x-7z-compressed",
     })
     void acceptedKinds(String fileName, String expected) {
         MockMultipartFile file = new MockMultipartFile("f", fileName, "application/octet-stream", TestData.bytesFor(fileName));
@@ -57,13 +65,13 @@ class ContentTypesTest {
 
     @ParameterizedTest(name = "{0} is refused by its extension")
     @DisplayName("extensions that can carry script, or that nobody asked for, are refused before the bytes are looked at")
-    @ValueSource(strings = {"page.html", "page.htm", "icon.svg", "data.xml", "tool.exe", "archive.zip", "noextension", "trailing."})
+    @ValueSource(strings = {"page.html", "page.htm", "icon.svg", "data.xml", "tool.exe", "script.js", "noextension", "trailing."})
     void refusedExtensions(String fileName) {
         MockMultipartFile file = new MockMultipartFile("f", fileName, "text/plain", "harmless".getBytes(StandardCharsets.UTF_8));
 
         assertThatThrownBy(() -> ContentTypes.detect(file))
                 .isInstanceOf(InvalidDataException.class)
-                .hasMessageContaining("not accepted");
+                .hasMessageContaining("not recognised");
         assertThat(ContentTypes.isAllowed(file)).isFalse();
     }
 
@@ -78,6 +86,15 @@ class ContentTypesTest {
         assertThatThrownBy(() -> ContentTypes.detect(new MockMultipartFile("f", "note.txt", "text/plain", exe)))
                 .as("a NUL byte in the first block is what tells a binary from text")
                 .isInstanceOf(InvalidDataException.class);
+    }
+
+    @Test
+    @DisplayName("the defaults are the nine kinds the form always offered, and every default is catalogued")
+    void defaultsAreASubsetOfTheCatalogue() {
+        assertThat(ContentTypes.defaultExtensions())
+                .containsExactlyInAnyOrder("pdf", "png", "jpg", "jpeg", "docx", "xlsx", "pptx", "mp4", "mp3", "txt");
+        assertThat(ContentTypes.knownExtensions()).containsAll(ContentTypes.defaultExtensions());
+        assertThat(ContentTypes.knownExtensions()).as("catalogue order, pdf first").first().isEqualTo("pdf");
     }
 
     @Test
@@ -109,6 +126,8 @@ class ContentTypesTest {
         assertThat(ContentTypes.inlineSafe("mp3")).isTrue();
         assertThat(ContentTypes.inlineSafe("docx")).as("Office documents are saved, not rendered").isFalse();
         assertThat(ContentTypes.inlineSafe("xlsx")).isFalse();
+        assertThat(ContentTypes.inlineSafe("zip")).isFalse();
+        assertThat(ContentTypes.inlineSafe("gif")).isTrue();
         assertThat(ContentTypes.inlineSafe("svg")).as("not accepted at all, and never inline").isFalse();
         assertThat(ContentTypes.inlineSafe("html")).isFalse();
         assertThat(ContentTypes.inlineSafe(null)).isFalse();
