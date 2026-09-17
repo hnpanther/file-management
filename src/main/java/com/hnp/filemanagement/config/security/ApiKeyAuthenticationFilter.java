@@ -76,8 +76,8 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
      * as well so that a newly created key can be proved to work — that endpoint returns a fixed
      * string and its own comment describes it as a probe "that also proves the caller's token and
      * permission still work", which is exactly what somebody setting up an integration needs on day
-     * one. Nothing else from the v1 set is granted: those belong to the shared machine account, and
-     * a key inheriting them would reach every file in the system.
+     * one. The three v1 file operations are granted too, since 1.2.0 - see the note at the list.
+     * The rest of the v1 set is not: nothing else there is a file operation.
      */
     private static Authentication authenticationFor(ApiKey apiKey) {
         UserDetailsImpl principal = new UserDetailsImpl();
@@ -88,7 +88,13 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
         principal.setState(0);
         principal.setLoginType(0);
         principal.setApiKeyId(apiKey.getId());
-        principal.setPermissions(List.of(PermissionEnum.API_KEY, PermissionEnum.API_HEALTH_TEST));
+        // The three v1 file operations as well: since the v1 delete checks folder access (issue
+        // 78) and a key's scope applies whatever the enforcement flag says, a key on v1 reaches
+        // exactly what it reaches on v2 - its own grants - and an integration may use whichever
+        // shape suits it: v2 keys, or v1 ids (folderId, fileDetailsId) with a key instead of the
+        // shared account's password.
+        principal.setPermissions(List.of(PermissionEnum.API_KEY, PermissionEnum.API_HEALTH_TEST,
+                PermissionEnum.API_SAVE_NEW_FILE, PermissionEnum.API_DELETE_FILE_DETAILS, PermissionEnum.API_DOWNLOAD_FILE));
 
         return UsernamePasswordAuthenticationToken.authenticated(
                 principal, null, principal.getAuthorities());

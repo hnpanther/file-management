@@ -396,7 +396,15 @@ document, so a browser navigation still lands on a page.
 | GET | `/health-test` | `API_HEALTH_TEST` |
 | POST | `/` (multipart, `?public-file=0` for private; the place as `fileCategoryId` + `fileSubCategoryId` + `mainTagFileId`, or as `folderId`, or both agreeing; a request without `folderId` is answered with `Deprecation: true` and logged as `v1-upload-by-triple`, since the triple goes in Phase 7 step 4) | `API_SAVE_NEW_FILE` |
 | DELETE | `/file-info/{fileInfoId}/file-details/{fileDetailsId}` | `API_DELETE_FILE_DETAILS` |
+| DELETE | `/file-details/{fileDetailsId}` (the same delete by the version's id alone) | `API_DELETE_FILE_DETAILS` |
 | GET | `/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` |
+| GET | `/file-details/{fileDetailsId}/download` (the same download by the version's id alone) | `API_DOWNLOAD_FILE` |
+
+The id-only forms with `folderId` on the upload are the contract an integration keeps after Phase 7
+step 4: nothing in them names the taxonomy. Both deletes are judged on the file's own folder
+(`requireWriteAccess` on the `FileInfo`), the same way a download and a new version are. The
+whole group accepts either credential: the shared account's Basic password, or a Bearer API key,
+which reaches its own folders only.
 
 </details>
 
@@ -497,7 +505,13 @@ user see *this* folder". Both must pass.
   authenticated with `Authorization: Bearer fmk_…` carries a principal whose `id` is the person
   who created the key — so `principalId` and `action_history` are unchanged — and whose
   `apiKeyId` sends `accessFor` to `api_key_folder` instead. There is no administrator shortcut
-  on that path: a key reaches what it was granted however powerful its creator is.
+  on that path: a key reaches what it was granted however powerful its creator is. **And a key
+  is outside the enforcement flag**: the flag exists so that switching enforcement on cannot
+  lock people out before their roles have grants; a key is created with its grants, so its scope
+  applies whether the flag is on or off. Since 1.2.0 a key also holds the three v1 file
+  authorities (`API_SAVE_NEW_FILE`, `API_DELETE_FILE_DETAILS`, `API_DOWNLOAD_FILE`), so an
+  integration may use the v1 id routes with a key instead of the shared account's password and
+  reach exactly what it would reach on v2.
 * **Readable and traversable are different.** A grant can sit in the middle of the tree, and the
   holder has no right to the folders above it — but hiding those would leave no route down to what
   they do have. So an ancestor of a grant is shown and can be opened, revealing only the branch that

@@ -579,7 +579,14 @@ the `seeded 5 new permission(s)` line.
 4. **`/api/v1/files` uploads that still send `fileCategoryId` / `fileSubCategoryId` /
    `mainTagFileId` get a `Deprecation: true` response header** and a log line. They still work;
    the header and the log are how you find out who has not moved to `folderId` before Phase 7
-   step 4 removes the triple - see [the readiness check](#readiness-for-phase-7-step-4).
+   step 4 removes the triple - see [the readiness check](#readiness-for-phase-7-step-4). The
+   delete and the download gained id-only routes (`/api/v1/files/file-details/{id}`, same
+   permissions), and **the v1 delete now checks folder access** on the file's folder, as the
+   download always did: with folder access on, the `api` account can only delete inside the
+   folders it holds a `WRITE` grant on. **An API key is now scoped to its grants whether or not
+   folder access is on** - before, with the flag off, a key reached every folder. If you have
+   keys in use with the flag off, check their grants before upgrading; a key without grants
+   will reach nothing.
 
 5. **Every storage path is checked to lie inside `base-dir`** before it is touched. No change for
    data the application wrote; a row whose path somehow climbed out would now be refused rather
@@ -657,7 +664,13 @@ database and log, in this order.
    What an integration has to change is one field - send `folderId` instead of the three ids;
    the folder that stands for a tag is `SELECT id FROM folder WHERE source_type = 'MAIN_TAG' AND
    source_id = <mainTagFileId>`, a stable id that survives step 4 - and nothing else: the
-   response (`fileId`, `fileDetailsId`), the delete URL and the credential are unchanged.
+   response (`fileId`, `fileDetailsId`) and the credential are unchanged. Since 1.2.0 the
+   delete and the download also have an id-only form, `DELETE /api/v1/files/file-details/{id}`
+   and `GET /api/v1/files/file-details/{id}/download`, so an integration needs to keep only the
+   `fileDetailsId` the upload returned; the two-id forms stay. All of v1's file operations also
+   accept an API key (`Authorization: Bearer fmk_…`) in place of the shared account's password,
+   and a key reaches only the folders it was granted, whether or not folder access is switched
+   on for people - a way to give each integration its own credential and its own folders.
 
 5. **Folder access is on, and has been, with the grants you mean.** After step 4 there is no
    taxonomy to fall back on; the folder grants are the only structure.

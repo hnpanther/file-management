@@ -150,6 +150,26 @@ public class FileApi {
     }
 
     /**
+     * The same delete, by the version's id alone - the form an integration keeps: the id it got
+     * back from the upload is all it needs, and nothing in the path names the taxonomy that
+     * Phase 7 step 4 removes. Same permission as the two-id form; it is the same operation.
+     */
+    // API_DELETE_FILE_DETAILS (the id-only form of the delete above)
+    @PreAuthorize("hasAuthority('API_DELETE_FILE_DETAILS') || hasAuthority('ADMIN')")
+    @DeleteMapping("file-details/{fileDetailsId}")
+    public ApiResult deleteFileDetailsById(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                           @PathVariable("fileDetailsId") int fileDetailsId,
+                                           HttpServletRequest request) {
+
+        globalGeneralLogging.controllerLogging(userDetails, request, FileApi.class,
+                "delete file details id=" + fileDetailsId);
+
+        fileService.deleteFileDetails(fileDetailsId, userDetails.getId());
+
+        return ApiResult.deleted("fileDetails", fileDetailsId);
+    }
+
+    /**
      * Streams the stored bytes. {@code fileInfoId} is not used to look the version up - the id of a
      * {@code fileDetails} is already unique - but it keeps the URL parallel to the delete endpoint.
      */
@@ -160,6 +180,16 @@ public class FileApi {
                                                  @PathVariable("fileInfoId") int fileInfoId,
                                                  @PathVariable("fileDetailsId") int fileDetailsId,
                                                  HttpServletRequest request) {
+        return downloadFileById(userDetails, fileDetailsId, request);
+    }
+
+    /** The same download, by the version's id alone. */
+    // API_DOWNLOAD_FILE (the id-only form of the download above)
+    @PreAuthorize("hasAuthority('API_DOWNLOAD_FILE') || hasAuthority('ADMIN')")
+    @GetMapping("file-details/{fileDetailsId}/download")
+    public ResponseEntity<Resource> downloadFileById(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                     @PathVariable("fileDetailsId") int fileDetailsId,
+                                                     HttpServletRequest request) {
 
         globalGeneralLogging.controllerLogging(userDetails, request, FileApi.class,
                 "download file details id=" + fileDetailsId);
@@ -170,6 +200,7 @@ public class FileApi {
                 .contentType(MediaType.parseMediaType(fileDownloadDTO.getContentType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"" + fileDownloadDTO.getFileName() + "\"")
+                .header("X-Content-Type-Options", "nosniff")
                 .body(fileDownloadDTO.getResource());
     }
 }
