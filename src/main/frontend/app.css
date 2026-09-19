@@ -596,6 +596,20 @@
     .explorer-manage        { @apply flex shrink-0 flex-col gap-3 border-b border-ink-200 bg-ink-50 px-3 py-3; }
     .explorer-manage-fields { @apply grid grid-cols-1 gap-3 md:grid-cols-3; }
     .explorer-manage-field  { @apply flex flex-col gap-1 text-sm text-ink-700; }
+    /* The shared folder chooser (fragments.html :: folder-chooser): crumbs, the children, the choice. */
+    .folder-chooser         { @apply flex flex-col gap-2 rounded-md border border-ink-200 bg-white; }
+    .folder-chooser-crumbs  { @apply flex flex-wrap items-center gap-0.5 border-b border-ink-100 bg-ink-50 px-2 py-1.5 text-sm text-ink-500; }
+    .folder-chooser-crumb   { @apply max-w-[12rem] truncate rounded-[var(--radius-control)] px-1.5 py-0.5 hover:bg-ink-100 hover:text-ink-800; }
+    .folder-chooser-crumb.is-current { @apply font-semibold text-ink-800; }
+    .folder-chooser-list    { @apply flex max-h-56 flex-col overflow-y-auto px-1 py-1; }
+    .folder-chooser-item    { @apply flex items-center gap-2 rounded-[var(--radius-control)] px-2 py-1.5 text-start text-sm text-ink-700 hover:bg-ink-50; }
+    .folder-chooser-note    { @apply px-2 py-2 text-xs text-ink-500; }
+    .folder-chooser-actions { @apply flex flex-wrap items-center gap-3 border-t border-ink-100 px-2 py-2; }
+    .folder-chooser-chosen  { @apply flex min-w-0 items-center gap-1.5 text-sm text-ink-700; }
+    /* The folders above a file on its page, each a link into the explorer. */
+    .folder-path            { @apply flex flex-wrap items-center gap-1 rounded-md border border-ink-200 bg-ink-50 px-3 py-2 text-sm; }
+    .folder-path-link       { @apply rounded-[var(--radius-control)] px-1 py-0.5 text-ink-700 hover:bg-ink-100 hover:text-ink-900; }
+    .folder-path-separator  { @apply select-none text-ink-300; }
     .explorer-crumb    { @apply max-w-[13rem] truncate rounded-[var(--radius-control)] px-1.5 py-0.5 hover:bg-ink-100 hover:text-ink-800; }
     .explorer-crumb-current { @apply max-w-[16rem] truncate px-1.5 py-0.5 font-semibold text-ink-800; }
     .explorer-crumb-sep { @apply select-none text-ink-300; }

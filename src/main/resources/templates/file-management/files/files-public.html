@@ -44,9 +44,7 @@
                     <tr>
                         <th scope="col" th:text="#{field.title}">عنوان</th>
                         <th scope="col" th:text="#{field.fileName}">نام فایل</th>
-                        <th scope="col" th:text="#{field.category}">دسته‌بندی اصلی</th>
-                        <th scope="col" th:text="#{field.subCategory}">زیردسته‌بندی</th>
-                        <th scope="col" th:text="#{field.tag}">برچسب</th>
+                        <th scope="col" th:text="#{field.folder}">پوشه</th>
                         <th scope="col" th:text="#{field.size}">حجم</th>
                         <th scope="col" th:text="#{field.version}">نسخه</th>
                         <th scope="col" th:text="#{field.actions}">عملیات</th>
@@ -56,9 +54,7 @@
                     <tr th:each="file: ${files}">
                         <td th:text="${file.getFileInfoName()}"></td>
                         <td class="technical" th:text="${file.getFileName()}"></td>
-                        <td th:text="${file.getCategoryNameDescription()}"></td>
-                        <td th:text="${file.getSubCategoryNameDescription()}"></td>
-                        <td th:text="${file.getTagDescription()}"></td>
+                        <td th:text="${file.getFolderTitle()}"></td>
                         <td class="text-nowrap" th:text="#{unit.megabytes(${#numbers.formatDecimal(file.getSize() / (1024.0 * 1024.0), 1, 2)})}"></td>
                         <td class="text-nowrap" th:text="${file.getVersion()}"></td>
                         <td>

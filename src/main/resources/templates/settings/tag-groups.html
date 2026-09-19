@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{tagGroup.pageTitle}">برچسب‌های عمومی | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The tag groups - what the old taxonomy called general tags. A top-level folder carries one, and
+  the tags of every file beneath it are grouped in it. Two things on one page: the form (creating
+  a group, or editing the one chosen from the list - the same form, told apart by a hidden id),
+  and the list with what stands in the way of deleting each row.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{uploadPolicy.kicker}">تنظیمات</div>
+        <h1 th:text="#{tagGroup.heading}">برچسب‌های عمومی</h1>
+        <p class="page-description" th:text="#{tagGroup.description}">
+            هر پوشهٔ سطح اول یک برچسب عمومی دارد و برچسب‌های فایل‌های زیر آن در همین گروه ساخته می‌شوند. برچسب عمومی پوشه نیست؛ یک نام و یک عنوان است.
+        </p>
+    </header>
+
+    <div th:if="${showMessage && valid}" class="alert alert-success mb-5" role="status"
+         id="success_message" th:text="${message}"></div>
+    <div th:if="${showMessage && !valid}" class="alert alert-warning mb-5" role="alert"
+         id="warning_message" th:text="${message}"></div>
+
+    <div class="grid gap-5 lg:grid-cols-3">
+
+        <!-- the form: create, or edit the chosen one -->
+        <section class="card" aria-labelledby="form-title"
+                 sec:authorize="hasAuthority('SAVE_TAG_GROUP') || hasAuthority('ADMIN')">
+            <div class="card-body">
+                <h2 id="form-title" class="mb-1 text-base font-semibold"
+                    th:text="${form.id == null} ? #{tagGroup.add.title} : #{tagGroup.edit.title}">افزودن برچسب عمومی</h2>
+                <p class="mb-4 text-sm text-ink-500" th:text="#{tagGroup.add.hint}">
+                    نام، شناسهٔ فنی و یکتای گروه است؛ عنوان چیزی است که در صفحه‌ها دیده می‌شود.
+                </p>
+                <form th:action="@{/settings/tag-groups}" method="post" id="tagGroupForm" th:object="${form}">
+                    <input type="hidden" th:field="*{id}">
+                    <div class="form-group">
+                        <label for="name" th:text="#{tagGroup.field.name}">نام (انگلیسی)</label>
+                        <input id="name" th:field="*{name}" class="form-control technical" dir="ltr"
+                               type="text" required maxlength="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="title" th:text="#{tagGroup.field.title}">عنوان نمایشی</label>
+                        <input id="title" th:field="*{title}" class="form-control" type="text" maxlength="200">
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check2" aria-hidden="true"></i>
+                            <span th:text="#{action.save}">ذخیره</span>
+                        </button>
+                        <a th:if="${form.id != null}" th:href="@{/settings/tag-groups}" class="btn btn-outline-secondary"
+                           th:text="#{explorer.manage.cancel}">انصراف</a>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- the list -->
+        <section class="card lg:col-span-2" aria-labelledby="list-title">
+            <div class="card-body">
+                <div class="card-title">
+                    <h2 id="list-title" class="text-base font-semibold" th:text="#{tagGroup.list.title}">فهرست برچسب‌های عمومی</h2>
+                    <a th:href="@{/files/explorer}" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                        <span th:text="#{nav.files.explorer}">کاوشگر فایل‌ها</span>
+                    </a>
+                </div>
+                <p class="mb-3 text-sm text-ink-500" th:text="#{tagGroup.list.hint}">
+                    گروهی که پوشه‌ای آن را دارد یا برچسبی در آن ساخته شده حذف نمی‌شود.
+                </p>
+                <div th:if="${#lists.isEmpty(groups)}" class="empty-state" th:text="#{tagGroup.list.empty}">
+                    هنوز برچسب عمومی‌ای تعریف نشده است.
+                </div>
+                <div th:unless="${#lists.isEmpty(groups)}" class="overflow-x-auto">
+                    <table class="table">
+                        <thead>
+                        <tr>
+                            <th th:text="#{tagGroup.field.name}">نام</th>
+                            <th th:text="#{tagGroup.field.title}">عنوان نمایشی</th>
+                            <th th:text="#{tagGroup.column.folders}">پوشه‌های سطح اول</th>
+                            <th th:text="#{tagGroup.column.tags}">برچسب‌ها</th>
+                            <th th:text="#{apiKey.column.actions}">عملیات</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="g : ${groups}">
+                            <td class="technical font-semibold" dir="ltr" th:text="${g.name()}"></td>
+                            <td th:text="${g.title()}"></td>
+                            <td class="text-nowrap" th:text="${g.folders()}"></td>
+                            <td class="text-nowrap" th:text="${g.tags()}"></td>
+                            <td>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <a sec:authorize="hasAuthority('SAVE_TAG_GROUP') || hasAuthority('ADMIN')"
+                                       th:href="@{/settings/tag-groups/{id}(id=${g.id()})}" class="btn btn-outline-secondary btn-sm">
+                                        <i class="bi bi-pencil" aria-hidden="true"></i>
+                                        <span th:text="#{action.edit}">ویرایش</span>
+                                    </a>
+                                    <form th:if="${g.deletable()}" sec:authorize="hasAuthority('DELETE_TAG_GROUP') || hasAuthority('ADMIN')"
+                                          th:action="@{/settings/tag-groups/{id}/delete(id=${g.id()})}" method="post" class="inline">
+                                        <button type="submit" class="btn btn-danger btn-sm">
+                                            <i class="bi bi-trash" aria-hidden="true"></i>
+                                            <span th:text="#{action.delete}">حذف</span>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

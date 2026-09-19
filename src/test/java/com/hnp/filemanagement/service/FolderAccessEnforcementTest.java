@@ -109,7 +109,7 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         assertThat(access.unrestricted()).isFalse();
         assertThat(access.isEmpty()).isTrue();
         assertThat(fileTreeService.getRoots(restrictedId)).isEmpty();
-        assertThatThrownBy(() -> fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, restrictedId))
+        assertThatThrownBy(() -> fileTreeService.getChildren(TreeNodeDTO.NodeType.FOLDER, categoryId, restrictedId))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
@@ -123,7 +123,7 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         assertThat(fileTreeService.getRoots(adminId))
                 .extracting(TreeNodeDTO::getId)
                 .contains(categoryId);
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, adminId)).isNotEmpty();
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.FOLDER, categoryId, adminId)).isNotEmpty();
     }
 
     // ---------------------------------------------------------------- a grant, and what it reaches
@@ -138,19 +138,19 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         assertThat(fileTreeService.getRoots(restrictedId))
                 .singleElement()
                 .satisfies(node -> {
-                    assertThat(node.getType()).isEqualTo(TreeNodeDTO.NodeType.CATEGORY);
+                    assertThat(node.getType()).isEqualTo(TreeNodeDTO.NodeType.FOLDER);
                     assertThat(node.getId()).isEqualTo(categoryId);
                 });
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.FOLDER, categoryId, restrictedId))
                 .as("opening it reveals the branch that leads to the grant")
                 .extracting(TreeNodeDTO::getId)
                 .containsExactly(subCategoryId);
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.SUB_CATEGORY, subCategoryId, restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.FOLDER, subCategoryId, restrictedId))
                 .extracting(TreeNodeDTO::getId)
                 .contains(tagId);
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG, tagId, restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.FOLDER, tagId, restrictedId))
                 .isNotEmpty();
     }
 
@@ -164,13 +164,13 @@ class FolderAccessEnforcementTest extends MySqlSupport {
 
         grantDirectly(restrictedId, subCategoryId);
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.FOLDER, categoryId, restrictedId))
                 .extracting(TreeNodeDTO::getId)
                 .contains(subCategoryId)
                 .doesNotContain(otherSubCategoryId);
 
         assertThatThrownBy(() -> fileTreeService.getChildren(
-                TreeNodeDTO.NodeType.SUB_CATEGORY, otherSubCategoryId, restrictedId))
+                TreeNodeDTO.NodeType.FOLDER, otherSubCategoryId, restrictedId))
                 .as("and the hidden branch cannot be opened by asking for it directly")
                 .isInstanceOf(AccessDeniedException.class);
     }
@@ -192,19 +192,19 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         assertThat(fileTreeService.getRoots(restrictedId))
                 .singleElement()
                 .satisfies(node -> {
-                    assertThat(node.getType()).isEqualTo(TreeNodeDTO.NodeType.CATEGORY);
+                    assertThat(node.getType()).isEqualTo(TreeNodeDTO.NodeType.FOLDER);
                     assertThat(node.getId()).isEqualTo(categoryId);
                 });
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.FOLDER, categoryId, restrictedId))
                 .extracting(TreeNodeDTO::getId)
                 .containsExactly(subCategoryId);
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.SUB_CATEGORY, subCategoryId, restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.FOLDER, subCategoryId, restrictedId))
                 .extracting(TreeNodeDTO::getId)
                 .containsExactly(tagId);
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG, tagId, restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.FOLDER, tagId, restrictedId))
                 .as("and the files in it are readable")
                 .isNotEmpty();
     }
@@ -262,7 +262,7 @@ class FolderAccessEnforcementTest extends MySqlSupport {
     void readingAFolderIsNotPermissionToWriteInIt() {
         grantDirectly(restrictedId, tagId, FolderPermission.READ);
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG, tagId, restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.FOLDER, tagId, restrictedId))
                 .as("they can read it")
                 .isNotEmpty();
 

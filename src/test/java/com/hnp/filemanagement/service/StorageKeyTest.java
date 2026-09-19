@@ -32,9 +32,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * editable and movable, and the day a folder moved, every file under it would have become
  * unreadable unless the bytes moved with it.
  *
- * <p>What is asserted here is that the key is written from the same expression as the path, that it
- * describes the layout that is actually on disk, and — the one that matters — that a read no longer
- * consults the taxonomy at all.
+ * <p>What is asserted here is that the key describes the layout that is actually on disk - a
+ * directory per folder id since {@code V2.9}, so that no rename or move above the file changes
+ * anything - and, the one that matters, that a read never consults the folder names at all.
  */
 @ServiceIntegrationTest
 class StorageKeyTest extends MySqlSupport {
@@ -69,11 +69,6 @@ class StorageKeyTest extends MySqlSupport {
         chain = FolderFixture.chain(folderRepository, tagGroupRepository, creator);
         categoryName = chain.category().getName();
         subCategoryName = chain.subCategory().getName();
-
-        // The category and sub-category directories are created on first write in production;
-        // here they are made by hand so the fixture does not depend on that.
-        java.nio.file.Files.createDirectories(
-                java.nio.file.Paths.get(baseDir, categoryName, subCategoryName));
     }
 
     // ---------------------------------------------------------------- what the key holds
@@ -86,7 +81,7 @@ class StorageKeyTest extends MySqlSupport {
         FileDetails row = fileDetailsRepository.findById(stored.getId()).orElseThrow();
 
         assertThat(row.getStorageKey())
-                .isEqualTo(categoryName + "/" + subCategoryName + "/report/v1/report.txt");
+                .isEqualTo("folders/" + chain.tagId() + "/report/v1/report.txt");
     }
 
     /**
@@ -112,8 +107,8 @@ class StorageKeyTest extends MySqlSupport {
                 .filter(row -> row.getFileInfo().getId().equals(fileInfoId))
                 .map(FileDetails::getStorageKey))
                 .containsExactlyInAnyOrder(
-                        categoryName + "/" + subCategoryName + "/report/v1/report.txt",
-                        categoryName + "/" + subCategoryName + "/report/v2/report.txt");
+                        "folders/" + chain.tagId() + "/report/v1/report.txt",
+                        "folders/" + chain.tagId() + "/report/v2/report.txt");
     }
 
     // ---------------------------------------------------------------- what it makes possible
@@ -131,8 +126,8 @@ class StorageKeyTest extends MySqlSupport {
         FileDetailsDTO stored = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
         String keyBefore = fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey();
 
-        folderService.rename(chain.categoryId(), categoryName + "_renamed", "renamed", principalId);
-        folderService.rename(chain.subCategoryId(), subCategoryName + "_renamed", "renamed too", principalId);
+        folderService.rename(chain.categoryId(), categoryName + "_renamed", "renamed", null, principalId);
+        folderService.rename(chain.subCategoryId(), subCategoryName + "_renamed", "renamed too", null, principalId);
 
         assertThat(underTest.downloadFile(stored.getId(), principalId).getResource().exists())
                 .as("the bytes are where the key says, not where the folder names now say")
@@ -144,10 +139,10 @@ class StorageKeyTest extends MySqlSupport {
         underTest.createNewFileDetails(versionRequest(stored.getFileInfoId(), "report.txt", 2), principalId);
         assertThat(fileDetailsRepository.findAll().stream()
                 .filter(row -> row.getFileInfo().getId().equals(stored.getFileInfoId()) && row.getVersion() == 2))
-                .as("a later version follows the first one's directory, not the new names")
+                .as("a later version follows the first one's directory")
                 .singleElement()
                 .satisfies(row -> assertThat(row.getStorageKey())
-                        .isEqualTo(categoryName + "/" + subCategoryName + "/report/v2/report.txt"));
+                        .isEqualTo("folders/" + chain.tagId() + "/report/v2/report.txt"));
     }
 
     @Test

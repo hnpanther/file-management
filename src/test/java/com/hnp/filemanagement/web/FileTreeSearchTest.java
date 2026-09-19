@@ -87,10 +87,10 @@ class FileTreeSearchTest extends MySqlSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)))
                 .andExpect(jsonPath("$[0].fileId").value(fileInfo.getId()))
-                .andExpect(jsonPath("$[0].categoryId").value(chain.categoryId()))
-                .andExpect(jsonPath("$[0].subCategoryId").value(chain.subCategoryId()))
-                .andExpect(jsonPath("$[0].mainTagId").value(chain.tagId()))
-                .andExpect(jsonPath("$[0].mainTagTitle").value(chain.tag().getDisplayName()));
+                .andExpect(jsonPath("$[0].folderIds[0]").value(chain.categoryId()))
+                .andExpect(jsonPath("$[0].folderIds[1]").value(chain.subCategoryId()))
+                .andExpect(jsonPath("$[0].folderIds[2]").value(chain.tagId()))
+                .andExpect(jsonPath("$[0].folderTitles[2]").value(chain.tag().getDisplayName()));
     }
 
     @Test

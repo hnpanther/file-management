@@ -104,7 +104,7 @@ class FileUploadAddressingTest extends MySqlSupport {
     // ================================================================ naming the place
 
     @Test
-    @DisplayName("a folderId files the document in that folder, with its storage key under the folder names and its tags derived from them")
+    @DisplayName("a folderId files the document in that folder, with its storage key under the folder's id and its tags derived from the chain")
     void aFolderIdIsTheAddress() throws Exception {
         String body = upload("byfolder.txt", Map.of("folderId", tagFolderId))
                 .andExpect(status().isOk())
@@ -133,11 +133,19 @@ class FileUploadAddressingTest extends MySqlSupport {
     }
 
     @Test
-    @DisplayName("a folderId of a folder that cannot hold documents - a sub-category - is a 400")
-    void aNonTagFolderIsRefused() throws Exception {
-        upload("wrongkind.txt", Map.of("folderId", subCategoryFolderId))
+    @DisplayName("the root is refused; any folder below it - a sub-category included - takes a document since V2.9")
+    void theRootIsRefusedAndAnyOtherFolderTakesAFile() throws Exception {
+        upload("wrongkind.txt", Map.of("folderId", FolderFixture.root(folderRepository).getId()))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value(containsString("tag folder")));
+                .andExpect(jsonPath("$.detail").value(containsString("ROOT")));
+
+        String body = upload("midlevel.txt", Map.of("folderId", subCategoryFolderId))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        FileInfo file = stored(body);
+        assertThat(file.getFolder().getId()).isEqualTo(subCategoryFolderId);
+        assertThat(file.getTags()).extracting(Tag::getName)
+                .containsExactlyInAnyOrder(chain.category().getName(), chain.subCategory().getName());
     }
 
     @Test
@@ -148,15 +156,14 @@ class FileUploadAddressingTest extends MySqlSupport {
     }
 
     @Test
-    @DisplayName("a name is unique within a sub-category: the same name in the same folder or under a sibling tag folder is a 409")
-    void namesAreUniquePerSubCategory() throws Exception {
+    @DisplayName("a name is unique within a folder: the same name in the same folder is a 409, under a sibling folder it is another file")
+    void namesAreUniquePerFolder() throws Exception {
         upload("same.txt", Map.of("folderId", tagFolderId)).andExpect(status().isOk());
         upload("same.txt", Map.of("folderId", tagFolderId)).andExpect(status().isConflict());
-        // The bytes go to {category}/{subCategory}/{name}, with no tag segment, so a sibling tag
-        // folder cannot hold a second file of the name.
-        upload("same.txt", Map.of("folderId", otherTagFolderId)).andExpect(status().isConflict());
+        // The bytes go to folders/{id}/{name}, so a sibling folder has a directory of its own.
+        upload("same.txt", Map.of("folderId", otherTagFolderId)).andExpect(status().isOk());
 
-        assertThat(fileInfoRepository.findAll()).filteredOn(f -> f.getFileName().equals("same")).hasSize(1);
+        assertThat(fileInfoRepository.findAll()).filteredOn(f -> f.getFileName().equals("same")).hasSize(2);
     }
 
     // ================================================================ access, by the folder
@@ -195,24 +202,30 @@ class FileUploadAddressingTest extends MySqlSupport {
                 .singleElement().satisfies(f -> assertThat(f.getFolder().getId()).isEqualTo(tagFolderId));
     }
 
+    /**
+     * The form's target is the shared folder chooser: opened plainly it starts at the root with
+     * nothing chosen; opened on a folder it starts there, with that folder chosen and its path
+     * inlined for the first render. Either way the same hidden {@code folderId} is what posts.
+     */
     @Test
-    @DisplayName("opened plainly, the form offers the category folders and the two dependent selects")
-    void theFormOpenedPlainlyOffersTheFolders() throws Exception {
+    @DisplayName("opened plainly, the form offers the folder chooser at the root with nothing chosen")
+    void theFormOpenedPlainlyOffersTheChooser() throws Exception {
         String page = mockMvc.perform(get("/files/create").with(user(principal(adminId, PermissionEnum.ADMIN))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
 
         assertThat(page)
-                .contains("id=\"categoryFolder\"")
-                .contains("value=\"" + chain.categoryId() + "\"")
-                .contains(chain.category().getDisplayName())
-                .contains("id=\"subCategoryFolder\"")
+                .contains("folderChooser({")
+                .contains("class=\"folder-chooser\"")
                 .contains("name=\"folderId\" id=\"folderId\"")
-                .doesNotContain("mainTagFileId");
+                .contains("window.UPLOAD_TARGET_PATH = []")
+                .doesNotContain("data-initial-id=\"")
+                .doesNotContain("mainTagFileId")
+                .doesNotContain("id=\"categoryFolder\"");
     }
 
     @Test
-    @DisplayName("opened on a writable tag folder, the form fixes the target and shows the path instead of the selects")
+    @DisplayName("opened on a writable folder, the form starts the chooser on it with its path")
     void theFormOpenedOnAFolderFixesTheTarget() throws Exception {
         String page = mockMvc.perform(get("/files/create").param("folderId", String.valueOf(tagFolderId))
                         .with(user(principal(adminId, PermissionEnum.ADMIN))))
@@ -220,22 +233,21 @@ class FileUploadAddressingTest extends MySqlSupport {
                 .andReturn().getResponse().getContentAsString();
 
         assertThat(page)
-                .contains("type=\"hidden\" name=\"folderId\"")
-                .contains("value=\"" + tagFolderId + "\"")
+                .contains("data-initial-id=\"" + tagFolderId + "\"")
+                .contains("window.UPLOAD_TARGET_PATH = [")
                 .contains(chain.tag().getDisplayName())
                 .contains(chain.subCategory().getDisplayName())
-                .contains(chain.category().getDisplayName())
-                .doesNotContain("id=\"categoryFolder\"");
+                .contains(chain.category().getDisplayName());
     }
 
     @Test
-    @DisplayName("opened on a folder that cannot hold documents, or outside the write grant, the form falls back to the selects with a message")
+    @DisplayName("opened on the root, or on a folder outside the write grant, the form falls back to an unchosen target with a message")
     void theFormFallsBackWhenTheFolderCannotBeUsed() throws Exception {
-        String onSubCategory = mockMvc.perform(get("/files/create").param("folderId", String.valueOf(subCategoryFolderId))
+        String onRoot = mockMvc.perform(get("/files/create").param("folderId", String.valueOf(FolderFixture.root(folderRepository).getId()))
                         .with(user(principal(adminId, PermissionEnum.ADMIN))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
-        assertThat(onSubCategory).doesNotContain("type=\"hidden\" name=\"folderId\"").contains("id=\"categoryFolder\"");
+        assertThat(onRoot).doesNotContain("data-initial-id=\"").contains("window.UPLOAD_TARGET_PATH = []");
 
         User restricted = userRepository.save(TestData.user());
         restricted.replaceFolderGrants(List.of(new UserFolderGrant(restricted,
@@ -246,7 +258,7 @@ class FileUploadAddressingTest extends MySqlSupport {
                         .with(user(principal(restricted.getId(), PermissionEnum.CREATE_FILE_PAGE))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
-        assertThat(readOnly).doesNotContain("type=\"hidden\" name=\"folderId\"").contains("id=\"categoryFolder\"");
+        assertThat(readOnly).doesNotContain("data-initial-id=\"").contains("window.UPLOAD_TARGET_PATH = []");
     }
 
     @Test
@@ -265,9 +277,13 @@ class FileUploadAddressingTest extends MySqlSupport {
         assertThat(folderContentService.contentOf(otherTagFolderId, 0, 10, adminId).writable())
                 .as("an administrator may write anywhere").isTrue();
         assertThat(folderContentService.contentOf(subCategoryFolderId, 0, 10, adminId).writable())
-                .as("a sub-category cannot hold documents, however powerful the caller").isFalse();
+                .as("since V2.9 a folder at any level holds documents").isTrue();
+        assertThat(folderContentService.contentOf(FolderFixture.root(folderRepository).getId(), 0, 10, adminId).writable())
+                .as("the root does not, however powerful the caller").isFalse();
         assertThat(folderContentService.contentOf(subCategoryFolderId, 0, 10, adminId).manageable())
-                .as("but it can be managed").isTrue();
+                .as("and it can be managed").isTrue();
+        assertThat(folderContentService.contentOf(subCategoryFolderId, 0, 10, adminId).canHoldFolders())
+                .as("a folder at depth 2 is far from the limit").isTrue();
 
         restricted.replaceFolderGrants(List.of(new UserFolderGrant(restricted,
                 folderRepository.findById(tagFolderId).orElseThrow(), FolderPermission.READ)));

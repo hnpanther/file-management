@@ -19,11 +19,11 @@ import java.time.LocalDateTime;
  * One node of the folder tree — the structure every file is filed in (roadmap Phase 6, and
  * Phase 7 step 4 made it the only one).
  *
- * <p>Three levels under the {@link FolderKind#ROOT}: {@link FolderKind#CATEGORY} (depth 1),
- * {@link FolderKind#SUB_CATEGORY} (depth 2) and {@link FolderKind#TAG} (depth 3). Files live in
- * TAG folders only. A category folder carries a {@link #tagGroup} — the general tag of the old
- * taxonomy, which was never a folder and is not one now — and the tags of every file beneath it
- * are derived in that group. {@code FolderService} is the writer of this table.
+ * <p>Any depth under the {@link FolderKind#ROOT}, up to a configured limit, and every folder
+ * below the root holds folders and files alike (since {@code V2.9}). A top-level folder (depth 1)
+ * carries a {@link #tagGroup} — the general tag of the old taxonomy, which was never a folder and
+ * is not one now — and the tags of every file beneath it are derived in that group, one per
+ * folder on the way down. {@code FolderService} is the writer of this table.
  *
  * <p><b>Two representations of the same structure.</b> {@link #parent} is the truth: it carries the
  * foreign key and cannot disagree with itself. {@link #path} is derived from it — {@code /1/7/22/},
@@ -80,7 +80,7 @@ public class Folder extends AbstractEntity {
     @JoinColumn(name = "owner_user_id")
     private User ownerUser;
 
-    /** Set on a CATEGORY folder: the group the tags of every file beneath it belong to. Null elsewhere. */
+    /** Set on a top-level folder (depth 1): the group the tags of every file beneath it belong to. Null elsewhere. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tag_group_id")
     private TagGroup tagGroup;

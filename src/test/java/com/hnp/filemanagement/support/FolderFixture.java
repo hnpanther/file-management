@@ -7,9 +7,11 @@ import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 
 /**
- * A category → sub-category → tag chain for a test, written through the repositories the way
- * {@code FolderService} writes it (path after the insert, kind from the level, a tag group on the
- * category). Every name carries a sequence number, so two fixtures never collide under the root.
+ * A three-deep chain for a test - still called category → sub-category → tag, the names the
+ * tests grew up with, though since {@code V2.9} they are three folders like any other - written
+ * through the repositories the way {@code FolderService} writes it (path after the insert, a tag
+ * group on the top-level one). Every name carries a sequence number, so two fixtures never
+ * collide under the root.
  *
  * <p>Repositories rather than the service so that a test which is <em>about</em> the service can
  * set the stage without going through what it tests, and so that repository-slice tests can use
@@ -35,9 +37,9 @@ public final class FolderFixture {
             return tag.getId();
         }
 
-        /** {@code {category}/{subCategory}} - where files under the tag are stored. */
+        /** Where a new file under the tag folder is stored: {@code folders/{id}} since V2.9. */
         public String directory() {
-            return category.getName() + "/" + subCategory.getName();
+            return "folders/" + tag.getId();
         }
     }
 

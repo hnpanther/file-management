@@ -40,17 +40,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The writer of the folder tree (Phase 7 step 4): what a create, a rename and a delete accept,
- * refuse and leave behind.
+ * The writer of the folder tree: what a create, a rename, a move and a delete accept, refuse and
+ * leave behind.
  *
  * <p>Folder access is switched on, because half of the rules are about it: who may create under
- * a folder, rename it, or remove it. The tree is exactly three levels deep - category,
- * sub-category, tag - and a general tag is <em>not</em> a folder: it is the {@code tag_group} a
- * category carries, which is why creating a category needs one and creating anything else
- * refuses one.
+ * a folder, rename it, move it, or remove it. The tree goes to any depth up to the configured
+ * limit - four here, so the limit is reachable in a test - and a general tag is <em>not</em> a
+ * folder: it is the {@code tag_group} a top-level folder carries, which is why creating one under
+ * the root needs a group and creating anything deeper refuses one.
  */
 @ServiceIntegrationTest
-@TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
+@TestPropertySource(properties = {
+        "filemanagement.folder-access.enabled=true",
+        "filemanagement.folders.max-depth=4"})
 class FolderServiceTest extends MySqlSupport {
 
     @Autowired
@@ -98,38 +100,35 @@ class FolderServiceTest extends MySqlSupport {
     class Creating {
 
         @Test
-        @DisplayName("the kind follows from the parent: category under the root, sub-category under a category, tag under a sub-category")
-        void theKindFollowsFromTheParent() {
+        @DisplayName("a folder goes under any folder, one level deeper, until the depth limit; every one is a FOLDER")
+        void aFolderGoesUnderAnyFolderUntilTheLimit() {
             String n = "N" + TestData.nextSequence();
-            FolderDTO category = underTest.create(rootId, "Cat" + n, "دسته", null, "group" + n, adminId);
-            FolderDTO subCategory = underTest.create(category.id(), "Sub" + n, null, null, null, adminId);
-            FolderDTO tag = underTest.create(subCategory.id(), "Tag" + n, "برچسب", null, null, adminId);
+            FolderDTO top = underTest.create(rootId, "Top" + n, "بالا", null, "group" + n, adminId);
+            FolderDTO second = underTest.create(top.id(), "Second" + n, null, null, null, adminId);
+            FolderDTO third = underTest.create(second.id(), "Third" + n, "سوم", null, null, adminId);
+            FolderDTO fourth = underTest.create(third.id(), "Fourth" + n, null, null, null, adminId);
 
-            assertThat(category.kind()).isEqualTo("CATEGORY");
-            assertThat(category.depth()).isEqualTo(1);
-            assertThat(category.displayName()).isEqualTo("دسته");
-            assertThat(subCategory.kind()).isEqualTo("SUB_CATEGORY");
-            assertThat(subCategory.parentId()).isEqualTo(category.id());
-            assertThat(subCategory.displayName()).as("no label given: the name is the label").isEqualTo("Sub" + n);
-            assertThat(tag.kind()).isEqualTo("TAG");
-            assertThat(tag.depth()).isEqualTo(3);
+            assertThat(top.kind()).isEqualTo("FOLDER");
+            assertThat(top.depth()).isEqualTo(1);
+            assertThat(top.displayName()).isEqualTo("بالا");
+            assertThat(second.parentId()).isEqualTo(top.id());
+            assertThat(second.displayName()).as("no label given: the name is the label").isEqualTo("Second" + n);
+            assertThat(fourth.depth()).isEqualTo(4);
+            assertThat(underTest.canHoldFolders(folderRepository.findById(fourth.id()).orElseThrow())).isFalse();
 
-            Folder stored = folderRepository.findById(tag.id()).orElseThrow();
-            assertThat(stored.getPath()).isEqualTo("/" + rootId + "/" + category.id() + "/" + subCategory.id() + "/" + tag.id() + "/");
-            assertThat(actionHistoryService.getActionHistoriesOfEntity(tag.id(), EntityEnum.Folder)).hasSize(1);
-        }
-
-        @Test
-        @DisplayName("a tag folder holds files, not folders - the tree is three levels deep and no deeper")
-        void aTagFolderTakesNoChildren() {
-            assertThatThrownBy(() -> underTest.create(chain.tagId(), "Deeper", null, null, null, adminId))
+            assertThatThrownBy(() -> underTest.create(fourth.id(), "Fifth", null, null, null, adminId))
                     .isInstanceOf(InvalidDataException.class)
-                    .hasMessageContaining("holds files");
+                    .hasMessageContaining("max-depth");
+
+            Folder stored = folderRepository.findById(fourth.id()).orElseThrow();
+            assertThat(stored.getPath()).isEqualTo("/" + rootId + "/" + top.id() + "/" + second.id() + "/" + third.id() + "/" + fourth.id() + "/");
+            assertThat(actionHistoryService.getActionHistoriesOfEntity(fourth.id(), EntityEnum.Folder)).hasSize(1);
+            assertThat(underTest.maxDepth()).isEqualTo(4);
         }
 
         @Test
-        @DisplayName("a category needs a tag group - an existing one by id, or a new one by name - and nothing else may carry one")
-        void aCategoryNeedsATagGroupAndOnlyACategory() {
+        @DisplayName("a top-level folder needs a tag group - an existing one by id, or a new one by name - and nothing deeper may carry one")
+        void aTopLevelFolderNeedsATagGroupAndOnlyATopLevelFolder() {
             assertThatThrownBy(() -> underTest.create(rootId, "NoGroup" + TestData.nextSequence(), null, null, null, adminId))
                     .isInstanceOf(InvalidDataException.class)
                     .hasMessageContaining("tag group");
@@ -147,18 +146,18 @@ class FolderServiceTest extends MySqlSupport {
             FolderDTO sameName = underTest.create(rootId, "SameName" + TestData.nextSequence(), null, null, newName, adminId);
             assertThat(sameName.tagGroupId()).as("naming an existing group joins it").isEqualTo(byName.tagGroupId());
 
-            // A general tag is not a folder, and a folder below a category does not carry one.
+            // A general tag is not a folder, and a folder below the top level does not carry one.
             assertThatThrownBy(() -> underTest.create(chain.categoryId(), "Sub" + TestData.nextSequence(), null, existing.getId(), null, adminId))
                     .isInstanceOf(InvalidDataException.class)
-                    .hasMessageContaining("only a category");
+                    .hasMessageContaining("only a top-level folder");
             assertThatThrownBy(() -> underTest.create(chain.subCategoryId(), "Tag" + TestData.nextSequence(), null, null, "x", adminId))
                     .isInstanceOf(InvalidDataException.class)
-                    .hasMessageContaining("only a category");
+                    .hasMessageContaining("only a top-level folder");
             assertThat(underTest.tagGroups()).extracting(TagGroupDTO::name).contains(newName, existing.getName());
         }
 
         @Test
-        @DisplayName("a name is directory-safe and unique among its siblings, case-insensitively")
+        @DisplayName("a name is directory-safe, unique among its siblings case-insensitively, and never the storage layout's own directory at the top level")
         void namesAreDirectorySafeAndUniqueAmongSiblings() {
             for (String bad : List.of("", "  ", "with space", "dot.name", "a/b", "x".repeat(101))) {
                 assertThatThrownBy(() -> underTest.create(chain.subCategoryId(), bad, null, null, null, adminId))
@@ -171,9 +170,17 @@ class FolderServiceTest extends MySqlSupport {
 
             assertThatThrownBy(() -> underTest.create(chain.subCategoryId(), chain.tag().getName().toUpperCase(), null, null, null, adminId))
                     .isInstanceOf(DuplicateResourceException.class);
-            // The same name under another parent is fine; siblings are what the disk keeps apart.
+            // The same name under another parent is fine.
             Folder otherSub = FolderFixture.subCategory(folderRepository, chain.category(), admin, "Else" + TestData.nextSequence());
             assertThat(underTest.create(otherSub.getId(), chain.tag().getName(), null, null, null, adminId).id()).isPositive();
+
+            // "folders" is where the id-based keys live; a top-level folder of that name would share it.
+            assertThatThrownBy(() -> underTest.create(rootId, "Folders", null, null, "g" + TestData.nextSequence(), adminId))
+                    .isInstanceOf(InvalidDataException.class)
+                    .hasMessageContaining("reserved");
+            assertThat(underTest.create(chain.categoryId(), "folders", null, null, null, adminId).id())
+                    .as("below the top level the name is like any other")
+                    .isPositive();
         }
 
         @Test
@@ -213,15 +220,15 @@ class FolderServiceTest extends MySqlSupport {
             String oldName = chain.subCategory().getName();
             assertThat(tagNamesOf(file.getId())).contains(oldName);
 
-            FolderDTO relabelled = underTest.rename(chain.subCategoryId(), oldName, "برچسب جدید", adminId);
+            FolderDTO relabelled = underTest.rename(chain.subCategoryId(), oldName, "برچسب جدید", null, adminId);
             assertThat(relabelled.name()).isEqualTo(oldName);
             assertThat(relabelled.displayName()).isEqualTo("برچسب جدید");
             assertThat(tagNamesOf(file.getId())).contains(oldName);
 
             String newName = oldName + "_v2";
-            FolderDTO renamed = underTest.rename(chain.subCategoryId(), newName, null, adminId);
+            FolderDTO renamed = underTest.rename(chain.subCategoryId(), newName, null, null, adminId);
             assertThat(renamed.name()).isEqualTo(newName);
-            assertThat(renamed.displayName()).as("the label is kept when none is given... as the name").isEqualTo(newName);
+            assertThat(renamed.displayName()).as("no label given: the name is the label").isEqualTo(newName);
             entityManager.flush();
             entityManager.clear();
 
@@ -236,17 +243,38 @@ class FolderServiceTest extends MySqlSupport {
         }
 
         @Test
+        @DisplayName("a top-level folder's tag group can be changed on a rename, re-grouping the tags beneath; deeper folders refuse one")
+        void renamingATopLevelFolderMayChangeItsGroup() {
+            FileInfo file = fileInfoRepository.save(TestData.fileInfo(admin, chain.tag(), "grouped" + TestData.nextSequence()));
+            tagMirrorService.retag(file);
+            fileInfoRepository.saveAndFlush(file);
+            TagGroup other = tagGroupRepository.save(TestData.tagGroup(admin, "other" + TestData.nextSequence()));
+
+            FolderDTO regrouped = underTest.rename(chain.categoryId(), chain.category().getName(), null, other.getId(), adminId);
+            assertThat(regrouped.tagGroupId()).isEqualTo(other.getId());
+            entityManager.flush();
+            entityManager.clear();
+            assertThat(fileInfoRepository.findById(file.getId()).orElseThrow().getTags())
+                    .allSatisfy(tag -> assertThat(tag.getGroup().getId()).isEqualTo(other.getId()));
+            assertThat(fileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders()).isEmpty();
+
+            assertThatThrownBy(() -> underTest.rename(chain.subCategoryId(), chain.subCategory().getName(), null, other.getId(), adminId))
+                    .isInstanceOf(InvalidDataException.class)
+                    .hasMessageContaining("only a top-level folder");
+        }
+
+        @Test
         @DisplayName("the root and a home folder are not renamed; a missing folder is a 404; a taken sibling name is a 409")
         void renamingRefusesTheRootAMissingFolderAndATakenName() {
-            assertThatThrownBy(() -> underTest.rename(rootId, "elsewhere", null, adminId))
+            assertThatThrownBy(() -> underTest.rename(rootId, "elsewhere", null, null, adminId))
                     .isInstanceOf(InvalidDataException.class).hasMessageContaining("ROOT");
-            assertThatThrownBy(() -> underTest.rename(999_999, "gone", null, adminId))
+            assertThatThrownBy(() -> underTest.rename(999_999, "gone", null, null, adminId))
                     .isInstanceOf(ResourceNotFoundException.class);
 
             Folder sibling = FolderFixture.tag(folderRepository, chain.subCategory(), admin, "Sib" + TestData.nextSequence());
-            assertThatThrownBy(() -> underTest.rename(chain.tagId(), sibling.getName(), null, adminId))
+            assertThatThrownBy(() -> underTest.rename(chain.tagId(), sibling.getName(), null, null, adminId))
                     .isInstanceOf(DuplicateResourceException.class);
-            assertThat(underTest.rename(chain.tagId(), chain.tag().getName(), "only the label", adminId).displayName())
+            assertThat(underTest.rename(chain.tagId(), chain.tag().getName(), "only the label", null, adminId).displayName())
                     .as("keeping one's own name is not a collision with oneself")
                     .isEqualTo("only the label");
         }
@@ -255,12 +283,119 @@ class FolderServiceTest extends MySqlSupport {
         @DisplayName("renaming needs write access on the folder itself")
         void renamingNeedsWriteAccess() {
             grant(restrictedId, chain.tagId(), FolderPermission.READ);
-            assertThatThrownBy(() -> underTest.rename(chain.tagId(), "Renamed" + TestData.nextSequence(), null, restrictedId))
+            assertThatThrownBy(() -> underTest.rename(chain.tagId(), "Renamed" + TestData.nextSequence(), null, null, restrictedId))
                     .isInstanceOf(AccessDeniedException.class);
 
             grant(restrictedId, chain.subCategoryId(), FolderPermission.WRITE);
-            assertThat(underTest.rename(chain.tagId(), "Renamed" + TestData.nextSequence(), null, restrictedId).id())
+            assertThat(underTest.rename(chain.tagId(), "Renamed" + TestData.nextSequence(), null, null, restrictedId).id())
                     .isEqualTo(chain.tagId());
+        }
+    }
+
+    // ================================================================ move
+
+    @Nested
+    @DisplayName("moving")
+    class Moving {
+
+        @Test
+        @DisplayName("a move rewrites parent, depth and path for the whole subtree, re-derives the files' tags, and moves no key")
+        void aMoveRewritesTheSubtree() {
+            FileInfo file = fileInfoRepository.save(TestData.fileInfo(admin, chain.tag(), "moved" + TestData.nextSequence()));
+            TestData.fileDetails(admin, file, 1, "txt");
+            tagMirrorService.retag(file);
+            fileInfoRepository.saveAndFlush(file);
+            String keyBefore = file.getFileDetailsList().getFirst().getStorageKey();
+            Folder otherTop = FolderFixture.category(folderRepository, admin, "OtherTop" + TestData.nextSequence(),
+                    tagGroupRepository.save(TestData.tagGroup(admin, "og" + TestData.nextSequence())));
+
+            // The sub-category, with the tag folder and the file under it, goes under another top-level folder.
+            FolderDTO moved = underTest.move(chain.subCategoryId(), otherTop.getId(), adminId);
+            entityManager.flush();
+            entityManager.clear();
+
+            assertThat(moved.parentId()).isEqualTo(otherTop.getId());
+            Folder sub = folderRepository.findById(chain.subCategoryId()).orElseThrow();
+            Folder tag = folderRepository.findById(chain.tagId()).orElseThrow();
+            assertThat(sub.getPath()).isEqualTo(otherTop.getPath() + sub.getId() + "/");
+            assertThat(tag.getPath()).isEqualTo(sub.getPath() + tag.getId() + "/");
+            assertThat(tag.getDepth()).isEqualTo(3);
+            assertThat(folderRepository.findRowsWhoseDerivedColumnsDisagree()).isEmpty();
+
+            assertThat(tagNamesOf(file.getId()))
+                    .contains(otherTop.getName(), sub.getName(), tag.getName())
+                    .doesNotContain(chain.category().getName());
+            assertThat(fileInfoRepository.findById(file.getId()).orElseThrow().getTags())
+                    .allSatisfy(t -> assertThat(t.getGroup().getId()).isEqualTo(otherTop.getTagGroup().getId()));
+            assertThat(fileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders()).isEmpty();
+            assertThat(fileInfoRepository.findByIdAndFetchFileDetails(file.getId()).orElseThrow()
+                    .getFileDetailsList().getFirst().getStorageKey()).isEqualTo(keyBefore);
+            assertThat(actionHistoryService.getActionHistoriesOfEntity(chain.subCategoryId(), EntityEnum.Folder)).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("moved to the top level a folder keeps the group it came from; moved below one, a top-level folder loses its own")
+        void theTagGroupFollowsTheTopLevel() {
+            TagGroup group = chain.category().getTagGroup();
+
+            FolderDTO promoted = underTest.move(chain.subCategoryId(), rootId, adminId);
+            assertThat(promoted.depth()).isEqualTo(1);
+            assertThat(promoted.tagGroupId()).as("the group of the top-level folder it was under").isEqualTo(group.getId());
+
+            FolderDTO demoted = underTest.move(chain.categoryId(), chain.subCategoryId(), adminId);
+            assertThat(demoted.depth()).isEqualTo(2);
+            assertThat(demoted.tagGroupId()).as("only the top level carries a group").isNull();
+            entityManager.flush();
+            entityManager.clear();
+            assertThat(folderRepository.findById(chain.tagId()).orElseThrow().getDepth()).isEqualTo(2);
+            assertThat(folderRepository.findRowsWhoseDerivedColumnsDisagree()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("refused: into itself or below itself, past the depth limit, onto a taken name, the root, a missing folder")
+        void refusedMoves() {
+            assertThatThrownBy(() -> underTest.move(chain.categoryId(), chain.tagId(), adminId))
+                    .isInstanceOf(InvalidDataException.class).hasMessageContaining("into itself");
+            assertThatThrownBy(() -> underTest.move(chain.categoryId(), chain.categoryId(), adminId))
+                    .isInstanceOf(InvalidDataException.class).hasMessageContaining("into itself");
+
+            // The chain is three deep; under the tag folder its sub-category would reach depth 5 > 4.
+            Folder deeper = FolderFixture.tag(folderRepository, chain.tag(), admin, "Deeper" + TestData.nextSequence());
+            Folder otherTop = FolderFixture.category(folderRepository, admin, "Top" + TestData.nextSequence(),
+                    tagGroupRepository.save(TestData.tagGroup(admin, "tg" + TestData.nextSequence())));
+            Folder otherSub = FolderFixture.subCategory(folderRepository, otherTop, admin, "S" + TestData.nextSequence());
+            Folder otherTag = FolderFixture.tag(folderRepository, otherSub, admin, "T" + TestData.nextSequence());
+            assertThatThrownBy(() -> underTest.move(chain.subCategoryId(), otherTag.getId(), adminId))
+                    .isInstanceOf(InvalidDataException.class).hasMessageContaining("depth");
+            assertThat(underTest.move(deeper.getId(), otherTag.getId(), adminId).depth())
+                    .as("a leaf may go to depth 4").isEqualTo(4);
+
+            FolderFixture.subCategory(folderRepository, otherTop, admin, chain.subCategory().getName());
+            assertThatThrownBy(() -> underTest.move(chain.subCategoryId(), otherTop.getId(), adminId))
+                    .isInstanceOf(DuplicateResourceException.class);
+
+            assertThatThrownBy(() -> underTest.move(rootId, chain.categoryId(), adminId))
+                    .isInstanceOf(InvalidDataException.class).hasMessageContaining("ROOT");
+            assertThatThrownBy(() -> underTest.move(999_999, rootId, adminId))
+                    .isInstanceOf(ResourceNotFoundException.class);
+            assertThatThrownBy(() -> underTest.move(chain.tagId(), 999_999, adminId))
+                    .isInstanceOf(InvalidDataException.class);
+        }
+
+        @Test
+        @DisplayName("moving needs write access on both parents")
+        void movingNeedsWriteAccessOnBothParents() {
+            Folder otherTop = FolderFixture.category(folderRepository, admin, "Top" + TestData.nextSequence(),
+                    tagGroupRepository.save(TestData.tagGroup(admin, "tg" + TestData.nextSequence())));
+
+            grant(restrictedId, chain.categoryId(), FolderPermission.WRITE);
+            assertThatThrownBy(() -> underTest.move(chain.subCategoryId(), otherTop.getId(), restrictedId))
+                    .as("write on the source only")
+                    .isInstanceOf(AccessDeniedException.class);
+
+            grant(restrictedId, otherTop.getId(), FolderPermission.WRITE);
+            assertThat(underTest.move(chain.subCategoryId(), otherTop.getId(), restrictedId).parentId())
+                    .isEqualTo(otherTop.getId());
         }
     }
 
@@ -313,24 +448,22 @@ class FolderServiceTest extends MySqlSupport {
         }
     }
 
-    // ================================================================ the chain
+    // ================================================================ ancestry
 
     @Test
-    @DisplayName("chainOf reads the three levels off a tag folder and refuses anything else")
-    void chainOfReadsTheThreeLevels() {
-        Folder tag = underTest.requireWithChain(chain.tagId());
-        FolderService.Chain read = FolderService.chainOf(tag);
+    @DisplayName("the ancestry of a folder is read off its path, top-level first, the root left out")
+    void ancestryIsReadOffThePath() {
+        List<Folder> ancestry = underTest.ancestryOf(underTest.requireWithTagGroup(chain.tagId()));
 
-        assertThat(read.category().getId()).isEqualTo(chain.categoryId());
-        assertThat(read.subCategory().getId()).isEqualTo(chain.subCategoryId());
-        assertThat(read.tag().getId()).isEqualTo(chain.tagId());
-        assertThat(read.directory()).isEqualTo(chain.directory());
-
-        assertThatThrownBy(() -> FolderService.chainOf(underTest.requireWithChain(chain.subCategoryId())))
-                .isInstanceOf(InvalidDataException.class);
-        assertThatThrownBy(() -> underTest.requireWithChain(999_999))
+        assertThat(ancestry).extracting(Folder::getId)
+                .containsExactly(chain.categoryId(), chain.subCategoryId(), chain.tagId());
+        assertThat(FolderService.topOf(ancestry).getTagGroup().getId()).isEqualTo(chain.category().getTagGroup().getId());
+        assertThat(underTest.ancestryOf(underTest.root())).isEmpty();
+        assertThatThrownBy(() -> underTest.requireWithTagGroup(999_999))
                 .isInstanceOf(InvalidDataException.class);
         assertThat(underTest.root().getKind()).isEqualTo(FolderKind.ROOT);
+        assertThat(FolderService.canHoldFiles(underTest.root())).isFalse();
+        assertThat(FolderService.canHoldFiles(chain.category())).isTrue();
     }
 
     // ---------------------------------------------------------------- helpers

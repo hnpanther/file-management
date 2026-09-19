@@ -68,6 +68,15 @@ public enum PermissionEnum {
     //@PostMapping("/{extension}/delete")
     DELETE_CONTENT_KIND,
 
+    // ------------------------------------------------------------------ TagGroupController - /settings/tag-groups
+
+    //@GetMapping - the tag groups (the "general tags") a top-level folder may carry
+    TAG_GROUP_PAGE,
+    //@PostMapping, @PostMapping("/{id}") - create, rename or re-title a group
+    SAVE_TAG_GROUP,
+    //@PostMapping("/{id}/delete") - delete an unused group
+    DELETE_TAG_GROUP,
+
 
     // ===================================================================================================
 
@@ -138,7 +147,10 @@ public enum PermissionEnum {
     //@DeleteMapping("{folderId}") - delete an empty folder
     REST_DELETE_FOLDER,
 
-    //@GetMapping("tag-groups") - the groups a new category folder may carry
+    //@PutMapping("{folderId}/move") - move a folder, with everything beneath it, under another parent
+    REST_MOVE_FOLDER,
+
+    //@GetMapping("tag-groups") - the groups a new top-level folder may carry
     REST_GET_TAG_GROUPS,
 
     // ===================================================================================================

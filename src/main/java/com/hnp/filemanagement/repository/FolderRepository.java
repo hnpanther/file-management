@@ -50,16 +50,21 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     /** A sibling by name - the uniqueness check before a create or rename, case-insensitive like the column. */
     Optional<Folder> findByParentIdAndNameIgnoreCase(Integer parentId, String name);
 
-    /** One folder with its two ancestors and the category's group - the chain a file page or a storage key needs. */
+    /** One folder with its parent and its tag group loaded. */
     @Query("""
             SELECT f FROM Folder f
-            LEFT JOIN FETCH f.parent p
-            LEFT JOIN FETCH p.parent g
-            LEFT JOIN FETCH g.tagGroup
+            LEFT JOIN FETCH f.parent
             LEFT JOIN FETCH f.tagGroup
             WHERE f.id = :id
             """)
-    Optional<Folder> findByIdWithChain(@Param("id") int id);
+    Optional<Folder> findByIdWithTagGroup(@Param("id") int id);
+
+    /** How many top-level folders carry this group - what stands in the way of deleting it. */
+    long countByTagGroupId(Integer tagGroupId);
+
+    /** The deepest level under a folder (its own included), for the depth limit on a move. */
+    @Query("SELECT MAX(f.depth) FROM Folder f WHERE f.path LIKE CONCAT(:pathPrefix, '%')")
+    Integer maxDepthUnder(@Param("pathPrefix") String pathPrefix);
 
     List<Folder> findByTagGroupId(Integer tagGroupId);
 

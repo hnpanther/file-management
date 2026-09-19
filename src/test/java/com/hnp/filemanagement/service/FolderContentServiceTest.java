@@ -122,7 +122,7 @@ class FolderContentServiceTest extends MySqlSupport {
                 .filteredOn(entry -> entry.id() == subCategoryId)
                 .singleElement()
                 .satisfies(entry -> {
-                    assertThat(entry.kind()).isEqualTo("SUB_CATEGORY");
+                    assertThat(entry.kind()).isEqualTo("FOLDER");
                     assertThat(entry.folderCount()).as("one tag under it").isEqualTo(1L);
                     assertThat(entry.fileCount()).as("a sub-category cannot hold files").isZero();
                 });
@@ -138,7 +138,7 @@ class FolderContentServiceTest extends MySqlSupport {
         assertThat(content.folder().id()).isEqualTo(tagFolderId);
         assertThat(content.breadcrumb())
                 .extracting(FolderContentDTO.FolderRef::kind)
-                .containsExactly("ROOT", "CATEGORY", "SUB_CATEGORY");
+                .containsExactly("ROOT", "FOLDER", "FOLDER");
         assertThat(content.breadcrumb())
                 .extracting(FolderContentDTO.FolderRef::id)
                 .doesNotContain(tagFolderId);
@@ -245,7 +245,7 @@ class FolderContentServiceTest extends MySqlSupport {
             assertThat(hit.breadcrumb())
                     .as("the same shape a listing returns, so one client renders both")
                     .extracting(FolderContentDTO.FolderRef::kind)
-                    .containsExactly("ROOT", "CATEGORY", "SUB_CATEGORY");
+                    .containsExactly("ROOT", "FOLDER", "FOLDER");
         });
     }
 

@@ -95,7 +95,8 @@ class FolderManagementTest extends MySqlSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"parentId\":" + chain.subCategoryId() + ",\"name\":\"" + name + "\",\"displayName\":\"ساخته شده\"}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.kind").value("TAG"))
+                .andExpect(jsonPath("$.kind").value("FOLDER"))
+                .andExpect(jsonPath("$.depth").value(3))
                 .andExpect(jsonPath("$.parentId").value(chain.subCategoryId()))
                 .andExpect(jsonPath("$.name").value(name))
                 .andExpect(jsonPath("$.displayName").value("ساخته شده"))
@@ -144,7 +145,8 @@ class FolderManagementTest extends MySqlSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"parentId\":" + rootId + ",\"name\":\"" + name + "\",\"newTagGroupName\":\"" + name.toLowerCase() + "\"}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.kind").value("CATEGORY"))
+                .andExpect(jsonPath("$.kind").value("FOLDER"))
+                .andExpect(jsonPath("$.depth").value(1))
                 .andExpect(jsonPath("$.tagGroupId").isNumber());
 
         mockMvc.perform(post("/resource/folders")
@@ -231,13 +233,14 @@ class FolderManagementTest extends MySqlSupport {
                         .content("{\"parentId\":" + chain.subCategoryId() + ",\"name\":\"Mine" + TestData.nextSequence() + "\"}"))
                 .andExpect(status().isCreated());
 
-        // writable is about filing documents, which only a tag folder takes; manageable is about
-        // the folder itself, and the WRITE grant on the sub-category reaches both.
+        // writable is about filing documents, which any folder below the root takes since V2.9;
+        // manageable is about the folder itself. The WRITE grant on the sub-category reaches both.
         mockMvc.perform(get("/resource/folders/children").param("folderId", String.valueOf(chain.subCategoryId()))
                         .with(user(principal(restrictedId, PermissionEnum.REST_GET_FOLDER_CONTENT))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.writable").value(false))
-                .andExpect(jsonPath("$.manageable").value(true));
+                .andExpect(jsonPath("$.writable").value(true))
+                .andExpect(jsonPath("$.manageable").value(true))
+                .andExpect(jsonPath("$.canHoldFolders").value(true));
         mockMvc.perform(get("/resource/folders/children").param("folderId", String.valueOf(chain.tagId()))
                         .with(user(principal(restrictedId, PermissionEnum.REST_GET_FOLDER_CONTENT))))
                 .andExpect(status().isOk())

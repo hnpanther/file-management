@@ -3,6 +3,8 @@ package com.hnp.filemanagement.util;
 
 import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.entity.*;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class ModelConverterUtil {
 
@@ -82,7 +84,34 @@ public class ModelConverterUtil {
         return fileDetailsDTO;
     }
 
-    public static FileInfoDTO convertFileInfoToFileInfoDTO(FileInfo fileInfo) {
+    /** How the folders above a file are joined into one line for a page. */
+    public static final String FOLDER_PATH_SEPARATOR = " / ";
+
+    /**
+     * Fills the folder fields of a file DTO from the folders above it (outermost first, the
+     * file's own folder last), as {@code FolderService.ancestryOf} lists them.
+     */
+    public static void placeIn(FileInfoDTO fileInfoDTO, List<Folder> ancestry) {
+        fileInfoDTO.setFolderPath(ancestry.stream()
+                .map(f -> new FolderContentDTO.FolderRef(f.getId(), f.getName(),
+                        f.getDisplayName() == null || f.getDisplayName().isBlank() ? f.getName() : f.getDisplayName(),
+                        f.getKind().name()))
+                .toList());
+        fileInfoDTO.setFolderTitle(folderTitleOf(ancestry));
+    }
+
+    public static String folderTitleOf(List<Folder> ancestry) {
+        return ancestry.stream()
+                .map(f -> f.getDisplayName() == null || f.getDisplayName().isBlank() ? f.getName() : f.getDisplayName())
+                .collect(Collectors.joining(FOLDER_PATH_SEPARATOR));
+    }
+
+    /**
+     * @param ancestry the folders above the file, outermost first, the file's own folder last -
+     *                 loaded for a whole page at once by {@code FolderService.ancestryOf}, since a
+     *                 chain of any depth cannot be fetch-joined
+     */
+    public static FileInfoDTO convertFileInfoToFileInfoDTO(FileInfo fileInfo, List<Folder> ancestry) {
 
         FileInfoDTO fileInfoDTO = new FileInfoDTO();
         fileInfoDTO.setId(fileInfo.getId());
@@ -91,19 +120,8 @@ public class ModelConverterUtil {
         fileInfoDTO.setDescription(fileInfo.getDescription());
         fileInfoDTO.setFileLink(fileInfo.getFileLink());
         fileInfoDTO.setLastVersion(fileInfo.getLastVersion());
-        // The three folder levels, under the names the pages have always used for them.
-        Folder tag = fileInfo.getFolder();
-        Folder subCategory = tag.getParent();
-        Folder category = subCategory.getParent();
-        fileInfoDTO.setFolderId(tag.getId());
-        fileInfoDTO.setTagName(tag.getName());
-        fileInfoDTO.setTagDescription(tag.getDisplayName());
-        fileInfoDTO.setFileSubCategoryName(subCategory.getName());
-        fileInfoDTO.setFileSubCategoryNameDescription(subCategory.getDisplayName());
-        fileInfoDTO.setFileCategoryName(category.getName());
-        fileInfoDTO.setFileCategoryNameDescription(category.getDisplayName());
-        fileInfoDTO.setFileCategoryDisplayName(category.getDisplayName()
-                + (category.getTagGroup() == null ? "" : "(" + category.getTagGroup().getTitle() + ")"));
+        fileInfoDTO.setFolderId(fileInfo.getFolder().getId());
+        placeIn(fileInfoDTO, ancestry);
         fileInfoDTO.setState(fileInfo.getState());
         fileInfoDTO.setEnabled(fileInfo.getEnabled());
         fileInfoDTO.setCreatedAt(fileInfo.getCreatedAt());
@@ -115,17 +133,14 @@ public class ModelConverterUtil {
         return fileInfoDTO;
     }
 
-    public static PublicFileDetailsDTO convertFileDetailsToPublicFileDetailsDTO(FileDetails fileDetails) {
+    public static PublicFileDetailsDTO convertFileDetailsToPublicFileDetailsDTO(FileDetails fileDetails, List<Folder> ancestry) {
 
         PublicFileDetailsDTO publicFileDetailsDTO = new PublicFileDetailsDTO();
         publicFileDetailsDTO.setId(fileDetails.getId());
         publicFileDetailsDTO.setFileInfoId(fileDetails.getFileInfo().getId());
         publicFileDetailsDTO.setFileName(fileDetails.getFileName());
         publicFileDetailsDTO.setDescription(fileDetails.getDescription());
-        Folder tag = fileDetails.getFileInfo().getFolder();
-        publicFileDetailsDTO.setCategoryNameDescription(tag.getParent().getParent().getDisplayName());
-        publicFileDetailsDTO.setSubCategoryNameDescription(tag.getParent().getDisplayName());
-        publicFileDetailsDTO.setTagDescription(tag.getDisplayName());
+        publicFileDetailsDTO.setFolderTitle(folderTitleOf(ancestry));
         publicFileDetailsDTO.setVersion(fileDetails.getVersionName());
         publicFileDetailsDTO.setSize(fileDetails.getFileSize());
         publicFileDetailsDTO.setFileInfoName(fileDetails.getFileInfo().getDescription());

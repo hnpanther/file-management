@@ -48,55 +48,30 @@
                     </div>
 
                     <!--
-                      Opened from the explorer on a folder, the target is that folder: shown as the
-                      path down to it and posted as folderId, which the service resolves and checks
-                      write access on (roadmap 7.2 step 5). The three selects are not rendered at all
-                      in this mode - hidden-but-required controls would block the submit.
+                      Where the file goes: a folder, chosen by drilling down from the root (or
+                      from the folder the explorer's "upload here" opened this form on), and
+                      posted as folderId. The chooser is the shared fragment; its state is Alpine's,
+                      the hidden input is what the form submits (roadmap 7.2 step 5; any folder
+                      below the root since V2.9).
                     -->
-                    <div th:if="${file.getFolderId() != null}" class="form-group">
+                    <div class="form-group md:col-span-2"
+                         th:attr="data-initial-id=${file.getFolderId()}"
+                         x-data="folderChooser({
+                             url: $el.dataset.foldersUrl,
+                             initialId: $el.dataset.initialId ? Number($el.dataset.initialId) : null,
+                             initialPath: window.UPLOAD_TARGET_PATH || [],
+                             rootTitle: $el.dataset.rootTitle,
+                             selectRoot: false,
+                             copy: { loadFailed: $el.dataset.loadFailed }
+                         })"
+                         th:data-folders-url="@{/resource/folders/children}"
+                         th:data-root-title="#{explorer.root}"
+                         th:data-load-failed="#{explorer.loadFailed}">
                         <label th:text="#{file.upload.target}">مقصد بارگذاری</label>
-                        <input type="hidden" name="folderId" th:value="${file.getFolderId()}">
-                        <div class="flex flex-wrap items-center gap-2 rounded-md border border-ink-200 bg-ink-50 px-3 py-2">
-                            <i class="bi bi-folder2-open text-ink-400" aria-hidden="true"></i>
-                            <span class="min-w-0" id="uploadTarget">
-                                <span th:text="${file.getFileCategoryNameDescription()}"></span>
-                                <i class="bi bi-chevron-left mx-1 text-[0.65rem] text-ink-400" aria-hidden="true"></i>
-                                <span th:text="${file.getFileSubCategoryNameDescription()}"></span>
-                                <i class="bi bi-chevron-left mx-1 text-[0.65rem] text-ink-400" aria-hidden="true"></i>
-                                <strong th:text="${file.getTagDescription()}"></strong>
-                            </span>
-                            <a th:href="@{/files/create}" class="mr-auto text-sm" th:text="#{file.upload.changeTarget}">تغییر مقصد</a>
-                        </div>
+                        <input type="hidden" name="folderId" id="folderId" :value="chosen ? chosen.id : ''">
+                        <div th:replace="~{fragments.html :: folder-chooser}"></div>
+                        <p class="form-text" th:text="#{file.upload.targetHint}">به پوشهٔ مقصد بروید و «انتخاب این پوشه» را بزنید.</p>
                     </div>
-
-                    <!--
-                      Plain mode: the three folder levels as dependent selects, fed by the same
-                      endpoint the explorer reads. Only the last one is posted - as folderId, the
-                      tag folder the file goes into (Phase 7 step 4). The first two are navigation.
-                    -->
-                    <th:block th:if="${file.getFolderId() == null}">
-                    <div class="form-group">
-                        <label for="categoryFolder" th:text="#{select.category}">انتخاب دسته‌بندی اصلی</label>
-                        <select class="form-control" id="categoryFolder" required>
-                            <option value=""></option>
-                            <option th:each="f: ${listCategory}" th:value="${f.id()}" th:text="${f.title()}"></option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="subCategoryFolder" th:text="#{select.subCategory}">انتخاب زیردسته‌بندی</label>
-                        <select class="form-control" id="subCategoryFolder" required>
-                            <option value=""></option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="folderId" th:text="#{select.tag}">انتخاب برچسب</label>
-                        <select class="form-control" name="folderId" id="folderId" required>
-                            <option value=""></option>
-                        </select>
-                    </div>
-                    </th:block>
 
                     <div th:if="${#strings.equals(pageType, 'create')}" class="form-group">
                         <label for="multipartFile" th:text="#{field.chooseFile}">فایل موردنظر</label>
@@ -144,84 +119,24 @@
     </section>
 </main>
 
-<th:block th:replace="~{fragments.html :: scripts-select}"></th:block>
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
 <script th:inline="javascript">
-    const FILE_FORM_CREATE_MODE = [[${#strings.equals(pageType, 'create')}]];
-    const FILE_FORM_COPY = {
-        category: [[#{select.category}]],
-        subCategory: [[#{select.subCategory}]],
-        tag: [[#{select.tag}]]
-    };
+    /* The folders above the target the form opened on, for the chooser's first state; empty otherwise. */
+    window.UPLOAD_TARGET_PATH = /*[[${file.getFolderPath()}]]*/ [];
 
     $(function () {
-        const category = $("#categoryFolder");
-        const subCategory = $("#subCategoryFolder");
-        const tag = $("#folderId");
-        const fileInput = $("#multipartFile");
-
-        // In folder mode the selects are not on the page at all; there is nothing to wire.
-        if (category.length) {
-            category.select2({ width: "100%", dir: "rtl", placeholder: FILE_FORM_COPY.category });
-            subCategory.select2({ width: "100%", dir: "rtl", placeholder: FILE_FORM_COPY.subCategory });
-            tag.select2({ width: "100%", dir: "rtl", placeholder: FILE_FORM_COPY.tag });
-
-            if (FILE_FORM_CREATE_MODE) {
-                category.val(null).trigger("change.select2");
-                subCategory.val(null).trigger("change.select2");
-                tag.val(null).trigger("change.select2");
-            }
-        }
-
-        category.on("change", function () {
-            loadChildren(category.val(), subCategory, FILE_FORM_COPY.subCategory, tag);
-        });
-        subCategory.on("change", function () {
-            loadChildren(subCategory.val(), tag, FILE_FORM_COPY.tag, null);
-        });
-        fileInput.on("change", function () {
+        $("#multipartFile").on("change", function () {
             const selectedName = this.files && this.files.length ? this.files[0].name : [[#{file.upload.none}]];
             $("#selectedFileName").text(selectedName);
         });
     });
 
-    function ajaxHeaders() {
-        const csrf = window.appCsrf();
-        const headers = { "X-Requested-With": "XMLHttpRequest" };
-        if (csrf.header && csrf.token) {
-            headers[csrf.header] = csrf.token;
-        }
-        return headers;
-    }
-
-    function resetSelect(select) {
-        select.empty().append(new Option("", "", true, true)).val(null).trigger("change.select2");
-    }
-
-    /** The child folders of one folder, from the explorer's endpoint, into one select. */
-    function loadChildren(folderId, target, placeholder, next) {
-        resetSelect(target);
-        if (next) {
-            resetSelect(next);
-        }
-        if (!folderId) {
-            return;
-        }
-
-        $.ajax({
-            type: "GET",
-            url: [[@{/resource/folders/children}]] + "?size=1&folderId=" + encodeURIComponent(folderId),
-            headers: ajaxHeaders()
-        }).then(function (data) {
-            target.select2({
-                width: "100%",
-                dir: "rtl",
-                placeholder: placeholder,
-                data: data.folders.map(function (f) { return { id: f.id, text: f.title }; })
-            }).val(null).trigger("change.select2");
-        });
-    }
-
     $("#fileForm").on("submit", function () {
+        // A hidden input is not validated by the browser, so the chooser's choice is checked here.
+        if (!document.getElementById("folderId").value) {
+            alert([[#{js.chooseFolder}]]);
+            return false;
+        }
         const fileInput = this.querySelector("input[name='multipartFile']");
         if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
             return true;

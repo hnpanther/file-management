@@ -37,12 +37,14 @@ import java.util.List;
  * @param breadcrumb the ancestors, root first, <em>excluding</em> the folder itself. Every ancestor
  *                   of a visible folder is visible by definition, so nothing is filtered out of it
  * @param folders    child folders this person may at least walk into, by name
- * @param writable   whether documents may be filed into this folder by the caller: a tag folder
- *                   (the only kind that holds files) inside a {@code WRITE} grant. What the
- *                   page's "upload here" button is shown on.
+ * @param writable   whether documents may be filed into this folder by the caller: any folder but
+ *                   the root, inside a {@code WRITE} grant. What the page's "upload here" button
+ *                   is shown on.
  * @param manageable whether the caller holds {@code WRITE} on this folder itself, whatever its
- *                   kind - what the page's create, rename and delete controls are shown on; the
- *                   permissions to use them are checked separately, on the endpoints
+ *                   kind - what the page's create, rename, move and delete controls are shown
+ *                   on; the permissions to use them are checked separately, on the endpoints
+ * @param canHoldFolders whether a folder may be created here: the depth limit
+ *                   ({@code filemanagement.folders.max-depth}) has not been reached
  * @param files      one page of the files directly in this folder, empty unless {@code readable}
  * @param page       which page of {@link #files} this is. Folders are never paged - see the service
  */
@@ -51,6 +53,7 @@ public record FolderContentDTO(
         boolean readable,
         boolean writable,
         boolean manageable,
+        boolean canHoldFolders,
         List<FolderRef> breadcrumb,
         List<FolderEntry> folders,
         List<FileEntry> files,
@@ -61,9 +64,8 @@ public record FolderContentDTO(
      *
      * @param name  the directory-safe name, rendered with the {@code technical} class
      * @param title the Persian label, falling back to {@code name} when the source row has none
-     * @param kind  {@code ROOT}, {@code CATEGORY}, {@code SUB_CATEGORY}, {@code TAG} or
-     *              {@code USER_HOME} — the client uses it for the icon it wants to draw, and this
-     *              way the icon stays a client decision
+     * @param kind  {@code ROOT}, {@code FOLDER} or {@code USER_HOME} — the client uses it for
+     *              the icon it wants to draw, and this way the icon stays a client decision
      */
     public record FolderRef(int id, String name, String title, String kind) {}
 

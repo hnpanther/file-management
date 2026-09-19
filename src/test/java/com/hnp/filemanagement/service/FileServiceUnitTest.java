@@ -64,7 +64,7 @@ class FileServiceUnitTest {
      */
     @Mock
     private FolderAccessService folderAccessService;
-    /** Answers the tag folder, with its chain, when a test stubs it - the upload resolves it first. */
+    /** Answers the target folder when a test stubs it - the upload resolves it first. */
     @Mock
     private FolderService folderService;
     @Mock
@@ -139,14 +139,14 @@ class FileServiceUnitTest {
     }
 
     @Test
-    @DisplayName("a folder that is not a tag folder is refused: only a tag folder holds files")
-    void refusesANonTagFolder() {
-        Folder subCategory = tagFolder.getParent();
-        when(folderService.requireWithChain(anyInt())).thenReturn(subCategory);
+    @DisplayName("the root is refused: a document is filed into a folder beneath it")
+    void refusesTheRoot() {
+        Folder root = tagFolder.getParent().getParent().getParent();
+        when(folderService.requireWithTagGroup(anyInt())).thenReturn(root);
 
         assertThatThrownBy(() -> underTest.createNewFile(uploadRequest("report.txt"), 1, 1))
                 .isInstanceOf(InvalidDataException.class)
-                .hasMessageContaining("tag folder");
+                .hasMessageContaining("ROOT");
 
         verifyNoInteractions(fileStorageService);
     }
@@ -155,7 +155,7 @@ class FileServiceUnitTest {
     @Test
     @DisplayName("a write outside the grant is refused before anything about the file is looked at")
     void refusesAWriteOutsideTheGrantBeforeAnythingElse() {
-        when(folderService.requireWithChain(anyInt())).thenReturn(tagFolder);
+        when(folderService.requireWithTagGroup(anyInt())).thenReturn(tagFolder);
         org.mockito.Mockito.doThrow(new org.springframework.security.access.AccessDeniedException("no"))
                 .when(folderAccessService).requireWriteAccess(
                         org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(com.hnp.filemanagement.entity.Folder.class));

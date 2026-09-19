@@ -110,30 +110,15 @@
                                                         </div>
                                                         <div class="col">
                                                             <div class="form-group">
-                                                                <label th:text="#{field.category2}">دسته بندی اصلی</label>
-                                                                <input th:value="${file.getFileCategoryDisplayName()}"
-                                                                       class="form-control version" type="text"
-                                                                       disabled>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div class="row">
-                                                        <div class="col">
-                                                            <div class="form-group">
-                                                                <label th:text="#{field.subCategory2}">دسته بندی فرعی</label>
-                                                                <input th:value="${file.getFileSubCategoryNameDescription()}"
-                                                                       class="form-control" type="text"
-                                                                       name="format"
-                                                                       disabled>
-                                                            </div>
-                                                        </div>
-                                                        <div class="col">
-                                                            <div class="form-group">
-                                                                <label th:text="#{field.tag2}">تگ</label>
-                                                                <input th:value="${file.getTagDescription()}"
-                                                                       class="form-control version" type="text"
-                                                                       disabled>
+                                                                <label th:text="#{field.folder}">پوشه</label>
+                                                                <!-- The folders above the file, outermost first; each opens the explorer on that folder. -->
+                                                                <div class="folder-path" th:if="${!#lists.isEmpty(file.getFolderPath())}">
+                                                                    <th:block th:each="crumb, it : ${file.getFolderPath()}">
+                                                                        <a class="folder-path-link" th:href="@{/files/explorer(folder=${crumb.id()})}"
+                                                                           th:text="${crumb.title()}"></a>
+                                                                        <span class="folder-path-separator" th:unless="${it.last}" aria-hidden="true">/</span>
+                                                                    </th:block>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>

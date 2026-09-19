@@ -13,9 +13,9 @@ working, and to depend only on what came before.
 | 2 | Architectural restructuring | 1 | |
 | 3 | PostgreSQL migration | 1, partly 2, **and 7** | |
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
-| 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done** |
+| 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done**; the move it needs **done** (7.2 step 5d, 1.4.0); the drag handlers are what is left |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**; enforcement switched on per installation, after the grants exist |
-| 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | 7.1, 7.2 steps 1–4 and 5a–5c **done** (`V2.8`, 1.3.0): the taxonomy is gone, the folder is the structure, and it is created, renamed and deleted from the explorer. Left: move (5d) and drag-and-drop |
+| 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | **done** (`V2.8` 1.3.0, `V2.9` 1.4.0): the taxonomy is gone, the folder is the structure at any depth up to a limit, and it is created, renamed, moved and deleted from the explorer |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
 
@@ -397,10 +397,12 @@ path-shaped (`address`, `version`, `extension`) and has no `move`.
 
 Order:
 1. ~~`BlobStore.move(from, to)` on the port and both adapters.~~ Replaced by 7.1.
-2. `PUT /resource/files/tree/move` — validates the target accepts the node type, moves the row in one
-   transaction, writes an `ActionHistory` row.
+2. ~~`PUT /resource/files/tree/move`~~ **Done** as `PUT /resource/folders/{id}/move` (7.2 step
+   5d): one transaction, the subtree's paths and depths rewritten, the tags re-derived, an
+   `ActionHistory` row; the explorer's move dialog picks the target with the shared folder
+   chooser.
 3. Alpine drag handlers on the existing flat row list — it is already an ordered list with a
-   `depth` on every row, which is what a drop target needs.
+   `depth` on every row, which is what a drop target needs. The only part left.
 
 ### 5.3 Collapsing the taxonomy into folders
 
@@ -810,7 +812,8 @@ Each is independently shippable, and only the fourth cannot be undone.
 | 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under — **done** | `V2.4` | `DROP TABLE` |
 | 3 | **Reads move to the folder**: tree, upload, file list, search — **done**, one reader per commit: 1 API v2, 2 explorer, 3 folder access on download / file page / list / new version, 4 tree, 5 upload by `folderId` alongside the triple | — | revert the code |
 | 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` — **done** | `V2.8` (`V2.5` went to the content-type fix, `V2.6` to the upload policy, `V2.7` to custom content kinds) | ⚠️ **none** |
-| 5 | Folder operations: **done** — uploading into a folder from the explorer (5a), create (5b), rename and delete (5c). Left: move (5d) and drag-and-drop | — with step 4 | — |
+| 5 | Folder operations: **done** — uploading into a folder from the explorer (5a), create (5b), rename and delete (5c), move (5d, with any depth) | — with step 4; `V2.9` for 5d | — |
+| 6 | **Any depth** (`V2.9`, 1.4.0): the three fixed levels become one kind of folder, every folder holds folders and files, a configurable depth limit, files stored by folder id — **done** | `V2.9` | ⚠️ the kinds could be restored from `depth`; files stored since cannot be moved back under names |
 
 > **Step 1 done.** `FileInfo.folder` is set from `FolderMirrorService.folderOf(mainTag)` on every
 > upload — get-or-create, so an upload into a tag that was never mirrored heals the mirror rather
@@ -941,6 +944,36 @@ Each is independently shippable, and only the fourth cannot be undone.
 > re-tags the subtree and moves no byte (`StorageKeyTest.aRenameDoesNotOrphanTheBytes` now
 > renames through the service, and proves a later version of the file still lands beside the
 > first); a delete takes an empty folder only. `FolderServiceTest`, `FolderManagementTest`.
+>
+> **Step 6 done — any depth (`V2.9`).** The three fixed levels were the taxonomy's shape kept as
+> a rule, and the rule outlived its reason: the day after step 4 the first person to open an empty
+> folder asked why it took no folder. Now `kind` is `ROOT`, `FOLDER` or `USER_HOME`; every folder
+> below the root holds folders and files alike; `filemanagement.folders.max-depth` (6) is the
+> only limit, and it is a limit for people. The decision that made it possible is on disk: a file
+> uploaded from here on is stored under `folders/{folder id}/…`, by id, so no rename or move above
+> it changes anything - which also made the file-name rule per folder in fact, closing the
+> per-sub-category workaround of step 4 (issue 79). Files stored before keep their name-based
+> keys; the two layouts share one root, so `folders` is a reserved top-level name and the
+> migration refuses to run where it is taken. The tags of a file are now one per folder on its
+> chain, in the top-level folder's group; the group is still carried at depth 1 only, and a
+> rename may change it. The three-level readers - the tree page's node types, the search hit's
+> three ids, the upload form's three selects, the labels on the file pages - became one
+> `FOLDER` node type, a `folderIds` path, a shared folder chooser (`fragments.html ::
+> folder-chooser`, `window.folderChooser`) and a `folderPath`. `FolderService.ancestryOf` loads
+> a page's chains in one query off the materialised path, since a chain of any depth cannot be
+> fetch-joined.
+>
+> **Step 5d done — move.** `FolderService.move` rewrites `parent`, `depth` and `path` for the
+> subtree in one transaction, keeps the depth limit (the subtree's deepest folder counts),
+> refuses the folder's own subtree and a taken sibling name, needs `WRITE` on both parents,
+> carries the tag group across (to the top level: the group it came from; below it: none) and
+> re-tags the subtree. `PUT /resource/folders/{id}/move` under `REST_MOVE_FOLDER`, mapped by
+> `V2.9` onto the roles that may rename; the explorer's "انتقال" opens the folder chooser. No
+> byte moves.
+>
+> **The general tags have their form back.** `/settings/tag-groups` (`TagGroupService`,
+> `TAG_GROUP_PAGE` / `SAVE_TAG_GROUP` / `DELETE_TAG_GROUP`): create, rename, re-title, and delete
+> while no folder carries the group and no tag sits in it.
 
 Steps 0–2 only added data and changed no behaviour, so they shipped early and sat in production
 while step 3 was written. Step 3 is where the application actually changed. Step 4 followed once
@@ -985,12 +1018,10 @@ tag is not a place.
    reader 5): both are accepted, the triple is unchanged, and it is removed in step 4 only. —
    **Closed**: since 1.3.0 `folderId` is the only addressing; the triple is ignored.
 3. **File-name uniqueness** was expected to move from "per sub-category"
-   (`uq_file_info_name_per_sub_category`) to "per folder". — **It did not, and must not** while the
-   storage layout is `{category}/{subCategory}/{name}` with no tag segment: two files of one name
-   under sibling tags would share a directory. `V2.8` adds the per-folder index (the half the schema
-   can express) and the application keeps the per-sub-category rule in `FileService` and
-   `ObjectStoreService`. A per-folder rule is possible only together with a per-folder layout for
-   new files, which is a storage decision for Phase 4, not a side effect of a migration.
+   (`uq_file_info_name_per_sub_category`) to "per folder". — It could not while the storage
+   layout was `{category}/{subCategory}/{name}` with no tag segment (1.3.0 kept the
+   per-sub-category rule in code, issue 79); **it did** with `V2.9`, which stores new files
+   under `folders/{folder id}/` and so makes the per-folder index the whole rule.
 4. **Uploading still does not check folder access**
    ([issue 76](issues.md#76-a-folder-access-grant-does-not-gate-uploading-into-that-folder--s2)). It
    has to be closed before folders become the structure, or a user will file documents into a folder
@@ -1011,9 +1042,7 @@ writing them twice.
 **Done when:** a file belongs to a folder and to tags; the four taxonomy tables are gone; a folder can
 be created, renamed, moved and deleted without touching a byte on disk; and the file-name rule,
 the API contract and upload authorisation have all been moved across rather than left behind.
-— **All but the move** (5d) as of 1.3.0: the move needs a decision on what happens to a file's
-tags and its future versions' directory when its tag folder changes sub-category, and is the
-one folder operation drag-and-drop then needs.
+— **Done** as of 1.4.0.
 
 ---
 

@@ -7,7 +7,6 @@ import com.hnp.filemanagement.dto.TreeSearchHitDTO;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.Folder;
-import com.hnp.filemanagement.entity.FolderKind;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.ChildCount;
 import com.hnp.filemanagement.repository.FileInfoRepository;
@@ -18,24 +17,22 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
  * Builds the read-only file tree, one level at a time, from the folder tree.
  *
  * <pre>
- *   category folder ─▶ sub-category folder ─▶ tag folder ─▶ file ─▶ version ─▶ format
+ *   folder ─▶ folder ─▶ … ─▶ file ─▶ version ─▶ format
  * </pre>
  *
- * The three folder levels are the three kinds under the root ({@code FolderService}); a tag
- * group is not a level - it labels a category, so it is shown as a note on the category row.
- * The node types the page knows ({@link NodeType#CATEGORY}, {@link NodeType#SUB_CATEGORY},
- * {@link NodeType#MAIN_TAG}) keep their names; each is a folder kind, addressed by the folder's
- * id.
+ * A folder node holds folders and files together (since {@code V2.9} any folder below the root
+ * holds both, to any depth up to the configured limit); a tag group is not a level - it labels a
+ * top-level folder, so it is shown as a note on that row.
  *
  * <p>Every level is fetched on demand, and every level is filtered by folder access: an ancestor
  * of a grant is shown so that the branch to the grant can be opened, and a folder's files are
@@ -59,11 +56,11 @@ public class FileTreeService {
         this.folderService = folderService;
     }
 
-    /** Top level of the tree for one person: the categories they may either read or walk through. */
+    /** Top level of the tree for one person: the top-level folders they may either read or walk through. */
     @Transactional(readOnly = true)
     public List<TreeNodeDTO> getRoots(int principalId) {
         FolderAccess access = folderAccessService.accessFor(principalId);
-        return folderNodes(access, folderService.root(), FolderKind.CATEGORY);
+        return folderNodes(access, folderService.root());
     }
 
     @Transactional(readOnly = true)
@@ -71,18 +68,17 @@ public class FileTreeService {
         FolderAccess access = folderAccessService.accessFor(principalId);
 
         return switch (type) {
-            // A category or a sub-category may be opened for navigation alone, so the weaker check
-            // applies - and then its children are filtered, because an ancestor of a grant must
-            // reveal only the branch that leads to it.
-            case CATEGORY -> folderNodes(access, requireVisibleFolder(access, id, FolderKind.CATEGORY), FolderKind.SUB_CATEGORY);
-            case SUB_CATEGORY -> folderNodes(access, requireVisibleFolder(access, id, FolderKind.SUB_CATEGORY), FolderKind.TAG);
-            // Files are contents, not a route to anywhere, so from here the full check applies.
-            case MAIN_TAG -> {
-                Folder folder = requireVisibleFolder(access, id, FolderKind.TAG);
-                if (!access.canRead(folder.getPath())) {
-                    throw new AccessDeniedException("no folder access to folder id=" + id);
+            // A folder may be opened for navigation alone, so the weaker check applies to its
+            // child folders, which are filtered - an ancestor of a grant must reveal only the
+            // branch that leads to it. Files are contents, not a route to anywhere, so they are
+            // listed only where the full check passes.
+            case FOLDER -> {
+                Folder folder = requireVisibleFolder(access, id);
+                List<TreeNodeDTO> children = new ArrayList<>(folderNodes(access, folder));
+                if (access.canRead(folder.getPath())) {
+                    children.addAll(filesOf(folder.getId()));
                 }
-                yield filesOf(folder.getId());
+                yield children;
             }
             // A file is addressed by its own id and authorised through its own folder.
             case FILE -> {
@@ -97,12 +93,8 @@ public class FileTreeService {
         };
     }
 
-    private Folder requireVisibleFolder(FolderAccess access, int folderId, FolderKind expectedKind) {
+    private Folder requireVisibleFolder(FolderAccess access, int folderId) {
         Folder folder = folderAccessService.requireFolder(folderId);
-        if (folder.getKind() != expectedKind) {
-            throw new InvalidDataException(
-                    "folder id=" + folderId + " is a " + folder.getKind() + ", not a " + expectedKind);
-        }
         if (!access.visible(folder.getPath())) {
             throw new AccessDeniedException("no folder access to folder id=" + folderId);
         }
@@ -110,13 +102,11 @@ public class FileTreeService {
     }
 
     /**
-     * The visible children of one folder, of the kind that level holds, each with what is beneath
-     * it: sub-folders for the two upper levels, files for a tag folder - one grouped count either
-     * way, however wide the level is.
+     * The visible child folders of one folder, each with what is beneath it - sub-folders and
+     * files, as one grouped count each, however wide the level is.
      */
-    private List<TreeNodeDTO> folderNodes(FolderAccess access, Folder parent, FolderKind childKind) {
+    private List<TreeNodeDTO> folderNodes(FolderAccess access, Folder parent) {
         List<Folder> children = folderRepository.findChildrenWithTagGroup(parent.getId()).stream()
-                .filter(child -> child.getKind() == childKind)
                 .filter(child -> access.visible(child.getPath()))
                 .sorted((a, b) -> a.getName().compareToIgnoreCase(b.getName()))
                 .toList();
@@ -124,12 +114,13 @@ public class FileTreeService {
             return List.of();
         }
         List<Integer> ids = children.stream().map(Folder::getId).toList();
-        Map<Integer, Long> counts = countsOf(childKind == FolderKind.TAG
-                ? fileInfoRepository.countFilesByFolder(ids)
-                : folderRepository.countChildFoldersByParent(ids));
+        Map<Integer, Long> folderCounts = countsOf(folderRepository.countChildFoldersByParent(ids));
+        Map<Integer, Long> fileCounts = countsOf(fileInfoRepository.countFilesByFolder(ids));
 
         return children.stream()
-                .map(child -> toFolderNode(child, counts.getOrDefault(child.getId(), 0L).intValue()))
+                .map(child -> toFolderNode(child,
+                        folderCounts.getOrDefault(child.getId(), 0L).intValue()
+                                + fileCounts.getOrDefault(child.getId(), 0L).intValue()))
                 .toList();
     }
 
@@ -146,34 +137,28 @@ public class FileTreeService {
         }
         FolderAccess access = folderAccessService.accessFor(principalId);
         Integer id = SearchTerms.asFileId(term);
-        return fileInfoRepository.searchForTree(id, term, PageRequest.of(0, 20)).stream()
+        List<FileInfo> hits = fileInfoRepository.searchForTree(id, term, PageRequest.of(0, 20)).stream()
                 // Search reaches across the whole tree, so unlike opening a folder it can turn up
                 // something outside every grant. A hit is only offered if its folder is readable.
                 .filter(fileInfo -> folderAccessService.allowsRead(access, fileInfo))
-                .map(this::toSearchHit)
-                .flatMap(Optional::stream)
+                .toList();
+        Map<Integer, List<Folder>> ancestry = folderService.ancestryOf(
+                hits.stream().map(FileInfo::getFolder).toList());
+        return hits.stream()
+                .map(fileInfo -> toSearchHit(fileInfo, ancestry.get(fileInfo.getFolder().getId())))
                 .toList();
     }
 
-    private Optional<TreeSearchHitDTO> toSearchHit(FileInfo fileInfo) {
-        Folder tagFolder = fileInfo.getFolder();
-        Folder subCategoryFolder = tagFolder.getParent();
-        Folder categoryFolder = subCategoryFolder == null ? null : subCategoryFolder.getParent();
-        if (subCategoryFolder == null || categoryFolder == null) {
-            return Optional.empty();
-        }
-
+    private TreeSearchHitDTO toSearchHit(FileInfo fileInfo, List<Folder> ancestry) {
         TreeSearchHitDTO hit = new TreeSearchHitDTO();
         hit.setFileId(fileInfo.getId());
         hit.setFileName(fileInfo.getFileName());
         hit.setFileTitle(fileInfo.getDescription());
-        hit.setCategoryId(categoryFolder.getId());
-        hit.setCategoryTitle(categoryFolder.getDisplayName());
-        hit.setSubCategoryId(subCategoryFolder.getId());
-        hit.setSubCategoryTitle(subCategoryFolder.getDisplayName());
-        hit.setMainTagId(tagFolder.getId());
-        hit.setMainTagTitle(tagFolder.getDisplayName());
-        return Optional.of(hit);
+        hit.setFolderIds(ancestry.stream().map(Folder::getId).toList());
+        hit.setFolderTitles(ancestry.stream()
+                .map(f -> f.getDisplayName() == null || f.getDisplayName().isBlank() ? f.getName() : f.getDisplayName())
+                .toList());
+        return hit;
     }
 
     // ------------------------------------------------------------------ levels
@@ -200,19 +185,9 @@ public class FileTreeService {
     // ------------------------------------------------------------------ mapping
 
     private TreeNodeDTO toFolderNode(Folder folder, int childCount) {
-        NodeType type = switch (folder.getKind()) {
-            case CATEGORY -> NodeType.CATEGORY;
-            case SUB_CATEGORY -> NodeType.SUB_CATEGORY;
-            case TAG -> NodeType.MAIN_TAG;
-            default -> throw new InvalidDataException("folder id=" + folder.getId() + " is a " + folder.getKind() + ", not a tree level");
-        };
-        String icon = switch (type) {
-            case CATEGORY -> "bi-folder-fill";
-            case SUB_CATEGORY -> "bi-folder";
-            default -> "bi-folder2";
-        };
-        TreeNodeDTO node = base(type, folder.getId(), folder.getName(), folder.getDisplayName(), icon);
-        if (type == NodeType.CATEGORY && folder.getTagGroup() != null) {
+        TreeNodeDTO node = base(NodeType.FOLDER, folder.getId(), folder.getName(), folder.getDisplayName(),
+                childCount > 0 ? "bi-folder-fill" : "bi-folder2");
+        if (folder.getTagGroup() != null) {
             node.setNote(folder.getTagGroup().getTitle());
         }
         node.setChildCount(childCount);

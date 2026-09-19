@@ -310,16 +310,27 @@ add-kind form (prefilled from the probe when there was one; only for `SAVE_CONTE
 catalogue table with a built-in / custom badge and a delete button on custom rows. The probe's
 hex and media types are `technical` and `dir="ltr"`; everything else follows the page direction.
 
-The upload form has two modes. Opened plainly, it asks for the place with three dependent selects
-(category, sub-category, tag folder), each filled from `/resource/folders/children?folderId=` as
-the one above it changes; what is posted is the tag folder's id as `folderId`. Opened from the
-explorer's "upload here" button - `/files/create?folderId=` -
-the place is fixed: the path down to the folder is shown read-only with a "change target" link back
-to the plain form, and a hidden `folderId` is what gets posted. The selects are not rendered in
-that mode; hidden-but-`required` controls would block the submit. A folder that cannot be uploaded
-into (not a tag folder, or outside the person's write grants) drops the form back to the plain mode
-with a message rather than an error page - the person came to upload, and the form is where they
-can still do that.
+The upload form asks for the place with the **folder chooser** (below): opened plainly it
+starts at `Home` with nothing chosen; opened from the explorer's "upload here" button -
+`/files/create?folderId=` - it starts on that folder with it already chosen and its path
+inlined for the first render (`window.UPLOAD_TARGET_PATH`). Either way a hidden `folderId` is
+what posts, and the submit handler refuses an empty one, since the browser does not validate a
+hidden input. A folder that cannot be uploaded into (the root, or outside the person's write
+grants) drops the form back to an unchosen target with a message rather than an error page -
+the person came to upload, and the form is where they can still do that.
+
+### The folder chooser
+
+One component for every "which folder?" question: `fragments.html :: folder-chooser` is the
+markup, `window.folderChooser(config)` in `app.js` the Alpine behaviour, and the enclosing
+element declares `x-data="folderChooser({url, initialId, initialPath, rootTitle, selectRoot,
+copy})"`. It drills down through `/resource/folders/children` - the same endpoint the explorer
+reads, so it shows exactly the folders the person may walk into - as a crumb row (each crumb
+goes back up), a list of child folders (each goes down, with the count badge), and "انتخاب این
+پوشه" for the folder on screen. The choice is `chosen` (`{id, title, path}`) and a
+`folder-chosen` event on the root element, which the upload form binds to its hidden input and
+the explorer's move dialog to its target. `selectRoot` says whether `Home` may be chosen (a
+move's target may be the root; an upload's may not).
 
 ### Detail pages
 
@@ -384,17 +395,17 @@ user. The menu is always a white surface even though its trigger sits in the dar
 `.app-tree` styles the file tree at `/files/tree`. The view is **read-only for now**; drag-and-drop
 is planned once the storage port can express a move (roadmap Phase 5).
 
-The tree shows the three folder levels - category, sub-category and tag - which since Phase 7
-step 4 are the only structure there is (one `folder` table; the node types keep the names the
-tree always used, `MAIN_TAG` for a tag folder). A category node's note is the title of the tag
-group it carries.
+The tree shows folders to any depth (one `folder` table; one `FOLDER` node type since `V2.9`,
+whose children are its folders and then its files). A top-level folder's note is the title of
+the tag group it carries. A search hit carries `folderIds` / `folderTitles`, the chain down to
+the file, which `revealHit` opens level by level.
 
 Rows are held as a **flat list**, each carrying its `depth`, rather than as nested markup:
 
 ```
-rows = [ {depth:0, type:CATEGORY,     open:true},
-         {depth:1, type:SUB_CATEGORY, open:true},
-         {depth:2, type:MAIN_TAG,     open:false} ]
+rows = [ {depth:0, type:FOLDER, open:true},
+         {depth:1, type:FOLDER, open:true},
+         {depth:2, type:FILE,   open:false} ]
 ```
 
 Opening a folder splices its children in after it; closing removes every following row that is
@@ -410,17 +421,20 @@ every `@ManyToOne` in this codebase is `EAGER`, so one node drags in its whole a
 ### Managing folders from the explorer
 
 The explorer (`file-management/files/file-explorer.html`) is where the tree is edited, since
-Phase 7 step 4 removed the taxonomy pages. Three controls sit in the content pane's toolbar,
+Phase 7 step 4 removed the taxonomy pages. Four controls sit in the content pane's toolbar,
 each rendered only for a permission (`sec:authorize` on `REST_CREATE_FOLDER`,
-`REST_RENAME_FOLDER`, `REST_DELETE_FOLDER`) and shown only when the folder on screen reports
-`manageable` (the caller holds `WRITE` on it) and the operation applies: *new folder* on any
-folder that can hold one (not a tag folder), *rename* on anything but the root, *delete* on an
-empty folder that is not the root. No disabled buttons stand in for what a person cannot do.
+`REST_RENAME_FOLDER`, `REST_MOVE_FOLDER`, `REST_DELETE_FOLDER`) and shown only when the folder
+on screen reports `manageable` (the caller holds `WRITE` on it) and the operation applies:
+*new folder* while `canHoldFolders` (the depth limit is not reached), *rename* and *move* on
+anything but the root, *delete* on an empty folder that is not the root. No disabled buttons
+stand in for what a person cannot do. Move opens a panel with the folder chooser
+(`selectRoot: true`) and one button that becomes active once a target is chosen.
 
 Create and rename share one inline form (`.explorer-manage`, under the toolbar, `x-show` on
 `manage.mode`): a directory-safe name (`technical`, `dir="ltr"`, `pattern="[^./ ]+"`), a label,
-and - when creating under the root - a tag-group select fed by `/resource/folders/tag-groups`
-with a "new group" option that reveals a name field. The form posts JSON with the CSRF header
+and - when creating under the root, or renaming a top-level folder - a tag-group select fed by
+`/resource/folders/tag-groups`; on a create its empty option is "new group" and reveals a name
+field, on a rename it is "keep". The form posts JSON with the CSRF header
 through `writeJson`, and shows a problem response's `detail` beside the buttons; a `409` on a
 taken name gets its own copy (`explorer.manage.nameTaken`). Delete asks with `confirm()` and
 reports a non-empty folder with `explorer.manage.deleteRefused`. After any of the three the

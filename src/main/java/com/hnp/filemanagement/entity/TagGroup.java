@@ -18,9 +18,9 @@ import java.time.LocalDateTime;
  *
  * <p>This is what the old taxonomy called a general tag - "a top-level grouping label with no
  * directory of its own", which is what a group of tags is. It is <em>not</em> a folder: a
- * {@code CATEGORY} folder carries one ({@code folder.tag_group_id}), and the tags of every file
- * beneath that category are in it. Created by {@code FolderService} when a category names a new
- * group; {@code TagMirrorService} writes the tags.
+ * top-level folder carries one ({@code folder.tag_group_id}), and the tags of every file
+ * beneath it are in it. Created by {@code FolderService} when a top-level folder names a new
+ * group, or on the settings page ({@code TagGroupService}); {@code TagMirrorService} writes the tags.
  */
 @Entity
 @Table(name = "tag_group")

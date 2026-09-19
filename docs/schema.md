@@ -87,16 +87,16 @@ the reset is documented; they are not shipped as a script on purpose. Developers
                         └──────────────┬────────┘                        │            │
                                        ▼                                 │            ▼
                                      folder  ◄───────────────────────────┴──── (folder)
-                                       │        one tree, three levels deep:
-                                       │        Home > CATEGORY > SUB_CATEGORY > TAG
-                                       │        (a CATEGORY row carries a tag_group_id)
+                                       │        one tree, any depth up to a limit:
+                                       │        Home > FOLDER > FOLDER > ... (V2.9)
+                                       │        (a depth-1 row carries a tag_group_id)
                               folder_id│
                                        ▼
                                    file_info ──< file_details
                                        │
                                        └──< file_tag >── tag >── tag_group
-                                            (a file's tags: its three folder names,
-                                             in its category's group)
+                                            (a file's tags: every folder name on its
+                                             chain, in the top-level folder's group)
 
       action_history            every mutation, by entity and id
       flyway_schema_history     Flyway's own ledger; not described below
@@ -107,7 +107,7 @@ Two groups:
 | Group | Tables | State |
 |---|---|---|
 | **Identity and permissions** | `user`, `role`, `user_role`, `permission`, `permission_role`, `api_key`, `api_key_folder`, `upload_policy`, `upload_policy_rule`, `content_kind` | stable |
-| **Where a file is** | `folder`, `role_folder`, `user_folder`, `file_info.folder_id` | authoritative since `V2.8` (Phase 7 step 4); `folder_id` is `NOT NULL` and names a `TAG` folder |
+| **Where a file is** | `folder`, `role_folder`, `user_folder`, `file_info.folder_id` | authoritative since `V2.8` (Phase 7 step 4); any depth since `V2.9`; `folder_id` is `NOT NULL` and names any folder but the root |
 | **What a file is, and about** | `file_info`, `file_details`, `tag_group`, `tag`, `file_tag` | stable; a file's tags are derived from its folder chain, `tag_group` is the label group a category carries |
 
 The taxonomy tables (`general_tag`, `file_category`, `file_sub_category`, `main_tag_file`) and the
@@ -121,7 +121,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V2.8`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
+_As of migration `V2.9`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
 
 ### `action_history`
 

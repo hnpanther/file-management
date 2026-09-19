@@ -5,10 +5,7 @@ import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.UploadRefusedException;
-import com.hnp.filemanagement.dto.FolderContentDTO;
 import com.hnp.filemanagement.service.FileService;
-import com.hnp.filemanagement.service.FolderContentService;
-import com.hnp.filemanagement.service.FolderService;
 import com.hnp.filemanagement.service.UploadPolicyService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import com.hnp.filemanagement.util.ModelConverterUtil;
@@ -29,7 +26,6 @@ import org.springframework.validation.BindingResult;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 
 /**
  * The file pages: upload, the paged list, one file with its versions, the public list, and the two
@@ -52,9 +48,6 @@ public class FileController {
 
     private final GlobalGeneralLogging globalGeneralLogging;
 
-    private final FolderContentService folderContentService;
-    private final FolderService folderService;
-
     private final FileService fileService;
     private final UploadPolicyService uploadPolicyService;
 
@@ -65,22 +58,11 @@ public class FileController {
     private int defaultElementSize;
 
 
-    public FileController(GlobalGeneralLogging globalGeneralLogging, FolderContentService folderContentService,
-                          FolderService folderService, FileService fileService, UploadPolicyService uploadPolicyService) {
+    public FileController(GlobalGeneralLogging globalGeneralLogging, FileService fileService,
+                          UploadPolicyService uploadPolicyService) {
         this.globalGeneralLogging = globalGeneralLogging;
-        this.folderContentService = folderContentService;
-        this.folderService = folderService;
         this.fileService = fileService;
         this.uploadPolicyService = uploadPolicyService;
-    }
-
-    /**
-     * The first level of the upload form's selects: the category folders this person may at
-     * least walk into. The two levels below come from {@code /resource/folders/children} as the
-     * person chooses, the same endpoint the explorer reads.
-     */
-    private List<FolderContentDTO.FolderEntry> categoryFoldersFor(int principalId) {
-        return folderContentService.contentOf(folderService.root().getId(), 0, 1, principalId).folders();
     }
 
     /**
@@ -109,11 +91,13 @@ public class FileController {
 
     /**
      * The upload form. With {@code ?folderId=} - the link the explorer offers on a folder the
-     * person may write into - the target is fixed to that folder and shown as a path instead of
-     * the three selects (roadmap 7.2 step 5). Without it, the form is as it always was.
+     * person may write into - the target is fixed to that folder and shown as a path (roadmap
+     * 7.2 step 5). Without it, the form opens its folder chooser at the root, which reads
+     * {@code /resource/folders/children} as the person drills down - the same endpoint the
+     * explorer reads.
      *
-     * <p>A {@code folderId} that cannot be filed into - not a tag folder, or outside the person's
-     * write grants - falls back to the plain form with a message rather than an error page: the
+     * <p>A {@code folderId} that cannot be filed into - the root, or outside the person's write
+     * grants - falls back to the plain form with a message rather than an error page: the
      * person came here to upload, and the form is where they can still do that.
      */
     //CREATE_FILE_PAGE
@@ -147,7 +131,6 @@ public class FileController {
         }
 
         model.addAttribute("file", fileInfoDTO);
-        model.addAttribute("listCategory", categoryFoldersFor(principalId));
         model.addAttribute("pageType", "create");
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", false);
@@ -220,16 +203,14 @@ public class FileController {
         if (fileInfoDTO.getFolderId() != null) {
             try {
                 FileInfoDTO target = fileService.uploadTargetOf(fileInfoDTO.getFolderId(), principalId);
-                fileInfoDTO.setFileCategoryNameDescription(target.getFileCategoryNameDescription());
-                fileInfoDTO.setFileSubCategoryNameDescription(target.getFileSubCategoryNameDescription());
-                fileInfoDTO.setTagDescription(target.getTagDescription());
+                fileInfoDTO.setFolderPath(target.getFolderPath());
+                fileInfoDTO.setFolderTitle(target.getFolderTitle());
             } catch (InvalidDataException | AccessDeniedException e) {
                 fileInfoDTO.setFolderId(null);
             }
         }
 
         model.addAttribute("file", fileInfoDTO);
-        model.addAttribute("listCategory", categoryFoldersFor(principalId));
         model.addAttribute("pageType", "create");
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);

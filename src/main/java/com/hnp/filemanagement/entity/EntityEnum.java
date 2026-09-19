@@ -23,7 +23,8 @@ public enum EntityEnum {
     ApiKey("api_key"),
     UploadPolicy("upload_policy"),
     ContentKind("content_kind"),
-    Folder("folder")
+    Folder("folder"),
+    TagGroup("tag_group")
     ;
 
 

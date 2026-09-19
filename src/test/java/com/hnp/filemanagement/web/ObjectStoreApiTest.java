@@ -65,6 +65,7 @@ class ObjectStoreApiTest extends MySqlSupport {
     private int creatorId;
     private String bucket;
     private String prefix;
+    private int bucketFolderId;
     private int tagFolderId;
     private int otherTagFolderId;
     private String otherTagName;
@@ -77,6 +78,7 @@ class ObjectStoreApiTest extends MySqlSupport {
 
         FolderFixture.Chain chain = FolderFixture.chain(folderRepository, tagGroupRepository, owner);
         bucket = chain.category().getName();
+        bucketFolderId = chain.categoryId();
         tagFolderId = chain.tagId();
         Folder other = FolderFixture.tag(folderRepository, chain.subCategory(), owner, "Other" + TestData.nextSequence());
         otherTagName = other.getName();
@@ -182,33 +184,44 @@ class ObjectStoreApiTest extends MySqlSupport {
     }
 
     /**
-     * File names are unique per sub-category, not per tag folder: the bytes live under
-     * {@code {category}/{subCategory}/{name}} with no tag segment. The first version of this
-     * checked write access on the folder in the key, then appended the version to the file that
-     * owns the name - under a sibling folder - and answered 404 for the key it had just written.
-     * The conflict has to come before anything is stored.
+     * File names are unique per folder, and since {@code V2.9} the bytes are too (a directory per
+     * folder id), so the same name under a sibling folder is another file - not a conflict and
+     * not a version of the first. Each write lands where its key says, and the bucket folder
+     * itself takes a file as well.
      */
     @Test
-    @DisplayName("a name already taken under a sibling folder is a conflict, not a write elsewhere")
-    void aNameTakenUnderASiblingFolderIsAConflict() throws Exception {
-        String credential = keyWith(tagFolderId + ":WRITE", otherTagFolderId + ":WRITE");
+    @DisplayName("the same name under a sibling folder, or in the bucket itself, is another file")
+    void theSameNameElsewhereIsAnotherFile() throws Exception {
+        String credential = keyWith(tagFolderId + ":WRITE", otherTagFolderId + ":WRITE", bucketFolderId + ":WRITE");
         String otherPrefix = prefix.substring(0, prefix.indexOf('/')) + "/" + otherTagName;
 
         mockMvc.perform(put("/api/v2/" + bucket + "/" + prefix + "/report/report.txt")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential)
                         .contentType(MediaType.TEXT_PLAIN).content("a".getBytes(StandardCharsets.UTF_8)))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.version").value(1));
 
         mockMvc.perform(put("/api/v2/" + bucket + "/" + otherPrefix + "/report/report.txt")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential)
                         .contentType(MediaType.TEXT_PLAIN).content("b".getBytes(StandardCharsets.UTF_8)))
-                .andExpect(status().isConflict())
-                .andExpect(content().string(containsString("another folder")));
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.key").value(otherPrefix + "/report/v1/report.txt"));
+
+        mockMvc.perform(put("/api/v2/" + bucket + "/report/report.txt")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential)
+                        .contentType(MediaType.TEXT_PLAIN).content("c".getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.key").value("report/v1/report.txt"));
 
         mockMvc.perform(get("/api/v2/" + bucket + "/" + prefix + "/report/v2/report.txt")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
-                // nothing was appended to the file that owns the name
+                // nothing was appended to the first file
                 .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v2/" + bucket + "/report/v1/report.txt")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
+                .andExpect(status().isOk())
+                .andExpect(content().string("c"));
     }
 
     /**

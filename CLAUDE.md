@@ -38,11 +38,15 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   one (`address`, `version`, `extension`) is what remains for directory-level deletes. Do not add
   a path-shaped method, and do not rebuild a location from folder names — `file_details.storage_key`
   is the only record of where the bytes are, and folders are renamed without moving them.
-* **The tree is three folder levels and a general tag is not a folder.** `Folder` kinds are
-  `ROOT` → `CATEGORY` → `SUB_CATEGORY` → `TAG`, files live in `TAG` folders only, and a
-  category carries a `TagGroup` (the old general tag) in `folder.tag_group_id`. Do not add a
-  fourth level or treat a tag group as a place. A file name is unique **per sub-category**, not
-  per folder, because the disk layout has no tag segment (`docs/arch.md`, section 4).
+* **A general tag is not a folder.** `Folder` kinds are `ROOT`, `FOLDER` and `USER_HOME`; the
+  tree goes to `filemanagement.folders.max-depth`, every folder below the root holds folders and
+  files, and only a top-level folder carries a `TagGroup` (the old general tag) in
+  `folder.tag_group_id`. Do not treat a tag group as a place. A chain of any depth cannot be
+  fetch-joined: load a page's ancestors with `FolderService.ancestryOf`, off the materialised
+  path, never by walking `getParent()` per row.
+* **New files are stored by folder id** (`folders/{id}/…`); old ones by the names of the
+  folders above them as they stood. Neither is ever rebuilt from the tree, and `folders` is a
+  reserved top-level name. Do not move bytes on a rename or a move.
 * **Adding a field to `ModelConverterUtil` can add joins to every list page**, because every
   `@ManyToOne` is `EAGER`.
 * **Flyway owns the schema; `docs/schema.md` describes it.** The old `schema-db/schema.sql`

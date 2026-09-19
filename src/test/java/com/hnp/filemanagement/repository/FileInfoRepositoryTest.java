@@ -66,17 +66,16 @@ class FileInfoRepositoryTest extends MySqlSupport {
     // ---------------------------------------------------------------- fetch plans
 
     @Test
-    @DisplayName("the file lookup resolves the whole folder chain in one query")
-    void resolvesTheFolderChain() {
+    @DisplayName("the file lookup fetches its revisions and its folder in one query")
+    void resolvesTheFolder() {
         FileInfo fileInfo = underTest.findByIdAndFetchFileDetails(fileInfoId).orElseThrow();
 
-        // Everything the converter walks has to be initialised, or rendering the page would issue
-        // a query per row - the N+1 that the lazy mapping makes visible instead of hiding.
+        // What the converter walks has to be initialised, or rendering the page would issue a
+        // query per row - the N+1 that the lazy mapping makes visible instead of hiding. The
+        // folders above are loaded for the whole page at once from the path (FolderService).
         assertThat(Hibernate.isInitialized(fileInfo.getFileDetailsList())).isTrue();
         assertThat(Hibernate.isInitialized(fileInfo.getFolder())).isTrue();
-        assertThat(Hibernate.isInitialized(fileInfo.getFolder().getParent())).isTrue();
-        assertThat(Hibernate.isInitialized(fileInfo.getFolder().getParent().getParent())).isTrue();
-        assertThat(Hibernate.isInitialized(fileInfo.getFolder().getParent().getParent().getTagGroup())).isTrue();
+        assertThat(fileInfo.getFolder().getPath()).endsWith("/" + chain.tagId() + "/");
     }
 
     @Test
@@ -106,7 +105,6 @@ class FileInfoRepositoryTest extends MySqlSupport {
 
         assertThat(page.getContent()).hasSize(1);
         assertThat(Hibernate.isInitialized(page.getContent().getFirst().getFolder())).isTrue();
-        assertThat(Hibernate.isInitialized(page.getContent().getFirst().getFolder().getParent().getParent())).isTrue();
     }
 
     /**
@@ -226,22 +224,18 @@ class FileInfoRepositoryTest extends MySqlSupport {
     }
 
     @Test
-    @DisplayName("files are counted per folder, and a name is found from any sibling tag folder of the sub-category")
-    void countsFilesPerFolderAndFindsNamesPerSubCategory() {
+    @DisplayName("files are counted per folder, and the same name under a sibling folder is another file")
+    void countsFilesPerFolder() {
         assertThat(underTest.countByFolderId(chain.tagId())).isEqualTo(1);
         assertThat(underTest.countByFolderId(0)).isZero();
 
         String taken = underTest.findById(fileInfoId).orElseThrow().getFileName();
         var sibling = FolderFixture.tag(folderRepository, chain.subCategory(), creator, "Sibling" + TestData.nextSequence());
+        underTest.saveAndFlush(TestData.fileInfo(creator, sibling, taken));
 
+        assertThat(underTest.countByFolderId(sibling.getId())).isEqualTo(1);
         assertThat(underTest.findByFolderIdAndFileName(chain.tagId(), taken)).isPresent();
-        assertThat(underTest.findByFolderIdAndFileName(sibling.getId(), taken)).isEmpty();
-        // The upload check looks across the sub-category, because the bytes of every file under
-        // it share {category}/{subCategory}/{name}: a name taken under one tag is taken under all.
-        assertThat(underTest.findByFileNameUnderSubCategory(chain.subCategoryId(), taken))
-                .isPresent().get()
-                .satisfies(found -> assertThat(found.getFolder().getId()).isEqualTo(chain.tagId()));
-        assertThat(underTest.findByFileNameUnderSubCategory(chain.subCategoryId(), taken + "-other")).isEmpty();
+        assertThat(underTest.findByFolderIdAndFileName(sibling.getId(), taken)).isPresent();
     }
 
     private void flushAndClear() {

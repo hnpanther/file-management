@@ -8,6 +8,7 @@ import lombok.Data;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import com.hnp.filemanagement.dto.FolderContentDTO;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,23 +34,17 @@ public class FileInfoDTO {
     private Integer lastVersion;
 
     /**
-     * The tag folder the file is in. On an upload it is the target and the only way to name one
-     * (Phase 7 step 4); on a read it is where the file is. The label fields below carry the three
-     * folder levels under the names the pages have always used for them: {@code fileCategory*}
-     * is the category folder, {@code fileSubCategory*} the sub-category folder, {@code tag*} the
-     * tag folder itself. {@code fileCategoryDisplayName} adds the category's tag group in brackets.
+     * The folder the file is in. On an upload it is the target and the only way to name one
+     * (Phase 7 step 4); on a read it is where the file is, and {@link #folderPath} is every
+     * folder from the top level down to it, for the pages to show as a path.
      */
     private Integer folderId;
 
-    private String fileSubCategoryName;
-    private String fileSubCategoryNameDescription;
+    /** The folders above the file, outermost first, the file's own folder last; empty on an upload request. */
+    private List<FolderContentDTO.FolderRef> folderPath = new ArrayList<>();
 
-    private String fileCategoryName;
-    private String fileCategoryNameDescription;
-    private String fileCategoryDisplayName;
-
-    private String tagName;
-    private String tagDescription;
+    /** {@link #folderPath} as one readable line: the labels joined with a separator. */
+    private String folderTitle;
 
     @NotNull(groups = InsertValidation.class)
     @ValidFile(groups = InsertValidation.class)

@@ -34,9 +34,6 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
             SELECT fd FROM FileDetails fd
             JOIN FETCH fd.fileInfo fi
             JOIN FETCH fi.folder t
-            JOIN FETCH t.parent s
-            JOIN FETCH s.parent c
-            LEFT JOIN FETCH c.tagGroup
             WHERE fd.id = :id AND fd.state = 0 AND fi.state = 0
             """)
     Optional<FileDetails> findPublicFile(@Param("id") int id);
@@ -46,31 +43,25 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
             SELECT fd FROM FileDetails fd
             JOIN FETCH fd.fileInfo fi
             JOIN FETCH fi.folder t
-            JOIN FETCH t.parent s
-            JOIN FETCH s.parent c
-            LEFT JOIN FETCH c.tagGroup
             WHERE fd.id = :id
             """)
     Optional<FileDetails> findByIdWithFileInfo(@Param("id") int id);
 
     /**
      * The public file list. Only active versions of active files, filtered by a term matched
-     * against the version, the file, and the display names of the three folders above it.
+     * against the version, the file, and the display name of every folder above it.
      */
     @Query("""
             SELECT fd FROM FileDetails fd
             JOIN FETCH fd.fileInfo fi
             JOIN FETCH fi.folder t
-            JOIN FETCH t.parent s
-            JOIN FETCH s.parent c
-            LEFT JOIN FETCH c.tagGroup
             WHERE fd.state = 0 AND fi.state = 0
               AND ((:search) IS NULL
                    OR fd.fileName LIKE CONCAT('%', (:search), '%')
                    OR fd.description LIKE CONCAT('%', (:search), '%')
-                   OR t.displayName LIKE CONCAT('%', (:search), '%')
-                   OR s.displayName LIKE CONCAT('%', (:search), '%')
-                   OR c.displayName LIKE CONCAT('%', (:search), '%'))
+                   OR EXISTS (SELECT a FROM Folder a
+                              WHERE t.path LIKE CONCAT(a.path, '%') AND a.depth > 0
+                                AND a.displayName LIKE CONCAT('%', (:search), '%')))
             """)
     Page<FileDetails> searchPublicFiles(@Param("search") String search, Pageable pageable);
 
