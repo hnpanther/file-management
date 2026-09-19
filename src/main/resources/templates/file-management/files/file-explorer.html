@@ -16,8 +16,10 @@
   navbar.html uses, which is known to be right under RTL.
 
   Everything on screen comes from /resource/folders/*, including the first level: the controller
-  renders an empty shell and passes only the deep-link folder id. Read-only by design - no upload,
-  no rename, and no disabled buttons standing in for them.
+  renders an empty shell and passes only the deep-link folder id. Uploads leave for the upload
+  form; the tree itself is managed here since Phase 7 step 4 (new folder, rename, delete of an
+  empty folder), each control shown only where the caller holds WRITE on the folder on screen,
+  and never a disabled button standing in for one they do not.
 -->
 <body>
 
@@ -140,6 +142,32 @@
                         <i class="bi bi-upload" aria-hidden="true"></i>
                         <span th:text="#{explorer.uploadHere}">بارگذاری در این پوشه</span>
                     </a>
+                    <!--
+                      Managing the tree (Phase 7 step 4): a new child under a folder that can hold
+                      one, a rename, and a delete of an empty folder. Shown where the caller holds
+                      WRITE on the folder on screen; each endpoint checks its own permission.
+                    -->
+                    <button type="button" class="btn btn-secondary btn-sm" x-cloak
+                            x-show="manageable && folder && folder.kind !== 'TAG' && folder.kind !== 'USER_HOME'"
+                            @click="openManage('create')"
+                            sec:authorize="hasAuthority('REST_CREATE_FOLDER') || hasAuthority('ADMIN')">
+                        <i class="bi bi-folder-plus" aria-hidden="true"></i>
+                        <span th:text="#{explorer.manage.newFolder}">پوشهٔ جدید</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" x-cloak
+                            x-show="manageable && folder && folder.kind !== 'ROOT' && folder.kind !== 'USER_HOME'"
+                            @click="openManage('rename')"
+                            sec:authorize="hasAuthority('REST_RENAME_FOLDER') || hasAuthority('ADMIN')">
+                        <i class="bi bi-pencil" aria-hidden="true"></i>
+                        <span th:text="#{explorer.manage.rename}">تغییر نام</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" x-cloak
+                            x-show="manageable && folder && folder.kind !== 'ROOT' && folder.kind !== 'USER_HOME' && folders.length === 0 && files.length === 0"
+                            @click="deleteFolder()"
+                            sec:authorize="hasAuthority('REST_DELETE_FOLDER') || hasAuthority('ADMIN')">
+                        <i class="bi bi-trash" aria-hidden="true"></i>
+                        <span th:text="#{explorer.manage.delete}">حذف پوشه</span>
+                    </button>
                     <span class="explorer-cell-muted" x-show="page && page.totalPages > 1" x-cloak
                           x-text="pagePosition()"></span>
                     <button type="button" class="btn btn-secondary btn-sm"
@@ -156,6 +184,48 @@
                     </button>
                 </div>
             </nav>
+
+            <!-- The create / rename form. One small form for both; `manage.mode` says which. -->
+            <form class="explorer-manage" x-show="manage.mode" x-cloak @submit.prevent="submitManage()"
+                  th:data-folders-url="@{/resource/folders}" x-ref="manageForm">
+                <div class="explorer-manage-fields">
+                    <label class="explorer-manage-field">
+                        <span th:text="#{explorer.manage.name}">نام پوشه (انگلیسی، بدون فاصله)</span>
+                        <input type="text" class="form-control technical" dir="ltr" x-model="manage.name"
+                               required maxlength="100" pattern="[^./ ]+" x-ref="manageName">
+                    </label>
+                    <label class="explorer-manage-field">
+                        <span th:text="#{explorer.manage.label}">عنوان نمایشی</span>
+                        <input type="text" class="form-control" x-model="manage.displayName" maxlength="200">
+                    </label>
+                    <!-- A category carries a tag group: pick one, or name a new one. -->
+                    <template x-if="manage.mode === 'create' && folder && folder.kind === 'ROOT'">
+                        <div class="explorer-manage-field">
+                            <span th:text="#{explorer.manage.tagGroup}">برچسب عمومی (گروه تگ)</span>
+                            <div class="flex flex-wrap gap-2">
+                                <select class="form-control" x-model="manage.tagGroupId">
+                                    <option value="" th:text="#{explorer.manage.newTagGroup}">گروه جدید...</option>
+                                    <template x-for="g in manage.groups" :key="g.id">
+                                        <option :value="g.id" x-text="g.title + ' (' + g.name + ')'"></option>
+                                    </template>
+                                </select>
+                                <input type="text" class="form-control" x-show="!manage.tagGroupId" x-model="manage.newTagGroupName"
+                                       maxlength="100" th:placeholder="#{explorer.manage.newTagGroupName}">
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm" :disabled="manage.busy">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" @click="manage.mode = null">
+                        <span th:text="#{explorer.manage.cancel}">انصراف</span>
+                    </button>
+                    <span class="text-sm text-red-600" x-text="manage.error" x-show="manage.error"></span>
+                </div>
+            </form>
 
             <div class="explorer-scroll">
 
@@ -371,7 +441,12 @@
         rootTitle:         [[#{explorer.root}]],
         childrenUrl:       [[@{/resource/folders/children}]],
         searchUrl:         [[@{/resource/folders/search}]],
-        filePage:          [[@{/files/file-info/}]]
+        filePage:          [[@{/files/file-info/}]],
+        foldersUrl:        [[@{/resource/folders}]],
+        manageFailed:      [[#{explorer.manage.failed}]],
+        confirmDelete:     [[#{explorer.manage.confirmDelete}]],
+        deleteRefused:     [[#{explorer.manage.deleteRefused}]],
+        nameTaken:         [[#{explorer.manage.nameTaken}]]
     };
 
     const INITIAL_FOLDER_ID = /*[[${initialFolderId}]]*/ null;
@@ -413,6 +488,36 @@
         return response.json();
     }
 
+    /** A write with the CSRF token, answering the JSON body - or throwing with the problem's detail. */
+    async function writeJson(url, method, body) {
+        const csrf = window.appCsrf();
+        const headers = { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" };
+        if (body !== null) {
+            headers["Content-Type"] = "application/json";
+        }
+        if (csrf.header && csrf.token) {
+            headers[csrf.header] = csrf.token;
+        }
+        const response = await fetch(url, {
+            method: method, headers: headers, credentials: "same-origin",
+            body: body === null ? undefined : JSON.stringify(body)
+        });
+        if (response.status === 401) {
+            throw new SessionExpiredError();
+        }
+        if (!response.ok) {
+            const error = new ExplorerError(response.status);
+            try {
+                const problem = await response.json();
+                error.detail = problem.detail;
+            } catch (ignored) {
+                // no JSON body: the status is the message
+            }
+            throw error;
+        }
+        return response.status === 204 ? null : response.json();
+    }
+
     function fileExplorer() {
         return {
             EX: EX,
@@ -425,7 +530,11 @@
             page: null,
             readable: true,
             writable: false,
+            manageable: false,
             currentFolderId: null,
+
+            // the create / rename form
+            manage: { mode: null, name: "", displayName: "", tagGroupId: "", newTagGroupName: "", groups: [], busy: false, error: "" },
 
             treeRows: [],
             treeLoading: false,
@@ -480,6 +589,8 @@
                 this.page = content.page;
                 this.readable = content.readable;
                 this.writable = content.writable;
+                this.manageable = content.manageable;
+                this.manage.mode = null;
             },
 
             fetchContent(folderId, pageNumber) {
@@ -671,6 +782,70 @@
                     return "bi-folder";
                 }
                 return "bi-folder-fill";
+            },
+
+            // ------------------------------------------------------------ managing the tree
+
+            /** Opens the form for a new child of the folder on screen, or for renaming it. */
+            async openManage(mode) {
+                this.manage.error = "";
+                this.manage.busy = false;
+                this.manage.mode = mode;
+                if (mode === "rename") {
+                    this.manage.name = this.folder.name;
+                    this.manage.displayName = this.folder.title === this.folder.name ? "" : this.folder.title;
+                } else {
+                    this.manage.name = "";
+                    this.manage.displayName = "";
+                    this.manage.tagGroupId = "";
+                    this.manage.newTagGroupName = "";
+                    if (this.folder.kind === "ROOT" && this.manage.groups.length === 0) {
+                        try {
+                            this.manage.groups = await readJson(EX.foldersUrl + "/tag-groups");
+                        } catch (e) {
+                            this.manage.groups = [];
+                        }
+                    }
+                }
+                this.$nextTick(() => this.$refs.manageName && this.$refs.manageName.focus());
+            },
+
+            async submitManage() {
+                this.manage.busy = true;
+                this.manage.error = "";
+                const creating = this.manage.mode === "create";
+                const body = creating
+                    ? { parentId: this.folder.id, name: this.manage.name, displayName: this.manage.displayName,
+                        tagGroupId: this.manage.tagGroupId ? Number(this.manage.tagGroupId) : null,
+                        newTagGroupName: this.manage.tagGroupId ? null : this.manage.newTagGroupName }
+                    : { name: this.manage.name, displayName: this.manage.displayName };
+                try {
+                    const answer = await writeJson(creating ? EX.foldersUrl : EX.foldersUrl + "/" + this.folder.id,
+                            creating ? "POST" : "PUT", body);
+                    this.manage.mode = null;
+                    // Re-read the folder on screen: the tree and the table both come from that read.
+                    await this.navigate(creating ? this.folder.id : this.folder.id);
+                    if (creating && answer && answer.id) {
+                        this.manage.groups = [];
+                    }
+                } catch (e) {
+                    this.manage.error = e.status === 409 ? EX.nameTaken : (e.detail || EX.manageFailed);
+                } finally {
+                    this.manage.busy = false;
+                }
+            },
+
+            async deleteFolder() {
+                if (!window.confirm(EX.confirmDelete)) {
+                    return;
+                }
+                const parentId = this.breadcrumb.length ? this.breadcrumb[this.breadcrumb.length - 1].id : null;
+                try {
+                    await writeJson(EX.foldersUrl + "/" + this.folder.id, "DELETE", null);
+                    await this.navigate(parentId);
+                } catch (e) {
+                    this.error = e.status === 409 ? EX.deleteRefused : (e.detail || EX.manageFailed);
+                }
             },
 
             /** The upload form, opened on the folder on screen. */

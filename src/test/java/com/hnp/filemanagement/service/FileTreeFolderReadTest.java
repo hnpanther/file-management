@@ -1,27 +1,21 @@
 package com.hnp.filemanagement.service;
 
-import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
-import com.hnp.filemanagement.dto.FileSubCategoryDTO;
-import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.dto.TreeNodeDTO;
 import com.hnp.filemanagement.dto.TreeNodeDTO.NodeType;
 import com.hnp.filemanagement.dto.TreeSearchHitDTO;
 import com.hnp.filemanagement.entity.FileInfo;
+import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderPermission;
-import com.hnp.filemanagement.entity.FolderSourceType;
-import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.entity.UserFolderGrant;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
+import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
@@ -29,11 +23,7 @@ import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.TestPropertySource;
@@ -45,15 +35,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The tree after its file reads moved from the main tag to {@code file_info.folder_id} (roadmap
- * 7.2 step 3, reader 4): a tag node's children and count, opening a file, and placing a search
- * hit on the branch down to it.
+ * The tree read from the folder table alone (Phase 7 step 4): a tag node's children and count,
+ * opening a file, and placing a search hit on the branch down to it.
  *
- * <p>The oracle is the taxonomy: the files whose main tag is the one a folder mirrors, the mirror
- * folders of the file's category / sub-category / tag, and those rows' labels.
+ * <p>The oracle is the rows: the files whose {@code folder_id} is the tag folder, the folder's
+ * own ancestors, and those rows' display names. A file without a folder cannot exist any more
+ * ({@code folder_id} is NOT NULL), so the fail-closed case this class used to hold is gone with
+ * the column's nullability.
  */
 @ServiceIntegrationTest
-@ExtendWith(OutputCaptureExtension.class)
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
 class FileTreeFolderReadTest extends MySqlSupport {
 
@@ -61,37 +51,23 @@ class FileTreeFolderReadTest extends MySqlSupport {
     private FileTreeService underTest;
     @Autowired
     private FileService fileService;
-    @Autowired
-    private FileCategoryService fileCategoryService;
-    @Autowired
-    private FileSubCategoryService fileSubCategoryService;
-    @Autowired
-    private MainTagFileService mainTagFileService;
 
     @Autowired
     private FileInfoRepository fileInfoRepository;
     @Autowired
     private FolderRepository folderRepository;
     @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
+    private TagGroupRepository tagGroupRepository;
     @Autowired
     private UserRepository userRepository;
     @Autowired
     private RoleRepository roleRepository;
     @Autowired
     private EntityManager entityManager;
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
 
     private int adminId;
     private int readerId;
-    private int categoryId;
+    private FolderFixture.Chain chain;
     private int subAId;
     private int tagA1;
     private int tagA2;
@@ -108,11 +84,10 @@ class FileTreeFolderReadTest extends MySqlSupport {
         adminId = userRepository.save(admin).getId();
         readerId = userRepository.save(TestData.user()).getId();
 
-        int generalTagId = generalTagRepository.save(TestData.generalTag(admin, "gt" + TestData.nextSequence())).getId();
-        categoryId = createCategory("Cat" + TestData.nextSequence(), generalTagId);
-        subAId = createSubCategory("SubA" + TestData.nextSequence());
-        tagA1 = createMainTag("TagA1" + TestData.nextSequence(), subAId);
-        tagA2 = createMainTag("TagA2" + TestData.nextSequence(), subAId);
+        chain = FolderFixture.chain(folderRepository, tagGroupRepository, admin);
+        subAId = chain.subCategoryId();
+        tagA1 = chain.tagId();
+        tagA2 = FolderFixture.tag(folderRepository, chain.subCategory(), admin, "TagA2" + TestData.nextSequence()).getId();
 
         // A token of this run in every name: the search below is unrestricted for the
         // administrator and would otherwise also find "report" files that committed tests left
@@ -127,18 +102,36 @@ class FileTreeFolderReadTest extends MySqlSupport {
     // ---------------------------------------------------------------- a tag node
 
     @Test
-    @DisplayName("a tag node's children are exactly the files the taxonomy files under that tag, and its count says so")
+    @DisplayName("a tag node's children are exactly the files filed under that folder, and its count says so")
     void aTagNodeListsAndCountsItsFiles() {
-        List<TreeNodeDTO> children = underTest.getChildren(NodeType.MAIN_TAG, folderOf(tagA1), adminId);
+        List<TreeNodeDTO> children = underTest.getChildren(NodeType.MAIN_TAG, tagA1, adminId);
 
         assertThat(children).extracting(TreeNodeDTO::getName)
                 .containsExactlyElementsOf(expectedNamesUnder(tagA1).stream().sorted().toList());
+        assertThat(children).extracting(TreeNodeDTO::getName)
+                .containsExactly("alpha-" + token, "beta-" + token);
 
-        List<TreeNodeDTO> tags = underTest.getChildren(NodeType.SUB_CATEGORY, folderOf(FolderSourceType.SUB_CATEGORY, subAId), adminId);
-        assertThat(tags).filteredOn(node -> node.getId() == folderOf(tagA1)).singleElement()
+        List<TreeNodeDTO> tags = underTest.getChildren(NodeType.SUB_CATEGORY, subAId, adminId);
+        assertThat(tags).filteredOn(node -> node.getId() == tagA1).singleElement()
                 .extracting(TreeNodeDTO::getChildCount).isEqualTo(2);
-        assertThat(tags).filteredOn(node -> node.getId() == folderOf(tagA2)).singleElement()
+        assertThat(tags).filteredOn(node -> node.getId() == tagA2).singleElement()
                 .extracting(TreeNodeDTO::getChildCount).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("a node is opened as what it is: a tag folder is not a category, and a category carries its group's title")
+    void aNodeIsOpenedAsItsKind() {
+        assertThatThrownBy(() -> underTest.getChildren(NodeType.CATEGORY, tagA1, adminId))
+                .isInstanceOf(com.hnp.filemanagement.exception.InvalidDataException.class)
+                .hasMessageContaining("TAG");
+
+        assertThat(underTest.getRoots(adminId))
+                .filteredOn(node -> node.getId() == chain.categoryId()).singleElement()
+                .satisfies(node -> {
+                    assertThat(node.getType()).isEqualTo(NodeType.CATEGORY);
+                    assertThat(node.getNote()).isEqualTo(chain.category().getTagGroup().getTitle());
+                    assertThat(node.getChildCount()).isEqualTo(1);
+                });
     }
 
     // ---------------------------------------------------------------- opening a file
@@ -149,7 +142,7 @@ class FileTreeFolderReadTest extends MySqlSupport {
         assertThatThrownBy(() -> underTest.getChildren(NodeType.FILE, alpha.getFileInfoId(), readerId))
                 .isInstanceOf(AccessDeniedException.class);
 
-        grant(readerId, FolderSourceType.MAIN_TAG, tagA1, FolderPermission.READ);
+        grant(readerId, tagA1, FolderPermission.READ);
 
         assertThat(underTest.getChildren(NodeType.FILE, alpha.getFileInfoId(), readerId))
                 .as("the versions of a file in the granted folder").isNotEmpty();
@@ -161,20 +154,23 @@ class FileTreeFolderReadTest extends MySqlSupport {
     // ---------------------------------------------------------------- search
 
     @Test
-    @DisplayName("a search hit carries the folder ids and labels of the branch the taxonomy puts the file on")
+    @DisplayName("a search hit carries the folder ids and display names of the branch the file sits on")
     void aSearchHitIsPlacedOnItsBranch() {
         List<TreeSearchHitDTO> hits = underTest.search("gamma-" + token, adminId);
 
         assertThat(hits).hasSize(1);
         TreeSearchHitDTO hit = hits.getFirst();
         FileInfo file = fileInfoRepository.findById(gamma.getFileInfoId()).orElseThrow();
-        MainTagFile tag = file.getMainTagFile();
-        assertThat(hit.getMainTagId()).isEqualTo(folderOf(tag.getId()));
-        assertThat(hit.getSubCategoryId()).isEqualTo(folderOf(FolderSourceType.SUB_CATEGORY, tag.getFileSubCategory().getId()));
-        assertThat(hit.getCategoryId()).isEqualTo(folderOf(FolderSourceType.CATEGORY, tag.getFileSubCategory().getFileCategory().getId()));
-        assertThat(hit.getMainTagTitle()).isEqualTo(tag.getTagNameDescription());
-        assertThat(hit.getSubCategoryTitle()).isEqualTo(tag.getFileSubCategory().getSubCategoryNameDescription());
-        assertThat(hit.getCategoryTitle()).isEqualTo(tag.getFileSubCategory().getFileCategory().getCategoryNameDescription());
+        Folder tag = file.getFolder();
+        Folder subCategory = tag.getParent();
+        Folder category = subCategory.getParent();
+        assertThat(tag.getId()).isEqualTo(tagA2);
+        assertThat(hit.getMainTagId()).isEqualTo(tag.getId());
+        assertThat(hit.getSubCategoryId()).isEqualTo(subCategory.getId());
+        assertThat(hit.getCategoryId()).isEqualTo(category.getId());
+        assertThat(hit.getMainTagTitle()).isEqualTo(tag.getDisplayName());
+        assertThat(hit.getSubCategoryTitle()).isEqualTo(subCategory.getDisplayName());
+        assertThat(hit.getCategoryTitle()).isEqualTo(category.getDisplayName());
     }
 
     @Test
@@ -182,7 +178,7 @@ class FileTreeFolderReadTest extends MySqlSupport {
     void searchIsBoundedByTheFilesFolder() {
         assertThat(underTest.search(token, readerId)).as("no grant, no hits").isEmpty();
 
-        grant(readerId, FolderSourceType.MAIN_TAG, tagA2, FolderPermission.READ);
+        grant(readerId, tagA2, FolderPermission.READ);
 
         assertThat(underTest.search(token, readerId)).extracting(TreeSearchHitDTO::getFileName)
                 .containsExactly("gamma-" + token);
@@ -190,100 +186,30 @@ class FileTreeFolderReadTest extends MySqlSupport {
                 .containsExactlyInAnyOrder("alpha-" + token, "beta-" + token, "gamma-" + token);
     }
 
-    // ---------------------------------------------------------------- the one way a folder read can miss
-
-    @Test
-    @DisplayName("a file without a folder is not listed, not counted, refused when opened, left out of search - and logged")
-    void aFolderlessFileIsInvisibleNotFatal(CapturedOutput output) {
-        grant(readerId, FolderSourceType.SUB_CATEGORY, subAId, FolderPermission.READ);
-        jdbcTemplate.update("UPDATE file_info SET folder_id = NULL WHERE id = ?", beta.getFileInfoId());
-        entityManager.clear();
-
-        assertThat(underTest.getChildren(NodeType.MAIN_TAG, folderOf(tagA1), readerId))
-                .extracting(TreeNodeDTO::getName).containsExactly("alpha-" + token);
-        assertThat(underTest.getChildren(NodeType.SUB_CATEGORY, folderOf(FolderSourceType.SUB_CATEGORY, subAId), readerId))
-                .filteredOn(node -> node.getId() == folderOf(tagA1)).singleElement()
-                .extracting(TreeNodeDTO::getChildCount).isEqualTo(1);
-        assertThatThrownBy(() -> underTest.getChildren(NodeType.FILE, beta.getFileInfoId(), readerId))
-                .as("fail closed, even inside the grant")
-                .isInstanceOf(AccessDeniedException.class);
-        assertThat(underTest.search("beta-" + token, readerId)).isEmpty();
-        assertThat(output.getOut()).contains("no folder_id, which were left out");
-
-        assertThat(underTest.getChildren(NodeType.FILE, beta.getFileInfoId(), adminId))
-                .as("an administrator still opens it").isNotEmpty();
-    }
-
     // ---------------------------------------------------------------- the oracle
 
-    private List<String> expectedNamesUnder(int mainTagId) {
+    private List<String> expectedNamesUnder(int folderId) {
         return fileInfoRepository.findAll().stream()
-                .filter(f -> f.getMainTagFile().getId().equals(mainTagId))
+                .filter(f -> f.getFolder().getId().equals(folderId))
                 .map(FileInfo::getFileName)
                 .toList();
     }
 
-    private int folderOf(int mainTagId) {
-        return folderOf(FolderSourceType.MAIN_TAG, mainTagId);
-    }
-
-    private int folderOf(FolderSourceType type, int sourceId) {
-        return folderRepository.findBySourceTypeAndSourceId(type, sourceId).orElseThrow().getId();
-    }
-
     // ---------------------------------------------------------------- fixtures
 
-    private void grant(int userId, FolderSourceType type, int sourceId, FolderPermission permission) {
+    private void grant(int userId, int folderId, FolderPermission permission) {
         User user = userRepository.findById(userId).orElseThrow();
         user.replaceFolderGrants(List.of(new UserFolderGrant(user,
-                folderRepository.findById(folderOf(type, sourceId)).orElseThrow(), permission)));
+                folderRepository.findById(folderId).orElseThrow(), permission)));
         userRepository.save(user);
         flushAndClear();
     }
 
-    private int createCategory(String name, int generalTagId) {
-        FileCategoryDTO category = new FileCategoryDTO();
-        category.setCategoryName(name);
-        category.setCategoryNameDescription(name + " label");
-        category.setDescription("a category " + name);
-        category.setGeneralTagId(generalTagId);
-        fileCategoryService.createCategory(category, adminId);
-        return fileCategoryRepository.findAll().stream()
-                .filter(c -> c.getCategoryName().equals(name)).findFirst().orElseThrow().getId();
-    }
-
-    private int createSubCategory(String name) {
-        FileSubCategoryDTO subCategory = new FileSubCategoryDTO();
-        subCategory.setSubCategoryName(name);
-        subCategory.setSubCategoryNameDescription(name + " label");
-        subCategory.setDescription("a sub-category " + name);
-        subCategory.setFileCategoryId(categoryId);
-        fileSubCategoryService.createFileSubCategory(subCategory, adminId);
-        return fileSubCategoryRepository.findAll().stream()
-                .filter(sc -> sc.getSubCategoryName().equals(name)).findFirst().orElseThrow().getId();
-    }
-
-    private int createMainTag(String name, int subCategoryId) {
-        MainTagFileDTO tag = new MainTagFileDTO();
-        tag.setTagName(name);
-        tag.setTagNameDescription(name + " label");
-        tag.setDescription("a tag " + name);
-        tag.setFileSubCategoryId(subCategoryId);
-        tag.setFileCategoryId(categoryId);
-        tag.setType(0);
-        mainTagFileService.createMainTagFile(tag, adminId);
-        return mainTagFileRepository.findAll().stream()
-                .filter(t -> t.getTagName().equals(name)).findFirst().orElseThrow().getId();
-    }
-
-    private FileDetailsDTO upload(String fileName, int tagId) {
-        MainTagFile tag = mainTagFileRepository.findById(tagId).orElseThrow();
+    private FileDetailsDTO upload(String fileName, int folderId) {
         FileInfoDTO request = new FileInfoDTO();
         request.setDescription("description of " + fileName);
         request.setFileNameDescription(fileName);
-        request.setMainTagFileId(tagId);
-        request.setFileSubCategoryId(tag.getFileSubCategory().getId());
-        request.setFileCategoryId(categoryId);
+        request.setFolderId(folderId);
         request.setMultipartFile(new MockMultipartFile("file", fileName, "text/plain",
                 ("content of " + fileName).getBytes(StandardCharsets.UTF_8)));
         return fileService.createNewFile(request, adminId, 1);

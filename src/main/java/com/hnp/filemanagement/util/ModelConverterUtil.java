@@ -59,62 +59,6 @@ public class ModelConverterUtil {
 
     }
 
-    public static FileCategoryDTO convertFileCategoryToFileCategoryDTO(FileCategory fileCategory) {
-
-        FileCategoryDTO fileCategoryDTO = new FileCategoryDTO();
-        fileCategoryDTO.setId(fileCategory.getId());
-        fileCategoryDTO.setCategoryName(fileCategory.getCategoryName());
-        fileCategoryDTO.setCategoryNameDescription(fileCategory.getCategoryNameDescription());
-        fileCategoryDTO.setDescription(fileCategory.getDescription());
-        fileCategoryDTO.setEnabled(fileCategory.getEnabled());
-        fileCategoryDTO.setState(fileCategory.getState());
-        fileCategoryDTO.setDisplayName(fileCategory.getCategoryNameDescription() + "(" + fileCategory.getGeneralTag().getTagNameDescription() + ")");
-        fileCategoryDTO.setGeneralTagId(fileCategory.getGeneralTag().getId());
-        fileCategoryDTO.setGeneralTagName(fileCategory.getGeneralTag().getTagName() + "-" + fileCategory.getGeneralTag().getTagNameDescription());
-
-        return fileCategoryDTO;
-    }
-
-    public static FileSubCategoryDTO convertFileSubCategoryToFileSubCategoryDTO(FileSubCategory fileSubCategory) {
-
-        FileSubCategoryDTO fileSubCategoryDTO = new FileSubCategoryDTO();
-        fileSubCategoryDTO.setId(fileSubCategory.getId());
-        fileSubCategoryDTO.setSubCategoryName(fileSubCategory.getSubCategoryName());
-        fileSubCategoryDTO.setSubCategoryNameDescription(fileSubCategory.getSubCategoryNameDescription());
-        fileSubCategoryDTO.setFileCategoryId(fileSubCategory.getFileCategory().getId());
-        fileSubCategoryDTO.setFileCategoryName(fileSubCategory.getFileCategory().getCategoryName());
-        fileSubCategoryDTO.setFileCategoryNameDescription(fileSubCategory.getFileCategory().getCategoryNameDescription());
-        fileSubCategoryDTO.setDescription(fileSubCategory.getDescription());
-        fileSubCategoryDTO.setFileCategoryDisplayName(fileSubCategory.getFileCategory().getCategoryNameDescription() + "(" +
-                fileSubCategory.getFileCategory().getGeneralTag().getTagNameDescription() + ")");
-        fileSubCategoryDTO.setEnabled(fileSubCategory.getEnabled());
-        fileSubCategoryDTO.setState(fileSubCategory.getState());
-
-        return fileSubCategoryDTO;
-    }
-
-    public static MainTagFileDTO convertMainTagFileToMainTagFileDTO(MainTagFile mainTagFile) {
-
-        MainTagFileDTO mainTagFileDTO = new MainTagFileDTO();
-        mainTagFileDTO.setId(mainTagFile.getId());
-        mainTagFileDTO.setTagName(mainTagFile.getTagName());
-        mainTagFileDTO.setTagNameDescription(mainTagFile.getTagNameDescription());
-        mainTagFileDTO.setDescription(mainTagFile.getDescription());
-        mainTagFileDTO.setType(mainTagFile.getType());
-        mainTagFileDTO.setFileSubCategoryId(mainTagFile.getFileSubCategory().getId());
-        mainTagFileDTO.setFileSubCategoryName(mainTagFile.getFileSubCategory().getSubCategoryName());
-        mainTagFileDTO.setFileSubCategoryNameDescription(mainTagFile.getFileSubCategory().getSubCategoryNameDescription());
-        mainTagFileDTO.setFileCategoryId(mainTagFile.getFileSubCategory().getFileCategory().getId());
-        mainTagFileDTO.setFileCategoryName(mainTagFile.getFileSubCategory().getFileCategory().getCategoryName());
-        mainTagFileDTO.setFileCategoryNameDescription(mainTagFile.getFileSubCategory().getFileCategory().getCategoryNameDescription());
-        mainTagFileDTO.setFileCategoryDisplayName(mainTagFile.getFileSubCategory().getFileCategory().getCategoryNameDescription() + "(" +
-                mainTagFile.getFileSubCategory().getFileCategory().getGeneralTag().getTagNameDescription() + ")");
-        mainTagFileDTO.setEnabled(mainTagFile.getEnabled());
-        mainTagFileDTO.setState(mainTagFile.getState());
-
-        return mainTagFileDTO;
-    }
-
     public static FileDetailsDTO covertFileDetailsToFileDetailsDTO(FileDetails fileDetails) {
 
         FileDetailsDTO fileDetailsDTO = new FileDetailsDTO();
@@ -123,7 +67,6 @@ public class ModelConverterUtil {
         fileDetailsDTO.setFileExtension(fileDetails.getFileExtension());
         fileDetailsDTO.setContentType(fileDetails.getContentType());
         fileDetailsDTO.setDescription(fileDetails.getDescription());
-        fileDetailsDTO.setFilePath(fileDetails.getFilePath());
         fileDetailsDTO.setFileLink(fileDetails.getFileLink());
         fileDetailsDTO.setFileSize(fileDetails.getFileSize());
         fileDetailsDTO.setVersion(fileDetails.getVersion());
@@ -146,20 +89,21 @@ public class ModelConverterUtil {
         fileInfoDTO.setFileName(fileInfo.getFileName());
         fileInfoDTO.setFileNameDescription(fileInfo.getFileNameDescription());
         fileInfoDTO.setDescription(fileInfo.getDescription());
-        fileInfoDTO.setFilePath(fileInfo.getFilePath());
         fileInfoDTO.setFileLink(fileInfo.getFileLink());
         fileInfoDTO.setLastVersion(fileInfo.getLastVersion());
-        fileInfoDTO.setFileSubCategoryId(fileInfo.getFileSubCategory().getId());
-        fileInfoDTO.setFileSubCategoryName(fileInfo.getFileSubCategory().getSubCategoryName());
-        fileInfoDTO.setFileSubCategoryNameDescription(fileInfo.getFileSubCategory().getSubCategoryNameDescription());
-        fileInfoDTO.setFileCategoryId(fileInfo.getFileSubCategory().getFileCategory().getId());
-        fileInfoDTO.setFileCategoryName(fileInfo.getFileSubCategory().getFileCategory().getCategoryName());
-        fileInfoDTO.setFileCategoryNameDescription(fileInfo.getFileSubCategory().getFileCategory().getCategoryNameDescription());
-        fileInfoDTO.setFileCategoryDisplayName(fileInfo.getMainTagFile().getFileSubCategory().getFileCategory().getCategoryNameDescription() + "(" +
-                fileInfo.getMainTagFile().getFileSubCategory().getFileCategory().getGeneralTag().getTagNameDescription() + ")");
-        fileInfoDTO.setMainTagFileId(fileInfo.getMainTagFile().getId());
-        fileInfoDTO.setTagName(fileInfo.getMainTagFile().getTagName());
-        fileInfoDTO.setTagDescription(fileInfo.getMainTagFile().getTagNameDescription());
+        // The three folder levels, under the names the pages have always used for them.
+        Folder tag = fileInfo.getFolder();
+        Folder subCategory = tag.getParent();
+        Folder category = subCategory.getParent();
+        fileInfoDTO.setFolderId(tag.getId());
+        fileInfoDTO.setTagName(tag.getName());
+        fileInfoDTO.setTagDescription(tag.getDisplayName());
+        fileInfoDTO.setFileSubCategoryName(subCategory.getName());
+        fileInfoDTO.setFileSubCategoryNameDescription(subCategory.getDisplayName());
+        fileInfoDTO.setFileCategoryName(category.getName());
+        fileInfoDTO.setFileCategoryNameDescription(category.getDisplayName());
+        fileInfoDTO.setFileCategoryDisplayName(category.getDisplayName()
+                + (category.getTagGroup() == null ? "" : "(" + category.getTagGroup().getTitle() + ")"));
         fileInfoDTO.setState(fileInfo.getState());
         fileInfoDTO.setEnabled(fileInfo.getEnabled());
         fileInfoDTO.setCreatedAt(fileInfo.getCreatedAt());
@@ -178,34 +122,16 @@ public class ModelConverterUtil {
         publicFileDetailsDTO.setFileInfoId(fileDetails.getFileInfo().getId());
         publicFileDetailsDTO.setFileName(fileDetails.getFileName());
         publicFileDetailsDTO.setDescription(fileDetails.getDescription());
-        publicFileDetailsDTO.setCategoryNameDescription(fileDetails.getFileInfo().getMainTagFile().getFileSubCategory().getFileCategory().getCategoryNameDescription());
-        publicFileDetailsDTO.setSubCategoryNameDescription(fileDetails.getFileInfo().getMainTagFile().getFileSubCategory().getSubCategoryNameDescription());
-        publicFileDetailsDTO.setTagDescription(fileDetails.getFileInfo().getMainTagFile().getTagNameDescription());
+        Folder tag = fileDetails.getFileInfo().getFolder();
+        publicFileDetailsDTO.setCategoryNameDescription(tag.getParent().getParent().getDisplayName());
+        publicFileDetailsDTO.setSubCategoryNameDescription(tag.getParent().getDisplayName());
+        publicFileDetailsDTO.setTagDescription(tag.getDisplayName());
         publicFileDetailsDTO.setVersion(fileDetails.getVersionName());
         publicFileDetailsDTO.setSize(fileDetails.getFileSize());
         publicFileDetailsDTO.setFileInfoName(fileDetails.getFileInfo().getDescription());
 
         return publicFileDetailsDTO;
     }
-
-    public static GeneralTagDTO convertGeneralTagToGeneralTagDTO(GeneralTag generalTag) {
-
-        GeneralTagDTO generalTagDTO = new GeneralTagDTO();
-        generalTagDTO.setId(generalTag.getId());
-        generalTagDTO.setTagName(generalTag.getTagName());
-        generalTagDTO.setTagNameDescription(generalTag.getTagNameDescription());
-        generalTagDTO.setDescription(generalTag.getDescription());
-        generalTagDTO.setType(generalTag.getType());
-        generalTagDTO.setEnabled(generalTag.getEnabled());
-        generalTagDTO.setState(generalTag.getState());
-
-//        generalTagDTO.setFileCategoryDTOList(generalTag.getFileCategories().stream().map(ModelConverterUtil::convertFileCategoryToFileCategoryDTO).toList());
-
-        return generalTagDTO;
-
-
-    }
-
 
     public static ActionHistoryDTO convertActionHistoryToActionHistoryDTO(ActionHistory actionHistory) {
 

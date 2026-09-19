@@ -19,24 +19,24 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * A logical file: one name, filed under one sub-category and one main tag, with a description and
- * a list of stored revisions.
+ * A logical file: one name in one folder, with a description and a list of stored revisions.
  *
  * <p>{@code lastVersion} is a denormalised copy of {@code MAX(fileDetails.version)}, kept so the
  * list pages need no aggregate. It has to be maintained on <em>both</em> sides — creating a version
  * raises it, deleting the newest version lowers it — and forgetting the second is how it drifts.
  * {@code FileService} recomputes it from the children rather than adjusting it by one.
  *
- * <p>{@code fileSubCategory} and {@code mainTagFile} are both stored even though the tag already
- * knows its sub-category. The columns are `NOT NULL` in the schema and the pages read the direct
- * one, so the redundancy stays; {@code FileService.createNewFile} enforces that they agree, and
- * nothing else may set them independently. Removing the direct column is part of the folder work in
- * Phase 5, when all three levels become real folders.
+ * <p>{@link #folder} is the file's place and the only one (Phase 7 step 4): a TAG folder, whose
+ * two ancestors are the sub-category and category levels. {@code file_name} is unique within a
+ * folder. Where the bytes are is a different question, answered by each revision's
+ * {@code storage_key} and never by the tree - so a folder can be renamed without a byte moving.
  *
- * <p>{@code fileDetailsList} owns its children: {@code cascade = ALL} plus {@code orphanRemoval}
- * means removing a version from this list is what deletes it, and deleting the file deletes every
- * version with it. Do not also call {@code fileDetailsRepository.delete(...)} for a version you
- * have already removed from the list.
+ * <p>{@link #tags} are derived from the folder chain ({@code TagMirrorService}): one tag per
+ * level, in the group the category folder carries. They are written, not yet read by anything a
+ * person sees.
+ *
+ * <p>No {@code @Data}: this and {@link FileDetails} point at each other, and a generated
+ * {@code toString()} across that pair is how the stack overflows (issue 2).
  */
 @Entity
 @Table(name = "file_info")
@@ -56,12 +56,6 @@ public class FileInfo extends AuditableEntity {
     @Column(name = "description")
     private String description;
 
-    @Column(name = "file_path", nullable = false)
-    private String filePath;
-
-    @Column(name = "relative_path", nullable = false)
-    private String relativePath;
-
     @Column(name = "file_link")
     private String fileLink;
 
@@ -75,31 +69,18 @@ public class FileInfo extends AuditableEntity {
     @Column(name = "state", nullable = false)
     private Integer state;
 
+    /** The TAG folder this file is in - its place, and the folder its access is judged on. */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "file_sub_category_id", nullable = false)
-    private FileSubCategory fileSubCategory;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "main_tag_file_id", nullable = false)
-    private MainTagFile mainTagFile;
-
-    /**
-     * The folder this file is in (roadmap 7.2, step 1): the one mirroring {@code mainTagFile}.
-     *
-     * <p>Written alongside the two taxonomy keys above and, for now, read by nothing - step 3 is
-     * where the readers move over. Nullable until step 4 makes it the only structure; a null here on
-     * a row written after {@code V2.3} is a fault, and {@code FileFolderLinkTest} is what finds it.
-     */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "folder_id")
+    @JoinColumn(name = "folder_id", nullable = false)
     private Folder folder;
 
     /**
-     * What this file is about (roadmap 7.2, step 2): the category, sub-category and main tag it
-     * sits under, as tags - deduplicated, because two of those can carry one name.
+     * What this file is about (roadmap 7.2, step 2): the category, sub-category and tag folder it
+     * sits under, as tags in the category's group - deduplicated, because two of those can carry
+     * one name.
      *
-     * <p>Derived from the taxonomy by {@code TagMirrorService.retag} on every upload and on every
-     * main-tag rename, and read by nothing yet. A plain join table rather than an entity of its
+     * <p>Derived from the folder chain by {@code TagMirrorService.retag} on every upload and on
+     * every folder rename, and read by nothing yet. A plain join table rather than an entity of its
      * own: a row here has no attributes, and replacing the set wholesale is what a resync does.
      */
     @ManyToMany(fetch = FetchType.LAZY)

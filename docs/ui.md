@@ -311,7 +311,9 @@ catalogue table with a built-in / custom badge and a delete button on custom row
 hex and media types are `technical` and `dir="ltr"`; everything else follows the page direction.
 
 The upload form has two modes. Opened plainly, it asks for the place with three dependent selects
-(category, sub-category, tag). Opened from the explorer's "upload here" button - `/files/create?folderId=` -
+(category, sub-category, tag folder), each filled from `/resource/folders/children?folderId=` as
+the one above it changes; what is posted is the tag folder's id as `folderId`. Opened from the
+explorer's "upload here" button - `/files/create?folderId=` -
 the place is fixed: the path down to the folder is shown read-only with a "change target" link back
 to the plain form, and a hidden `folderId` is what gets posted. The selects are not rendered in
 that mode; hidden-but-`required` controls would block the submit. A folder that cannot be uploaded
@@ -382,9 +384,10 @@ user. The menu is always a white surface even though its trigger sits in the dar
 `.app-tree` styles the file tree at `/files/tree`. The view is **read-only for now**; drag-and-drop
 is planned once the storage port can express a move (roadmap Phase 5).
 
-The tree deliberately shows category, sub-category **and main tag** as folders, even though a main
-tag creates no directory today. The target model turns all three into one `folder` table, so
-presenting them as folders now means that migration is a data change and not a redesign.
+The tree shows the three folder levels - category, sub-category and tag - which since Phase 7
+step 4 are the only structure there is (one `folder` table; the node types keep the names the
+tree always used, `MAIN_TAG` for a tag folder). A category node's note is the title of the tag
+group it carries.
 
 Rows are held as a **flat list**, each carrying its `depth`, rather than as nested markup:
 
@@ -403,6 +406,26 @@ Children load on demand from `/resource/files/tree/children?type=&id=`. Root cat
 on initial display so the hierarchy and its disclosure controls are immediately discoverable. The
 user can then open a branch or use **Expand all**. Do not build the whole subtree in the controller:
 every `@ManyToOne` in this codebase is `EAGER`, so one node drags in its whole ancestry.
+
+### Managing folders from the explorer
+
+The explorer (`file-management/files/file-explorer.html`) is where the tree is edited, since
+Phase 7 step 4 removed the taxonomy pages. Three controls sit in the content pane's toolbar,
+each rendered only for a permission (`sec:authorize` on `REST_CREATE_FOLDER`,
+`REST_RENAME_FOLDER`, `REST_DELETE_FOLDER`) and shown only when the folder on screen reports
+`manageable` (the caller holds `WRITE` on it) and the operation applies: *new folder* on any
+folder that can hold one (not a tag folder), *rename* on anything but the root, *delete* on an
+empty folder that is not the root. No disabled buttons stand in for what a person cannot do.
+
+Create and rename share one inline form (`.explorer-manage`, under the toolbar, `x-show` on
+`manage.mode`): a directory-safe name (`technical`, `dir="ltr"`, `pattern="[^./ ]+"`), a label,
+and - when creating under the root - a tag-group select fed by `/resource/folders/tag-groups`
+with a "new group" option that reveals a name field. The form posts JSON with the CSRF header
+through `writeJson`, and shows a problem response's `detail` beside the buttons; a `409` on a
+taken name gets its own copy (`explorer.manage.nameTaken`). Delete asks with `confirm()` and
+reports a non-empty folder with `explorer.manage.deleteRefused`. After any of the three the
+folder is reloaded, and the tree pane refreshed, so the new state comes from the server rather
+than from the form.
 
 ## Legacy compatibility classes
 

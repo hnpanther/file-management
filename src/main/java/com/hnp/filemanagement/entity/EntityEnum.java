@@ -1,5 +1,10 @@
 package com.hnp.filemanagement.entity;
 
+/**
+ * What an {@code action_history} row is about. The four taxonomy names stay although their tables
+ * went with Phase 7 step 4: the rows that name them are a log of what happened, and the column is
+ * read back as this enum.
+ */
 public enum EntityEnum {
 
     FileCategory("file_category"),
@@ -17,7 +22,8 @@ public enum EntityEnum {
     RoleFolder("role_folder"),
     ApiKey("api_key"),
     UploadPolicy("upload_policy"),
-    ContentKind("content_kind")
+    ContentKind("content_kind"),
+    Folder("folder")
     ;
 
 

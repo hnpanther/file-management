@@ -15,7 +15,7 @@ working, and to depend only on what came before.
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done** |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**; enforcement switched on per installation, after the grants exist |
-| 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | 7.1, 7.2 steps 1–3 and 5a **done**; step 4 waits until step 3 has run in production (`deployment.md`, "Readiness for Phase 7 step 4") |
+| 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | 7.1, 7.2 steps 1–4 and 5a–5c **done** (`V2.8`, 1.3.0): the taxonomy is gone, the folder is the structure, and it is created, renamed and deleted from the explorer. Left: move (5d) and drag-and-drop |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
 
@@ -809,8 +809,8 @@ Each is independently shippable, and only the fourth cannot be undone.
 | 1 | `file_info.folder_id`, nullable, backfilled to the folder mirroring the file's main tag; written alongside the old foreign keys — **done** | `V2.3` | an unused column |
 | 2 | `tag_group`, `tag`, `file_tag`; every file gets a tag per level it sits under — **done** | `V2.4` | `DROP TABLE` |
 | 3 | **Reads move to the folder**: tree, upload, file list, search — **done**, one reader per commit: 1 API v2, 2 explorer, 3 folder access on download / file page / list / new version, 4 tree, 5 upload by `folderId` alongside the triple | — | revert the code |
-| 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` | `V2.8` (`V2.5` went to the content-type fix, `V2.6` to the upload policy, `V2.7` to custom content kinds) | ⚠️ **none** |
-| 5 | Folder operations: create, rename, move, delete — and drag-and-drop. **Started**: uploading into a folder from the explorer (5a) | `V2.x` | — |
+| 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` — **done** | `V2.8` (`V2.5` went to the content-type fix, `V2.6` to the upload policy, `V2.7` to custom content kinds) | ⚠️ **none** |
+| 5 | Folder operations: **done** — uploading into a folder from the explorer (5a), create (5b), rename and delete (5c). Left: move (5d) and drag-and-drop | — with step 4 | — |
 
 > **Step 1 done.** `FileInfo.folder` is set from `FolderMirrorService.folderOf(mainTag)` on every
 > upload — get-or-create, so an upload into a tag that was never mirrored heals the mirror rather
@@ -911,12 +911,41 @@ Each is independently shippable, and only the fourth cannot be undone.
 > taxonomy forbids outright (a tag cannot change sub-category). Both wait for step 4, after which
 > the folder is the only structure and there is nothing to keep in step. `FileUploadAddressingTest`
 > covers the page in both modes and `writable` for every grant shape.
+>
+> **Step 4 done — the taxonomy is gone.** `V2.8` first makes the three things that would fail on
+> bad data fail *before* anything is dropped — `folder_id NOT NULL`, the per-folder name index,
+> and `folder.tag_group_id` backfilled from each category's general tag and asserted present on
+> every `CATEGORY` row — then remaps permissions, drops the columns and the four tables. Two
+> facts held onto with care, because the old model made them easy to get wrong: **the tree is
+> exactly three levels of folder** (`FolderService.create` derives the kind from the parent and
+> refuses a child under a tag folder), and **a general tag is not a folder** — it is the
+> `tag_group` a category carries, required on a category and refused everywhere else. Every
+> reader of the taxonomy now reads the folder chain (`FolderService.chainOf`), the labels on
+> `FileInfoDTO` come from folder names and display names, and a file's tags are derived from its
+> three folder names. One rule did *not* move: a file name is unique **per sub-category**, as
+> before, because the bytes live at `{category}/{subCategory}/{name}` with no tag segment — a
+> first cut made it per folder and collided on disk in the test that writes the same name under
+> two sibling tags. The schema can only express the per-folder half, so
+> `findByFileNameUnderSubCategory` is checked before every upload (web, v1 and v2) and the
+> storage layer's refusal to overwrite a key is the last guard. Deleted: five entities, four
+> repositories, five services (`FolderMirrorService` among them), four controllers, four resource
+> classes, the readiness report, eight DTOs, four template directories and seven tests; the
+> remaining tests were rewritten onto `FolderFixture`, a repository-level chain builder.
+>
+> **Steps 5b and 5c done — create, rename, delete.** `FolderService` is the one writer of
+> `folder`; `POST` / `PUT` / `DELETE /resource/folders` and `GET /resource/folders/tag-groups`
+> expose it under four new permissions (`REST_CREATE_FOLDER`, `REST_RENAME_FOLDER`,
+> `REST_DELETE_FOLDER`, `REST_GET_TAG_GROUPS`, mapped by `V2.8` onto the roles that held the
+> taxonomy's create / update / delete). The explorer shows the three controls where
+> `FolderContentDTO.manageable` says the caller holds `WRITE` on the folder on screen. A rename
+> re-tags the subtree and moves no byte (`StorageKeyTest.aRenameDoesNotOrphanTheBytes` now
+> renames through the service, and proves a later version of the file still lands beside the
+> first); a delete takes an empty folder only. `FolderServiceTest`, `FolderManagementTest`.
 
-Steps 0–2 only add data and change no behaviour, so they can ship early and sit in production while
-step 3 is written. Step 3 is where the application actually changes. Step 4 should follow only after
-step 3 has run for long enough to trust it, because it is the point of no return: after it,
-`FolderMirrorService`, `FolderMirrorReconciliationTest`, the three taxonomy services and their pages
-are all deleted.
+Steps 0–2 only added data and changed no behaviour, so they shipped early and sat in production
+while step 3 was written. Step 3 is where the application actually changed. Step 4 followed once
+step 3 had run in production, because it is the point of no return: `FolderMirrorService`,
+`FolderMirrorReconciliationTest`, the three taxonomy services and their pages are deleted.
 
 ### 7.3 The tag model
 
@@ -948,23 +977,24 @@ tag is not a place.
 
 1. **`file_path` and `relative_path` on `file_info` and `file_details`** become lies the first time a
    folder moves. They are dropped in step 4 or derived from the folder — never left to drift
-   ([issue 35](issues.md#35-paths-are-denormalised-into-three-places--s2)).
+   ([issue 35](issues.md#35-paths-are-denormalised-into-three-places--s2)). — **Dropped** by `V2.8`;
+   `storage_key` is the one record of a version's place.
 2. **`/api/v1/files` takes a category, a sub-category and a tag.** Step 3 breaks every machine
    integration. It needs a window where the endpoint accepts both the old triple and a `folderId`,
    and the old form is removed only once callers have moved. — **The window is open** (step 3,
-   reader 5): both are accepted, the triple is unchanged, and it is removed in step 4 only.
-3. **File-name uniqueness moves** from "per sub-category" (`uq_file_info_name_per_sub_category`) to
-   "per folder". The existing data may not satisfy the new rule — it needs the same pre-flight query
-   the `folder` backfill got, run before the constraint is added, not after. — **The pre-flight
-   exists**: `FileInfoRepository.findFileNamesSharedWithinAFolder`, asked at every start by
-   `FolderReadinessReport` along with the `V2.3` and `V2.4` checks, and given in SQL in
-   `deployment.md` ("Readiness for Phase 7 step 4"). Whether any caller still sends the triple is
-   answered by the same section: since 1.2.0 each such upload logs `v1-upload-by-triple` and
-   carries a `Deprecation: true` header.
+   reader 5): both are accepted, the triple is unchanged, and it is removed in step 4 only. —
+   **Closed**: since 1.3.0 `folderId` is the only addressing; the triple is ignored.
+3. **File-name uniqueness** was expected to move from "per sub-category"
+   (`uq_file_info_name_per_sub_category`) to "per folder". — **It did not, and must not** while the
+   storage layout is `{category}/{subCategory}/{name}` with no tag segment: two files of one name
+   under sibling tags would share a directory. `V2.8` adds the per-folder index (the half the schema
+   can express) and the application keeps the per-sub-category rule in `FileService` and
+   `ObjectStoreService`. A per-folder rule is possible only together with a per-folder layout for
+   new files, which is a storage decision for Phase 4, not a side effect of a migration.
 4. **Uploading still does not check folder access**
    ([issue 76](issues.md#76-a-folder-access-grant-does-not-gate-uploading-into-that-folder--s2)). It
    has to be closed before folders become the structure, or a user will file documents into a folder
-   they cannot even open.
+   they cannot even open. — **Closed** in roadmap 9.1, before step 4.
 5. **Old `action_history` rows** reference `FileCategory`, `FileSubCategory` and `MainTagFile` ids
    that will no longer exist. Acceptable for a historical log, but it is a decision to take
    deliberately rather than discover. — **Decided: they stay as they are.** A log of what happened
@@ -981,6 +1011,9 @@ writing them twice.
 **Done when:** a file belongs to a folder and to tags; the four taxonomy tables are gone; a folder can
 be created, renamed, moved and deleted without touching a byte on disk; and the file-name rule,
 the API contract and upload authorisation have all been moved across rather than left behind.
+— **All but the move** (5d) as of 1.3.0: the move needs a decision on what happens to a file's
+tags and its future versions' directory when its tag folder changes sub-category, and is the
+one folder operation drag-and-drop then needs.
 
 ---
 

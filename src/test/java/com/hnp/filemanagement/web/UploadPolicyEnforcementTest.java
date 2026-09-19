@@ -2,29 +2,20 @@ package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.ApiKeyDTO;
-import com.hnp.filemanagement.dto.FileCategoryDTO;
-import com.hnp.filemanagement.dto.FileSubCategoryDTO;
-import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.entity.FileDetails;
-import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.ApiKeyService;
-import com.hnp.filemanagement.service.FileCategoryService;
-import com.hnp.filemanagement.service.FileSubCategoryService;
-import com.hnp.filemanagement.service.MainTagFileService;
 import com.hnp.filemanagement.service.UploadPolicyService;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -76,36 +67,22 @@ class UploadPolicyEnforcementTest extends MySqlSupport {
     @Autowired
     private ApiKeyService apiKeyService;
     @Autowired
-    private FileCategoryService fileCategoryService;
-    @Autowired
-    private FileSubCategoryService fileSubCategoryService;
-    @Autowired
-    private MainTagFileService mainTagFileService;
-    @Autowired
     private FileDetailsRepository fileDetailsRepository;
     @Autowired
     private FolderRepository folderRepository;
     @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
-    @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private TagGroupRepository tagGroupRepository;
     @Autowired
     private RoleRepository roleRepository;
 
     private int adminId;
     private int restrictedId;
     private String bucket;
-    private int categoryId;
-    private int subCategoryId;
     private String subCategoryName;
-    private int tagId;
     private String tagName;
+    private int tagFolderId;
 
     @BeforeEach
     void setUp() {
@@ -120,38 +97,11 @@ class UploadPolicyEnforcementTest extends MySqlSupport {
         restrictedId = userRepository.save(restricted).getId();
         uploadPolicyService.saveForRole(restrictedRole.getId(), Map.of("pdf", 1L), adminId);
 
-        int generalTagId = generalTagRepository.save(TestData.generalTag(admin, "gt" + TestData.nextSequence())).getId();
-        FileCategoryDTO category = new FileCategoryDTO();
-        category.setCategoryName("Cat" + TestData.nextSequence());
-        category.setCategoryNameDescription(category.getCategoryName() + " label");
-        category.setDescription("a category");
-        category.setGeneralTagId(generalTagId);
-        fileCategoryService.createCategory(category, adminId);
-        bucket = category.getCategoryName();
-        categoryId = fileCategoryRepository.findAll().stream()
-                .filter(c -> c.getCategoryName().equals(bucket)).findFirst().orElseThrow().getId();
-
-        FileSubCategoryDTO subCategory = new FileSubCategoryDTO();
-        subCategory.setSubCategoryName("Sub" + TestData.nextSequence());
-        subCategory.setSubCategoryNameDescription(subCategory.getSubCategoryName() + " label");
-        subCategory.setDescription("a sub-category");
-        subCategory.setFileCategoryId(categoryId);
-        fileSubCategoryService.createFileSubCategory(subCategory, adminId);
-        subCategoryName = subCategory.getSubCategoryName();
-        subCategoryId = fileSubCategoryRepository.findAll().stream()
-                .filter(sc -> sc.getSubCategoryName().equals(subCategoryName)).findFirst().orElseThrow().getId();
-
-        MainTagFileDTO tag = new MainTagFileDTO();
-        tag.setTagName("Tag" + TestData.nextSequence());
-        tag.setTagNameDescription(tag.getTagName() + " label");
-        tag.setDescription("a tag " + tag.getTagName());
-        tag.setFileSubCategoryId(subCategoryId);
-        tag.setFileCategoryId(categoryId);
-        tag.setType(0);
-        mainTagFileService.createMainTagFile(tag, adminId);
-        tagName = tag.getTagName();
-        tagId = mainTagFileRepository.findAll().stream()
-                .filter(t -> t.getTagName().equals(tagName)).findFirst().orElseThrow().getId();
+        FolderFixture.Chain chain = FolderFixture.chain(folderRepository, tagGroupRepository, admin);
+        bucket = chain.category().getName();
+        subCategoryName = chain.subCategory().getName();
+        tagName = chain.tag().getName();
+        tagFolderId = chain.tagId();
     }
 
     // ---------------------------------------------------------------- v1
@@ -194,7 +144,7 @@ class UploadPolicyEnforcementTest extends MySqlSupport {
     @Test
     @DisplayName("v2: a key is governed by the system-wide policy, whatever its creator's roles allow")
     void v2FollowsTheGlobalPolicy() throws Exception {
-        String credential = apiKey(folderRepository.findBySourceTypeAndSourceId(FolderSourceType.MAIN_TAG, tagId).orElseThrow().getId() + ":WRITE");
+        String credential = apiKey(tagFolderId + ":WRITE");
         String prefix = subCategoryName + "/" + tagName;
         uploadPolicyService.saveGlobal(Map.of("txt", 1L), adminId);
 
@@ -223,9 +173,7 @@ class UploadPolicyEnforcementTest extends MySqlSupport {
         mockMvc.perform(multipart("/files")
                         .file(new MockMultipartFile("multipartFile", "photo.png", "image/png", TestData.bytesFor("photo.png")))
                         .param("description", "d").param("fileName", "photo")
-                        .param("fileCategoryId", String.valueOf(categoryId))
-                        .param("fileSubCategoryId", String.valueOf(subCategoryId))
-                        .param("mainTagFileId", String.valueOf(tagId))
+                        .param("folderId", String.valueOf(tagFolderId))
                         .with(user(principal(restrictedId, PermissionEnum.SAVE_NEW_FILE))).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("نوع فایل .png برای شما مجاز نیست")));
@@ -233,9 +181,7 @@ class UploadPolicyEnforcementTest extends MySqlSupport {
         mockMvc.perform(multipart("/files")
                         .file(new MockMultipartFile("multipartFile", "big.pdf", "application/pdf", pdfOf(MB + 1)))
                         .param("description", "d").param("fileName", "big")
-                        .param("fileCategoryId", String.valueOf(categoryId))
-                        .param("fileSubCategoryId", String.valueOf(subCategoryId))
-                        .param("mainTagFileId", String.valueOf(tagId))
+                        .param("folderId", String.valueOf(tagFolderId))
                         .with(user(principal(restrictedId, PermissionEnum.SAVE_NEW_FILE))).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("حداکثر مجاز برای .pdf 1 مگابایت")));
@@ -269,9 +215,7 @@ class UploadPolicyEnforcementTest extends MySqlSupport {
         return mockMvc.perform(multipart("/api/v1/files")
                 .file(new MockMultipartFile("multipartFile", fileName, "application/octet-stream", bytes))
                 .param("description", "uploaded through v1")
-                .param("fileCategoryId", String.valueOf(categoryId))
-                .param("fileSubCategoryId", String.valueOf(subCategoryId))
-                .param("mainTagFileId", String.valueOf(tagId))
+                .param("folderId", String.valueOf(tagFolderId))
                 .with(user(principal(who, PermissionEnum.API_SAVE_NEW_FILE)))
                 .accept(MediaType.APPLICATION_JSON));
     }

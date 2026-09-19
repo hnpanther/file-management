@@ -2,6 +2,19 @@ package com.hnp.filemanagement.resource;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.FolderContentDTO;
+import java.util.List;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.http.HttpStatus;
+import com.hnp.filemanagement.service.FolderService;
+import com.hnp.filemanagement.exception.InvalidDataException;
+import com.hnp.filemanagement.dto.TagGroupDTO;
+import com.hnp.filemanagement.dto.FolderDTO;
+import com.hnp.filemanagement.dto.ApiResult;
 import com.hnp.filemanagement.dto.FolderSearchDTO;
 import com.hnp.filemanagement.service.FolderContentService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
@@ -18,10 +31,9 @@ import org.springframework.web.bind.annotation.RestController;
  * files.
  *
  * <p>This is the contract the file-explorer screen will be built on, and it is deliberately
- * separate from {@code FileTreeResource}. That one serves the existing tree page and speaks the
- * taxonomy's language - a node {@code type} and one level of children at a time. This one speaks
- * only folders, which is what the storage model becomes in roadmap Phase 7. Both can be served for
- * as long as the tree page exists, and neither has to be changed for the other.
+ * separate from {@code FileTreeResource}. That one serves the tree page and speaks in node
+ * types, one level of children at a time. This one speaks only folders, and since Phase 7 step 4
+ * it is also where the tree is managed: create, rename and delete, below.
  *
  * <p><b>One endpoint, and the root is the same request without an id.</b> The alternative - a
  * separate "roots" endpoint - would need its own permission, and would be the second place a change
@@ -48,11 +60,14 @@ public class FolderResource {
 
     private final GlobalGeneralLogging globalGeneralLogging;
     private final FolderContentService folderContentService;
+    private final FolderService folderService;
 
     public FolderResource(GlobalGeneralLogging globalGeneralLogging,
-                          FolderContentService folderContentService) {
+                          FolderContentService folderContentService,
+                          FolderService folderService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.folderContentService = folderContentService;
+        this.folderService = folderService;
     }
 
     /**
@@ -96,5 +111,72 @@ public class FolderResource {
                 "search folders for query=" + query + ", within folderId=" + folderId);
 
         return folderContentService.search(query, folderId, page, size, userDetails.getId());
+    }
+
+    // ------------------------------------------------------------------ managing the tree (Phase 7 step 4)
+
+    /** What a create posts. A category (a child of the root) names its tag group, one way or the other. */
+    public record CreateFolderRequest(Integer parentId, String name, String displayName,
+                                      Integer tagGroupId, String newTagGroupName) {
+    }
+
+    /** What a rename posts: a new directory-safe name, a new label, or both. */
+    public record RenameFolderRequest(String name, String displayName) {
+    }
+
+    /** The tag groups a new category folder may carry. */
+    //REST_GET_TAG_GROUPS
+    @PreAuthorize("hasAuthority('REST_GET_TAG_GROUPS') || hasAuthority('REST_CREATE_FOLDER') || hasAuthority('ADMIN')")
+    @GetMapping("tag-groups")
+    public List<TagGroupDTO> tagGroups(@AuthenticationPrincipal UserDetailsImpl userDetails, HttpServletRequest request) {
+        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class, "list tag groups");
+        return folderService.tagGroups();
+    }
+
+    /**
+     * Creates a folder under {@code parentId}. The kind follows from the parent - category under
+     * the root, sub-category under a category, tag under a sub-category - and a tag folder takes
+     * no children. Write access on the parent is required.
+     */
+    //REST_CREATE_FOLDER
+    @PreAuthorize("hasAuthority('REST_CREATE_FOLDER') || hasAuthority('ADMIN')")
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public FolderDTO createFolder(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                  @RequestBody CreateFolderRequest body,
+                                  HttpServletRequest request) {
+        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
+                "create folder " + body.name() + " under folderId=" + body.parentId());
+        if (body.parentId() == null) {
+            throw new InvalidDataException("parentId is required");
+        }
+        return folderService.create(body.parentId(), body.name(), body.displayName(),
+                body.tagGroupId(), body.newTagGroupName(), userDetails.getId());
+    }
+
+    /** Renames a folder. Stored files keep their keys; the tags of the files beneath follow the new name. */
+    //REST_RENAME_FOLDER
+    @PreAuthorize("hasAuthority('REST_RENAME_FOLDER') || hasAuthority('ADMIN')")
+    @PutMapping("{folderId}")
+    public FolderDTO renameFolder(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                  @PathVariable("folderId") int folderId,
+                                  @RequestBody RenameFolderRequest body,
+                                  HttpServletRequest request) {
+        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
+                "rename folder id=" + folderId + " to " + body.name());
+        return folderService.rename(folderId, body.name(), body.displayName(), userDetails.getId());
+    }
+
+    /** Deletes an empty folder: 409 while it still holds folders or files. */
+    //REST_DELETE_FOLDER
+    @PreAuthorize("hasAuthority('REST_DELETE_FOLDER') || hasAuthority('ADMIN')")
+    @DeleteMapping("{folderId}")
+    public ApiResult deleteFolder(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                  @PathVariable("folderId") int folderId,
+                                  HttpServletRequest request) {
+        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
+                "delete folder id=" + folderId);
+        folderService.delete(folderId, userDetails.getId());
+        return ApiResult.deleted("folder", folderId);
     }
 }

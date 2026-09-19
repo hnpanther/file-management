@@ -579,7 +579,7 @@ the `seeded 5 new permission(s)` line.
 4. **`/api/v1/files` uploads that still send `fileCategoryId` / `fileSubCategoryId` /
    `mainTagFileId` get a `Deprecation: true` response header** and a log line. They still work;
    the header and the log are how you find out who has not moved to `folderId` before Phase 7
-   step 4 removes the triple - see [the readiness check](#readiness-for-phase-7-step-4). The
+   step 4 removes the triple - see [the 1.3.0 pre-flight](#upgrading-from-120-to-130--phase-7-step-4). The
    delete and the download gained id-only routes (`/api/v1/files/file-details/{id}`, same
    permissions), and **the v1 delete now checks folder access** on the file's folder, as the
    download always did: with folder access on, the `api` account can only delete inside the
@@ -610,46 +610,57 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
-### Readiness for Phase 7 step 4
+### Upgrading from 1.2.0 to 1.3.0 — Phase 7 step 4
 
-Step 4 of the roadmap (`docs/roadmap.md`, 7.2) is the point of no return: `file_info.folder_id`
-becomes `NOT NULL`, the four taxonomy tables are dropped, and `/api/v1/files` stops accepting the
-category / sub-category / tag triple. Run it only when all of the following hold on the production
-database and log, in this order.
+**This is the one upgrade in this project that a restored backup is the only way back from.**
+`V2.8` drops the four taxonomy tables (`general_tag`, `file_category`, `file_sub_category`,
+`main_tag_file`), the columns that pointed at them, and the `file_path` / `relative_path`
+columns. The 1.2.0 jar does not start against the 1.3.0 database. Every earlier migration added
+alongside the old structure; this one removes it.
 
-1. **Every file has a folder, and it is the right one.** Both must return nothing (they are the
-   `V2.3` verification, unchanged):
+The migration is ordered so that everything that can fail on the data fails **before the first
+`DROP`**, and a database that is not ready is left exactly as it was. Still: check first, back up,
+then upgrade.
+
+**Before (pre-flight):**
+
+1. **Folder access is on, and has been, with the grants you mean.** After step 4 the folder
+   grants are the only structure; there is no taxonomy to fall back on. If
+   `filemanagement.folder-access.enabled` is still `false`, turn it on and run 1.2.0 with it for
+   long enough to know the grants are right. This is the step that cannot be checked by a query.
+
+2. **Every file has a folder.** Must return zero (the `V2.3` backfill; its `UPDATE` can be re-run
+   by hand if not):
 
    ```sql
    SELECT COUNT(*) FROM file_info WHERE folder_id IS NULL;
-
-   SELECT fi.id FROM file_info fi LEFT JOIN folder f ON f.id = fi.folder_id
-   WHERE fi.folder_id IS NULL OR f.source_type <> 'MAIN_TAG' OR f.source_id <> fi.main_tag_file_id;
    ```
 
-   The application asks these same questions at every start (`FolderReadinessReport`) and logs
-   one line: `Phase 7 step 4 readiness: ...` at INFO when every figure is zero, at WARN with the
-   figures when not. A non-zero count of files without a folder means the backfill has not run
-   on some rows - `V2.3`'s `UPDATE` can be re-run by hand.
+3. **Every category has a tag group.** Both must return nothing. The first names a category
+   whose general tag has no `tag_group` row of the same name (re-run the `V2.4` backfill); the
+   second names a category folder with no general tag at all, which only a row edited by hand
+   can produce:
 
-2. **Every file has its tags.** The verification query at the top of `V2.4__Add_Tags.sql` must
-   return nothing; its backfill statements are re-runnable if it does not.
+   ```sql
+   SELECT f.id, f.name FROM folder f JOIN general_tag gt ON gt.id = f.general_tag_id
+     LEFT JOIN tag_group g ON g.name = gt.tag_name WHERE g.id IS NULL;
 
-3. **No two files share a name inside one folder.** Step 4 replaces the per-sub-category unique
-   constraint with a per-folder one, and the migration fails if the data violates it:
+   SELECT f.id, f.name FROM folder f WHERE f.kind = 'CATEGORY' AND f.general_tag_id IS NULL;
+   ```
+
+4. **No two files share a name inside one folder.** On data the application wrote this is empty
+   by construction (a folder is narrower than a sub-category, whose rule stays); the query is
+   here for anything moved behind the services:
 
    ```sql
    SELECT folder_id, file_name, COUNT(*) FROM file_info
-   WHERE folder_id IS NOT NULL
    GROUP BY folder_id, file_name HAVING COUNT(*) > 1;
    ```
 
-   On data the application wrote this is empty by construction (a folder is narrower than a
-   sub-category); the query is here for anything that was moved behind the services.
-
-4. **No integration still uploads by the triple.** Since 1.2.0 every such upload logs one line
-   with a fixed marker. Over a period that covers every integration's schedule - a month is the
-   usual answer, since some jobs run monthly - this must find nothing:
+5. **No integration still uploads by the triple.** Every 1.2.0 upload that sent
+   `fileCategoryId` / `fileSubCategoryId` / `mainTagFileId` without `folderId` logged one line
+   with a fixed marker; over a period that covers every integration's schedule this must find
+   nothing:
 
    ```powershell
    Select-String -Path "D:\MyApp\file-management\logs\*.log" -Pattern "v1-upload-by-triple"
@@ -659,28 +670,58 @@ database and log, in this order.
    grep -r "v1-upload-by-triple" /var/log/file-management/
    ```
 
-   Each hit names the principal and the tag it sent, which is who to contact. The same uploads
-   carry a `Deprecation: true` response header, for an integration that checks its responses.
-   What an integration has to change is one field - send `folderId` instead of the three ids;
-   the folder that stands for a tag is `SELECT id FROM folder WHERE source_type = 'MAIN_TAG' AND
-   source_id = <mainTagFileId>`, a stable id that survives step 4 - and nothing else: the
-   response (`fileId`, `fileDetailsId`) and the credential are unchanged. Since 1.2.0 the
-   delete and the download also have an id-only form, `DELETE /api/v1/files/file-details/{id}`
-   and `GET /api/v1/files/file-details/{id}/download`, so an integration needs to keep only the
-   `fileDetailsId` the upload returned; the two-id forms stay. All of v1's file operations also
-   accept an API key (`Authorization: Bearer fmk_…`) in place of the shared account's password,
-   and a key reaches only the folders it was granted, whether or not folder access is switched
-   on for people - a way to give each integration its own credential and its own folders.
+   After the upgrade a v1 upload without `folderId` is a `400` whose `detail` names the
+   parameter; the triple is ignored if sent. The folder that stood for a tag is the `folder_id`
+   the integration already looked up while 1.2.0 was running - do that lookup **before** this
+   upgrade, because `source_id` goes with `V2.8`:
 
-5. **Folder access is on, and has been, with the grants you mean.** After step 4 there is no
-   taxonomy to fall back on; the folder grants are the only structure.
+   ```sql
+   SELECT id AS folder_id, source_id AS main_tag_file_id FROM folder WHERE source_type = 'MAIN_TAG';
+   ```
 
-6. **The `action_history` rows that name category, sub-category and main-tag ids stay as they
-   are.** They are a log of what happened, the ids in them stop resolving to anything, and that
-   is accepted rather than rewritten (roadmap 7.4).
+   The response (`fileId`, `fileDetailsId`), the delete and download routes, and the credential
+   (Basic or Bearer) are unchanged.
 
-7. **Back up both halves**, then stop, replace the jar, start. Step 4's migration is the one
-   migration in this project that a restored backup is the only way back from.
+6. **Back up both halves** - the database and `base-dir` - and keep the backup until the new
+   version has run for as long as you need to trust it.
+
+**The upgrade:** stop, replace the jar, start. Watch the log for `Successfully applied 1
+migration`; no `seeded ... permission(s)` line follows, because `V2.8` inserts the four new
+permissions itself so that it can map them onto roles. If `V2.8` fails, the log names the statement: it is one of the four checks above, the
+database is untouched, and the 1.2.0 jar starts again as before.
+
+**After:**
+
+1. **The taxonomy pages are gone** (`/file-categories`, `/file-sub-categories`, `/main-tags`,
+   `/general-tags`, and the taxonomy section of the sidebar). The tree is managed from the
+   explorer: *new folder*, *rename* and *delete folder* appear on a folder the person holds
+   `WRITE` on. A category (a folder under `Home`) is created with a tag group - the label group
+   that used to be called a general tag - chosen from the existing ones or named anew; nothing
+   below a category carries one. The tree is three levels deep and stays so: a tag folder holds
+   files, not folders. Renaming moves no byte; deleting takes an empty folder only.
+
+2. **Permissions were re-mapped by the migration.** Roles that held the taxonomy's create
+   permissions now hold `REST_CREATE_FOLDER` (and `REST_GET_TAG_GROUPS`); the update ones,
+   `REST_RENAME_FOLDER`; the delete ones, `REST_DELETE_FOLDER`. The 27 taxonomy constants and
+   every role's rows for them are deleted - a permission row whose name is not in the enum would
+   break the login of anyone holding it. Check the roles that manage the tree hold the three,
+   and `FILE_EXPLORER_PAGE`.
+
+3. **A file name is unique per sub-category, as before** - not per folder. The bytes of every
+   file under a sub-category live at `{category}/{subCategory}/{name}/`, with no tag segment, so
+   a second file of the same name under a sibling tag is refused (`409`), on every upload route.
+
+4. **The `action_history` rows that name category, sub-category and main-tag ids stay as they
+   are.** They are a log of what happened; the ids in them no longer resolve to anything, and
+   that is accepted rather than rewritten (roadmap 7.4).
+
+5. **A category created from the explorer has no directory until its first upload** -
+   `saveByKey` creates the parents. Nothing to do; noted because the taxonomy pages used to
+   create the directory on the spot.
+
+**Rollback:** restore the database backup and start the 1.2.0 jar. Files uploaded after the
+upgrade are on disk under `base-dir` but not in the restored database; keep the 1.3.0 database
+backup too if you need to recover them.
 
 ---
 

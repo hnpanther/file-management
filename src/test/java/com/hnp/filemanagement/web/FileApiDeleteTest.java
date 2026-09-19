@@ -1,23 +1,16 @@
 package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
-import com.hnp.filemanagement.dto.FileCategoryDTO;
-import com.hnp.filemanagement.dto.FileSubCategoryDTO;
-import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.service.FileCategoryService;
-import com.hnp.filemanagement.service.FileSubCategoryService;
-import com.hnp.filemanagement.service.MainTagFileService;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.repository.FolderRepository;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -70,29 +63,17 @@ class FileApiDeleteTest extends MySqlSupport {
     private com.hnp.filemanagement.service.FileService fileService;
 
     @Autowired
-    private FileCategoryService fileCategoryService;
-    @Autowired
-    private FileSubCategoryService fileSubCategoryService;
-    @Autowired
-    private MainTagFileService mainTagFileService;
-    @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
-    @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private FolderRepository folderRepository;
+    @Autowired
+    private TagGroupRepository tagGroupRepository;
 
     @Value("${file.management.base-dir}")
     private String baseDir;
 
     private int principalId;
-    private int categoryId;
-    private int subCategoryId;
-    private int mainTagId;
+    private int tagFolderId;
     private String categoryName;
     private String subCategoryName;
 
@@ -100,38 +81,10 @@ class FileApiDeleteTest extends MySqlSupport {
     void setUp() {
         User owner = userRepository.save(TestData.user());
         principalId = owner.getId();
-        int generalTagId = generalTagRepository.save(TestData.generalTag(owner, "gt" + TestData.nextSequence())).getId();
-
-        FileCategoryDTO category = new FileCategoryDTO();
-        category.setCategoryName("Cat" + TestData.nextSequence());
-        category.setCategoryNameDescription(category.getCategoryName() + " label");
-        category.setDescription("a category");
-        category.setGeneralTagId(generalTagId);
-        fileCategoryService.createCategory(category, principalId);
-        categoryName = category.getCategoryName();
-        categoryId = fileCategoryRepository.findAll().stream()
-                .filter(c -> c.getCategoryName().equals(categoryName)).findFirst().orElseThrow().getId();
-
-        FileSubCategoryDTO subCategory = new FileSubCategoryDTO();
-        subCategory.setSubCategoryName("Sub" + TestData.nextSequence());
-        subCategory.setSubCategoryNameDescription(subCategory.getSubCategoryName() + " label");
-        subCategory.setDescription("a sub-category");
-        subCategory.setFileCategoryId(categoryId);
-        fileSubCategoryService.createFileSubCategory(subCategory, principalId);
-        subCategoryName = subCategory.getSubCategoryName();
-        subCategoryId = fileSubCategoryRepository.findAll().stream()
-                .filter(sc -> sc.getSubCategoryName().equals(subCategoryName)).findFirst().orElseThrow().getId();
-
-        MainTagFileDTO tag = new MainTagFileDTO();
-        tag.setTagName("Tag" + TestData.nextSequence());
-        tag.setTagNameDescription(tag.getTagName() + " label");
-        tag.setDescription("a tag " + tag.getTagName());
-        tag.setFileSubCategoryId(subCategoryId);
-        tag.setFileCategoryId(categoryId);
-        tag.setType(0);
-        mainTagFileService.createMainTagFile(tag, principalId);
-        mainTagId = mainTagFileRepository.findAll().stream()
-                .filter(t -> t.getTagName().equals(tag.getTagName())).findFirst().orElseThrow().getId();
+        FolderFixture.Chain chain = FolderFixture.chain(folderRepository, tagGroupRepository, owner);
+        categoryName = chain.category().getName();
+        subCategoryName = chain.subCategory().getName();
+        tagFolderId = chain.tagId();
     }
 
     @Test
@@ -205,9 +158,7 @@ class FileApiDeleteTest extends MySqlSupport {
                         .file(new MockMultipartFile("multipartFile", fileName, "text/plain",
                                 ("content of " + fileName).getBytes(StandardCharsets.UTF_8)))
                         .param("description", "uploaded through v1")
-                        .param("fileCategoryId", String.valueOf(categoryId))
-                        .param("fileSubCategoryId", String.valueOf(subCategoryId))
-                        .param("mainTagFileId", String.valueOf(mainTagId))
+                        .param("folderId", String.valueOf(tagFolderId))
                         .with(user(machine())))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();

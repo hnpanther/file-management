@@ -537,6 +537,10 @@ path `ActionHistoryRepository.findByEntityIdAndEntityName` has.
 
 ### 35. Paths are denormalised into three places — **S2**
 
+> **Closed in Phase 7 step 4 (`V2.8`).** All four columns are dropped; `file_details.storage_key`
+> (roadmap 7.1) is the one record of where a version's bytes are, written at upload and never
+> rewritten, and a folder rename moves nothing (`StorageKeyTest.aRenameDoesNotOrphanTheBytes`).
+
 `file_path` (absolute, includes `base-dir`) and `relative_path` on both `file_info` and
 `file_details`, plus the directory tree itself. Renaming a category, moving `base-dir`, or migrating
 to S3 invalidates the absolute column on every row. Nothing keeps the three in sync.
@@ -1017,6 +1021,13 @@ the row belongs to.
 > both named `HSED` under one general tag are a single tag, carried once by every file under
 > either. The two *places* remain distinct — that is the folder tree's job — and nothing reads
 > the tags yet, so the tree looks the same until step 3.
+>
+> **Since Phase 7 step 4 the places can be renamed.** The `IMS_Document_System > HSED` tag folder
+> is a folder like any other and can be given a name and a label that tell it apart from
+> `IMS > HSED` from the explorer (`REST_RENAME_FOLDER`), without moving a byte: the files' keys
+> keep the old directory and their tags follow the new name. Candidate (c) is therefore an
+> administrator's decision rather than a code change; (b) — a visual cue on shared labels — is
+> still open.
 
 The user reported a second "missing" file after 71/72 (`file_info` id 1578) and it is the same
 shape as the first, not a regression: `file_info.id = 1578` has `main_tag_file_id = 136`
@@ -1179,3 +1190,37 @@ folder before calling the service.
 > `file-details/{d}`) go through one private method that asks `requireWriteAccess` on the
 > file's folder first, failing closed on a folderless file like the other readers.
 > `FileApiByIdTest.deleteIsSubjectToFolderAccess`.
+
+---
+
+## Found while removing the taxonomy (Phase 7 step 4)
+
+### 79. A per-folder file-name rule would collide on disk — **S2** (avoided)
+
+The step-4 plan (roadmap 7.4 item 3) moved file-name uniqueness from "per sub-category" to "per
+folder", and the first cut of `V2.8` did exactly that: `uq_file_info_name_per_folder` and a
+duplicate check on `(folder_id, file_name)`. `FileServiceTest` then wrote the same name under two
+sibling tag folders and the second upload failed in `saveByKey` with "file already exists" - the
+storage layout is `{category}/{subCategory}/{name}/v{n}/`, with no tag segment, so two files of
+one name under sibling tags are one directory on disk, and a delete of either would remove the
+other's bytes.
+
+> **Avoided.** The rule stays per sub-category, enforced in the application
+> (`FileInfoRepository.findByFileNameUnderSubCategory`, checked by `FileService.createNewFile`
+> and `ObjectStoreService.put`) with the per-folder index as the schema-expressible half and the
+> storage layer's refusal to overwrite a key as the last guard. A per-folder rule needs a
+> per-folder layout for *new* files (`{category}/{subCategory}/{tag}/{name}/…`) and a delete that
+> removes only its own version directories - a storage decision, recorded here so it is taken
+> together with Phase 4 rather than slipped in.
+
+### 80. Web tests that build folders through repositories must flush the path — **S3**
+
+`FolderFixture` saved a folder, set its materialised `path` on the managed entity and returned
+it. Inside a `@Transactional` test the dirty check wrote the path before the next query; in a
+non-transactional `@SpringBootTest` web test nothing did, and every folder sat in the database
+with `path = ''` - the object-store listing then computed keys relative to nothing and the scope
+checks passed a key they should have refused. Found by `ObjectStoreApiTest` in the step-4 rewrite.
+
+> **Fixed.** The fixture writes twice, as `FolderService.create` does: insert, then
+> `saveAndFlush` with the path. Any future fixture that writes a folder outside a transaction has
+> to do the same; the path holds the row's own id, which only the insert assigns.

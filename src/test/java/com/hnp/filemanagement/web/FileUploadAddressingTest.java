@@ -1,25 +1,20 @@
 package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
-import com.hnp.filemanagement.dto.FileCategoryDTO;
-import com.hnp.filemanagement.dto.FileSubCategoryDTO;
-import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.entity.FileInfo;
+import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderPermission;
-import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.PermissionEnum;
+import com.hnp.filemanagement.entity.Tag;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.entity.UserFolderGrant;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
+import com.hnp.filemanagement.repository.RoleRepository;
+import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.service.FileCategoryService;
-import com.hnp.filemanagement.service.FileSubCategoryService;
-import com.hnp.filemanagement.service.MainTagFileService;
+import com.hnp.filemanagement.service.FolderContentService;
+import com.hnp.filemanagement.support.FolderFixture;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.jayway.jsonpath.JsonPath;
@@ -54,14 +49,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Where an upload goes, named two ways (roadmap 7.2 step 3, reader 5): the taxonomy triple every
- * existing integration sends, or a {@code folderId}. Both through the real v1 endpoint, and the
- * web form for the one case it changes.
+ * Where an upload goes, since Phase 7 step 4: a {@code folderId}, and nothing else. Through the
+ * real v1 endpoint, and the web form for what it does with a folder.
  *
- * <p>Written out in full, because this is the contract the Oracle clients depend on: the triple
- * alone must behave exactly as before, the folder alone must land the file in the same place the
- * triple would have, the two together must agree, and every malformed combination must be a 400
- * that says what to send - never a 500, never a file in the wrong folder.
+ * <p>Written out in full, because this is the contract the Oracle clients depend on: the folder
+ * alone lands the file, the old taxonomy triple is a 400 that names what to send, a folder that
+ * cannot hold documents is a 400, a folder outside the grant is a 403 - never a 500, never a
+ * file in the wrong folder.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -72,37 +66,22 @@ class FileUploadAddressingTest extends MySqlSupport {
     @Autowired
     private MockMvc mockMvc;
     @Autowired
-    private FileCategoryService fileCategoryService;
-    @Autowired
-    private FileSubCategoryService fileSubCategoryService;
-    @Autowired
-    private MainTagFileService mainTagFileService;
-    @Autowired
     private FileInfoRepository fileInfoRepository;
     @Autowired
-    private com.hnp.filemanagement.service.FolderContentService folderContentService;
+    private FolderContentService folderContentService;
     @Autowired
     private FolderRepository folderRepository;
     @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
+    private TagGroupRepository tagGroupRepository;
     @Autowired
     private UserRepository userRepository;
     @Autowired
-    private com.hnp.filemanagement.repository.RoleRepository roleRepository;
+    private RoleRepository roleRepository;
     @Autowired
     private EntityManager entityManager;
 
     private int adminId;
-    private int categoryId;
-    private int subCategoryId;
-    private int tagId;
-    private int otherTagId;
+    private FolderFixture.Chain chain;
     private int tagFolderId;
     private int otherTagFolderId;
     private int subCategoryFolderId;
@@ -115,93 +94,42 @@ class FileUploadAddressingTest extends MySqlSupport {
         User admin = TestData.user();
         admin.getRoles().add(adminRole);
         adminId = userRepository.save(admin).getId();
-        int generalTagId = generalTagRepository.save(TestData.generalTag(admin, "gt" + TestData.nextSequence())).getId();
 
-        FileCategoryDTO category = new FileCategoryDTO();
-        category.setCategoryName("Cat" + TestData.nextSequence());
-        category.setCategoryNameDescription(category.getCategoryName() + " label");
-        category.setDescription("a category");
-        category.setGeneralTagId(generalTagId);
-        fileCategoryService.createCategory(category, adminId);
-        categoryId = fileCategoryRepository.findAll().stream()
-                .filter(c -> c.getCategoryName().equals(category.getCategoryName())).findFirst().orElseThrow().getId();
-
-        FileSubCategoryDTO subCategory = new FileSubCategoryDTO();
-        subCategory.setSubCategoryName("Sub" + TestData.nextSequence());
-        subCategory.setSubCategoryNameDescription(subCategory.getSubCategoryName() + " label");
-        subCategory.setDescription("a sub-category");
-        subCategory.setFileCategoryId(categoryId);
-        fileSubCategoryService.createFileSubCategory(subCategory, adminId);
-        subCategoryId = fileSubCategoryRepository.findAll().stream()
-                .filter(sc -> sc.getSubCategoryName().equals(subCategory.getSubCategoryName())).findFirst().orElseThrow().getId();
-
-        tagId = createTag("Tag" + TestData.nextSequence());
-        otherTagId = createTag("Other" + TestData.nextSequence());
-        tagFolderId = folderOf(FolderSourceType.MAIN_TAG, tagId);
-        otherTagFolderId = folderOf(FolderSourceType.MAIN_TAG, otherTagId);
-        subCategoryFolderId = folderOf(FolderSourceType.SUB_CATEGORY, subCategoryId);
+        chain = FolderFixture.chain(folderRepository, tagGroupRepository, admin);
+        tagFolderId = chain.tagId();
+        subCategoryFolderId = chain.subCategoryId();
+        otherTagFolderId = FolderFixture.tag(folderRepository, chain.subCategory(), admin, "Other" + TestData.nextSequence()).getId();
     }
 
-    // ================================================================ the two ways of naming the place
+    // ================================================================ naming the place
 
     @Test
-    @DisplayName("the taxonomy triple alone - what every existing integration sends - files the document as before")
-    void theTripleAloneIsUnchanged() throws Exception {
-        String body = upload("triple.txt", Map.of(
-                "fileCategoryId", categoryId, "fileSubCategoryId", subCategoryId, "mainTagFileId", tagId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.fileName").value("triple.txt"))
-                // ...and is told, on the wire, that this way of addressing goes in step 4.
-                .andExpect(header().string("Deprecation", "true"))
-                .andReturn().getResponse().getContentAsString();
-
-        FileInfo file = stored(body);
-        assertThat(file.getMainTagFile().getId()).isEqualTo(tagId);
-        assertThat(file.getFolder().getId()).isEqualTo(tagFolderId);
-    }
-
-    @Test
-    @DisplayName("a folderId alone files the document in that folder, under the tag it mirrors")
-    void aFolderIdAloneIsEnough() throws Exception {
+    @DisplayName("a folderId files the document in that folder, with its storage key under the folder names and its tags derived from them")
+    void aFolderIdIsTheAddress() throws Exception {
         String body = upload("byfolder.txt", Map.of("folderId", tagFolderId))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fileName").value("byfolder.txt"))
                 .andExpect(header().doesNotExist("Deprecation"))
                 .andReturn().getResponse().getContentAsString();
 
         FileInfo file = stored(body);
         assertThat(file.getFolder().getId()).isEqualTo(tagFolderId);
-        assertThat(file.getMainTagFile().getId()).as("the taxonomy keys are still written, from the folder").isEqualTo(tagId);
-        assertThat(file.getFileSubCategory().getId()).isEqualTo(subCategoryId);
+        assertThat(file.getFileDetailsList().getFirst().getStorageKey())
+                .isEqualTo(chain.directory() + "/byfolder/v1/byfolder.txt");
+        assertThat(file.getTags()).extracting(Tag::getName)
+                .containsExactlyInAnyOrder(chain.category().getName(), chain.subCategory().getName(), chain.tag().getName());
+        assertThat(file.getTags()).extracting(t -> t.getGroup().getId())
+                .containsOnly(chain.category().getTagGroup().getId());
     }
 
     @Test
-    @DisplayName("both, agreeing, are accepted")
-    void bothAgreeing() throws Exception {
-        upload("both.txt", Map.of("folderId", tagFolderId,
-                "fileCategoryId", categoryId, "fileSubCategoryId", subCategoryId, "mainTagFileId", tagId))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    @DisplayName("a folderId with only part of the triple is checked on what was sent")
-    void aFolderIdWithAPartialTriple() throws Exception {
-        upload("partial.txt", Map.of("folderId", tagFolderId, "mainTagFileId", tagId))
-                .andExpect(status().isOk());
-        upload("partial2.txt", Map.of("folderId", tagFolderId, "fileSubCategoryId", subCategoryId))
-                .andExpect(status().isOk());
-    }
-
-    // ================================================================ what is refused, and how
-
-    @Test
-    @DisplayName("both, naming different places, are a 400 that says so - and nothing is stored")
-    void bothDisagreeing() throws Exception {
-        upload("clash.txt", Map.of("folderId", otherTagFolderId,
-                "fileCategoryId", categoryId, "fileSubCategoryId", subCategoryId, "mainTagFileId", tagId))
+    @DisplayName("the old taxonomy triple, without a folderId, is a 400 that names folderId - and stores nothing")
+    void theOldTripleIsRefused() throws Exception {
+        upload("triple.txt", Map.of("fileCategoryId", 1, "fileSubCategoryId", 2, "mainTagFileId", 3))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value(containsString("different places")));
+                .andExpect(jsonPath("$.detail").value(containsString("folderId")));
 
-        assertThat(fileInfoRepository.findAll()).extracting(FileInfo::getFileName).doesNotContain("clash");
+        assertThat(fileInfoRepository.findAll()).extracting(FileInfo::getFileName).doesNotContain("triple");
     }
 
     @Test
@@ -213,15 +141,6 @@ class FileUploadAddressingTest extends MySqlSupport {
     }
 
     @Test
-    @DisplayName("neither a folderId nor a main tag is a 400 that names both ways")
-    void neitherIsRefused() throws Exception {
-        upload("nowhere.txt", Map.of("fileCategoryId", categoryId, "fileSubCategoryId", subCategoryId))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value(containsString("folderId")))
-                .andExpect(jsonPath("$.detail").value(containsString("mainTagFileId")));
-    }
-
-    @Test
     @DisplayName("an unknown folderId is a 400, not a 500")
     void anUnknownFolderIsRefused() throws Exception {
         upload("ghost.txt", Map.of("folderId", 999_999))
@@ -229,17 +148,21 @@ class FileUploadAddressingTest extends MySqlSupport {
     }
 
     @Test
-    @DisplayName("the triple that does not describe one chain is still refused, as it always was")
-    void anInconsistentTripleIsStillRefused() throws Exception {
-        upload("chain.txt", Map.of("fileCategoryId", 999_999, "fileSubCategoryId", subCategoryId, "mainTagFileId", tagId))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value(containsString("category and sub category")));
+    @DisplayName("a name is unique within a sub-category: the same name in the same folder or under a sibling tag folder is a 409")
+    void namesAreUniquePerSubCategory() throws Exception {
+        upload("same.txt", Map.of("folderId", tagFolderId)).andExpect(status().isOk());
+        upload("same.txt", Map.of("folderId", tagFolderId)).andExpect(status().isConflict());
+        // The bytes go to {category}/{subCategory}/{name}, with no tag segment, so a sibling tag
+        // folder cannot hold a second file of the name.
+        upload("same.txt", Map.of("folderId", otherTagFolderId)).andExpect(status().isConflict());
+
+        assertThat(fileInfoRepository.findAll()).filteredOn(f -> f.getFileName().equals("same")).hasSize(1);
     }
 
     // ================================================================ access, by the folder
 
     @Test
-    @DisplayName("a folderId outside the caller's WRITE grants is a 403, before any consistency check")
+    @DisplayName("a folderId outside the caller's WRITE grants is a 403")
     void aFolderIdIsSubjectToFolderAccess() throws Exception {
         User restricted = userRepository.save(TestData.user());
         restricted.replaceFolderGrants(List.of(new UserFolderGrant(restricted,
@@ -249,16 +172,14 @@ class FileUploadAddressingTest extends MySqlSupport {
 
         upload("mine.txt", Map.of("folderId", tagFolderId), restricted.getId())
                 .andExpect(status().isOk());
-        // The wrong folder, and an inconsistent triple with it: the 403 must come first, so that a
-        // refused caller learns nothing about which combinations would have been consistent.
-        upload("theirs.txt", Map.of("folderId", otherTagFolderId, "mainTagFileId", tagId), restricted.getId())
+        upload("theirs.txt", Map.of("folderId", otherTagFolderId), restricted.getId())
                 .andExpect(status().isForbidden());
     }
 
     // ================================================================ the web form
 
     @Test
-    @DisplayName("the upload form accepts a folderId the same way")
+    @DisplayName("the upload form posts a folderId the same way")
     void theWebFormAcceptsAFolderId() throws Exception {
         mockMvc.perform(multipart("/files")
                         .file(new MockMultipartFile("multipartFile", "form.txt", "text/plain",
@@ -274,7 +195,21 @@ class FileUploadAddressingTest extends MySqlSupport {
                 .singleElement().satisfies(f -> assertThat(f.getFolder().getId()).isEqualTo(tagFolderId));
     }
 
-    // ================================================================ the form opened on a folder (roadmap 7.2 step 5)
+    @Test
+    @DisplayName("opened plainly, the form offers the category folders and the two dependent selects")
+    void theFormOpenedPlainlyOffersTheFolders() throws Exception {
+        String page = mockMvc.perform(get("/files/create").with(user(principal(adminId, PermissionEnum.ADMIN))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(page)
+                .contains("id=\"categoryFolder\"")
+                .contains("value=\"" + chain.categoryId() + "\"")
+                .contains(chain.category().getDisplayName())
+                .contains("id=\"subCategoryFolder\"")
+                .contains("name=\"folderId\" id=\"folderId\"")
+                .doesNotContain("mainTagFileId");
+    }
 
     @Test
     @DisplayName("opened on a writable tag folder, the form fixes the target and shows the path instead of the selects")
@@ -285,12 +220,12 @@ class FileUploadAddressingTest extends MySqlSupport {
                 .andReturn().getResponse().getContentAsString();
 
         assertThat(page)
-                .contains("name=\"folderId\"")
+                .contains("type=\"hidden\" name=\"folderId\"")
                 .contains("value=\"" + tagFolderId + "\"")
-                .contains(mainTagFileRepository.findById(tagId).orElseThrow().getTagNameDescription())
-                .contains(fileSubCategoryRepository.findById(subCategoryId).orElseThrow().getSubCategoryNameDescription())
-                .doesNotContain("id=\"mainTagFileId\"")
-                .doesNotContain("id=\"fileCategoryId\"");
+                .contains(chain.tag().getDisplayName())
+                .contains(chain.subCategory().getDisplayName())
+                .contains(chain.category().getDisplayName())
+                .doesNotContain("id=\"categoryFolder\"");
     }
 
     @Test
@@ -300,7 +235,7 @@ class FileUploadAddressingTest extends MySqlSupport {
                         .with(user(principal(adminId, PermissionEnum.ADMIN))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
-        assertThat(onSubCategory).doesNotContain("name=\"folderId\"").contains("id=\"mainTagFileId\"");
+        assertThat(onSubCategory).doesNotContain("type=\"hidden\" name=\"folderId\"").contains("id=\"categoryFolder\"");
 
         User restricted = userRepository.save(TestData.user());
         restricted.replaceFolderGrants(List.of(new UserFolderGrant(restricted,
@@ -311,12 +246,12 @@ class FileUploadAddressingTest extends MySqlSupport {
                         .with(user(principal(restricted.getId(), PermissionEnum.CREATE_FILE_PAGE))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
-        assertThat(readOnly).doesNotContain("name=\"folderId\"").contains("id=\"mainTagFileId\"");
+        assertThat(readOnly).doesNotContain("type=\"hidden\" name=\"folderId\"").contains("id=\"categoryFolder\"");
     }
 
     @Test
-    @DisplayName("the explorer says whether the folder on screen can be uploaded into")
-    void theExplorerReportsWritable() throws Exception {
+    @DisplayName("the explorer says whether the folder on screen can be uploaded into, and whether it can be managed")
+    void theExplorerReportsWritableAndManageable() throws Exception {
         User restricted = userRepository.save(TestData.user());
         restricted.replaceFolderGrants(List.of(new UserFolderGrant(restricted,
                 folderRepository.findById(tagFolderId).orElseThrow(), FolderPermission.WRITE)));
@@ -324,10 +259,15 @@ class FileUploadAddressingTest extends MySqlSupport {
         entityManager.flush();
 
         assertThat(folderContentService.contentOf(tagFolderId, 0, 10, restricted.getId()).writable()).isTrue();
+        assertThat(folderContentService.contentOf(tagFolderId, 0, 10, restricted.getId()).manageable()).isTrue();
+        assertThat(folderContentService.contentOf(subCategoryFolderId, 0, 10, restricted.getId()).manageable())
+                .as("no grant on the parent: it may not create siblings there").isFalse();
         assertThat(folderContentService.contentOf(otherTagFolderId, 0, 10, adminId).writable())
                 .as("an administrator may write anywhere").isTrue();
         assertThat(folderContentService.contentOf(subCategoryFolderId, 0, 10, adminId).writable())
                 .as("a sub-category cannot hold documents, however powerful the caller").isFalse();
+        assertThat(folderContentService.contentOf(subCategoryFolderId, 0, 10, adminId).manageable())
+                .as("but it can be managed").isTrue();
 
         restricted.replaceFolderGrants(List.of(new UserFolderGrant(restricted,
                 folderRepository.findById(tagFolderId).orElseThrow(), FolderPermission.READ)));
@@ -358,7 +298,7 @@ class FileUploadAddressingTest extends MySqlSupport {
         entityManager.flush();
         entityManager.clear();
         int fileId = JsonPath.read(body, "$.fileId");
-        return fileInfoRepository.findById(fileId).orElseThrow();
+        return fileInfoRepository.findByIdAndFetchFileDetails(fileId).orElseThrow();
     }
 
     private UserDetailsImpl principal(int userId, PermissionEnum... permissions) {
@@ -371,22 +311,5 @@ class FileUploadAddressingTest extends MySqlSupport {
         userDetails.setLoginType(0);
         userDetails.setPermissions(List.of(permissions));
         return userDetails;
-    }
-
-    private int createTag(String name) {
-        MainTagFileDTO tag = new MainTagFileDTO();
-        tag.setTagName(name);
-        tag.setTagNameDescription(name + " label");
-        tag.setDescription("a tag " + name);
-        tag.setFileSubCategoryId(subCategoryId);
-        tag.setFileCategoryId(categoryId);
-        tag.setType(0);
-        mainTagFileService.createMainTagFile(tag, adminId);
-        return mainTagFileRepository.findAll().stream()
-                .filter(t -> t.getTagName().equals(name)).findFirst().orElseThrow().getId();
-    }
-
-    private int folderOf(FolderSourceType type, int sourceId) {
-        return folderRepository.findBySourceTypeAndSourceId(type, sourceId).orElseThrow().getId();
     }
 }

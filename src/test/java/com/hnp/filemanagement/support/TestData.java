@@ -1,14 +1,13 @@
 package com.hnp.filemanagement.support;
 
-import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
-import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.GeneralTag;
-import com.hnp.filemanagement.entity.MainTagFile;
+import com.hnp.filemanagement.entity.Folder;
+import com.hnp.filemanagement.entity.FolderKind;
 import com.hnp.filemanagement.entity.Permission;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
+import com.hnp.filemanagement.entity.TagGroup;
 import com.hnp.filemanagement.entity.User;
 
 import java.io.IOException;
@@ -122,75 +121,58 @@ public final class TestData {
         return permission;
     }
 
-    public static GeneralTag generalTag(User creator, String tagName) {
-        GeneralTag generalTag = new GeneralTag();
-        generalTag.setTagName(tagName);
-        generalTag.setTagNameDescription(tagName + " description");
-        generalTag.setDescription(tagName + " long description");
-        generalTag.setType(0);
-        generalTag.setEnabled(1);
-        generalTag.setState(0);
-        generalTag.setCreatedBy(creator);
-        return generalTag;
+    public static TagGroup tagGroup(User creator, String name) {
+        TagGroup group = new TagGroup();
+        group.setName(name);
+        group.setTitle(name + " description");
+        group.setEnabled(1);
+        group.setCreatedBy(creator);
+        return group;
     }
 
-    public static FileCategory category(User creator, GeneralTag generalTag, String categoryName) {
-        FileCategory category = new FileCategory();
-        category.setCategoryName(categoryName);
-        category.setCategoryNameDescription(categoryName + " description");
-        category.setDescription(categoryName + " long description");
-        category.setPath("/base/" + categoryName);
-        category.setRelativePath(categoryName);
-        category.setEnabled(1);
-        category.setState(0);
-        category.setCreatedBy(creator);
-        category.setGeneralTag(generalTag);
-        return category;
+    /**
+     * One folder under a parent, unsaved, with the kind the level implies. The path holds the
+     * row's own id, which only the insert assigns, so a caller that saves it must call
+     * {@link #placed(Folder)} afterwards - {@link FolderFixture} does both.
+     */
+    public static Folder folder(User creator, Folder parent, String name, TagGroup group) {
+        Folder folder = new Folder();
+        folder.setParent(parent);
+        folder.setName(name);
+        folder.setDisplayName(name + " description");
+        folder.setDepth(parent.getDepth() + 1);
+        folder.setKind(switch (parent.getKind()) {
+            case ROOT -> FolderKind.CATEGORY;
+            case CATEGORY -> FolderKind.SUB_CATEGORY;
+            case SUB_CATEGORY -> FolderKind.TAG;
+            default -> throw new IllegalArgumentException("a " + parent.getKind() + " folder holds no folders");
+        });
+        folder.setTagGroup(group);
+        folder.setEnabled(1);
+        folder.setState(0);
+        folder.setCreatedBy(creator);
+        folder.setPath("");
+        return folder;
     }
 
-    public static FileSubCategory subCategory(User creator, FileCategory category, String name) {
-        FileSubCategory subCategory = new FileSubCategory();
-        subCategory.setSubCategoryName(name);
-        subCategory.setSubCategoryNameDescription(name + " description");
-        subCategory.setDescription(name + " long description");
-        subCategory.setPath(category.getPath() + "/" + name);
-        subCategory.setRelativePath(category.getRelativePath() + "/" + name);
-        subCategory.setEnabled(1);
-        subCategory.setState(0);
-        subCategory.setCreatedBy(creator);
-        subCategory.setFileCategory(category);
-        return subCategory;
+    /** Writes the materialised path of a just-saved folder, as FolderService does. */
+    public static Folder placed(Folder saved) {
+        saved.setPath(saved.getParent().childPath(saved.getId()));
+        return saved;
     }
 
-    public static MainTagFile mainTag(User creator, FileSubCategory subCategory, String tagName) {
-        MainTagFile mainTag = new MainTagFile();
-        mainTag.setTagName(tagName);
-        mainTag.setTagNameDescription(tagName + " description");
-        mainTag.setDescription(tagName + " long description");
-        mainTag.setType(0);
-        mainTag.setEnabled(1);
-        mainTag.setState(0);
-        mainTag.setCreatedBy(creator);
-        mainTag.setFileSubCategory(subCategory);
-        return mainTag;
-    }
-
-    /** A file with no versions yet; add them with {@link #fileDetails}. */
-    public static FileInfo fileInfo(User creator, MainTagFile mainTag, String fileName) {
-        FileSubCategory subCategory = mainTag.getFileSubCategory();
+    /** A file with no versions yet, in a tag folder; add versions with {@link #fileDetails}. */
+    public static FileInfo fileInfo(User creator, Folder tagFolder, String fileName) {
         FileInfo fileInfo = new FileInfo();
         fileInfo.setFileName(fileName);
         fileInfo.setCodeName(fileName);
         fileInfo.setFileNameDescription(fileName + " description");
         fileInfo.setDescription(fileName + " long description");
-        fileInfo.setFilePath(subCategory.getPath() + "/" + fileName);
-        fileInfo.setRelativePath(subCategory.getRelativePath() + "/" + fileName);
         fileInfo.setLastVersion(0);
         fileInfo.setEnabled(1);
         fileInfo.setState(0);
         fileInfo.setCreatedBy(creator);
-        fileInfo.setMainTagFile(mainTag);
-        fileInfo.setFileSubCategory(subCategory);
+        fileInfo.setFolder(tagFolder);
         return fileInfo;
     }
 
@@ -207,11 +189,10 @@ public final class TestData {
         fileDetails.setFileExtension(extension);
         fileDetails.setContentType("application/octet-stream");
         fileDetails.setDescription(fileName + " description");
-        // One expression for both, as FileService does: the two columns hold the same string and
-        // a fixture that let them differ would be testing state the application cannot produce.
-        String storageKey = fileInfo.getRelativePath() + "/v" + version + "/" + fileName;
-        fileDetails.setFilePath(fileInfo.getFilePath() + "/v" + version + "/" + fileName);
-        fileDetails.setRelativePath(storageKey);
+        // The key as FileService writes it: the two upper folder names, the file, the version.
+        Folder tag = fileInfo.getFolder();
+        String storageKey = tag.getParent().getParent().getName() + "/" + tag.getParent().getName()
+                + "/" + fileInfo.getFileName() + "/v" + version + "/" + fileName;
         fileDetails.setStorageKey(storageKey);
         fileDetails.setFileSize(1024);
         fileDetails.setVersion(version);

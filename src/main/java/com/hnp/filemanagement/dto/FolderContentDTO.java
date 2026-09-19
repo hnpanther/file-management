@@ -8,12 +8,11 @@ import java.util.List;
  * person asking may read it.
  *
  * <p>This is the contract the file-explorer page is built against, and it is deliberately
- * <em>folder-first</em>. The tree's {@code TreeNodeDTO} still describes the taxonomy —
- * category, sub-category, main tag — and answers one level of one kind at a time. This describes a
- * folder and its contents, which is what
+ * <em>folder-first</em>. The tree's {@code TreeNodeDTO} still speaks in levels — category,
+ * sub-category, tag — and answers one level of one kind at a time. This describes a folder and
+ * its contents, whatever its kind, which is what
  * {@link com.hnp.filemanagement.service.FolderContentService FolderContentService} reads straight
- * out of the {@code folder} table. When roadmap Phase 7 deletes the taxonomy, the shape here does
- * not change: only where {@link #files} come from does.
+ * out of the {@code folder} table.
  *
  * <p>Two things follow from that and are the reason the shape looks over-general today:
  *
@@ -39,8 +38,11 @@ import java.util.List;
  *                   of a visible folder is visible by definition, so nothing is filtered out of it
  * @param folders    child folders this person may at least walk into, by name
  * @param writable   whether documents may be filed into this folder by the caller: a tag folder
- *                   (the only kind that holds files until Phase 7 step 5) inside a {@code WRITE}
- *                   grant. What the page's "upload here" button is shown on.
+ *                   (the only kind that holds files) inside a {@code WRITE} grant. What the
+ *                   page's "upload here" button is shown on.
+ * @param manageable whether the caller holds {@code WRITE} on this folder itself, whatever its
+ *                   kind - what the page's create, rename and delete controls are shown on; the
+ *                   permissions to use them are checked separately, on the endpoints
  * @param files      one page of the files directly in this folder, empty unless {@code readable}
  * @param page       which page of {@link #files} this is. Folders are never paged - see the service
  */
@@ -48,6 +50,7 @@ public record FolderContentDTO(
         FolderRef folder,
         boolean readable,
         boolean writable,
+        boolean manageable,
         List<FolderRef> breadcrumb,
         List<FolderEntry> folders,
         List<FileEntry> files,

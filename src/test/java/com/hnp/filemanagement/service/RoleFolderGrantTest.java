@@ -2,22 +2,19 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FolderGrantDTO;
 import com.hnp.filemanagement.entity.EntityEnum;
-import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderPermission;
-import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.RoleFolderGrant;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.InvalidDataException;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,21 +40,15 @@ class RoleFolderGrantTest extends MySqlSupport {
     private RoleService underTest;
     @Autowired
     private ActionHistoryService actionHistoryService;
-    @Autowired
-    private FolderMirrorService folderMirrorService;
 
     @Autowired
     private RoleRepository roleRepository;
     @Autowired
     private FolderRepository folderRepository;
     @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
-    @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private TagGroupRepository tagGroupRepository;
 
     private int roleId;
     private int principalId;
@@ -70,17 +61,9 @@ class RoleFolderGrantTest extends MySqlSupport {
         principalId = creator.getId();
         roleId = roleRepository.save(TestData.role("READERS" + TestData.nextSequence())).getId();
 
-        var generalTag = generalTagRepository.save(TestData.generalTag(creator, "tag" + TestData.nextSequence()));
-        var category = fileCategoryRepository.save(
-                TestData.category(creator, generalTag, "cat" + TestData.nextSequence()));
-        var subCategory = fileSubCategoryRepository.save(
-                TestData.subCategory(creator, category, "sub" + TestData.nextSequence()));
-
-        // Built through repositories, so the mirror heals them into folders on first use.
-        folderMirrorService.created(subCategory);
-
-        categoryFolderId = mirrorOf(FolderSourceType.CATEGORY, category.getId()).getId();
-        subCategoryFolderId = mirrorOf(FolderSourceType.SUB_CATEGORY, subCategory.getId()).getId();
+        FolderFixture.Chain chain = FolderFixture.chain(folderRepository, tagGroupRepository, creator);
+        categoryFolderId = chain.categoryId();
+        subCategoryFolderId = chain.subCategoryId();
     }
 
     @Test
@@ -214,9 +197,5 @@ class RoleFolderGrantTest extends MySqlSupport {
 
     private FolderGrantDTO row(List<FolderGrantDTO> tree, int folderId) {
         return tree.stream().filter(f -> f.getId() == folderId).findFirst().orElseThrow();
-    }
-
-    private Folder mirrorOf(FolderSourceType sourceType, int sourceId) {
-        return folderRepository.findBySourceTypeAndSourceId(sourceType, sourceId).orElseThrow();
     }
 }

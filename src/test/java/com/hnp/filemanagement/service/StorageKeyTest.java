@@ -3,21 +3,16 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FileUploadDTO;
-import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileDetails;
-import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.GeneralTag;
-import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.repository.FolderRepository;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,20 +45,16 @@ class StorageKeyTest extends MySqlSupport {
     @Autowired
     private FileDetailsRepository fileDetailsRepository;
     @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
-    @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private FolderService folderService;
+    @Autowired
+    private FolderRepository folderRepository;
+    @Autowired
+    private TagGroupRepository tagGroupRepository;
 
     private int principalId;
-    private int categoryId;
-    private int subCategoryId;
-    private int mainTagId;
+    private FolderFixture.Chain chain;
     private String categoryName;
     private String subCategoryName;
 
@@ -75,25 +66,12 @@ class StorageKeyTest extends MySqlSupport {
         User creator = userRepository.save(TestData.user());
         principalId = creator.getId();
 
-        GeneralTag generalTag = generalTagRepository.save(
-                TestData.generalTag(creator, "gt" + TestData.nextSequence()));
+        chain = FolderFixture.chain(folderRepository, tagGroupRepository, creator);
+        categoryName = chain.category().getName();
+        subCategoryName = chain.subCategory().getName();
 
-        FileCategory category = TestData.category(creator, generalTag, "cat" + TestData.nextSequence());
-        fileCategoryRepository.save(category);
-        categoryId = category.getId();
-        categoryName = category.getCategoryName();
-
-        FileSubCategory subCategory = TestData.subCategory(creator, category, "sub" + TestData.nextSequence());
-        fileSubCategoryRepository.save(subCategory);
-        subCategoryId = subCategory.getId();
-        subCategoryName = subCategory.getSubCategoryName();
-
-        MainTagFile mainTag = TestData.mainTag(creator, subCategory, "tag" + TestData.nextSequence());
-        mainTagFileRepository.save(mainTag);
-        mainTagId = mainTag.getId();
-
-        // The category and sub-category directories are created by their services in production;
-        // here the rows are inserted directly, so the directories are made by hand.
+        // The category and sub-category directories are created on first write in production;
+        // here they are made by hand so the fixture does not depend on that.
         java.nio.file.Files.createDirectories(
                 java.nio.file.Paths.get(baseDir, categoryName, subCategoryName));
     }
@@ -112,20 +90,18 @@ class StorageKeyTest extends MySqlSupport {
     }
 
     /**
-     * The migration backfills {@code storage_key} from {@code relative_path}, which is only sound if
-     * the application writes the two from one expression. If they could ever differ, a backfilled
-     * row would point somewhere its bytes are not.
+     * The key is the only address a version has since Phase 7 step 4 dropped {@code relative_path};
+     * it is written once, from the folder chain at upload time, and never rewritten.
      */
     @Test
-    @DisplayName("the key and the relative path are written from one expression")
-    void theKeyAndTheRelativePathCannotDisagree() {
+    @DisplayName("the key is written from the folder chain the file is filed under")
+    void theKeyComesFromTheFolderChain() {
         FileDetailsDTO stored = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
 
         FileDetails row = fileDetailsRepository.findById(stored.getId()).orElseThrow();
 
-        assertThat(row.getStorageKey()).isEqualTo(row.getRelativePath());
+        assertThat(row.getStorageKey()).isEqualTo(chain.directory() + "/report/v1/report.txt");
     }
-
     @Test
     @DisplayName("every version and every format gets its own key")
     void eachStoredObjectHasItsOwnKey() {
@@ -143,35 +119,35 @@ class StorageKeyTest extends MySqlSupport {
     // ---------------------------------------------------------------- what it makes possible
 
     /**
-     * The whole point of the step. The category is renamed <em>in the database only</em> — no
-     * directory is touched — and the download still works, because it resolves the location from the
-     * row rather than from the taxonomy. Before this, the read would have looked under the new name
-     * and found nothing.
-     *
-     * <p>Nothing in the application renames a category today; that is what makes this test the proof
-     * that Phase 7 <em>can</em>, rather than a test of behaviour anybody can reach now.
+     * The whole point of the key. The category folder is renamed through the service — no
+     * directory is touched — and the download still works, because it resolves the location from
+     * the row rather than from the folder names. Since Phase 7 step 4 a rename is something anyone
+     * with write access on the folder can do from the explorer, so this is behaviour, not a proof
+     * of possibility.
      */
     @Test
-    @DisplayName("a file still downloads after its category is renamed underneath it")
+    @DisplayName("a file still downloads after its category folder is renamed underneath it")
     void aRenameDoesNotOrphanTheBytes() {
         FileDetailsDTO stored = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
         String keyBefore = fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey();
 
-        FileCategory category = fileCategoryRepository.findById(categoryId).orElseThrow();
-        category.setCategoryName(categoryName + "_renamed");
-        category.setRelativePath(categoryName + "_renamed");
-        fileCategoryRepository.saveAndFlush(category);
-
-        FileSubCategory subCategory = fileSubCategoryRepository.findById(subCategoryId).orElseThrow();
-        subCategory.setRelativePath(categoryName + "_renamed/" + subCategoryName);
-        fileSubCategoryRepository.saveAndFlush(subCategory);
+        folderService.rename(chain.categoryId(), categoryName + "_renamed", "renamed", principalId);
+        folderService.rename(chain.subCategoryId(), subCategoryName + "_renamed", "renamed too", principalId);
 
         assertThat(underTest.downloadFile(stored.getId(), principalId).getResource().exists())
-                .as("the bytes are where the key says, not where the taxonomy now says")
+                .as("the bytes are where the key says, not where the folder names now say")
                 .isTrue();
         assertThat(fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey())
                 .as("and the key did not move")
                 .isEqualTo(keyBefore);
+
+        underTest.createNewFileDetails(versionRequest(stored.getFileInfoId(), "report.txt", 2), principalId);
+        assertThat(fileDetailsRepository.findAll().stream()
+                .filter(row -> row.getFileInfo().getId().equals(stored.getFileInfoId()) && row.getVersion() == 2))
+                .as("a later version follows the first one's directory, not the new names")
+                .singleElement()
+                .satisfies(row -> assertThat(row.getStorageKey())
+                        .isEqualTo(categoryName + "/" + subCategoryName + "/report/v2/report.txt"));
     }
 
     @Test
@@ -197,9 +173,7 @@ class StorageKeyTest extends MySqlSupport {
         FileInfoDTO request = new FileInfoDTO();
         request.setDescription("description of " + fileName);
         request.setFileNameDescription(fileName);
-        request.setFileCategoryId(categoryId);
-        request.setFileSubCategoryId(subCategoryId);
-        request.setMainTagFileId(mainTagId);
+        request.setFolderId(chain.tagId());
         request.setMultipartFile(multipart(fileName));
         return request;
     }

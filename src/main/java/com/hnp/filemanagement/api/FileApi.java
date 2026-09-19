@@ -12,7 +12,6 @@ import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import com.hnp.filemanagement.validation.InsertValidation;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
@@ -52,9 +51,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/files")
 public class FileApi {
 
-    /** One fixed string per upload still addressed by category, sub-category and tag - the step-4 readiness signal. */
-    public static final String TRIPLE_ADDRESSING_MARKER = "v1-upload-by-triple";
-
     private static final Logger logger = LoggerFactory.getLogger(FileApi.class);
 
     private final GlobalGeneralLogging globalGeneralLogging;
@@ -77,11 +73,9 @@ public class FileApi {
     /**
      * Uploads a file, or a new version of one that already exists.
      *
-     * <p>Where it goes can be named two ways (roadmap 7.2 step 3, reader 5): the taxonomy triple
-     * {@code fileCategoryId} / {@code fileSubCategoryId} / {@code mainTagFileId}, which every
-     * existing integration sends and which stays until Phase 7 step 4; or a {@code folderId}, the
-     * id the explorer and the tree render. Sending both is allowed and they must agree; sending
-     * neither is a 400 that says so.
+     * <p>Where it goes is a {@code folderId}: the id of a tag folder, the id the explorer and the
+     * tree render (since Phase 7 step 4; the category / sub-category / tag triple that preceded
+     * it is ignored). A request without one is a 400 that names the parameter.
      *
      * @param publicFile {@code "0"} marks the file private; anything else, including absent,
      *                   leaves it public. The odd default is the existing behaviour and the pages
@@ -94,20 +88,10 @@ public class FileApi {
                                            @RequestParam(value = "public-file", required = false) String publicFile,
                                            @ModelAttribute @Validated(InsertValidation.class) FileInfoDTO fileInfoDTO,
                                            BindingResult bindingResult,
-                                           HttpServletRequest request,
-                                           HttpServletResponse response) {
+                                           HttpServletRequest request) {
 
         globalGeneralLogging.controllerLogging(userDetails, request, FileApi.class,
                 "save new file name=" + fileInfoDTO.getFileName());
-
-        // The taxonomy triple goes in Phase 7 step 4. Until then a caller that still sends it is
-        // told so on the wire, and named in the log so the operator can see who has yet to move -
-        // grep for the marker before deciding step 4 is safe (docs/deployment.md).
-        if (fileInfoDTO.getFolderId() == null) {
-            response.setHeader("Deprecation", "true");
-            logger.info("{} principal={} mainTagFileId={} fileName={}", TRIPLE_ADDRESSING_MARKER,
-                    userDetails.getUsername(), fileInfoDTO.getMainTagFileId(), fileInfoDTO.getFileName());
-        }
 
         // Checked before touching the multipart: the debug block below dereferences it, and this
         // method used to log it first, so a request without a file answered 500 instead of 400.

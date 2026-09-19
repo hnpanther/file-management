@@ -184,7 +184,7 @@ public class ObjectStoreService {
         }
 
         Folder folder = requireFolder(bucketFolder, parsed.folders());
-        if (folder.getKind() != FolderKind.TAG || folder.getSourceId() == null) {
+        if (folder.getKind() != FolderKind.TAG) {
             throw new InvalidDataException("objects can only be written into a tag folder, not " + folder.getKind());
         }
         if (!access.canWrite(folder.getPath())) {
@@ -195,19 +195,23 @@ public class ObjectStoreService {
                     "the object name must be the file name plus an extension: " + parsed.objectName());
         }
 
-        FileInfo existing = fileInfoRepository
-                .findByNameAndSubCategoryId(subCategoryIdOf(folder), parsed.fileName())
-                .orElse(null);
+        // File names are unique per sub-category, not per tag folder (the bytes live under
+        // {category}/{subCategory}/{name} with no tag segment), so a name can already be taken by
+        // a file under a *sibling* tag. Without this check the write would append a version to
+        // that other file - the caller's write access to the folder they named would be checked,
+        // then the version would land somewhere else and the canonical key answered with would
+        // not resolve. A conflict up front, before anything is stored.
+        fileInfoRepository.findByFileNameUnderSubCategory(folder.getParent().getId(), parsed.fileName())
+                .filter(taken -> !taken.getFolder().getId().equals(folder.getId()))
+                .ifPresent(taken -> {
+                    throw new DuplicateResourceException("a file named " + parsed.fileName()
+                            + " already exists under another folder of the same sub-category");
+                });
 
-        // File names are unique per sub-category, not per tag folder, so a name can already be
-        // taken by a file under a *sibling* tag. Without this check the write would append a
-        // version to that other file - the caller's write access to the folder they named would be
-        // checked, then the version would land somewhere else and the canonical key answered with
-        // would not resolve. A conflict up front, before anything is stored.
-        if (existing != null && (existing.getFolder() == null || !existing.getFolder().getId().equals(folder.getId()))) {
-            throw new DuplicateResourceException("a file named " + parsed.fileName()
-                    + " already exists under another folder of the same sub-category");
-        }
+        // In this folder, an existing file of this name is this file's next version.
+        FileInfo existing = fileInfoRepository
+                .findByFolderIdAndFileNameWithDetails(folder.getId(), parsed.fileName())
+                .orElse(null);
 
         if (existing == null) {
             fileService.createNewFile(newFileRequest(folder, parsed, body), principalId, 0);
@@ -314,18 +318,11 @@ public class ObjectStoreService {
         return value.toLowerCase(Locale.ROOT).replace('_', '-');
     }
 
-    /**
-     * The stored version a key names, looked up by the folder the key walked to (roadmap 7.2
-     * step 3). Until step 3 this went folder → main tag → sub-category → file and then checked the
-     * file's tag was the folder's; now the file's own {@code folder_id} answers in one query.
-     */
+    /** The stored version a key names, looked up by the folder the key walked to and the file's name. */
     private FileDetails requireObject(Folder folder, ObjectKeyDTO parsed) {
         FileInfo fileInfo = fileInfoRepository
                 .findByFolderIdAndFileName(folder.getId(), parsed.fileName())
-                .orElseThrow(() -> {
-                    warnIfFilesLackAFolder();
-                    return new ResourceNotFoundException("no such object: " + parsed.fileName());
-                });
+                .orElseThrow(() -> new ResourceNotFoundException("no such object: " + parsed.fileName()));
 
         return fileDetailsRepository.findLatestVersionOf(List.of(fileInfo.getId())).stream()
                 .filter(details -> details.getVersion() == parsed.version())
@@ -365,7 +362,6 @@ public class ObjectStoreService {
 
         List<FileInfo> files = fileInfoRepository.findByFolderIdIn(readable);
         if (files.isEmpty()) {
-            warnIfFilesLackAFolder();
             return List.of();
         }
 
@@ -411,19 +407,6 @@ public class ObjectStoreService {
         return names;
     }
 
-    /**
-     * A file without a folder is one that predates {@code V2.3} and was never backfilled, which
-     * the migration's verification query would have shown. The folder readers do not see such a
-     * file; this says so, once per read that came up short, rather than failing the request.
-     */
-    private void warnIfFilesLackAFolder() {
-        long orphans = fileInfoRepository.countByFolderIsNull();
-        if (orphans > 0) {
-            logger.warn("{} file(s) have no folder_id and are invisible to folder-based reads; "
-                    + "run the V2.3 backfill (see the migration's header)", orphans);
-        }
-    }
-
     private String latestKeyOf(Folder folder, ObjectKeyDTO parsed, int principalId) {
         FileInfo fileInfo = fileInfoRepository
                 .findByFolderIdAndFileName(folder.getId(), parsed.fileName())
@@ -456,17 +439,11 @@ public class ObjectStoreService {
         return "\"v" + details.getVersion() + "-" + sizeOf(details) + "\"";
     }
 
-    private static int subCategoryIdOf(Folder tagFolder) {
-        return tagFolder.getParent().getSourceId();
-    }
-
     private FileInfoDTO newFileRequest(Folder folder, ObjectKeyDTO parsed, MultipartFile body) {
         FileInfoDTO request = new FileInfoDTO();
         request.setFileNameDescription(parsed.objectName());
         request.setDescription(parsed.objectName());
-        request.setMainTagFileId(folder.getSourceId());
-        request.setFileSubCategoryId(subCategoryIdOf(folder));
-        request.setFileCategoryId(folder.getParent().getParent().getSourceId());
+        request.setFolderId(folder.getId());
         request.setMultipartFile(body);
         return request;
     }

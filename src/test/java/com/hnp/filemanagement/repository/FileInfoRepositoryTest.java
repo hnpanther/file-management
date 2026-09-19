@@ -1,14 +1,13 @@
 package com.hnp.filemanagement.repository;
 
-import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
-import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.GeneralTag;
-import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.repository.FolderRepository;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import jakarta.persistence.EntityManager;
 import org.hibernate.Hibernate;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,35 +38,24 @@ class FileInfoRepositoryTest extends MySqlSupport {
     @Autowired
     private FileDetailsRepository fileDetailsRepository;
     @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
-    @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private FolderRepository folderRepository;
+    @Autowired
+    private TagGroupRepository tagGroupRepository;
     @Autowired
     private EntityManager entityManager;
 
     private User creator;
-    private MainTagFile mainTag;
-    private FileSubCategory subCategory;
+    private FolderFixture.Chain chain;
     private int fileInfoId;
 
     @BeforeEach
     void setUp() {
         creator = userRepository.save(TestData.user());
-        GeneralTag generalTag = generalTagRepository.save(
-                TestData.generalTag(creator, "tag" + TestData.nextSequence()));
-        FileCategory category = fileCategoryRepository.save(
-                TestData.category(creator, generalTag, "documents" + TestData.nextSequence()));
-        subCategory = fileSubCategoryRepository.save(
-                TestData.subCategory(creator, category, "invoices" + TestData.nextSequence()));
-        mainTag = mainTagFileRepository.save(TestData.mainTag(creator, subCategory, "tag" + TestData.nextSequence()));
+        chain = FolderFixture.chain(folderRepository, tagGroupRepository, creator);
 
-        FileInfo fileInfo = TestData.fileInfo(creator, mainTag, "report" + TestData.nextSequence());
+        FileInfo fileInfo = TestData.fileInfo(creator, chain.tag(), "report" + TestData.nextSequence());
         TestData.fileDetails(creator, fileInfo, 1, "txt");
         TestData.fileDetails(creator, fileInfo, 2, "txt");
         fileInfoId = underTest.save(fileInfo).getId();
@@ -78,19 +66,17 @@ class FileInfoRepositoryTest extends MySqlSupport {
     // ---------------------------------------------------------------- fetch plans
 
     @Test
-    @DisplayName("the file lookup resolves the whole taxonomy chain in one query")
-    void resolvesTheTaxonomyChain() {
+    @DisplayName("the file lookup resolves the whole folder chain in one query")
+    void resolvesTheFolderChain() {
         FileInfo fileInfo = underTest.findByIdAndFetchFileDetails(fileInfoId).orElseThrow();
 
         // Everything the converter walks has to be initialised, or rendering the page would issue
         // a query per row - the N+1 that the lazy mapping makes visible instead of hiding.
         assertThat(Hibernate.isInitialized(fileInfo.getFileDetailsList())).isTrue();
-        assertThat(Hibernate.isInitialized(fileInfo.getMainTagFile())).isTrue();
-        assertThat(Hibernate.isInitialized(fileInfo.getMainTagFile().getFileSubCategory())).isTrue();
-        assertThat(Hibernate.isInitialized(
-                fileInfo.getMainTagFile().getFileSubCategory().getFileCategory())).isTrue();
-        assertThat(Hibernate.isInitialized(
-                fileInfo.getMainTagFile().getFileSubCategory().getFileCategory().getGeneralTag())).isTrue();
+        assertThat(Hibernate.isInitialized(fileInfo.getFolder())).isTrue();
+        assertThat(Hibernate.isInitialized(fileInfo.getFolder().getParent())).isTrue();
+        assertThat(Hibernate.isInitialized(fileInfo.getFolder().getParent().getParent())).isTrue();
+        assertThat(Hibernate.isInitialized(fileInfo.getFolder().getParent().getParent().getTagGroup())).isTrue();
     }
 
     @Test
@@ -104,7 +90,7 @@ class FileInfoRepositoryTest extends MySqlSupport {
     @Test
     @DisplayName("a file with no versions is still found - the fetch is a LEFT join")
     void findsAFileWithNoVersions() {
-        FileInfo empty = underTest.save(TestData.fileInfo(creator, mainTag, "empty" + TestData.nextSequence()));
+        FileInfo empty = underTest.save(TestData.fileInfo(creator, chain.tag(), "empty" + TestData.nextSequence()));
         flushAndClear();
 
         assertThat(underTest.findByIdAndFetchFileDetails(empty.getId())).isPresent();
@@ -119,7 +105,8 @@ class FileInfoRepositoryTest extends MySqlSupport {
         var page = underTest.search(fileName, PageRequest.of(0, 10));
 
         assertThat(page.getContent()).hasSize(1);
-        assertThat(Hibernate.isInitialized(page.getContent().getFirst().getMainTagFile())).isTrue();
+        assertThat(Hibernate.isInitialized(page.getContent().getFirst().getFolder())).isTrue();
+        assertThat(Hibernate.isInitialized(page.getContent().getFirst().getFolder().getParent().getParent())).isTrue();
     }
 
     /**
@@ -156,7 +143,7 @@ class FileInfoRepositoryTest extends MySqlSupport {
     @Test
     @DisplayName("a file with no versions left gets lastVersion 0, not null")
     void recomputesToZeroWhenNothingRemains() {
-        FileInfo empty = underTest.save(TestData.fileInfo(creator, mainTag, "empty" + TestData.nextSequence()));
+        FileInfo empty = underTest.save(TestData.fileInfo(creator, chain.tag(), "empty" + TestData.nextSequence()));
         flushAndClear();
 
         underTest.recalculateLastVersion(empty.getId());
@@ -201,12 +188,12 @@ class FileInfoRepositoryTest extends MySqlSupport {
     // ---------------------------------------------------------------- schema constraints
 
     @Test
-    @DisplayName("two files cannot share a name inside one sub-category")
-    void theSchemaRefusesADuplicateFileNameInASubCategory() {
+    @DisplayName("two files cannot share a name inside one folder")
+    void theSchemaRefusesADuplicateFileNameInAFolder() {
         String taken = underTest.findById(fileInfoId).orElseThrow().getFileName();
         flushAndClear();
 
-        FileInfo duplicate = TestData.fileInfo(creator, mainTag, taken);
+        FileInfo duplicate = TestData.fileInfo(creator, chain.tag(), taken);
 
         // The service checks this too, so that the caller gets a 409 rather than a 500 - but the
         // constraint is what makes it hold when two requests check at the same moment. The insert
@@ -239,10 +226,22 @@ class FileInfoRepositoryTest extends MySqlSupport {
     }
 
     @Test
-    @DisplayName("files are counted per main tag")
-    void countsFilesPerTag() {
-        assertThat(underTest.countFileWithTagId(mainTag.getId())).isEqualTo(1);
-        assertThat(underTest.countFileWithTagId(0)).isZero();
+    @DisplayName("files are counted per folder, and a name is found from any sibling tag folder of the sub-category")
+    void countsFilesPerFolderAndFindsNamesPerSubCategory() {
+        assertThat(underTest.countByFolderId(chain.tagId())).isEqualTo(1);
+        assertThat(underTest.countByFolderId(0)).isZero();
+
+        String taken = underTest.findById(fileInfoId).orElseThrow().getFileName();
+        var sibling = FolderFixture.tag(folderRepository, chain.subCategory(), creator, "Sibling" + TestData.nextSequence());
+
+        assertThat(underTest.findByFolderIdAndFileName(chain.tagId(), taken)).isPresent();
+        assertThat(underTest.findByFolderIdAndFileName(sibling.getId(), taken)).isEmpty();
+        // The upload check looks across the sub-category, because the bytes of every file under
+        // it share {category}/{subCategory}/{name}: a name taken under one tag is taken under all.
+        assertThat(underTest.findByFileNameUnderSubCategory(chain.subCategoryId(), taken))
+                .isPresent().get()
+                .satisfies(found -> assertThat(found.getFolder().getId()).isEqualTo(chain.tagId()));
+        assertThat(underTest.findByFileNameUnderSubCategory(chain.subCategoryId(), taken + "-other")).isEmpty();
     }
 
     private void flushAndClear() {

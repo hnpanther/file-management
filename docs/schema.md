@@ -87,29 +87,33 @@ the reset is documented; they are not shipped as a script on purpose. Developers
                         └──────────────┬────────┘                        │            │
                                        ▼                                 │            ▼
                                      folder  ◄───────────────────────────┴──── (folder)
-                                       ▲        one tree; mirrors the taxonomy today,
-                                       │        becomes the structure in Phase 7
-      general_tag ──< file_category ──< file_sub_category ──< main_tag_file
-            │               │                   │                  │
-            │               │                   ▼                  ▼
-            │               └────────────── file_info ──< file_details
-            │                                  │  │
-            │                        folder_id ┘  └──< file_tag >── tag >── tag_group
-            └────────────────────────────────────────────────────────────────┘
-                              (one tag_group per general_tag, by name)
+                                       │        one tree, three levels deep:
+                                       │        Home > CATEGORY > SUB_CATEGORY > TAG
+                                       │        (a CATEGORY row carries a tag_group_id)
+                              folder_id│
+                                       ▼
+                                   file_info ──< file_details
+                                       │
+                                       └──< file_tag >── tag >── tag_group
+                                            (a file's tags: its three folder names,
+                                             in its category's group)
 
       action_history            every mutation, by entity and id
       flyway_schema_history     Flyway's own ledger; not described below
 ```
 
-Three groups:
+Two groups:
 
 | Group | Tables | State |
 |---|---|---|
 | **Identity and permissions** | `user`, `role`, `user_role`, `permission`, `permission_role`, `api_key`, `api_key_folder`, `upload_policy`, `upload_policy_rule`, `content_kind` | stable |
-| **Where a file is** | `folder`, `role_folder`, `user_folder`, `file_info.folder_id` | the future structure; `folder` still mirrors the taxonomy (roadmap Phase 6–7) |
-| **What a file is, and about** | `file_info`, `file_details`, `tag_group`, `tag`, `file_tag` | stable; tags are derived from the taxonomy until Phase 7 step 3 |
-| **The taxonomy** | `general_tag`, `file_category`, `file_sub_category`, `main_tag_file` | **to be removed** in Phase 7 step 4, together with `folder.source_type` / `source_id` and the `file_path` / `relative_path` columns |
+| **Where a file is** | `folder`, `role_folder`, `user_folder`, `file_info.folder_id` | authoritative since `V2.8` (Phase 7 step 4); `folder_id` is `NOT NULL` and names a `TAG` folder |
+| **What a file is, and about** | `file_info`, `file_details`, `tag_group`, `tag`, `file_tag` | stable; a file's tags are derived from its folder chain, `tag_group` is the label group a category carries |
+
+The taxonomy tables (`general_tag`, `file_category`, `file_sub_category`, `main_tag_file`) and the
+columns that pointed at them (`file_info.file_sub_category_id` / `main_tag_file_id`,
+`folder.general_tag_id` / `source_type` / `source_id`, and `file_path` / `relative_path` on
+`file_info` and `file_details`) were dropped by `V2.8`.
 
 Conventions that hold everywhere: `id INT AUTO_INCREMENT` primary keys; `created_at` / `updated_at`
 written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign keys to `user`
@@ -117,7 +121,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V2.7`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
+_As of migration `V2.8`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
 
 ### `action_history`
 
@@ -196,29 +200,6 @@ _As of migration `V2.7`. Types and defaults are MySQL's own; every table is Inno
 * **foreign key** `fk_content_kind_created_by_user` `created_by` → `user` (`id`)
 * **foreign key** `fk_content_kind_updated_by_user` `updated_by` → `user` (`id`)
 
-### `file_category`
-
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `category_name` | `varchar(100)` | no |  |  |
-| `category_name_description` | `varchar(200)` | no |  |  |
-| `description` | `varchar(1000)` | yes |  |  |
-| `path` | `varchar(100)` | no |  |  |
-| `relative_path` | `varchar(100)` | no |  |  |
-| `general_tag_id` | `int` | no |  |  |
-| `enabled` | `int` | no |  |  |
-| `state` | `int` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `created_by` | `int` | no |  |  |
-| `updated_by` | `int` | yes |  |  |
-
-* **primary key** `id`
-* **unique** `uq_file_category_category_name` (`category_name`)
-* **foreign key** `fk_file_category_created_by_user` `created_by` → `user` (`id`)
-* **foreign key** `fk_file_category_updated_by_user` `updated_by` → `user` (`id`)
-
 ### `file_details`
 
 | Column | Type | Null | Default | Notes |
@@ -233,8 +214,6 @@ _As of migration `V2.7`. Types and defaults are MySQL's own; every table is Inno
 | `version_name` | `varchar(100)` | no |  |  |
 | `version_name_description` | `varchar(1000)` | yes |  |  |
 | `description` | `varchar(1000)` | no |  |  |
-| `file_path` | `varchar(1000)` | no |  |  |
-| `relative_path` | `varchar(1000)` | no |  |  |
 | `storage_key` | `varchar(1000)` | no |  |  |
 | `file_link` | `varchar(1000)` | yes |  |  |
 | `file_size` | `int` | no |  |  |
@@ -263,13 +242,9 @@ _As of migration `V2.7`. Types and defaults are MySQL's own; every table is Inno
 | `code_name` | `varchar(300)` | no |  |  |
 | `file_name_description` | `varchar(500)` | no |  |  |
 | `description` | `varchar(1000)` | yes |  |  |
-| `file_path` | `varchar(1000)` | no |  |  |
-| `relative_path` | `varchar(1000)` | no |  |  |
 | `file_link` | `varchar(1000)` | yes |  |  |
 | `last_version` | `int` | no |  |  |
-| `file_sub_category_id` | `int` | no |  |  |
-| `main_tag_file_id` | `int` | no |  |  |
-| `folder_id` | `int` | yes |  |  |
+| `folder_id` | `int` | no |  |  |
 | `enabled` | `int` | no |  |  |
 | `state` | `int` | no |  |  |
 | `created_at` | `datetime` | no |  |  |
@@ -278,40 +253,13 @@ _As of migration `V2.7`. Types and defaults are MySQL's own; every table is Inno
 | `updated_by` | `int` | yes |  |  |
 
 * **primary key** `id`
-* **unique** `uq_file_info_name_per_sub_category` (`file_sub_category_id`, `file_name`)
+* **unique** `uq_file_info_name_per_folder` (`folder_id`, `file_name`)
 * **foreign key** `fk_file_info_created_by_user` `created_by` → `user` (`id`)
-* **foreign key** `fk_file_info_file_sub_category_id` `file_sub_category_id` → `file_sub_category` (`id`)
 * **foreign key** `fk_file_info_folder` `folder_id` → `folder` (`id`)
-* **foreign key** `fk_file_info_main_tag_file` `main_tag_file_id` → `main_tag_file` (`id`)
 * **foreign key** `fk_file_info_updated_by_user` `updated_by` → `user` (`id`)
 * **index** `ix_file_info_created_at` (`created_at`)
 * **index** `ix_file_info_folder` (`folder_id`)
-* **index** `ix_file_info_main_tag_file_id` (`main_tag_file_id`)
 * **index** `ix_file_info_state` (`state`)
-
-### `file_sub_category`
-
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `sub_category_name` | `varchar(100)` | no |  |  |
-| `sub_category_name_description` | `varchar(200)` | no |  |  |
-| `file_category_id` | `int` | no |  |  |
-| `description` | `varchar(1000)` | yes |  |  |
-| `path` | `varchar(100)` | no |  |  |
-| `relative_path` | `varchar(100)` | no |  |  |
-| `enabled` | `int` | no |  |  |
-| `state` | `int` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `created_by` | `int` | no |  |  |
-| `updated_by` | `int` | yes |  |  |
-
-* **primary key** `id`
-* **unique** `uq_file_sub_category_name_per_category` (`file_category_id`, `sub_category_name`)
-* **foreign key** `fk_file_sub_category_created_by_user` `created_by` → `user` (`id`)
-* **foreign key** `fk_file_sub_category_file_category_id` `file_category_id` → `file_category` (`id`)
-* **foreign key** `fk_file_sub_category_updated_by_user` `updated_by` → `user` (`id`)
 
 ### `file_tag`
 
@@ -337,9 +285,7 @@ _As of migration `V2.7`. Types and defaults are MySQL's own; every table is Inno
 | `depth` | `int` | no |  |  |
 | `kind` | `varchar(30)` | no |  |  |
 | `owner_user_id` | `int` | yes |  |  |
-| `general_tag_id` | `int` | yes |  |  |
-| `source_type` | `varchar(20)` | yes |  |  |
-| `source_id` | `int` | yes |  |  |
+| `tag_group_id` | `int` | yes |  |  |
 | `enabled` | `int` | no |  |  |
 | `state` | `int` | no |  |  |
 | `created_at` | `datetime` | no |  |  |
@@ -349,58 +295,13 @@ _As of migration `V2.7`. Types and defaults are MySQL's own; every table is Inno
 
 * **primary key** `id`
 * **unique** `uq_folder_sibling_name` (`parent_id`, `name`)
-* **unique** `uq_folder_source` (`source_type`, `source_id`)
 * **foreign key** `fk_folder_created_by_user` `created_by` → `user` (`id`)
-* **foreign key** `fk_folder_general_tag` `general_tag_id` → `general_tag` (`id`)
 * **foreign key** `fk_folder_owner_user` `owner_user_id` → `user` (`id`)
 * **foreign key** `fk_folder_parent` `parent_id` → `folder` (`id`)
+* **foreign key** `fk_folder_tag_group` `tag_group_id` → `tag_group` (`id`)
 * **foreign key** `fk_folder_updated_by_user` `updated_by` → `user` (`id`)
 * **index** `ix_folder_parent` (`parent_id`)
 * **index** `ix_folder_path` (`path`)
-
-### `general_tag`
-
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `tag_name` | `varchar(100)` | no |  |  |
-| `tag_name_description` | `varchar(200)` | no |  |  |
-| `description` | `varchar(1000)` | yes |  |  |
-| `type` | `int` | no |  |  |
-| `enabled` | `int` | no |  |  |
-| `state` | `int` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `created_by` | `int` | no |  |  |
-| `updated_by` | `int` | yes |  |  |
-
-* **primary key** `id`
-* **unique** `uq_general_tag_name` (`tag_name`)
-* **foreign key** `fk_general_tag_created_by_user` `created_by` → `user` (`id`)
-* **foreign key** `fk_general_tag_updated_by_user` `updated_by` → `user` (`id`)
-
-### `main_tag_file`
-
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `tag_name` | `varchar(100)` | no |  |  |
-| `tag_name_description` | `varchar(100)` | no |  |  |
-| `description` | `varchar(1000)` | yes |  |  |
-| `file_sub_category_id` | `int` | no |  |  |
-| `type` | `int` | no |  |  |
-| `enabled` | `int` | no |  |  |
-| `state` | `int` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `created_by` | `int` | no |  |  |
-| `updated_by` | `int` | yes |  |  |
-
-* **primary key** `id`
-* **unique** `uq_main_tag_file_name_per_sub_category` (`file_sub_category_id`, `tag_name`)
-* **foreign key** `fk_main_tag_file_created_by_user` `created_by` → `user` (`id`)
-* **foreign key** `fk_main_tag_file_sub_category_id` `file_sub_category_id` → `file_sub_category` (`id`)
-* **foreign key** `fk_main_tag_file_updated_by_user` `updated_by` → `user` (`id`)
 
 ### `permission`
 

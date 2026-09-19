@@ -20,7 +20,7 @@ import java.util.Optional;
  *
  * <p><b>Fetching is explicit.</b> Every association on {@code FileInfo} is lazy, so a query says
  * what it needs. {@code JOIN FETCH} on the {@code @ManyToOne} side is free to paginate — it is one
- * row per file either way — which is why {@link #search} can fetch the whole taxonomy chain and
+ * row per file either way — which is why {@link #search} can fetch the whole folder chain and
  * still return a {@link Page}. Fetching the {@code fileDetailsList} collection cannot be paginated
  * in SQL, so the queries that do it return a single file.
  *
@@ -30,147 +30,110 @@ import java.util.Optional;
  * PostgreSQL would not have.
  *
  * <p><b>Reads that a converter will walk fetch the whole chain.</b> {@code ModelConverterUtil} goes
- * from a file to its tag, its sub-category, its category and that category's general tag. Without
- * the fetch joins below, a page of forty files is forty files plus four lazy loads each.
+ * from a file to its folder, that folder's parent and grandparent, and the category's tag group.
+ * Without the fetch joins below, a page of forty files is forty files plus four lazy loads each.
+ *
+ * <p>Since Phase 7 step 4 a file's place is {@code folder_id} and nothing else; every query here
+ * that names a place names a folder.
  */
 public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
 
     /**
-     * Files with this name in this sub-category — the duplicate check on upload.
+     * One file with its revisions and its whole folder chain, by id.
      *
-     * <p>It returns a list rather than a boolean because it predates the unique constraint; the
-     * constraint added in {@code V1.3} is what actually prevents two concurrent uploads from both
-     * passing this check, and this query is now the friendly error rather than the guarantee.
-     */
-    @Query("SELECT fi FROM FileInfo fi WHERE fi.fileName = :fileName AND fi.fileSubCategory.id = :subCategoryId")
-    List<FileInfo> checkExistsFile(@Param("fileName") String fileName, @Param("subCategoryId") int subCategoryId);
-
-    /**
-     * One file with every version attached.
-     *
-     * <p>{@code LEFT JOIN FETCH}, not {@code JOIN FETCH}: an inner join drops a file that has no
-     * versions, and this method is used on the delete path, where a file whose last version has
-     * just gone still has to be found in order to be removed.
+     * <p>{@code LEFT JOIN FETCH} on the revisions, not {@code JOIN FETCH}: an inner join drops a
+     * file that has no versions, and this method is used on the delete path, where a file whose
+     * last version has just gone still has to be found in order to be removed.
      */
     @Query("""
             SELECT DISTINCT f FROM FileInfo f
             LEFT JOIN FETCH f.fileDetailsList
-            JOIN FETCH f.mainTagFile mt
-            JOIN FETCH mt.fileSubCategory sc
-            JOIN FETCH sc.fileCategory c
-            JOIN FETCH c.generalTag
+            JOIN FETCH f.folder t
+            JOIN FETCH t.parent s
+            JOIN FETCH s.parent c
+            LEFT JOIN FETCH c.tagGroup
             WHERE f.id = :id
             """)
     Optional<FileInfo> findByIdAndFetchFileDetails(@Param("id") int id);
 
+    /** The file with this name in this folder, with its revisions and chain. */
     @Query("""
             SELECT DISTINCT f FROM FileInfo f
             LEFT JOIN FETCH f.fileDetailsList
-            JOIN FETCH f.mainTagFile mt
-            JOIN FETCH mt.fileSubCategory sc
-            JOIN FETCH sc.fileCategory c
-            JOIN FETCH c.generalTag
-            WHERE f.fileSubCategory.id = :subCategoryId AND f.fileName = :name
+            JOIN FETCH f.folder t
+            JOIN FETCH t.parent s
+            JOIN FETCH s.parent c
+            LEFT JOIN FETCH c.tagGroup
+            WHERE t.id = :folderId AND f.fileName = :name
             """)
-    Optional<FileInfo> findByNameAndSubCategoryId(@Param("subCategoryId") int subCategoryId, @Param("name") String name);
+    Optional<FileInfo> findByFolderIdAndFileNameWithDetails(@Param("folderId") int folderId, @Param("name") String name);
 
     /**
-     * The file list page: one query, one row per file, whole taxonomy chain attached.
+     * The file list page: one query, one row per file, whole folder chain attached.
      *
      * <p>A null or blank {@code search} matches everything, so the page needs no second query for
-     * the unfiltered case. The term is matched against the file, the tag, the sub-category and the
-     * category — a {@code LIKE '%term%'} across the graph, which no index can serve; replacing it
-     * with a real search index is issue 21.
+     * the unfiltered case. The term is matched against the file and the three folder levels — a
+     * {@code LIKE '%term%'} across the graph, which no index can serve; replacing it with a real
+     * search index is issue 21.
      */
     @Query("""
             SELECT f FROM FileInfo f
-            JOIN FETCH f.mainTagFile mt
-            JOIN FETCH mt.fileSubCategory sc
-            JOIN FETCH sc.fileCategory c
-            JOIN FETCH c.generalTag
+            JOIN FETCH f.folder t
+            JOIN FETCH t.parent s
+            JOIN FETCH s.parent c
+            LEFT JOIN FETCH c.tagGroup
             WHERE (:search) IS NULL
                OR f.fileName LIKE CONCAT('%', (:search), '%')
                OR f.description LIKE CONCAT('%', (:search), '%')
-               OR mt.tagName LIKE CONCAT('%', (:search), '%')
-               OR mt.description LIKE CONCAT('%', (:search), '%')
-               OR sc.subCategoryName LIKE CONCAT('%', (:search), '%')
-               OR sc.subCategoryNameDescription LIKE CONCAT('%', (:search), '%')
-               OR c.categoryName LIKE CONCAT('%', (:search), '%')
-               OR c.categoryNameDescription LIKE CONCAT('%', (:search), '%')
+               OR t.name LIKE CONCAT('%', (:search), '%')
+               OR t.displayName LIKE CONCAT('%', (:search), '%')
+               OR s.name LIKE CONCAT('%', (:search), '%')
+               OR s.displayName LIKE CONCAT('%', (:search), '%')
+               OR c.name LIKE CONCAT('%', (:search), '%')
+               OR c.displayName LIKE CONCAT('%', (:search), '%')
             """)
     Page<FileInfo> search(@Param("search") String search, Pageable pageable);
 
     /**
-     * The same list, restricted to files filed under one of a set of main tags — folder access
-     * pushed into the query rather than applied to the rows afterwards (roadmap 6.6).
-     *
-     * <p>Filtering the fetched page in Java would be wrong, not merely slower: the page and its
-     * total both come from the database, so removing rows afterwards leaves a pager counting things
-     * the user cannot see, and pages that shrink unpredictably.
-     *
-     * <p>The caller resolves the tag ids from the granted folder paths — one indexed prefix scan per
-     * grant — and must not call this with an empty set, which is not valid SQL for {@code IN}.
-     */
-    @Query("""
-            SELECT f FROM FileInfo f
-            JOIN FETCH f.mainTagFile mt
-            JOIN FETCH mt.fileSubCategory sc
-            JOIN FETCH sc.fileCategory c
-            JOIN FETCH c.generalTag
-            WHERE mt.id IN (:mainTagIds)
-              AND ((:search) IS NULL
-               OR f.fileName LIKE CONCAT('%', (:search), '%')
-               OR f.description LIKE CONCAT('%', (:search), '%')
-               OR mt.tagName LIKE CONCAT('%', (:search), '%')
-               OR mt.description LIKE CONCAT('%', (:search), '%')
-               OR sc.subCategoryName LIKE CONCAT('%', (:search), '%')
-               OR sc.subCategoryNameDescription LIKE CONCAT('%', (:search), '%')
-               OR c.categoryName LIKE CONCAT('%', (:search), '%')
-               OR c.categoryNameDescription LIKE CONCAT('%', (:search), '%'))
-            """)
-    Page<FileInfo> searchWithinTags(@Param("search") String search,
-                                    @Param("mainTagIds") Collection<Integer> mainTagIds,
-                                    Pageable pageable);
-
-    /**
      * The list page restricted to a set of folders, matched against each file's own
-     * {@code folder_id} (roadmap 7.2 step 3) - the same search, the same fetch plan, a
-     * different filter. Must not be called with an empty set.
+     * {@code folder_id} - the same search, the same fetch plan, a different filter. Folder access
+     * pushed into the query rather than applied to the rows afterwards (roadmap 6.6): filtering
+     * the fetched page in Java would leave a pager counting rows the person cannot see. Must not
+     * be called with an empty set, which is not valid SQL for {@code IN}.
      */
     @Query("""
             SELECT f FROM FileInfo f
-            JOIN FETCH f.mainTagFile mt
-            JOIN FETCH mt.fileSubCategory sc
-            JOIN FETCH sc.fileCategory c
-            JOIN FETCH c.generalTag
-            WHERE f.folder.id IN (:folderIds)
+            JOIN FETCH f.folder t
+            JOIN FETCH t.parent s
+            JOIN FETCH s.parent c
+            LEFT JOIN FETCH c.tagGroup
+            WHERE t.id IN (:folderIds)
               AND ((:search) IS NULL
                OR f.fileName LIKE CONCAT('%', (:search), '%')
                OR f.description LIKE CONCAT('%', (:search), '%')
-               OR mt.tagName LIKE CONCAT('%', (:search), '%')
-               OR mt.description LIKE CONCAT('%', (:search), '%')
-               OR sc.subCategoryName LIKE CONCAT('%', (:search), '%')
-               OR sc.subCategoryNameDescription LIKE CONCAT('%', (:search), '%')
-               OR c.categoryName LIKE CONCAT('%', (:search), '%')
-               OR c.categoryNameDescription LIKE CONCAT('%', (:search), '%'))
+               OR t.name LIKE CONCAT('%', (:search), '%')
+               OR t.displayName LIKE CONCAT('%', (:search), '%')
+               OR s.name LIKE CONCAT('%', (:search), '%')
+               OR s.displayName LIKE CONCAT('%', (:search), '%')
+               OR c.name LIKE CONCAT('%', (:search), '%')
+               OR c.displayName LIKE CONCAT('%', (:search), '%'))
             """)
     Page<FileInfo> searchWithinFolders(@Param("search") String search,
-                                    @Param("folderIds") Collection<Integer> folderIds,
-                                    Pageable pageable);
+                                       @Param("folderIds") Collection<Integer> folderIds,
+                                       Pageable pageable);
 
     /**
      * Tree "find a file" search — see issue 73: two nodes at different depths of the same category
      * can carry the identical label, so a label alone cannot find a file or say where it lives. This
      * matches by exact id (when the query parses as one) or a fragment of the name/description, and
      * fetches the file's folder with its two ancestors - the branch the tree opens on the way to the
-     * hit (roadmap 7.2 step 3: it used to fetch the taxonomy chain and look each level's folder up).
-     * {@code LEFT}, so a file with no folder is still returned; the caller leaves it out and says so.
+     * hit.
      */
     @Query("""
             SELECT f FROM FileInfo f
-            LEFT JOIN FETCH f.folder d
-            LEFT JOIN FETCH d.parent p
-            LEFT JOIN FETCH p.parent
+            JOIN FETCH f.folder d
+            JOIN FETCH d.parent p
+            JOIN FETCH p.parent
             WHERE (:id IS NOT NULL AND f.id = :id)
                OR f.fileName LIKE CONCAT('%', :term, '%')
                OR f.description LIKE CONCAT('%', :term, '%')
@@ -178,29 +141,18 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             """)
     List<FileInfo> searchForTree(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
 
-    /** The files directly in a folder, as the tree renders a tag node's children (roadmap 7.2 step 3, reader 4). */
     List<FileInfo> findByFolderIdOrderByFileNameAsc(int folderId);
 
-    /** How many files sit directly in a folder - a tag node's child count. */
     long countByFolderId(int folderId);
 
     @Query("SELECT f.lastVersion FROM FileInfo f WHERE f.id = :fileInfoId")
     Integer getLastVersionNumberOfFile(@Param("fileInfoId") int fileInfoId);
 
     /**
-     * Recomputes {@code lastVersion} from the versions that actually exist, in the database.
-     *
-     * <p>{@code lastVersion} is a denormalised {@code MAX(version)}. Adding a version raised it and
-     * deleting one did not lower it, so removing the newest version of a file left the column
-     * pointing at a version that was gone: the next upload was rejected as "wrong version" and the
-     * only way to add one was to guess a number past the stale value.
-     *
-     * <p>Doing it as one statement rather than read-modify-write in Java is what makes it safe
-     * under concurrency — two sessions deleting different versions cannot each compute a maximum
-     * from a stale snapshot and write it back. It leaves the loaded entity behind, so callers
-     * clear the persistence context before reading the value again.
-     *
-     * @return the number of rows changed, which is 1 when the file exists and 0 when it does not
+     * Recomputes the denormalised {@code lastVersion} from the revisions that exist, as one
+     * statement. Both flags matter: the pending removal of a version has to reach the database
+     * before the subquery runs, and the entity in the persistence context has to be reloaded
+     * afterwards or it would still show the old number.
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
@@ -210,73 +162,39 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             """)
     int recalculateLastVersion(@Param("fileInfoId") int fileInfoId);
 
-    @Query("SELECT COUNT(f.id) FROM FileInfo f WHERE f.mainTagFile.id = :mainTagFileId")
-    int countFileWithTagId(@Param("mainTagFileId") int mainTagFileId);
+    // ------------------------------------------------------------------ by folder
 
-    /** Tree view: the files filed under one main tag. */
-    List<FileInfo> findByMainTagFileIdOrderByFileNameAsc(int mainTagFileId);
-
-    /** Every file under a set of main tags. Kept for the readers that have not moved to the folder yet. */
-    List<FileInfo> findByMainTagFileIdIn(Collection<Integer> mainTagFileIds);
-
-    // ------------------------------------------------------------------ by folder (roadmap 7.2 step 3)
-
-    /**
-     * Every file in a set of folders — what the v2 listing is made of, read from the file's own
-     * folder rather than translated through its main tag. A file whose {@code folder_id} is null
-     * is simply not here; the caller says so in the log rather than failing.
-     */
+    /** Every file in a set of folders — what the v2 listing is made of. */
     @Query("SELECT f FROM FileInfo f WHERE f.folder.id IN :folderIds")
     List<FileInfo> findByFolderIdIn(@Param("folderIds") Collection<Integer> folderIds);
 
-    /** The file with this name in this folder. Names are unique per sub-category today, which implies per folder. */
+    /** The file with this name in this folder, without its revisions. */
     @Query("SELECT f FROM FileInfo f WHERE f.folder.id = :folderId AND f.fileName = :name")
     Optional<FileInfo> findByFolderIdAndFileName(@Param("folderId") int folderId, @Param("name") String name);
 
-    /** Files that predate {@code V2.3} and were never backfilled - the only way a folder read can miss one. */
-    long countByFolderIsNull();
-
     /**
-     * Folder and name pairs that more than one file shares - the rows Phase 7 step 4 cannot put a
-     * per-folder unique constraint over. Empty is the only acceptable answer. Today the rule is
-     * per sub-category and a folder is narrower than one, so this can only be non-empty once a
-     * file has been moved behind the services; it is the pre-flight roadmap 7.4 asks for, and
-     * {@code deployment.md} gives the same statement in SQL for production.
+     * The file with this name under any tag folder of one sub-category - the duplicate check on
+     * upload. Names are unique per <em>sub-category</em>, not per tag folder, because the bytes of
+     * a file live at {@code {category}/{subCategory}/{name}/...} with no tag segment: two files
+     * of one name under sibling tags would share a directory on disk. The schema can only express
+     * the per-folder part of that rule ({@code uq_file_info_name_per_folder}); this query is the
+     * rest, and the storage service refusing to overwrite an existing key is the last guard.
      */
     @Query("""
-            SELECT f.folder.id, f.fileName, COUNT(f)
-            FROM FileInfo f
-            WHERE f.folder IS NOT NULL
-            GROUP BY f.folder.id, f.fileName
-            HAVING COUNT(f) > 1
+            SELECT f FROM FileInfo f
+            JOIN FETCH f.folder t
+            WHERE t.parent.id = :subCategoryId AND f.fileName = :name
             """)
-    List<Object[]> findFileNamesSharedWithinAFolder();
+    Optional<FileInfo> findByFileNameUnderSubCategory(@Param("subCategoryId") int subCategoryId, @Param("name") String name);
 
-    /**
-     * The files directly in a folder, one page at a time — what the explorer lists (roadmap 7.2
-     * step 3, reader 2; it read {@code findByMainTagFileId} until then).
-     *
-     * <p>The unpaged tag version above is kept for the tree, which renders a tag's files inside an
-     * already-open branch. A folder listing has no such bound: today a tag holds tens of files, but
-     * roadmap Phase 7 moves every file into a folder, and one of them will eventually hold more than
-     * anybody wants delivered in a single response ({@code docs/issues.md}, issue 71).
-     */
+    /** Every file beneath a folder, by its materialised path - what a rename re-tags. */
+    @Query("SELECT f FROM FileInfo f JOIN f.folder d WHERE d.path LIKE CONCAT(:pathPrefix, '%')")
+    List<FileInfo> findBySubtree(@Param("pathPrefix") String pathPrefix);
+
+    /** The files directly in a folder, one page at a time — what the explorer lists. */
     Page<FileInfo> findByFolderId(int folderId, Pageable pageable);
 
-    /**
-     * How many files sit under each of these main tags, in one query rather than one per tag.
-     *
-     * <p>A tag with no files has no row, so a missing key means zero.
-     */
-    @Query("""
-            SELECT new com.hnp.filemanagement.repository.ChildCount(fi.mainTagFile.id, COUNT(fi.id))
-            FROM FileInfo fi
-            WHERE fi.mainTagFile.id IN :mainTagIds
-            GROUP BY fi.mainTagFile.id
-            """)
-    List<ChildCount> countFilesByMainTag(@Param("mainTagIds") Collection<Integer> mainTagIds);
-
-    /** How many files sit directly in each of these folders, in one query. A folder with none has no row. */
+    /** How many files each of these folders holds directly — one grouped query for a whole level. */
     @Query("""
             SELECT new com.hnp.filemanagement.repository.ChildCount(fi.folder.id, COUNT(fi.id))
             FROM FileInfo fi
@@ -285,37 +203,17 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             """)
     List<ChildCount> countFilesByFolder(@Param("folderIds") Collection<Integer> folderIds);
 
-    /**
-     * Explorer search: files whose id, name or description matches, a page at a time.
-     *
-     * <p>Deliberately narrower than {@link #search(String, Pageable)}, which also matches the tag,
-     * sub-category and category a file sits under. That is right for a list page, where the term is
-     * a filter over one flat table of everything; it is wrong for a folder tree, where matching the
-     * category returns every file in the category and buries the one that was actually named.
-     *
-     * <p>The folder is fetched with the row because every hit has to be shown with the folder it
-     * lives in, and reading the association per row would be one query per result. A {@code LEFT}
-     * join, so a file that has no folder (never backfilled) is still a hit; the caller decides what
-     * to do with one it cannot place.
-     */
+    /** The explorer's search, everywhere: by id or by a fragment of the name or description. */
     @Query("""
             SELECT f FROM FileInfo f
-            LEFT JOIN FETCH f.folder d
+            JOIN FETCH f.folder d
             WHERE (:id IS NOT NULL AND f.id = :id)
                OR f.fileName LIKE CONCAT('%', :term, '%')
                OR f.description LIKE CONCAT('%', :term, '%')
             """)
     Page<FileInfo> searchFiles(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
 
-    /**
-     * The same search, restricted to a set of folders — which is how both folder access and
-     * "search inside this folder" are applied: as a filter in the query, never to the rows it
-     * returned. Filtering afterwards would leave the total counting matches the caller may not see.
-     * (Roadmap 7.2 step 3, reader 2: the set used to be main-tag ids.)
-     *
-     * <p>Must not be called with an empty set, which is not valid SQL for {@code IN}. An empty set
-     * means "nothing can match", and the caller answers that without a query.
-     */
+    /** The same search within a set of folders - a scope, or what the person may read. */
     @Query("""
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder d
@@ -330,42 +228,26 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
                                             Pageable pageable);
 
     /**
-     * The files whose folder is not the one mirroring their main tag - or is missing (roadmap 7.2,
-     * step 1). Empty is the only acceptable answer, and {@code FileFolderLinkTest} asks on every
-     * build; it is the same query migration {@code V2.3} documents for production.
-     */
-    @Query("""
-            SELECT f FROM FileInfo f
-            LEFT JOIN f.folder d
-            WHERE d IS NULL
-               OR d.sourceType <> com.hnp.filemanagement.entity.FolderSourceType.MAIN_TAG
-               OR d.sourceId <> f.mainTagFile.id
-            """)
-    List<FileInfo> findRowsWhoseFolderDisagreesWithTheMirror();
-
-    /**
-     * The files whose tags are not exactly the ones their taxonomy says (roadmap 7.2, step 2):
-     * a tag missing, a tag too many, or a tag from the wrong group. Empty is the only acceptable
-     * answer, and {@code FileTagTest} asks on every build. Native, and the same statement
-     * migration {@code V2.4} documents for production, because the comparison is between two
+     * The files whose tags are not exactly the ones their folder chain says: a tag missing, a tag
+     * too many, or a tag from the wrong group. Empty is the only acceptable answer, and
+     * {@code FileServiceTest} and {@code FolderServiceTest} ask after every upload and rename they
+     * make. Native, because the comparison is between two
      * counts and a set membership, which JPQL expresses badly.
      */
     @Query(value = """
             SELECT fi.id
             FROM file_info fi
-                JOIN main_tag_file mt ON mt.id = fi.main_tag_file_id
-                JOIN file_sub_category sc ON sc.id = mt.file_sub_category_id
-                JOIN file_category c ON c.id = sc.file_category_id
-                JOIN general_tag gt ON gt.id = c.general_tag_id
-                LEFT JOIN tag_group g ON g.name = gt.tag_name
-            WHERE g.id IS NULL
+                JOIN folder t ON t.id = fi.folder_id
+                JOIN folder s ON s.id = t.parent_id
+                JOIN folder c ON c.id = s.parent_id
+            WHERE c.tag_group_id IS NULL
                OR (SELECT COUNT(*) FROM file_tag ft WHERE ft.file_info_id = fi.id)
-                  <> (SELECT COUNT(DISTINCT t.id) FROM tag t
-                      WHERE t.group_id = g.id AND t.name IN (c.category_name, sc.sub_category_name, mt.tag_name))
-               OR EXISTS (SELECT 1 FROM file_tag ft JOIN tag t ON t.id = ft.tag_id
+                  <> (SELECT COUNT(DISTINCT tg.id) FROM tag tg
+                      WHERE tg.group_id = c.tag_group_id AND tg.name IN (c.name, s.name, t.name))
+               OR EXISTS (SELECT 1 FROM file_tag ft JOIN tag tg ON tg.id = ft.tag_id
                           WHERE ft.file_info_id = fi.id
-                            AND (t.group_id <> g.id
-                                 OR t.name NOT IN (c.category_name, sc.sub_category_name, mt.tag_name)))
+                            AND (tg.group_id <> c.tag_group_id
+                                 OR tg.name NOT IN (c.name, s.name, t.name)))
             """, nativeQuery = true)
-    List<Integer> findIdsWhoseTagsDisagreeWithTheTaxonomy();
+    List<Integer> findIdsWhoseTagsDisagreeWithTheFolders();
 }

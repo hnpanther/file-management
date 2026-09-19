@@ -44,12 +44,6 @@ public class FileDetails extends AuditableEntity {
     @Column(name = "description", nullable = false)
     private String description;
 
-    @Column(name = "file_path", nullable = false)
-    private String filePath;
-
-    @Column(name = "relative_path", nullable = false)
-    private String relativePath;
-
     /**
      * Where the bytes are, as one opaque string relative to the storage root (roadmap 7.1).
      *
@@ -59,11 +53,11 @@ public class FileDetails extends AuditableEntity {
      * a key written beside the bytes, renaming or moving a folder is a metadata change and no file
      * becomes unreadable.
      *
-     * <p>It holds the same value as {@link #relativePath} today and is written from the same
-     * expression, so the two cannot disagree. They are not the same field because they stop being
-     * the same thing the moment a folder moves: {@code relativePath} describes where the file sits
-     * in the tree, this describes where its bytes are, and Phase 7 separates those. {@code filePath}
-     * and {@code relativePath} are dropped or derived in step 4; this one survives.
+     * <p>Until Phase 7 step 4 two more columns, {@code file_path} and {@code relative_path},
+     * held the same string; they described where the file sat in a tree that no longer exists,
+     * and were dropped with it. The key is {@code {category}/{subCategory}/{name}/v{n}/{name.ext}}
+     * as the folders were named when the revision was written, and it stays that way whatever
+     * the folders are renamed to.
      */
     @Column(name = "storage_key", nullable = false)
     private String storageKey;

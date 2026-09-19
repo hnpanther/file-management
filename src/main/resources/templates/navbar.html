@@ -147,31 +147,6 @@
                 </a>
             </section>
 
-            <section sec:authorize="hasAuthority('GET_ALL_GENERAL_TAG_PAGE') || hasAuthority('GET_ALL_FILE_CATEGORY_PAGE') || hasAuthority('GET_ALL_SUB_CATEGORY_PAGE') || hasAuthority('GET_ALL_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')"
-                     class="flex flex-col gap-0.5">
-                <h3 class="app-nav-heading" th:text="#{nav.section.taxonomy}">دسته‌بندی و برچسب‌ها</h3>
-                <a sec:authorize="hasAuthority('GET_ALL_GENERAL_TAG_PAGE') || hasAuthority('ADMIN')"
-                   th:href="@{/general-tags}" class="app-nav-link">
-                    <i class="bi bi-bookmarks app-nav-icon" aria-hidden="true"></i>
-                    <span th:text="#{nav.taxonomy.generalTags}">برچسب‌های عمومی</span>
-                </a>
-                <a sec:authorize="hasAuthority('GET_ALL_FILE_CATEGORY_PAGE') || hasAuthority('ADMIN')"
-                   th:href="@{/file-categories}" class="app-nav-link">
-                    <i class="bi bi-folder app-nav-icon" aria-hidden="true"></i>
-                    <span th:text="#{nav.taxonomy.categories}">دسته‌بندی‌های اصلی</span>
-                </a>
-                <a sec:authorize="hasAuthority('GET_ALL_SUB_CATEGORY_PAGE') || hasAuthority('ADMIN')"
-                   th:href="@{/file-sub-categories}" class="app-nav-link">
-                    <i class="bi bi-diagram-3 app-nav-icon" aria-hidden="true"></i>
-                    <span th:text="#{nav.taxonomy.subCategories}">زیردسته‌بندی‌ها</span>
-                </a>
-                <a sec:authorize="hasAuthority('GET_ALL_MAIN_TAG_FILE_PAGE') || hasAuthority('ADMIN')"
-                   th:href="@{/main-tags}" class="app-nav-link">
-                    <i class="bi bi-tags app-nav-icon" aria-hidden="true"></i>
-                    <span th:text="#{nav.taxonomy.mainTags}">برچسب‌های فایل</span>
-                </a>
-            </section>
-
             <section sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('GET_ALL_API_KEY_PAGE') || hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('CONTENT_KIND_PAGE') || hasAuthority('ADMIN')"
                      class="flex flex-col gap-0.5">
                 <h3 class="app-nav-heading" th:text="#{nav.section.access}">کاربران و دسترسی‌ها</h3>

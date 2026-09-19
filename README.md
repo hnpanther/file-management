@@ -1,6 +1,6 @@
 # File Management
 
-A Spring Boot web application for managing files: uploading them into a category taxonomy, creating
+A Spring Boot web application for managing files: uploading them into a folder tree, creating
 new **versions** and alternative **formats** of the same logical file, publishing a subset of them
 publicly, and downloading them again — with a per-endpoint permission model and a full audit trail.
 
@@ -112,14 +112,16 @@ to provision and nothing machine-specific to configure.
 
 ## Concepts
 
-**The taxonomy.** Files are filed five levels deep:
+**The folder tree.** Files are filed three folder levels deep, and no deeper:
 
 ```
-GeneralTag → FileCategory → FileSubCategory → MainTagFile → FileInfo → FileDetails
+Home → Folder(CATEGORY) → Folder(SUB_CATEGORY) → Folder(TAG) → FileInfo → FileDetails
 ```
 
-`FileCategory` and `FileSubCategory` become real directories, so their names may not contain `.`,
-spaces or `/`.
+The category and sub-category names become real directories, so a folder name may not contain
+`.`, spaces or `/` (a display name may say anything). A category carries a `TagGroup` - a label
+group, not a folder - and every file's tags are its three folder names in that group. The tree is
+created, renamed and deleted from the file explorer.
 
 **FileInfo vs FileDetails.** A `FileInfo` is the *logical* file — "the Q3 report". A `FileDetails`
 is one concrete artefact of it: a specific version in a specific format. Uploading `report.pdf`

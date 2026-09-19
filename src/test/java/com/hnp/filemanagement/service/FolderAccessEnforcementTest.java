@@ -1,32 +1,22 @@
 package com.hnp.filemanagement.service;
 
-import com.hnp.filemanagement.dto.FileCategoryDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
-import com.hnp.filemanagement.dto.FileSubCategoryDTO;
 import com.hnp.filemanagement.dto.FolderAccess;
-import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.dto.TreeNodeDTO;
 import com.hnp.filemanagement.dto.TreeSearchHitDTO;
-import com.hnp.filemanagement.entity.FileCategory;
-import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.FolderPermission;
-import com.hnp.filemanagement.entity.FolderSourceType;
-import com.hnp.filemanagement.entity.GeneralTag;
-import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.RoleFolderGrant;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.entity.UserFolderGrant;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
+import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
@@ -52,6 +42,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * that proves the closed behaviour: that a person with no grant sees nothing, that a grant reaches
  * downwards and not upwards, and that an administrator is unaffected without holding a single grant
  * row. Enforcement that is only ever exercised with the flag off is enforcement nobody has tested.
+ *
+ * <p>The tree is three folders deep - category, sub-category, tag - and files live under the tag.
+ * Every node is addressed by its folder id; there is no other id since Phase 7 step 4.
  */
 @ServiceIntegrationTest
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
@@ -62,41 +55,32 @@ class FolderAccessEnforcementTest extends MySqlSupport {
     @Autowired
     private FolderAccessService folderAccessService;
     @Autowired
-    private FileCategoryService fileCategoryService;
-    @Autowired
-    private FileSubCategoryService fileSubCategoryService;
-    @Autowired
-    private MainTagFileService mainTagFileService;
-    @Autowired
     private FileService fileService;
 
     @Autowired
     private FolderRepository folderRepository;
     @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
+    private TagGroupRepository tagGroupRepository;
     @Autowired
     private FileInfoRepository fileInfoRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
     @Autowired
     private RoleRepository roleRepository;
     @Autowired
     private UserRepository userRepository;
 
+    private User owner;
     private int adminId;
     private int restrictedId;
+    private FolderFixture.Chain chain;
     private int categoryId;
     private int subCategoryId;
     private int tagId;
+    private int fileInfoId;
     private String fileName;
 
     @BeforeEach
     void setUp() {
-        User owner = userRepository.save(TestData.user());
+        owner = userRepository.save(TestData.user());
 
         Role adminRole = roleRepository.save(TestData.role("ADMIN"));
         User admin = TestData.user();
@@ -105,52 +89,14 @@ class FolderAccessEnforcementTest extends MySqlSupport {
 
         restrictedId = userRepository.save(TestData.user()).getId();
 
-        GeneralTag generalTag = generalTagRepository.save(
-                TestData.generalTag(owner, "tag" + TestData.nextSequence()));
-
-        FileCategoryDTO category = new FileCategoryDTO();
-        category.setCategoryName("cat" + TestData.nextSequence());
-        category.setCategoryNameDescription(category.getCategoryName() + " label");
-        category.setDescription("a category");
-        category.setGeneralTagId(generalTag.getId());
-        fileCategoryService.createCategory(category, owner.getId());
-        FileCategory createdCategory = fileCategoryRepository.findAll().stream()
-                .filter(c -> c.getCategoryName().equals(category.getCategoryName()))
-                .findFirst().orElseThrow();
-        categoryId = createdCategory.getId();
-
-        FileSubCategoryDTO subCategory = new FileSubCategoryDTO();
-        subCategory.setSubCategoryName("sub" + TestData.nextSequence());
-        subCategory.setSubCategoryNameDescription(subCategory.getSubCategoryName() + " label");
-        subCategory.setDescription("a sub-category");
-        subCategory.setFileCategoryId(categoryId);
-        fileSubCategoryService.createFileSubCategory(subCategory, owner.getId());
-        FileSubCategory createdSubCategory = fileSubCategoryRepository.findAll().stream()
-                .filter(sc -> sc.getSubCategoryName().equals(subCategory.getSubCategoryName()))
-                .findFirst().orElseThrow();
-        subCategoryId = createdSubCategory.getId();
-
-        MainTagFileDTO tag = new MainTagFileDTO();
-        tag.setTagName("tag" + TestData.nextSequence());
-        tag.setTagNameDescription(tag.getTagName() + " label");
-        tag.setDescription("a tag");
-        tag.setFileSubCategoryId(subCategoryId);
-        tag.setFileCategoryId(categoryId);
-        tag.setType(0);
-        mainTagFileService.createMainTagFile(tag, owner.getId());
-        MainTagFile createdTag = mainTagFileRepository.findAll().stream()
-                .filter(mt -> mt.getTagName().equals(tag.getTagName()))
-                .findFirst().orElseThrow();
-        tagId = createdTag.getId();
+        chain = FolderFixture.chain(folderRepository, tagGroupRepository, owner);
+        categoryId = chain.categoryId();
+        subCategoryId = chain.subCategoryId();
+        tagId = chain.tagId();
 
         fileName = "report" + TestData.nextSequence();
-        FileInfo file = TestData.fileInfo(owner, createdTag, fileName);
-        // A repository-written file has no folder - like a pre-V2.3 row the backfill missed - and
-        // since roadmap 7.2 step 3 the download, the file page and the list decide access from the
-        // file's own folder, refusing a folderless file to anyone restricted. Link it as the
-        // backfill would; FileServiceFolderAccessTest covers the folderless case on purpose.
-        file.setFolder(folderRepository.findBySourceTypeAndSourceId(FolderSourceType.MAIN_TAG, tagId).orElseThrow());
-        fileInfoRepository.save(file);
+        FileInfo file = TestData.fileInfo(owner, chain.tag(), fileName);
+        fileInfoId = fileInfoRepository.save(file).getId();
     }
 
     // ---------------------------------------------------------------- closed by default
@@ -163,7 +109,7 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         assertThat(access.unrestricted()).isFalse();
         assertThat(access.isEmpty()).isTrue();
         assertThat(fileTreeService.getRoots(restrictedId)).isEmpty();
-        assertThatThrownBy(() -> fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, folderIdOf(FolderSourceType.CATEGORY, categoryId), restrictedId))
+        assertThatThrownBy(() -> fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, restrictedId))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
@@ -176,8 +122,8 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         assertThat(folderRepository.findFoldersGrantedDirectly(adminId)).isEmpty();
         assertThat(fileTreeService.getRoots(adminId))
                 .extracting(TreeNodeDTO::getId)
-                .contains(folderIdOf(FolderSourceType.CATEGORY, categoryId));
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, folderIdOf(FolderSourceType.CATEGORY, categoryId), adminId)).isNotEmpty();
+                .contains(categoryId);
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, adminId)).isNotEmpty();
     }
 
     // ---------------------------------------------------------------- a grant, and what it reaches
@@ -185,7 +131,7 @@ class FolderAccessEnforcementTest extends MySqlSupport {
     @Test
     @DisplayName("a grant on a sub-category can be walked down to from the category above it")
     void aMidTreeGrantCanBeNavigatedTo() {
-        grantDirectly(restrictedId, FolderSourceType.SUB_CATEGORY, subCategoryId);
+        grantDirectly(restrictedId, subCategoryId);
 
         // The category is shown even though nothing in it is readable: without it there would be no
         // route down to the folder that was actually granted.
@@ -193,18 +139,18 @@ class FolderAccessEnforcementTest extends MySqlSupport {
                 .singleElement()
                 .satisfies(node -> {
                     assertThat(node.getType()).isEqualTo(TreeNodeDTO.NodeType.CATEGORY);
-                    assertThat(node.getId()).isEqualTo(folderIdOf(FolderSourceType.CATEGORY, categoryId));
+                    assertThat(node.getId()).isEqualTo(categoryId);
                 });
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, folderIdOf(FolderSourceType.CATEGORY, categoryId), restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, restrictedId))
                 .as("opening it reveals the branch that leads to the grant")
                 .extracting(TreeNodeDTO::getId)
-                .containsExactly(folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId));
+                .containsExactly(subCategoryId);
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.SUB_CATEGORY, folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId), restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.SUB_CATEGORY, subCategoryId, restrictedId))
                 .extracting(TreeNodeDTO::getId)
-                .contains(folderIdOf(FolderSourceType.MAIN_TAG, tagId));
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG, folderIdOf(FolderSourceType.MAIN_TAG, tagId), restrictedId))
+                .contains(tagId);
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG, tagId, restrictedId))
                 .isNotEmpty();
     }
 
@@ -212,25 +158,19 @@ class FolderAccessEnforcementTest extends MySqlSupport {
     @DisplayName("walking through a category does not reveal its other branches")
     void navigatingThroughAFolderRevealsOnlyTheRouteToTheGrant() {
         // A second sub-category under the same category, with nothing granted in it.
-        FileSubCategoryDTO other = new FileSubCategoryDTO();
-        other.setSubCategoryName("other" + TestData.nextSequence());
-        other.setSubCategoryNameDescription(other.getSubCategoryName() + " label");
-        other.setDescription("not granted");
-        other.setFileCategoryId(categoryId);
-        fileSubCategoryService.createFileSubCategory(other, adminId);
-        int otherSubCategoryId = fileSubCategoryRepository.findAll().stream()
-                .filter(sc -> sc.getSubCategoryName().equals(other.getSubCategoryName()))
-                .findFirst().orElseThrow().getId();
+        Folder other = FolderFixture.subCategory(folderRepository, chain.category(), owner,
+                "Other" + TestData.nextSequence());
+        int otherSubCategoryId = other.getId();
 
-        grantDirectly(restrictedId, FolderSourceType.SUB_CATEGORY, subCategoryId);
+        grantDirectly(restrictedId, subCategoryId);
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, folderIdOf(FolderSourceType.CATEGORY, categoryId), restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, restrictedId))
                 .extracting(TreeNodeDTO::getId)
-                .contains(folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId))
-                .doesNotContain(folderIdOf(FolderSourceType.SUB_CATEGORY, otherSubCategoryId));
+                .contains(subCategoryId)
+                .doesNotContain(otherSubCategoryId);
 
         assertThatThrownBy(() -> fileTreeService.getChildren(
-                TreeNodeDTO.NodeType.SUB_CATEGORY, folderIdOf(FolderSourceType.SUB_CATEGORY, otherSubCategoryId), restrictedId))
+                TreeNodeDTO.NodeType.SUB_CATEGORY, otherSubCategoryId, restrictedId))
                 .as("and the hidden branch cannot be opened by asking for it directly")
                 .isInstanceOf(AccessDeniedException.class);
     }
@@ -240,7 +180,7 @@ class FolderAccessEnforcementTest extends MySqlSupport {
     void aGrantThroughARoleCounts() {
         Role role = roleRepository.save(TestData.role("READERS" + TestData.nextSequence()));
         role.replaceFolderGrants(List.of(
-                new RoleFolderGrant(role, folderOf(FolderSourceType.MAIN_TAG, tagId), FolderPermission.READ)));
+                new RoleFolderGrant(role, chain.tag(), FolderPermission.READ)));
         roleRepository.save(role);
 
         User user = userRepository.findById(restrictedId).orElseThrow();
@@ -253,32 +193,30 @@ class FolderAccessEnforcementTest extends MySqlSupport {
                 .singleElement()
                 .satisfies(node -> {
                     assertThat(node.getType()).isEqualTo(TreeNodeDTO.NodeType.CATEGORY);
-                    assertThat(node.getId()).isEqualTo(folderIdOf(FolderSourceType.CATEGORY, categoryId));
+                    assertThat(node.getId()).isEqualTo(categoryId);
                 });
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, folderIdOf(FolderSourceType.CATEGORY, categoryId), restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.CATEGORY, categoryId, restrictedId))
                 .extracting(TreeNodeDTO::getId)
-                .containsExactly(folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId));
+                .containsExactly(subCategoryId);
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.SUB_CATEGORY, folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId), restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.SUB_CATEGORY, subCategoryId, restrictedId))
                 .extracting(TreeNodeDTO::getId)
-                .containsExactly(folderIdOf(FolderSourceType.MAIN_TAG, tagId));
+                .containsExactly(tagId);
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG, folderIdOf(FolderSourceType.MAIN_TAG, tagId), restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG, tagId, restrictedId))
                 .as("and the files in it are readable")
                 .isNotEmpty();
     }
 
     @Test
-    @DisplayName("opening a file checks the tag it is filed under, not the id the caller sent")
-    void openingAFileIsCheckedThroughItsTag() {
-        int fileInfoId = fileInfoRepository.findByMainTagFileIdOrderByFileNameAsc(tagId).getFirst().getId();
-
+    @DisplayName("opening a file checks the folder it is filed under, not the id the caller sent")
+    void openingAFileIsCheckedThroughItsFolder() {
         assertThatThrownBy(() -> fileTreeService.getChildren(TreeNodeDTO.NodeType.FILE, fileInfoId, restrictedId))
-                .as("a file id is not a folder id - its access comes from its tag")
+                .as("a file id is not a folder id - its access comes from its folder")
                 .isInstanceOf(AccessDeniedException.class);
 
-        grantDirectly(restrictedId, FolderSourceType.MAIN_TAG, tagId);
+        grantDirectly(restrictedId, tagId);
         assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.FILE, fileInfoId, restrictedId)).isNotNull();
     }
 
@@ -295,7 +233,7 @@ class FolderAccessEnforcementTest extends MySqlSupport {
                 .as("an administrator still sees everything")
                 .isNotEmpty();
 
-        grantDirectly(restrictedId, FolderSourceType.SUB_CATEGORY, subCategoryId);
+        grantDirectly(restrictedId, subCategoryId);
 
         assertThat(fileService.getPageFileInfo(50, 0, null, restrictedId).getFileInfoDTOList())
                 .extracting(dto -> dto.getFileName())
@@ -305,12 +243,10 @@ class FolderAccessEnforcementTest extends MySqlSupport {
     @Test
     @DisplayName("a file page and a download are refused outside the granted folders")
     void theFilePageAndDownloadAreRefused() {
-        int fileInfoId = fileInfoRepository.findByMainTagFileIdOrderByFileNameAsc(tagId).getFirst().getId();
-
         assertThatThrownBy(() -> fileService.getFileInfoDtoWithFileDetails(fileInfoId, restrictedId))
                 .isInstanceOf(AccessDeniedException.class);
 
-        grantDirectly(restrictedId, FolderSourceType.MAIN_TAG, tagId);
+        grantDirectly(restrictedId, tagId);
         assertThat(fileService.getFileInfoDtoWithFileDetails(fileInfoId, restrictedId)).isNotNull();
     }
 
@@ -318,16 +254,15 @@ class FolderAccessEnforcementTest extends MySqlSupport {
 
     /**
      * Issue 76, closed. Before this, holding {@code SAVE_NEW_FILE} was enough to file a document
-     * under any tag whose id could be typed into the form — including one in a department the
+     * under any folder whose id could be typed into the form — including one in a department the
      * uploader could not open in the tree.
      */
     @Test
     @DisplayName("a read grant does not allow filing a document into the folder")
     void readingAFolderIsNotPermissionToWriteInIt() {
-        grantDirectly(restrictedId, FolderSourceType.MAIN_TAG, tagId, FolderPermission.READ);
+        grantDirectly(restrictedId, tagId, FolderPermission.READ);
 
-        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG,
-                folderIdOf(FolderSourceType.MAIN_TAG, tagId), restrictedId))
+        assertThat(fileTreeService.getChildren(TreeNodeDTO.NodeType.MAIN_TAG, tagId, restrictedId))
                 .as("they can read it")
                 .isNotEmpty();
 
@@ -339,7 +274,7 @@ class FolderAccessEnforcementTest extends MySqlSupport {
     @Test
     @DisplayName("a write grant allows it")
     void aWriteGrantAllowsFilingADocument() {
-        grantDirectly(restrictedId, FolderSourceType.MAIN_TAG, tagId, FolderPermission.WRITE);
+        grantDirectly(restrictedId, tagId, FolderPermission.WRITE);
 
         assertThat(fileService.createNewFile(uploadRequest(), restrictedId, 1)).isNotNull();
     }
@@ -347,7 +282,7 @@ class FolderAccessEnforcementTest extends MySqlSupport {
     @Test
     @DisplayName("a write grant on an ancestor reaches the folders beneath it")
     void writingIsInheritedDownwards() {
-        grantDirectly(restrictedId, FolderSourceType.CATEGORY, categoryId, FolderPermission.WRITE);
+        grantDirectly(restrictedId, categoryId, FolderPermission.WRITE);
 
         assertThat(fileService.createNewFile(uploadRequest(), restrictedId, 1)).isNotNull();
     }
@@ -365,9 +300,7 @@ class FolderAccessEnforcementTest extends MySqlSupport {
         FileInfoDTO request = new FileInfoDTO();
         request.setDescription("description of " + name);
         request.setFileNameDescription(name);
-        request.setFileCategoryId(categoryId);
-        request.setFileSubCategoryId(subCategoryId);
-        request.setMainTagFileId(tagId);
+        request.setFolderId(tagId);
         request.setMultipartFile(new MockMultipartFile("file", name, "text/plain", "content".getBytes()));
         return request;
     }
@@ -385,7 +318,7 @@ class FolderAccessEnforcementTest extends MySqlSupport {
                 .extracting(TreeSearchHitDTO::getFileName)
                 .contains(fileName);
 
-        grantDirectly(restrictedId, FolderSourceType.SUB_CATEGORY, subCategoryId);
+        grantDirectly(restrictedId, subCategoryId);
         assertThat(fileTreeService.search(fileName, restrictedId))
                 .extracting(TreeSearchHitDTO::getFileName)
                 .contains(fileName);
@@ -393,25 +326,15 @@ class FolderAccessEnforcementTest extends MySqlSupport {
 
     // ---------------------------------------------------------------- helpers
 
-    private void grantDirectly(int userId, FolderSourceType sourceType, int sourceId) {
-        grantDirectly(userId, sourceType, sourceId, FolderPermission.READ);
+    private void grantDirectly(int userId, int folderId) {
+        grantDirectly(userId, folderId, FolderPermission.READ);
     }
 
-    private void grantDirectly(int userId, FolderSourceType sourceType, int sourceId,
-                               FolderPermission permission) {
+    private void grantDirectly(int userId, int folderId, FolderPermission permission) {
         User user = userRepository.findById(userId).orElseThrow();
         List<UserFolderGrant> grants = new ArrayList<>(user.getFolderGrants());
-        grants.add(new UserFolderGrant(user, folderOf(sourceType, sourceId), permission));
+        grants.add(new UserFolderGrant(user, folderRepository.findById(folderId).orElseThrow(), permission));
         user.replaceFolderGrants(grants);
         userRepository.save(user);
-    }
-
-    /** A node in the tree is addressed by its folder id, so a test has to translate too. */
-    private int folderIdOf(FolderSourceType sourceType, int sourceId) {
-        return folderOf(sourceType, sourceId).getId();
-    }
-
-    private Folder folderOf(FolderSourceType sourceType, int sourceId) {
-        return folderRepository.findBySourceTypeAndSourceId(sourceType, sourceId).orElseThrow();
     }
 }

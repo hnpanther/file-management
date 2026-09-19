@@ -44,7 +44,7 @@ import java.util.Comparator;
  * deployment of 1.1.0 found out: uploads went through the key-shaped half, which resolves, into
  * {@code main\IMS\...}, while a delete went through this half into {@code mainIMS/...} and
  * answered 404. The key-shaped methods added for roadmap 7.1 need no separator convention and no
- * spelling rule; the path-shaped half goes with the taxonomy in Phase 7 step 4.
+ * spelling rule; the path-shaped half is what remains for directory-level deletes.
  */
 @Service("fileSystem")
 @Primary
@@ -101,7 +101,7 @@ public class FileStorageFileSystemService implements FileStorageService {
 
     /**
      * An address is {@code {category}/{subCategory}[/{fileName}]}: every segment must be a
-     * directory name by the same rule the taxonomy services apply when they create one. Empty
+     * directory name by the same rule {@code FolderService} applies to a folder name. Empty
      * segments (a doubled or trailing slash) are tolerated, since {@link #within} normalises them
      * away; a segment with a dot or a space in it is not.
      */

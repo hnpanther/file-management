@@ -16,12 +16,14 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 
 /**
- * One node of the folder tree that mirrors the taxonomy — see {@code docs/roadmap.md} Phase 6.
+ * One node of the folder tree — the structure every file is filed in (roadmap Phase 6, and
+ * Phase 7 step 4 made it the only one).
  *
- * <p>The taxonomy is still authoritative. Every row here is written by {@code FolderMirrorService},
- * in the same transaction as the category, sub-category or main tag it reflects, and is read only by
- * the folder-access code. Nothing else may write this table: one writer is what makes the mirror
- * auditable, and {@code FolderMirrorReconciliationTest} is what proves it has not drifted.
+ * <p>Three levels under the {@link FolderKind#ROOT}: {@link FolderKind#CATEGORY} (depth 1),
+ * {@link FolderKind#SUB_CATEGORY} (depth 2) and {@link FolderKind#TAG} (depth 3). Files live in
+ * TAG folders only. A category folder carries a {@link #tagGroup} — the general tag of the old
+ * taxonomy, which was never a folder and is not one now — and the tags of every file beneath it
+ * are derived in that group. {@code FolderService} is the writer of this table.
  *
  * <p><b>Two representations of the same structure.</b> {@link #parent} is the truth: it carries the
  * foreign key and cannot disagree with itself. {@link #path} is derived from it — {@code /1/7/22/},
@@ -30,8 +32,11 @@ import java.time.LocalDateTime;
  * recursive query. Anything that changes {@link #parent} must rewrite {@link #path} for the whole
  * subtree in the same transaction.
  *
+ * <p>{@link #name} is the directory-safe name that becomes part of a new revision's storage key;
+ * {@link #displayName} is what a person reads. Renaming either changes no stored key.
+ *
  * <p>This does <em>not</em> extend {@link AuditableEntity}, which the rest of the domain does,
- * because that class declares {@code createdBy} non-null. The rows migration {@code V1.4} creates
+ * because that class declares {@code createdBy} non-null. The rows migration {@code V1.4} created
  * have no principal — and on a fresh database the {@code user} table is still empty when Flyway runs
  * — so here a null {@code createdBy} means "created by a migration".
  */
@@ -75,18 +80,10 @@ public class Folder extends AbstractEntity {
     @JoinColumn(name = "owner_user_id")
     private User ownerUser;
 
-    /** A general tag labels a category and now, through the mirror, a folder. */
+    /** Set on a CATEGORY folder: the group the tags of every file beneath it belong to. Null elsewhere. */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "general_tag_id")
-    private GeneralTag generalTag;
-
-    /** Null for the root and for user home folders; see {@link FolderSourceType}. */
-    @Enumerated(EnumType.STRING)
-    @Column(name = "source_type", length = 20)
-    private FolderSourceType sourceType;
-
-    @Column(name = "source_id")
-    private Integer sourceId;
+    @JoinColumn(name = "tag_group_id")
+    private TagGroup tagGroup;
 
     @Column(name = "enabled", nullable = false)
     private Integer enabled;

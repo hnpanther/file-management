@@ -1,23 +1,15 @@
 package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.dto.ApiKeyDTO;
-import com.hnp.filemanagement.dto.FileCategoryDTO;
-import com.hnp.filemanagement.dto.FileSubCategoryDTO;
-import com.hnp.filemanagement.dto.MainTagFileDTO;
-import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.ApiKeyService;
-import com.hnp.filemanagement.service.FileCategoryService;
-import com.hnp.filemanagement.service.FileSubCategoryService;
-import com.hnp.filemanagement.service.MainTagFileService;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.entity.Folder;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -60,25 +52,13 @@ class ObjectStoreApiTest extends MySqlSupport {
     @Autowired
     private ApiKeyService apiKeyService;
 
-    @Autowired
-    private FileCategoryService fileCategoryService;
-    @Autowired
-    private FileSubCategoryService fileSubCategoryService;
-    @Autowired
-    private MainTagFileService mainTagFileService;
 
     @Autowired
     private FolderRepository folderRepository;
     @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
-    @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private TagGroupRepository tagGroupRepository;
     @Autowired
     private com.hnp.filemanagement.repository.FileInfoRepository fileInfoRepository;
 
@@ -95,37 +75,14 @@ class ObjectStoreApiTest extends MySqlSupport {
         User owner = userRepository.save(TestData.user());
         creatorId = owner.getId();
 
-        int generalTagId = generalTagRepository
-                .save(TestData.generalTag(owner, "gt" + TestData.nextSequence())).getId();
+        FolderFixture.Chain chain = FolderFixture.chain(folderRepository, tagGroupRepository, owner);
+        bucket = chain.category().getName();
+        tagFolderId = chain.tagId();
+        Folder other = FolderFixture.tag(folderRepository, chain.subCategory(), owner, "Other" + TestData.nextSequence());
+        otherTagName = other.getName();
+        otherTagFolderId = other.getId();
 
-        FileCategoryDTO category = new FileCategoryDTO();
-        category.setCategoryName("Cat" + TestData.nextSequence());
-        // The duplicate check covers the description as well as the name, so both have to be
-        // distinct or the second test in this class fails in setUp with a message about the name.
-        category.setCategoryNameDescription(category.getCategoryName() + " label");
-        category.setDescription("a category");
-        category.setGeneralTagId(generalTagId);
-        fileCategoryService.createCategory(category, creatorId);
-        bucket = category.getCategoryName();
-        int categoryId = fileCategoryRepository.findAll().stream()
-                .filter(c -> c.getCategoryName().equals(bucket)).findFirst().orElseThrow().getId();
-
-        FileSubCategoryDTO subCategory = new FileSubCategoryDTO();
-        subCategory.setSubCategoryName("Sub" + TestData.nextSequence());
-        subCategory.setSubCategoryNameDescription(subCategory.getSubCategoryName() + " label");
-        subCategory.setDescription("a sub-category");
-        subCategory.setFileCategoryId(categoryId);
-        fileSubCategoryService.createFileSubCategory(subCategory, creatorId);
-        int subCategoryId = fileSubCategoryRepository.findAll().stream()
-                .filter(sc -> sc.getSubCategoryName().equals(subCategory.getSubCategoryName()))
-                .findFirst().orElseThrow().getId();
-
-        String tagName = createTag(categoryId, subCategoryId);
-        tagFolderId = folderIdOfTag(tagName);
-        otherTagName = createTag(categoryId, subCategoryId);
-        otherTagFolderId = folderIdOfTag(otherTagName);
-
-        prefix = subCategory.getSubCategoryName() + "/" + tagName;
+        prefix = chain.subCategory().getName() + "/" + chain.tag().getName();
     }
 
     // ---------------------------------------------------------------- the whole lifecycle
@@ -225,7 +182,8 @@ class ObjectStoreApiTest extends MySqlSupport {
     }
 
     /**
-     * File names are unique per sub-category, not per tag folder. The first version of this
+     * File names are unique per sub-category, not per tag folder: the bytes live under
+     * {@code {category}/{subCategory}/{name}} with no tag segment. The first version of this
      * checked write access on the folder in the key, then appended the version to the file that
      * owns the name - under a sibling folder - and answered 404 for the key it had just written.
      * The conflict has to come before anything is stored.
@@ -400,24 +358,4 @@ class ObjectStoreApiTest extends MySqlSupport {
         return apiKeyService.create(request, creatorId).credential();
     }
 
-    private String createTag(int categoryId, int subCategoryId) {
-        MainTagFileDTO tag = new MainTagFileDTO();
-        tag.setTagName("Tag" + TestData.nextSequence());
-        tag.setTagNameDescription(tag.getTagName() + " label");
-        // The duplicate check for a tag is (name, description, sub-category), so two tags in one
-        // sub-category need two descriptions as well as two names.
-        tag.setDescription("a tag " + tag.getTagName());
-        tag.setFileSubCategoryId(subCategoryId);
-        tag.setFileCategoryId(categoryId);
-        tag.setType(0);
-        mainTagFileService.createMainTagFile(tag, creatorId);
-        return tag.getTagName();
-    }
-
-    private int folderIdOfTag(String tagName) {
-        int tagId = mainTagFileRepository.findAll().stream()
-                .filter(t -> t.getTagName().equals(tagName)).findFirst().orElseThrow().getId();
-        return folderRepository.findBySourceTypeAndSourceId(FolderSourceType.MAIN_TAG, tagId)
-                .orElseThrow().getId();
-    }
 }
