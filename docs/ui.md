@@ -391,8 +391,9 @@ user. The menu is always a white surface even though its trigger sits in the dar
 
 ## Tree component
 
-`.app-tree` styles the file tree at `/files/tree`. The view is **read-only for now**; drag-and-drop
-is planned once the storage port can express a move (roadmap Phase 5).
+`.app-tree` styles the file tree at `/files/tree`. The view only navigates; the tree is managed
+from the explorer, and the page carries no badge or note saying so - a page states what it does,
+not what it will do (drag-and-drop, roadmap 5.2, would land here or in the explorer).
 
 The tree shows folders to any depth (one `folder` table; one `FOLDER` node type since `V2.9`,
 whose children are its folders and then its files). A top-level folder's note is the title of
