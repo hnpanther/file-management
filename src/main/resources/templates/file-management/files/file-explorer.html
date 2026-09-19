@@ -39,11 +39,6 @@
         </span>
         <h1 class="truncate text-sm font-semibold" th:text="#{explorer.heading}">کاوشگر فایل‌ها</h1>
 
-        <span class="hidden items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[0.7rem] sm:inline-flex">
-            <i class="bi bi-eye" aria-hidden="true"></i>
-            <span th:text="#{explorer.readOnly}">فقط نمایشی</span>
-        </span>
-
         <form class="ms-auto flex min-w-0 items-center gap-1.5" @submit.prevent="runSearch()">
             <input type="search" x-model="searchQuery" :placeholder="EX.searchPlaceholder"
                    class="h-8 w-36 min-w-0 rounded-[var(--radius-control)] border border-white/25
