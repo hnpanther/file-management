@@ -14,6 +14,7 @@ import com.hnp.filemanagement.service.FolderService;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.dto.TagGroupDTO;
 import com.hnp.filemanagement.dto.FolderDTO;
+import com.hnp.filemanagement.dto.FolderDetailsDTO;
 import com.hnp.filemanagement.dto.ApiResult;
 import com.hnp.filemanagement.dto.FolderSearchDTO;
 import com.hnp.filemanagement.service.FolderContentService;
@@ -111,6 +112,18 @@ public class FolderResource {
                 "search folders for query=" + query + ", within folderId=" + folderId);
 
         return folderContentService.search(query, folderId, page, size, userDetails.getId());
+    }
+
+    /** One folder's details, for the pane a selected folder opens - the same permission as a listing. */
+    //REST_GET_FOLDER_CONTENT
+    @PreAuthorize("hasAuthority('REST_GET_FOLDER_CONTENT') || hasAuthority('FILE_EXPLORER_PAGE') || hasAuthority('ADMIN')")
+    @GetMapping("{folderId}")
+    public FolderDetailsDTO getFolderDetails(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                             @PathVariable("folderId") int folderId,
+                                             HttpServletRequest request) {
+        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
+                "details of folderId=" + folderId);
+        return folderContentService.detailsOf(folderId, userDetails.getId());
     }
 
     // ------------------------------------------------------------------ managing the tree (Phase 7 step 4)

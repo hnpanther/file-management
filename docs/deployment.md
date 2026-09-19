@@ -639,6 +639,11 @@ of that name has to be renamed first (from the explorer, on 1.3.0).
 2. **New files are stored under `{base-dir}/folders/{folder id}/…`.** Files stored before stay
    where they are and keep working — a version's `storage_key` is what is read, never the
    folder names. A backup of `base-dir` now has two layouts side by side; that is expected.
+   Renaming or moving a folder changes **nothing** on disk and no stored key, only `folder`
+   rows and the derived tags; the exact effect of every operation on the tree, the keys and the
+   bytes is tabulated in [arch.md](arch.md#what-each-operation-touches). The consequence for a
+   backup is unchanged and worth repeating: the directory tree is not a mirror of the folder
+   tree, so `base-dir` without the database is a heap of files nobody can place.
 
 3. **A file name is unique per folder.** The per-sub-category rule that 1.3.0 kept because of the
    old disk layout is gone: the same name under a sibling folder is another file.

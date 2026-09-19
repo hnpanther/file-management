@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FolderContentDTO;
+import com.hnp.filemanagement.dto.FolderDetailsDTO;
 import com.hnp.filemanagement.dto.FolderSearchDTO;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.FolderPermission;
@@ -311,6 +312,72 @@ class FolderContentServiceTest extends MySqlSupport {
         assertThatThrownBy(() -> folderContentService.search(
                 fileName, categoryId, 0, 25, restrictedId))
                 .isInstanceOf(AccessDeniedException.class);
+    }
+
+    // ---------------------------------------------------------------- folders in a search, and a folder's details
+
+    @Test
+    @DisplayName("a search finds folders too - by id, or by a fragment of the name or the label - each with its trail and counts")
+    void searchFindsFolders() {
+        String name = folderRepository.findById(tagId).orElseThrow().getName();
+
+        FolderSearchDTO byName = folderContentService.search(name.substring(0, name.length() - 1), null, 0, 25, adminId);
+        assertThat(byName.folders()).extracting(hit -> hit.folder().id()).contains(tagId);
+        FolderSearchDTO.FolderHit hit = byName.folders().stream().filter(h -> h.folder().id() == tagId).findFirst().orElseThrow();
+        assertThat(hit.breadcrumb()).extracting(FolderContentDTO.FolderRef::id)
+                .containsExactly(folderRepository.findRoots().getFirst().getId(), categoryId, subCategoryId);
+        assertThat(hit.folder().fileCount()).isEqualTo(1);
+
+        FolderSearchDTO byId = folderContentService.search(String.valueOf(subCategoryId), null, 0, 25, adminId);
+        assertThat(byId.folders()).extracting(h -> h.folder().id()).contains(subCategoryId);
+
+        FolderSearchDTO byLabel = folderContentService.search(
+                folderRepository.findById(categoryId).orElseThrow().getDisplayName(), null, 0, 25, adminId);
+        assertThat(byLabel.folders()).extracting(h -> h.folder().id()).contains(categoryId);
+
+        assertThat(folderContentService.search(name, otherSubCategoryId, 0, 25, adminId).folders())
+                .as("a scope confines the folders too").isEmpty();
+        assertThat(folderContentService.search("Home", null, 0, 25, adminId).folders())
+                .as("the root is never a hit").extracting(h -> h.folder().kind()).doesNotContain("ROOT");
+    }
+
+    @Test
+    @DisplayName("folder hits reach only what may be walked into")
+    void folderHitsAreBoundedByVisibility() {
+        String name = folderRepository.findById(tagId).orElseThrow().getName();
+        assertThat(folderContentService.search(name, null, 0, 25, restrictedId).folders()).isEmpty();
+
+        grantDirectly(restrictedId, tagId);
+        assertThat(folderContentService.search(name, null, 0, 25, restrictedId).folders())
+                .extracting(h -> h.folder().id()).contains(tagId);
+        assertThat(folderContentService.search(name, null, 0, 25, restrictedId).folders())
+                .extracting(h -> h.folder().id()).doesNotContain(otherSubCategoryId);
+    }
+
+    @Test
+    @DisplayName("a folder's details: its trail, its group, what it holds directly and in total, and who made it")
+    void detailsOfAFolder() {
+        FolderDetailsDTO details = folderContentService.detailsOf(categoryId, adminId);
+
+        assertThat(details.folder().id()).isEqualTo(categoryId);
+        assertThat(details.depth()).isEqualTo(1);
+        assertThat(details.breadcrumb()).extracting(FolderContentDTO.FolderRef::kind).containsExactly("ROOT");
+        assertThat(details.tagGroup()).isNotNull();
+        assertThat(details.folderCount()).as("two sub-categories").isEqualTo(2);
+        assertThat(details.fileCount()).as("no file directly in it").isZero();
+        assertThat(details.totalFiles()).as("the one file three levels down").isEqualTo(1);
+        assertThat(details.createdAt()).isNotNull();
+        assertThat(details.createdBy()).isNotBlank();
+
+        FolderDetailsDTO tag = folderContentService.detailsOf(tagId, adminId);
+        assertThat(tag.depth()).isEqualTo(3);
+        assertThat(tag.fileCount()).isEqualTo(1);
+        assertThat(tag.tagGroup().id()).as("the top-level folder's group, all the way down").isEqualTo(details.tagGroup().id());
+
+        assertThatThrownBy(() -> folderContentService.detailsOf(tagId, restrictedId))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> folderContentService.detailsOf(999_999, adminId))
+                .isInstanceOf(com.hnp.filemanagement.exception.InvalidDataException.class);
     }
 
     // ---------------------------------------------------------------- helpers

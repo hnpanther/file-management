@@ -649,6 +649,9 @@
     }
     .explorer-folder-twisty.is-leaf { @apply invisible; }
 
+    /* The per-row "details" button: quiet until the row is hovered, and never the row's own click. */
+    .explorer-row-action   { @apply rounded-[var(--radius-control)] px-1.5 py-0.5 text-ink-300 hover:bg-ink-100 hover:text-ink-700; }
+    .explorer-table tbody tr:hover .explorer-row-action { @apply text-ink-500; }
     .explorer-detail-term  { @apply mb-0.5 text-[0.7rem] font-semibold text-ink-400; }
     .explorer-detail-value { @apply mb-3 text-sm break-words text-ink-800; }
 }

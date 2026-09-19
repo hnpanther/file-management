@@ -253,6 +253,38 @@ class FolderManagementTest extends MySqlSupport {
                 .andExpect(jsonPath("$.manageable").value(false));
     }
 
+    @Test
+    @DisplayName("a folder's details are one GET under the listing's permission, 403 outside the grant, 400 for a missing id")
+    void aFoldersDetailsAreOneGet() throws Exception {
+        mockMvc.perform(get("/resource/folders/{id}", chain.tagId())
+                        .with(user(principal(adminId, PermissionEnum.FILE_EXPLORER_PAGE)))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.folder.id").value(chain.tagId()))
+                .andExpect(jsonPath("$.depth").value(3))
+                .andExpect(jsonPath("$.breadcrumb[1].id").value(chain.categoryId()))
+                .andExpect(jsonPath("$.tagGroup.id").value(chain.category().getTagGroup().getId()))
+                .andExpect(jsonPath("$.totalFiles").value(0));
+
+        User restricted = userRepository.save(TestData.user());
+        mockMvc.perform(get("/resource/folders/{id}", chain.tagId())
+                        .with(user(principal(restricted.getId(), PermissionEnum.REST_GET_FOLDER_CONTENT)))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+        mockMvc.perform(get("/resource/folders/{id}", 999_999)
+                        .with(user(principal(adminId, PermissionEnum.REST_GET_FOLDER_CONTENT)))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/resource/folders/search").param("query", String.valueOf(chain.subCategoryId()))
+                        .with(user(principal(adminId, PermissionEnum.FILE_EXPLORER_PAGE)))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.folders[0].folder.id").value(chain.subCategoryId()))
+                .andExpect(jsonPath("$.folders[0].breadcrumb[1].id").value(chain.categoryId()));
+    }
+
     // ---------------------------------------------------------------- the page
 
     @Test
@@ -266,6 +298,8 @@ class FolderManagementTest extends MySqlSupport {
                 .andExpect(content().string(Matchers.containsString("@click=\"openManage('create')\"")))
                 .andExpect(content().string(Matchers.containsString("@click=\"openManage('rename')\"")))
                 .andExpect(content().string(Matchers.containsString("@click=\"deleteFolder()\"")))
+                .andExpect(content().string(Matchers.containsString("showFolder(folder.id)")))
+                .andExpect(content().string(Matchers.containsString("x-for=\"hit in searchFolders\"")))
                 .andExpect(content().string(Matchers.containsString("explorer-manage")))
                 .andExpect(content().string(Matchers.containsString("data-folders-url=\"/resource/folders\"")));
 

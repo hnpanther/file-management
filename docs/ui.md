@@ -326,8 +326,7 @@ markup, `window.folderChooser(config)` in `app.js` the Alpine behaviour, and the
 element declares `x-data="folderChooser({url, initialId, initialPath, rootTitle, selectRoot,
 copy})"`. It drills down through `/resource/folders/children` - the same endpoint the explorer
 reads, so it shows exactly the folders the person may walk into - as a crumb row (each crumb
-goes back up), a list of child folders (each goes down, with the count badge), and "انتخاب این
-پوشه" for the folder on screen. The choice is `chosen` (`{id, title, path}`) and a
+goes back up), a list of child folders (each goes down, with the count badge), and a "choose this folder" button (`folderChooser.chooseThis`) for the folder on screen. The choice is `chosen` (`{id, title, path}`) and a
 `folder-chosen` event on the root element, which the upload form binds to its hidden input and
 the explorer's move dialog to its target. `selectRoot` says whether `Home` may be chosen (a
 move's target may be the root; an upload's may not).
@@ -429,6 +428,19 @@ on screen reports `manageable` (the caller holds `WRITE` on it) and the operatio
 anything but the root, *delete* on an empty folder that is not the root. No disabled buttons
 stand in for what a person cannot do. Move opens a panel with the folder chooser
 (`selectRoot: true`) and one button that becomes active once a target is chosen.
+
+**Selecting a folder** is distinct from opening it: a row's click opens the folder, and the
+`.explorer-row-action` info button at the end of the row (or the "folder details" button in
+the toolbar, for the folder on screen) selects it - `showFolder(id)` reads
+`/resource/folders/{id}` and the details pane shows the folder instead of a file: label, id and
+name, the trail, depth, the tag group, direct contents, total files beneath, created and last
+changed by whom, and an "open" button. `selectedFile` and `selectedFolder` are exclusive; Escape
+and the overlay clear both.
+
+**Search** finds folders as well as files, by id or by a fragment of the name or label. The
+response carries `folders` (a short list, never paged) and `hits` (files, paged); the results
+pane renders the folders first, each with its trail and counts and its own info button, and the
+"nothing found" state only when both lists are empty.
 
 Create and rename share one inline form (`.explorer-manage`, under the toolbar, `x-show` on
 `manage.mode`): a directory-safe name (`technical`, `dir="ltr"`, `pattern="[^./ ]+"`), a label,

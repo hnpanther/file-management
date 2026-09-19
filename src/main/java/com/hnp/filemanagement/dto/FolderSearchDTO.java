@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.dto;
 
 import com.hnp.filemanagement.dto.FolderContentDTO.FileEntry;
+import com.hnp.filemanagement.dto.FolderContentDTO.FolderEntry;
 import com.hnp.filemanagement.dto.FolderContentDTO.FolderRef;
 import com.hnp.filemanagement.dto.FolderContentDTO.PageInfo;
 
@@ -21,18 +22,31 @@ import java.util.List;
  * listing are the same thing seen from two directions, and giving them two shapes would mean two
  * ways to render a file, which drift.
  *
- * <p><b>Folders are not searched, only files.</b> That is what the tree's search does today and what
- * the reported problem was — finding a file whose label is shared with another branch
- * ({@code docs/issues.md}, issue 73). Mixing folder hits into the same paged list would mean paging
- * two sources into one page, which is a different problem and can be added as its own list later.
+ * <p><b>Folders are searched too, as their own list.</b> A folder is found by its id or a fragment
+ * of its name or label, and {@link #folders} holds the first few (never paged: with a tree a few
+ * thousand folders wide the list is short by construction, and mixing two sources into one paged
+ * list would mean paging them together, which is a different problem). Files stay paged in
+ * {@link #hits}.
  *
- * @param query the term as it was searched, echoed back so a late response can be matched to the box
- *              that is now on screen
- * @param scope the folder the search was confined to, or null when it covered everything reachable
- * @param hits  one page of matches
- * @param page  which page of {@link #hits} this is
+ * @param query   the term as it was searched, echoed back so a late response can be matched to the
+ *                box that is now on screen
+ * @param scope   the folder the search was confined to, or null when it covered everything reachable
+ * @param folders the folders that match, outermost first - at most {@code MAX_FOLDER_HITS}
+ * @param hits    one page of file matches
+ * @param page    which page of {@link #hits} this is
  */
-public record FolderSearchDTO(String query, FolderRef scope, List<Hit> hits, PageInfo page) {
+public record FolderSearchDTO(String query, FolderRef scope, List<FolderHit> folders, List<Hit> hits, PageInfo page) {
+
+    /** How many folders a search lists at most; the term should be narrowed rather than paged. */
+    public static final int MAX_FOLDER_HITS = 20;
+
+    /**
+     * One folder that matched, in the shape a listing gives it, with the trail down to it.
+     *
+     * @param folder     the folder itself, with its counts
+     * @param breadcrumb its ancestors, root first, excluding it
+     */
+    public record FolderHit(FolderEntry folder, List<FolderRef> breadcrumb) {}
 
     /**
      * One match.

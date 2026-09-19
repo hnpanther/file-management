@@ -132,7 +132,7 @@ public enum PermissionEnum {
     // ===================================================================================================
 
     // FolderResource @RequestMapping("/resource/folders") ===============================================
-    //@GetMapping("children")
+    //@GetMapping("children"), @GetMapping("{folderId}") - a listing, and one folder's details
     REST_GET_FOLDER_CONTENT,
 
     //@GetMapping("search")

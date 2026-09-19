@@ -24,7 +24,7 @@
 <body>
 
 <div class="explorer-shell" x-data="fileExplorer()"
-     @keydown.escape.window="treeOpen = false; selectedFile = null">
+     @keydown.escape.window="treeOpen = false; selectedFile = null; selectedFolder = null">
 
     <header class="explorer-topbar">
         <button type="button" class="explorer-topbar-button lg:hidden"
@@ -70,7 +70,7 @@
         <!-- backdrop for the two drawers, narrow screens only -->
         <div x-show="treeOpen" x-cloak x-transition.opacity @click="treeOpen = false"
              class="fixed inset-0 z-30 bg-ink-900/40 lg:hidden" aria-hidden="true"></div>
-        <div x-show="selectedFile" x-cloak x-transition.opacity @click="selectedFile = null"
+        <div x-show="selectedFile || selectedFolder" x-cloak x-transition.opacity @click="selectedFile = null; selectedFolder = null"
              class="fixed inset-0 z-30 bg-ink-900/40 xl:hidden" aria-hidden="true"></div>
 
         <!-- ------------------------------------------------------------ folders -->
@@ -135,7 +135,12 @@
                 </div>
 
                 <div class="flex shrink-0 items-center gap-1.5" x-show="searchResults === null" x-cloak>
-                    <!-- Only where a document can actually be filed: a tag folder inside a WRITE grant. -->
+                    <button type="button" class="btn btn-secondary btn-sm" x-show="folder" x-cloak
+                            @click="showFolder(folder.id)" th:title="#{explorer.details.folder}">
+                        <i class="bi bi-info-circle" aria-hidden="true"></i>
+                        <span class="hidden md:inline" th:text="#{explorer.details.folder}">جزئیات پوشه</span>
+                    </button>
+                    <!-- Only where a document can actually be filed: any folder but the root, inside a WRITE grant. -->
                     <a class="btn btn-primary btn-sm" x-show="writable" x-cloak
                        :href="uploadHref()" th:data-href="@{/files/create}"
                        x-ref="uploadLink" sec:authorize="hasAuthority('CREATE_FILE_PAGE') || hasAuthority('ADMIN')">
@@ -296,7 +301,44 @@
                             @click="reload()" th:text="#{explorer.retry}">تلاش دوباره</button>
                 </div>
 
-                <!-- search results -->
+                <!-- search results: the folders that match, then the files -->
+                <table class="explorer-table" x-show="!error && searchResults !== null && searchFolders.length > 0" x-cloak>
+                    <thead>
+                    <tr>
+                        <th th:text="#{explorer.search.folders}">پوشه‌ها</th>
+                        <th class="hidden md:table-cell" th:text="#{explorer.details.location}">محل نگهداری</th>
+                        <th class="hidden sm:table-cell" th:text="#{explorer.column.contents}">محتوا</th>
+                        <th class="w-10"><span class="sr-only" th:text="#{explorer.details.folder}">جزئیات پوشه</span></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <template x-for="hit in searchFolders" :key="'sd' + hit.folder.id">
+                        <tr @click="navigate(hit.folder.id)">
+                            <td>
+                                <span class="explorer-cell-name">
+                                    <i class="bi shrink-0 text-brand-600" :class="iconFor(hit.folder)" aria-hidden="true"></i>
+                                    <span class="min-w-0">
+                                        <span class="block truncate font-semibold" x-text="hit.folder.title"></span>
+                                        <span class="technical block truncate text-xs text-ink-400"
+                                              x-text="'#' + hit.folder.id + (hit.folder.name !== hit.folder.title ? ' · ' + hit.folder.name : '')"></span>
+                                    </span>
+                                </span>
+                            </td>
+                            <td class="hidden md:table-cell">
+                                <span class="text-xs text-ink-500" x-text="pathOfFolderHit(hit)"></span>
+                            </td>
+                            <td class="explorer-cell-muted hidden sm:table-cell" x-text="contentsOf(hit.folder)"></td>
+                            <td>
+                                <button type="button" class="explorer-row-action" @click.stop="showFolder(hit.folder.id)"
+                                        th:title="#{explorer.details.folder}">
+                                    <i class="bi bi-info-circle" aria-hidden="true"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                    </tbody>
+                </table>
+
                 <table class="explorer-table" x-show="!error && searchResults !== null && searchResults.length > 0" x-cloak>
                     <thead>
                     <tr>
@@ -332,8 +374,8 @@
                     </tbody>
                 </table>
 
-                <p class="explorer-state" x-show="!error && searchResults !== null && searchResults.length === 0" x-cloak
-                   th:text="#{explorer.search.empty}">فایلی با این مشخصات پیدا نشد.</p>
+                <p class="explorer-state" x-show="!error && searchResults !== null && searchResults.length === 0 && searchFolders.length === 0" x-cloak
+                   th:text="#{explorer.search.empty}">پوشه یا فایلی با این مشخصات پیدا نشد.</p>
 
                 <!-- folder contents -->
                 <table class="explorer-table" x-show="!error && searchResults === null && !isEmpty()" x-cloak>
@@ -348,7 +390,8 @@
                     </thead>
                     <tbody>
                     <template x-for="entry in folders" :key="'d' + entry.id">
-                        <tr @click="navigate(entry.id)">
+                        <tr :class="selectedFolder && selectedFolder.folder.id === entry.id && 'is-selected'"
+                            @click="navigate(entry.id)">
                             <td>
                                 <span class="explorer-cell-name">
                                     <i class="bi shrink-0 text-brand-600" :class="iconFor(entry)" aria-hidden="true"></i>
@@ -362,13 +405,19 @@
                             <td class="explorer-cell-muted hidden sm:table-cell" x-text="contentsOf(entry)"></td>
                             <td class="hidden lg:table-cell"></td>
                             <td class="hidden sm:table-cell"></td>
-                            <td class="hidden lg:table-cell"></td>
+                            <td class="hidden lg:table-cell">
+                                <!-- Opening a folder is the row; its details are this, so the two do not fight over a click. -->
+                                <button type="button" class="explorer-row-action" @click.stop="showFolder(entry.id)"
+                                        th:title="#{explorer.details.folder}">
+                                    <i class="bi bi-info-circle" aria-hidden="true"></i>
+                                </button>
+                            </td>
                         </tr>
                     </template>
 
                     <template x-for="entry in files" :key="'f' + entry.id">
                         <tr :class="selectedFile && selectedFile.id === entry.id && 'is-selected'"
-                            @click="selectedFile = entry">
+                            @click="selectedFile = entry; selectedFolder = null">
                             <td>
                                 <span class="explorer-cell-name">
                                     <i class="bi bi-file-earmark-text shrink-0 text-ink-400" aria-hidden="true"></i>
@@ -413,19 +462,73 @@
 
         <!-- ------------------------------------------------------------ details -->
         <aside class="explorer-pane-details" th:aria-label="#{explorer.aria.details}"
-               :class="selectedFile ? 'translate-x-0' : '-translate-x-full xl:translate-x-0'">
+               :class="(selectedFile || selectedFolder) ? 'translate-x-0' : '-translate-x-full xl:translate-x-0'">
             <div class="explorer-pane-heading">
                 <span th:text="#{explorer.details.title}">جزئیات</span>
                 <button type="button" class="text-ink-400 hover:text-ink-700 xl:hidden"
-                        @click="selectedFile = null" th:aria-label="#{explorer.details.close}">
+                        @click="selectedFile = null; selectedFolder = null" th:aria-label="#{explorer.details.close}">
                     <i class="bi bi-x-lg" aria-hidden="true"></i>
                 </button>
             </div>
 
-            <div class="p-3" x-show="!selectedFile" x-cloak>
+            <div class="p-3" x-show="!selectedFile && !selectedFolder" x-cloak>
                 <p class="py-8 text-center text-sm text-ink-400" th:text="#{explorer.details.empty}">
-                    برای دیدن جزئیات، یک فایل را انتخاب کنید.
+                    برای دیدن جزئیات، یک فایل یا پوشه را انتخاب کنید.
                 </p>
+            </div>
+
+            <!-- a folder -->
+            <div class="p-3" x-show="selectedFolder" x-cloak>
+                <template x-if="selectedFolder">
+                    <div>
+                        <p class="mb-1 flex items-center gap-2 text-sm font-semibold break-words">
+                            <i class="bi bi-folder-fill text-brand-600" aria-hidden="true"></i>
+                            <span x-text="crumbTitle(selectedFolder.folder)"></span>
+                        </p>
+                        <p class="technical mb-4 text-xs text-ink-500" dir="ltr"
+                           x-text="'#' + selectedFolder.folder.id + '  ' + selectedFolder.folder.name"></p>
+
+                        <p class="explorer-detail-term" th:text="#{explorer.details.location}">محل نگهداری</p>
+                        <p class="explorer-detail-value" x-text="pathOfFolder(selectedFolder)"></p>
+
+                        <p class="explorer-detail-term" th:text="#{explorer.details.depth}">عمق</p>
+                        <p class="explorer-detail-value" x-text="number(selectedFolder.depth)"></p>
+
+                        <template x-if="selectedFolder.tagGroup">
+                            <div>
+                                <p class="explorer-detail-term" th:text="#{explorer.manage.tagGroup}">برچسب عمومی (گروه تگ)</p>
+                                <p class="explorer-detail-value"
+                                   x-text="selectedFolder.tagGroup.title + ' (' + selectedFolder.tagGroup.name + ')'"></p>
+                            </div>
+                        </template>
+
+                        <p class="explorer-detail-term" th:text="#{explorer.column.contents}">محتوا</p>
+                        <p class="explorer-detail-value" x-text="contentsOf({ folderCount: selectedFolder.folderCount, fileCount: selectedFolder.fileCount })"></p>
+
+                        <p class="explorer-detail-term" th:text="#{explorer.details.totalFiles}">مجموع فایل‌ها در زیرشاخه‌ها</p>
+                        <p class="explorer-detail-value" x-text="number(selectedFolder.totalFiles)"></p>
+
+                        <template x-if="selectedFolder.createdAt">
+                            <div>
+                                <p class="explorer-detail-term" th:text="#{explorer.details.created}">تاریخ ایجاد</p>
+                                <p class="explorer-detail-value" x-text="date(selectedFolder.createdAt) + (selectedFolder.createdBy ? ' · ' + selectedFolder.createdBy : '')"></p>
+                            </div>
+                        </template>
+                        <template x-if="selectedFolder.updatedAt">
+                            <div>
+                                <p class="explorer-detail-term" th:text="#{explorer.details.updated}">آخرین تغییر</p>
+                                <p class="explorer-detail-value" x-text="date(selectedFolder.updatedAt) + (selectedFolder.updatedBy ? ' · ' + selectedFolder.updatedBy : '')"></p>
+                            </div>
+                        </template>
+
+                        <button type="button" class="btn btn-primary btn-sm w-full"
+                                x-show="!folder || folder.id !== selectedFolder.folder.id"
+                                @click="navigate(selectedFolder.folder.id)">
+                            <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                            <span th:text="#{explorer.details.openFolder}">باز کردن پوشه</span>
+                        </button>
+                    </div>
+                </template>
             </div>
 
             <div class="p-3" x-show="selectedFile" x-cloak>
@@ -590,10 +693,12 @@
             treeOpen: false,
 
             selectedFile: null,
+            selectedFolder: null,     // FolderDetailsDTO, from /resource/folders/{id}
 
             // null means "not searching"; an array means "these are the results", including none
             searchQuery: "",
-            searchResults: null,
+            searchResults: null,      // file hits, or null while not searching
+            searchFolders: [],        // folder hits of the same search
             searching: false,
 
             error: "",
@@ -614,7 +719,9 @@
                 this.error = "";
                 this.expired = false;
                 this.selectedFile = null;
+                this.selectedFolder = null;
                 this.searchResults = null;
+                this.searchFolders = [];
                 this.treeOpen = false;
 
                 let content;
@@ -759,13 +866,16 @@
                 this.error = "";
                 this.expired = false;
                 this.selectedFile = null;
+                this.selectedFolder = null;
                 try {
                     const params = new URLSearchParams();
                     params.set("query", term);
                     const found = await readJson(EX.searchUrl + "?" + params.toString());
                     this.searchResults = found.hits;
+                    this.searchFolders = found.folders || [];
                 } catch (e) {
                     this.searchResults = null;
+                    this.searchFolders = [];
                     this.fail(e, EX.searchFailed);
                 } finally {
                     this.searching = false;
@@ -775,6 +885,29 @@
             clearSearch() {
                 this.searchQuery = "";
                 this.searchResults = null;
+                this.searchFolders = [];
+            },
+
+            pathOfFolderHit(hit) {
+                return hit.breadcrumb.slice(1).map(crumb => crumb.title).join(" ◂ ") || EX.rootTitle;
+            },
+
+            /** The way down to a selected folder, as the file pane shows it: the ancestors below the root. */
+            pathOfFolder(details) {
+                return details.breadcrumb.slice(1).map(crumb => crumb.title).join(" ◂ ") || EX.rootTitle;
+            },
+
+            // ------------------------------------------------------------ a folder's details
+
+            /** Selects a folder without opening it: its details come from their own read. */
+            async showFolder(folderId) {
+                this.selectedFile = null;
+                try {
+                    this.selectedFolder = await readJson(EX.foldersUrl + "/" + encodeURIComponent(folderId));
+                } catch (e) {
+                    this.selectedFolder = null;
+                    this.fail(e, EX.loadFailed);
+                }
             },
 
             /** Goes to the folder a hit lives in and selects the file there. */
