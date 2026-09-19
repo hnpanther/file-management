@@ -116,7 +116,7 @@ class FileServiceUnitTest {
     @Test
     @DisplayName("an unstorable file name is refused before the folder is even looked up")
     void refusesAnUnstorableName() {
-        FileInfoDTO request = uploadRequest("has space.txt");
+        FileInfoDTO request = uploadRequest("has/slash.txt");
 
         assertThatThrownBy(() -> underTest.createNewFile(request, 1, 1))
                 .isInstanceOf(InvalidDataException.class);

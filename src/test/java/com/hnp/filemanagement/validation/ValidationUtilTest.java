@@ -12,41 +12,42 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * The naming rules, as pure unit tests — no Spring, no database, no file system.
  *
- * <p>These two predicates are the only thing standing between a caller-supplied string and a path
- * on disk. {@link FileStorageFileSystemService} builds its paths by concatenation and never
- * resolves or normalises them, so a name that reaches storage containing {@code /} or {@code ..}
- * escapes the storage root entirely. That makes these rules a security boundary, not a formatting
- * preference, and the traversal cases below are the ones to keep when the rules are relaxed.
+ * <p>These two predicates are the only thing standing between a caller-supplied string and a
+ * path segment on disk. {@link FileStorageFileSystemService} contains every path it builds
+ * ({@code within}), so traversal cannot escape the root even if a rule let it through - but a
+ * rule that let {@code ..} through would still turn "a folder named this" into "the parent",
+ * which is why the traversal cases below are the ones to keep whatever else is relaxed.
  *
- * <p>The same rules are re-implemented inside {@code FileStorageFileSystemService}. They must agree;
- * {@code FileStorageFileSystemServiceTest} checks the other copy against the same inputs.
+ * <p>Since {@code V2.9} the rules are what a file system refuses, not what a taxonomy once
+ * needed: spaces, dots inside a name and any script are fine; separators, control characters,
+ * the characters Windows forbids, a trailing dot or space and the names Windows reserves are
+ * not. The storage layer delegates to these same predicates, so there is one copy.
  */
 class ValidationUtilTest {
 
     // ---------------------------------------------------------------- directory names
 
     @ParameterizedTest
-    @ValueSource(strings = {"documents", "invoices2024", "a", "UPPER", "with-dash", "with_underscore"})
-    @DisplayName("a directory name may be anything without a dot, a space or a separator")
+    @ValueSource(strings = {"documents", "invoices2024", "a", "UPPER", "with-dash", "with_underscore",
+            "with space", "has.dot", "گزارش ماهانه", "2024.03 report", "a  b"})
+    @DisplayName("a directory name may hold spaces, dots and any script")
     void acceptsAPlainDirectoryName(String name) {
         assertThat(ValidationUtil.checkCorrectDirectoryName(name)).isTrue();
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"has space", "has.dot", "has/separator", "..", ".", "a/../b", " ", "../escape"})
-    @DisplayName("a directory name with a dot, a space or a separator is refused")
+    @ValueSource(strings = {"has/separator", "has\\backslash", "..", ".", "a/../b", " ", "../escape",
+            " leading", "trailing ", "trailing.", "a<b", "a>b", "a:b", "a\"b", "a|b", "a?b", "a*b",
+            "tab\there", "CON", "con", "NUL.txt", "lpt1"})
+    @DisplayName("a separator, a dot-name, a forbidden or control character, a trailing dot or space, or a reserved name is refused")
     void rejectsAnUnsafeDirectoryName(String name) {
         assertThat(ValidationUtil.checkCorrectDirectoryName(name)).isFalse();
     }
 
     @Test
-    @DisplayName("the empty string is accepted, which callers must not rely on")
-    void acceptsTheEmptyString() {
-        // Documented rather than endorsed: the predicate counts forbidden characters, and an empty
-        // string has none. Every caller checks for emptiness through bean validation first, so this
-        // has never been reachable - but a new caller that skips that would create a directory
-        // named "" and land back in the parent.
-        assertThat(ValidationUtil.checkCorrectDirectoryName("")).isTrue();
+    @DisplayName("the empty string is refused: a name that is nothing lands in the parent")
+    void refusesTheEmptyString() {
+        assertThat(ValidationUtil.checkCorrectDirectoryName("")).isFalse();
     }
 
     @Test
@@ -59,15 +60,17 @@ class ValidationUtilTest {
     // ---------------------------------------------------------------- file names
 
     @ParameterizedTest
-    @ValueSource(strings = {"report.pdf", "a.b", "invoice-2024.txt", "UPPER.TXT"})
-    @DisplayName("a file name must have exactly one dot and no space or separator")
+    @ValueSource(strings = {"report.pdf", "a.b", "invoice-2024.txt", "UPPER.TXT", "two.dots.pdf", "has space.pdf",
+            "گزارش ماهانه.pdf", "v1.2 final.docx"})
+    @DisplayName("a file name is a safe segment with an extension; spaces and inner dots are fine")
     void acceptsAPlainFileName(String name) {
         assertThat(ValidationUtil.checkCorrectFileName(name)).isTrue();
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"no-extension", "two.dots.pdf", "has space.pdf", "dir/report.pdf", "../escape.pdf"})
-    @DisplayName("a file name without exactly one dot, or with a space or a separator, is refused")
+    @ValueSource(strings = {"no-extension", ".hidden", "trailing.", "dir/report.pdf", "..\\escape.pdf", "../escape.pdf",
+            "bad.p df", "bad.pd/f", "a<b.pdf", "CON.pdf", "report.pdf "})
+    @DisplayName("no extension, an extension that is not letters and digits, a separator, a forbidden character or a reserved name is refused")
     void rejectsAnUnsafeFileName(String name) {
         assertThat(ValidationUtil.checkCorrectFileName(name)).isFalse();
     }
@@ -78,5 +81,6 @@ class ValidationUtilTest {
         assertThat(ValidationUtil.checkCorrectDirectoryName("../../etc")).isFalse();
         assertThat(ValidationUtil.checkCorrectFileName("../../etc/passwd")).isFalse();
         assertThat(ValidationUtil.checkCorrectFileName("../../passwd.txt")).isFalse();
+        assertThat(ValidationUtil.checkCorrectDirectoryName("..")).isFalse();
     }
 }

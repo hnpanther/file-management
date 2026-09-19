@@ -285,6 +285,43 @@ class FolderManagementTest extends MySqlSupport {
                 .andExpect(jsonPath("$.folders[0].breadcrumb[1].id").value(chain.categoryId()));
     }
 
+    @Test
+    @DisplayName("a file is moved by one PUT under its own permission: 403 outside the write grants, 400 into the root")
+    void aFileIsMovedByOnePut() throws Exception {
+        int fileId = fileInfoRepository.saveAndFlush(TestData.fileInfo(admin, chain.tag(), "movable" + TestData.nextSequence())).getId();
+        Folder target = FolderFixture.tag(folderRepository, chain.subCategory(), admin, "Target" + TestData.nextSequence());
+
+        mockMvc.perform(put("/resource/files/file-info/{id}/move", fileId)
+                        .with(user(principal(adminId, PermissionEnum.REST_UPDATE_FILE_INFO_DESCRIPTION))).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"folderId\":" + target.getId() + "}"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(put("/resource/files/file-info/{id}/move", fileId)
+                        .with(user(principal(adminId, PermissionEnum.REST_MOVE_FILE_INFO))).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"folderId\":" + target.getId() + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outcome").value("UPDATED"));
+        assertThat(fileInfoRepository.findById(fileId).orElseThrow().getFolder().getId()).isEqualTo(target.getId());
+
+        mockMvc.perform(put("/resource/files/file-info/{id}/move", fileId)
+                        .with(user(principal(adminId, PermissionEnum.REST_MOVE_FILE_INFO))).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"folderId\":" + rootId + "}"))
+                .andExpect(status().isBadRequest());
+
+        User restricted = userRepository.save(TestData.user());
+        restricted.replaceFolderGrants(List.of(new UserFolderGrant(restricted, target, FolderPermission.WRITE)));
+        userRepository.save(restricted);
+        mockMvc.perform(put("/resource/files/file-info/{id}/move", fileId)
+                        .with(user(principal(restricted.getId(), PermissionEnum.REST_MOVE_FILE_INFO))).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"folderId\":" + chain.tagId() + "}"))
+                // write on the target only: the file leaves a folder the caller may not write into
+                .andExpect(status().isForbidden());
+    }
+
     // ---------------------------------------------------------------- the page
 
     @Test
@@ -292,13 +329,16 @@ class FolderManagementTest extends MySqlSupport {
     void theExplorerRendersTheManageControlsByPermission() throws Exception {
         mockMvc.perform(get("/files/explorer")
                         .with(user(principal(adminId, PermissionEnum.FILE_EXPLORER_PAGE, PermissionEnum.REST_CREATE_FOLDER,
-                                PermissionEnum.REST_RENAME_FOLDER, PermissionEnum.REST_DELETE_FOLDER)))
+                                PermissionEnum.REST_RENAME_FOLDER, PermissionEnum.REST_DELETE_FOLDER,
+                                PermissionEnum.REST_MOVE_FOLDER, PermissionEnum.REST_MOVE_FILE_INFO)))
                         .accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk())
                 .andExpect(content().string(Matchers.containsString("@click=\"openManage('create')\"")))
                 .andExpect(content().string(Matchers.containsString("@click=\"openManage('rename')\"")))
                 .andExpect(content().string(Matchers.containsString("@click=\"deleteFolder()\"")))
                 .andExpect(content().string(Matchers.containsString("showFolder(folder.id)")))
+                .andExpect(content().string(Matchers.containsString("@click=\"openMove()\"")))
+                .andExpect(content().string(Matchers.containsString("openMoveFile(selectedFile)")))
                 .andExpect(content().string(Matchers.containsString("x-for=\"hit in searchFolders\"")))
                 .andExpect(content().string(Matchers.containsString("explorer-manage")))
                 .andExpect(content().string(Matchers.containsString("data-folders-url=\"/resource/folders\"")));

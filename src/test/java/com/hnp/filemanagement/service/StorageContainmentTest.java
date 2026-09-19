@@ -121,14 +121,15 @@ class StorageContainmentTest {
     // ---------------------------------------------------------------- the guard that never ran
 
     @Test
-    @DisplayName("load rejects a directory segment the taxonomy would never have created (issue 4)")
+    @DisplayName("load rejects a directory segment no file system would take (issue 4)")
     void loadAppliesTheDirectoryRuleToEachSegment() {
-        assertThatThrownBy(() -> storage.load("IMS/a b", "x.pdf", 1, "pdf"))
-                .as("a space in a segment")
+        // A space and a dot are names since V2.9; a colon and a pipe are what a file system refuses.
+        assertThatThrownBy(() -> storage.load("IMS/a:b", "x.pdf", 1, "pdf"))
+                .as("a colon in a segment")
                 .isInstanceOf(BusinessException.class)
                 .isNotInstanceOf(ResourceNotFoundException.class);
-        assertThatThrownBy(() -> storage.load("IMS/v1.2", "x.pdf", 1, "pdf"))
-                .as("a dot in a segment")
+        assertThatThrownBy(() -> storage.load("IMS/v1|2", "x.pdf", 1, "pdf"))
+                .as("a pipe in a segment")
                 .isInstanceOf(BusinessException.class)
                 .isNotInstanceOf(ResourceNotFoundException.class);
         assertThatThrownBy(() -> storage.load("IMS/Sub", "no-extension", 1, "pdf"))

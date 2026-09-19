@@ -126,9 +126,10 @@ class FileStorageFileSystemServiceTest extends StorageRootSupport {
         ).isInstanceOf(BusinessException.class);
     }
 
+    /** A space is a name since V2.9; a colon is what a file system refuses. */
     @Test
     void createDirectoryWithInvalidName2Test() {
-        String invalidDir = "hello world";
+        String invalidDir = "hello:world";
 
         assertThatThrownBy(
                 () -> underTest.createDirectory(invalidDir, false)
@@ -169,11 +170,12 @@ class FileStorageFileSystemServiceTest extends StorageRootSupport {
 
     }
 
+    /** "file space.1.txt" is a fine name since V2.9; a name with no extension is not. */
     @Test
     void saveFileWithInvalidName1Test() throws IOException {
 
         Resource testFile = resourceLoader.getResource("classpath:file space.1.txt");
-        MultipartFile multipartFile = new MockMultipartFile(testFile.getFilename(), testFile.getFilename(), "text/plian", testFile.getInputStream());
+        MultipartFile multipartFile = new MockMultipartFile("file", "no-extension", "text/plian", testFile.getInputStream());
 
 
         assertThatThrownBy(
@@ -231,7 +233,7 @@ class FileStorageFileSystemServiceTest extends StorageRootSupport {
     void loadInvalidFileNameTest() {
 
         assertThatThrownBy(
-                () -> underTest.load("hell/o", "t.est12.txt", 1, "txt")
+                () -> underTest.load("hello", "t<est>.txt", 1, "txt")
         ).isInstanceOf(BusinessException.class);
     }
 

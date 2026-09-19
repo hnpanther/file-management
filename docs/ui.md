@@ -326,10 +326,12 @@ markup, `window.folderChooser(config)` in `app.js` the Alpine behaviour, and the
 element declares `x-data="folderChooser({url, initialId, initialPath, rootTitle, selectRoot,
 copy})"`. It drills down through `/resource/folders/children` - the same endpoint the explorer
 reads, so it shows exactly the folders the person may walk into - as a crumb row (each crumb
-goes back up), a list of child folders (each goes down, with the count badge), and a "choose this folder" button (`folderChooser.chooseThis`) for the folder on screen. The choice is `chosen` (`{id, title, path}`) and a
-`folder-chosen` event on the root element, which the upload form binds to its hidden input and
-the explorer's move dialog to its target. `selectRoot` says whether `Home` may be chosen (a
-move's target may be the root; an upload's may not).
+goes back up) and a list of child folders (each goes down, with the count badge). The folder on
+screen **is** the choice, updated on every step: `chosen` (`{id, title, path}`, or null while the
+root is on screen and the caller does not take it) and a `folder-chosen` event on the root
+element, which the upload form binds to its hidden input and the explorer's move panel to its
+target - no separate "choose" click. `selectRoot` says whether `Home` may be chosen (a folder
+move's target may be the root; an upload's or a file move's may not).
 
 ### Detail pages
 
@@ -434,8 +436,11 @@ each rendered only for a permission (`sec:authorize` on `REST_CREATE_FOLDER`,
 on screen reports `manageable` (the caller holds `WRITE` on it) and the operation applies:
 *new folder* while `canHoldFolders` (the depth limit is not reached), *rename* and *move* on
 anything but the root, *delete* on an empty folder that is not the root. No disabled buttons
-stand in for what a person cannot do. Move opens a panel with the folder chooser
-(`selectRoot: true`) and one button that becomes active once a target is chosen.
+stand in for what a person cannot do. Move opens a panel with the folder chooser and one
+button, active while the chooser has a target on screen; the same panel moves the file selected
+in the details pane (`openMoveFile`, `REST_MOVE_FILE_INFO`, no root). After either move the
+target folder is opened - where the moved thing now is - rather than the folder the person was
+in, so the move is visible.
 
 **Selecting a folder** is distinct from opening it: a row's click opens the folder, and the
 `.explorer-row-action` info button at the end of the row (or the "folder details" button in
@@ -451,7 +456,7 @@ pane renders the folders first, each with its trail and counts and its own info 
 "nothing found" state only when both lists are empty.
 
 Create and rename share one inline form (`.explorer-manage`, under the toolbar, `x-show` on
-`manage.mode`): a directory-safe name (`technical`, `dir="ltr"`, `pattern="[^./ ]+"`), a label,
+`manage.mode`): a name (`technical`, `dir="ltr"`, a `pattern` refusing only what a file system refuses), a label,
 and - when creating under the root, or renaming a top-level folder - a tag-group select fed by
 `/resource/folders/tag-groups`; on a create its empty option is "new group" and reveals a name
 field, on a rename it is "keep". The form posts JSON with the CSRF header

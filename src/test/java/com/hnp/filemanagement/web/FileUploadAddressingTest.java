@@ -115,7 +115,7 @@ class FileUploadAddressingTest extends MySqlSupport {
         FileInfo file = stored(body);
         assertThat(file.getFolder().getId()).isEqualTo(tagFolderId);
         assertThat(file.getFileDetailsList().getFirst().getStorageKey())
-                .isEqualTo(chain.directory() + "/byfolder/v1/byfolder.txt");
+                .isEqualTo("files/" + file.getId() + "/byfolder/v1/byfolder.txt");
         assertThat(file.getTags()).extracting(Tag::getName)
                 .containsExactlyInAnyOrder(chain.category().getName(), chain.subCategory().getName(), chain.tag().getName());
         assertThat(file.getTags()).extracting(t -> t.getGroup().getId())
@@ -160,7 +160,7 @@ class FileUploadAddressingTest extends MySqlSupport {
     void namesAreUniquePerFolder() throws Exception {
         upload("same.txt", Map.of("folderId", tagFolderId)).andExpect(status().isOk());
         upload("same.txt", Map.of("folderId", tagFolderId)).andExpect(status().isConflict());
-        // The bytes go to folders/{id}/{name}, so a sibling folder has a directory of its own.
+        // The bytes go to files/{file id}/{name}, so a namesake elsewhere has a directory of its own.
         upload("same.txt", Map.of("folderId", otherTagFolderId)).andExpect(status().isOk());
 
         assertThat(fileInfoRepository.findAll()).filteredOn(f -> f.getFileName().equals("same")).hasSize(2);

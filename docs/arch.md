@@ -71,10 +71,12 @@ Folder(ROOT "Home")
   `/1/70/`. `kind` is `ROOT` (one row, `Home`), `FOLDER` for everything below it, or `USER_HOME`
   (reserved for Phase 8); `depth` is the level, and the only thing that varies with it. Every
   folder below the root holds folders and files alike, down to
-  `filemanagement.folders.max-depth` — a limit for people, not for the code. `name` is
-  directory-safe (no `.`, no space, no `/`, at most 100 characters, unique among siblings,
-  case-insensitively) and one name is reserved at the top level, `folders`, the directory the
-  storage layout lives under; `display_name` is what a person reads.
+  `filemanagement.folders.max-depth` — a limit for people, not for the code. `name` is a safe
+  path segment (`ValidationUtil`: no separator, none of `<>:"|?*`, no control character, not a
+  dot-name, no trailing dot or space, not a Windows-reserved name — spaces, dots and Persian
+  are fine), at most 100 characters, unique among siblings case-insensitively, and one name is
+  reserved at the top level, `files`, the directory the storage layout lives under;
+  `display_name` is what a person reads.
 * **TagGroup** — what the old *general tag* was: a grouping label carried by a top-level folder
   (`folder.tag_group_id`, required at depth 1, absent deeper). It is **not a folder**, has no
   directory and no level in the tree; creating a top-level folder names an existing group or a
@@ -107,10 +109,12 @@ search hit in the tree, and the tags. Queries that a converter will walk fetch t
 
 ### Where a file's name is unique
 
-Per **folder** — `uq_file_info_name_per_folder`, and since `V2.9` the storage layout agrees:
-every file's bytes live under `folders/{folder id}/`, so the same name under a sibling folder is
-another file in another directory (section 5). `FileService.isDuplicate` is the friendly error;
-the constraint is the guarantee.
+Per **folder** — `uq_file_info_name_per_folder`, and since `V2.9` the storage layout cannot
+disagree: every file's bytes live under `files/{its own id}/`, so a namesake anywhere is another
+file in another directory (section 5). `FileService.isDuplicate` is the friendly error; the
+constraint is the guarantee. A file name itself is a safe segment with an extension
+(`ValidationUtil.checkCorrectFileName`: at least one dot, the extension letters and digits;
+spaces, inner dots and Persian are fine).
 
 ### Managing the tree
 
@@ -211,8 +215,8 @@ registered as `@Service("fileSystem") @Primary` and takes `${file.management.bas
 
 ```
 {base-dir}/
-├── folders/                            every file uploaded since V2.9 (saveByKey creates parents)
-│   └── {folder id}/
+├── files/                              every file uploaded since V2.9 (saveByKey creates parents)
+│   └── {file id}/
 │       └── {fileNameWithoutExtension}/
 │           └── v{version}/
 │               └── {fileName}.{ext}
@@ -223,12 +227,13 @@ registered as `@Service("fileSystem") @Primary` and takes `${file.management.bas
                 └── {fileName}.{ext}
 ```
 
-By folder *id* so that renaming or moving any folder above a file changes nothing on disk; the
-old layout stays where it is, because a key records where the bytes went and nothing rebuilds it.
-A later version of a file goes beside its first version whichever layout wrote that
-(`FileService.directoryOf`, read off the existing key). The two layouts share one root, which is
-why no top-level folder may be named `folders`: `FolderService` refuses the name and `V2.9`
-refuses to run where one exists.
+By the file's *own id* so that nothing above it — a folder renamed or moved, the file itself
+moved — changes anything on disk, and a file that leaves a folder leaves nothing behind for a
+namesake to collide with; the old layout stays where it is, because a key records where the
+bytes went and nothing rebuilds it. A later version of a file goes beside its first version
+whichever layout wrote that (`FileService.directoryOf`, read off the existing key). The two
+layouts share one root, which is why no top-level folder may be named `files`: `FolderService`
+refuses the name and `V2.9` refuses to run where one exists.
 
 The interface now has two halves, and which one a caller uses is not a matter of taste.
 
@@ -277,7 +282,7 @@ applied to every segment of an address; file names must contain **exactly one** 
 Three things describe where a file is, and they are deliberately independent: the **tree**
 (`folder.parent_id`, `folder.depth`, and `folder.path`, a materialised path of ids such as
 `/1/5/412/`), the **key** (`file_details.storage_key`, one per stored version, e.g.
-`folders/412/report/v2/report.pdf`), and the **bytes** (the file under `base-dir` at exactly the
+`files/9081/report/v2/report.pdf`), and the **bytes** (the file under `base-dir` at exactly the
 key's relative path). The key is written once, when the version is stored, and is the only thing
 a read ever consults; the tree is what people navigate; the bytes follow the key. The table is
 exhaustive — an operation not listed here (changing a description, a state, a permission) touches
@@ -285,14 +290,15 @@ none of the three.
 
 | Operation | Tree (`folder` rows) | Keys (`storage_key`) | Bytes on disk | Tags (`file_tag`) |
 |---|---|---|---|---|
-| **Upload a new file** (`FileService.createNewFile`; web form, v1, v2 `PUT`) | — | one new key, `folders/{folder id}/{name}/v1/{name}.{ext}` | one file written at that path; `saveByKey` creates the directories and refuses an existing path | derived: one tag per folder from the top level down, in the top-level folder's group |
-| **New version / new format of a file** (`createNewFileDetails`) | — | one new key **beside the first version's**: the directory is read off that key (`directoryOf`), so a file stored under the old `{category}/{sub}` layout keeps growing there, one stored under `folders/{id}` there | one file written; nothing else moves | — |
+| **Upload a new file** (`FileService.createNewFile`; web form, v1, v2 `PUT`) | — | one new key, `files/{file id}/{name}/v1/{name}.{ext}` | one file written at that path; `saveByKey` creates the directories and refuses an existing path | derived: one tag per folder from the top level down, in the top-level folder's group |
+| **New version / new format of a file** (`createNewFileDetails`) | — | one new key **beside the first version's**: the directory is read off that key (`directoryOf`), so a file stored under the old `{category}/{sub}` layout keeps growing there, one stored under `files/{id}` there | one file written; nothing else moves | — |
 | **Delete one version or format** (`deleteFileDetails`) | — | that row's key gone | that file removed; when it was the last format of its version, the `v{n}` directory too | — |
-| **Delete a file** (`deleteCompleteFileById`, or deleting its last version) | — | every key of the file gone | the file's whole directory (`…/{name}/`) removed, read off a stored key; the folder's directory (`folders/{id}/` or `{category}/{sub}/`) stays, possibly empty | rows cascade |
+| **Delete a file** (`deleteCompleteFileById`, or deleting its last version) | — | every key of the file gone | the file's whole directory (`…/{name}/`) removed, read off a stored key; the directory above (`files/{id}/` or `{category}/{sub}/`) stays, possibly empty | rows cascade |
 | **Create a folder** (`FolderService.create`) | one row: `parent_id`, `depth = parent + 1`, `path = parent.path + id + "/"` | — | **nothing** — a folder has no directory until its first upload | — |
-| **Rename a folder** (`rename`: name, label, or at the top level the group) | that row's `name` / `display_name` / `tag_group_id`; `path` and `depth` unchanged (they are ids) | **nothing** | **nothing** — a file stored under the old layout keeps its old directory name; one stored under `folders/{id}` never had the name in it | re-derived for every file beneath, when the name or the group changed |
+| **Rename a folder** (`rename`: name, label, or at the top level the group) | that row's `name` / `display_name` / `tag_group_id`; `path` and `depth` unchanged (they are ids) | **nothing** | **nothing** — a file stored under the old layout keeps its old directory name; one stored under `files/{id}` never had a folder name in it | re-derived for every file beneath, when the name or the group changed |
 | **Move a folder** (`move`) | the folder's `parent_id`; `depth` and `path` **rewritten for the whole subtree** (`/1/5/412/…` → `/1/9/412/…`) in one transaction; `tag_group_id` set to the former top-level folder's group when the target is the root, cleared when a top-level folder goes below another | **nothing** | **nothing** | re-derived for every file beneath (the chain of names changed, and possibly the group) |
-| **Delete a folder** (`delete`; empty only) | that row gone; its grants cascade | — | **nothing** — its `folders/{id}/` directory, if an upload ever created it, is left empty | — |
+| **Move a file** (`FileService.moveFile`) | — (the file's `folder_id` changes) | **nothing** | **nothing** — the file's directory is its own id, wherever it is filed | re-derived for the file |
+| **Delete a folder** (`delete`; empty only) | that row gone; its grants cascade | — | **nothing** — a folder never had a directory of its own since `V2.9` | — |
 | **Change a tag group's name or title** (`/settings/tag-groups`) | — | — | — | — (tags hang off the group's id) |
 
 What follows from the table:
@@ -303,17 +309,17 @@ What follows from the table:
   I/O.
 * **The directory tree under `base-dir` is not a mirror of the folder tree**, and it stops being
   one the first time a folder is renamed or moved. For files stored since `V2.9` it never was:
-  `folders/412/` says nothing about where folder 412 sits. The database is the only source of a
+  `files/9081/` says nothing about where file 9081 is filed. The database is the only source of a
   file's place; a backup is the database **and** `base-dir` together
   ([deployment.md](deployment.md)).
 * **Old layout, new layout, one root.** A file stored before `V2.9` lives under the names its
   two upper folders had when it was written and stays there through every rename and move;
-  every later version of it goes beside it. A file stored since lives under its folder's id. The
-  only place the two could meet is a top-level folder literally named `folders`, which
+  every later version of it goes beside it. A file stored since lives under its own id. The
+  only place the two could meet is a top-level folder literally named `files`, which
   `FolderService` refuses and `V2.9` checks for. Nothing relocates the old files
   ([issue 81](issues.md#81-base-dir-now-holds-two-layouts-side-by-side--s3-by-design-recorded)).
 * **Deleting removes the file's own directory and nothing above it.** An emptied
-  `folders/{id}/` or `{category}/{sub}/` is left on disk. That is deliberate: the directory is
+  `files/{id}/` or `{category}/{sub}/` is left on disk. That is deliberate: the directory is
   cheap, and removing a parent would mean deciding whether it is "ours", which the old layout
   cannot answer safely.
 * **Tags are derived, never stored independently.** Every operation that changes a file's chain
@@ -424,7 +430,7 @@ document, so a browser navigation still lands on a page.
 | PUT | `/resource/folders/{id}` `{name, displayName, tagGroupId?}` (`REST_RENAME_FOLDER`; the group only at the top level) |
 | PUT | `/resource/folders/{id}/move` `{parentId}` (`REST_MOVE_FOLDER`; 400 into itself, past the depth limit; 409 on a taken name) |
 | DELETE | `/resource/folders/{id}` → `{"outcome":"DELETED","resource":"folder"}`, 409 while not empty (`REST_DELETE_FOLDER`) |
-| DELETE, PUT | `/resource/files/file-info/{id}`, `.../change-state` |
+| DELETE, PUT | `/resource/files/file-info/{id}`, `.../change-state`, `.../move` `{folderId}` (`REST_MOVE_FILE_INFO`: 400 into the root, 403 without write on both folders, 409 on a taken name) |
 | DELETE, PUT | `/resource/files/file-info/{id}/file-details/{fdId}`, `.../change-state/{newState}` |
 | PUT | `/resource/users/{userId}/change-enabled`, `.../change-login-type/{type}` |
 | GET | `/resource/files/tree/children?type=&id=` |
@@ -722,7 +728,7 @@ migrations themselves, in `src/main/resources/db/migration`:
 | `V2.6__Add_Upload_Policy.sql` | `upload_policy` (one system-wide row, `role_id` null; one per role that has its own), `upload_policy_rule` (extension → `max_size_bytes`); the system-wide row seeded with the nine default kinds at 20 MB |
 | `V2.7__Add_Content_Kind.sql` | `content_kind`: the custom half of the content catalogue - extension, media type, and a byte signature at an offset or "text only"; empty until an administrator adds one |
 | `V2.10__Add_App_Setting.sql` | `app_setting` (name → value, audited), seeded with `public-files.anonymous = true`, the behaviour there always was; `GENERAL_SETTINGS_PAGE` and `SAVE_GENERAL_SETTINGS` |
-| `V2.9__Folders_Any_Depth.sql` | Folders of any depth: refuses to run where a top-level folder or a stored key is named `folders`; `CATEGORY` / `SUB_CATEGORY` / `TAG` become `FOLDER`; `REST_MOVE_FOLDER` (mapped onto the roles that may rename) and the three `TAG_GROUP` page permissions |
+| `V2.9__Folders_Any_Depth.sql` | Folders of any depth: refuses to run where a top-level folder or a stored key is named `files`; `CATEGORY` / `SUB_CATEGORY` / `TAG` become `FOLDER`; `REST_MOVE_FOLDER` (mapped onto the roles that may rename) and the three `TAG_GROUP` page permissions |
 | `V2.8__Remove_Taxonomy.sql` | Phase 7 step 4. Fails fast first: `file_info.folder_id NOT NULL`, `uq_file_info_name_per_folder`, `folder.tag_group_id` backfilled from each category's general tag and required on every `CATEGORY` row. Then the four `REST_*_FOLDER` / `REST_GET_TAG_GROUPS` permissions, mapped onto the roles that held the taxonomy ones; the 27 taxonomy permissions deleted; `file_info` / `file_details` lose `file_path`, `relative_path`, `file_sub_category_id`, `main_tag_file_id`; `folder` loses `general_tag_id`, `source_type`, `source_id`; `main_tag_file`, `file_sub_category`, `file_category`, `general_tag` dropped. Not reversible without the backup |
 
 `V1.3` turns four rules that lived only in application code into constraints: a sub-category name is

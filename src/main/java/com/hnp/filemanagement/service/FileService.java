@@ -3,6 +3,7 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileDownloadDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
+import com.hnp.filemanagement.dto.FolderAccess;
 import com.hnp.filemanagement.dto.FileInfoPageDTO;
 import com.hnp.filemanagement.dto.FileUploadDTO;
 import com.hnp.filemanagement.dto.PublicFileDetailsPageDTO;
@@ -131,7 +132,7 @@ public class FileService {
             throw new InvalidDataException("file name is null");
         }
         if (!ValidationUtil.checkCorrectFileName(originalFilename)) {
-            throw new InvalidDataException("invalid file name=" + originalFilename);
+            throw new InvalidDataException("invalid file name (a separator, a forbidden character, or no extension)=" + originalFilename);
         }
 
         String name = ModelConverterUtil.getFileNameWithoutExtension(originalFilename);
@@ -161,13 +162,24 @@ public class FileService {
         fileInfo.setFolder(folder);
         tagMirrorService.retag(fileInfo);
 
-        FileDetails fileDetails = newFileDetails(fileInfo, directoryFor(folder), multipartFile, 1, "V1",
+        // Everything that can refuse the upload is asked before the first insert, so that a
+        // refused upload inserts nothing - newFileDetails asks the same questions again, which
+        // is cheap. (In a caller-managed transaction, such as a test's, an insert made before a
+        // refusal would stay visible after it.)
+        uploadPolicyService.requireAllowed(principalId, multipartFile);
+        ContentTypes.detect(multipartFile);
+
+        // The parent first, on its own: its id is the directory the revisions live under (V2.9),
+        // and IDENTITY assigns it only at insert. Transient here, so this is a persist.
+        fileInfoRepository.save(fileInfo);
+
+        FileDetails fileDetails = newFileDetails(fileInfo, directoryFor(fileInfo), multipartFile, 1, "V1",
                 fileInfoDTO.getDescription(), principalId);
         fileInfo.addFileDetails(fileDetails);
-
-        // The parent is transient here, so this is a persist and the cascade reaches the child
-        // correctly. See the class comment for why the same call on a managed parent would not.
-        fileInfoRepository.save(fileInfo);
+        // Saved explicitly rather than left to the cascade, because the audit row below needs
+        // the generated id - and never through save(parent), which on a managed parent is a
+        // merge that inserts a copy of the child (the class comment).
+        fileDetailsRepository.save(fileDetails);
 
         actionHistoryService.saveActionHistory(EntityEnum.FileInfo, fileInfo.getId(), ActionEnum.CREATE, principalId,
                 "CREATE NEW FILE_INFO", "CREATE NEW FILE_INFO");
@@ -222,12 +234,14 @@ public class FileService {
 
     /**
      * Where a new file's revisions are stored, relative to {@code base-dir}: a directory per
-     * folder <em>id</em> ({@code V2.9}), under a top-level name no folder may take. By id so that
-     * renaming or moving any folder above the file changes nothing here; files stored before
-     * {@code V2.9} keep their name-based directory, read off their first revision's key.
+     * <em>file</em> id ({@code V2.9}), under a top-level name no folder may take. By the file's
+     * own id, not its folder's, so that nothing above it - a rename, a move of a folder, a move
+     * of the file itself - changes anything here, and a file that leaves a folder leaves nothing
+     * behind for a namesake to collide with. Files stored before {@code V2.9} keep their
+     * name-based directory, read off their first revision's key.
      */
-    static String directoryFor(Folder folder) {
-        return FolderService.RESERVED_TOP_LEVEL_NAME + "/" + folder.getId();
+    static String directoryFor(FileInfo fileInfo) {
+        return FolderService.RESERVED_TOP_LEVEL_NAME + "/" + fileInfo.getId();
     }
 
     /**
@@ -248,7 +262,7 @@ public class FileService {
         MultipartFile multipartFile = fileUploadDTO.getMultipartFile();
         String originalFilename = multipartFile.getOriginalFilename();
         if (originalFilename == null || !ValidationUtil.checkCorrectFileName(originalFilename)) {
-            throw new InvalidDataException("invalid file name=" + originalFilename);
+            throw new InvalidDataException("invalid file name (a separator, a forbidden character, or no extension)=" + originalFilename);
         }
 
         String name = ModelConverterUtil.getFileNameWithoutExtension(originalFilename);
@@ -352,8 +366,8 @@ public class FileService {
 
         String originalFilename = multipartFile.getOriginalFilename();
         String name = ModelConverterUtil.getFileNameWithoutExtension(originalFilename);
-        // {category}/{subCategory}/{name}/v{n}/{name.ext}: the folder names as they are when the
-        // revision is written, recorded beside the bytes and never rebuilt from the tree (roadmap 7.1).
+        // {directory}/{name}/v{n}/{name.ext} - the directory being files/{file id} since V2.9 and
+        // the two folder names before it - recorded beside the bytes and never rebuilt (roadmap 7.1).
         String storageKey = directory + "/" + name + "/v" + version + "/" + originalFilename;
 
         FileDetails fileDetails = new FileDetails();
@@ -398,6 +412,39 @@ public class FileService {
 
         actionHistoryService.saveActionHistory(EntityEnum.FileInfo, id, ActionEnum.UPDATE_VALUES, principalId,
                 "UPDATE FILE_INFO", "Update File info, new description=" + description);
+    }
+
+    /**
+     * Moves a file into another folder. A metadata change only: the file's versions are stored
+     * under its own id, read off the stored key, so no byte and no key moves and nothing is left
+     * behind in the folder it came from - the same rule as moving a folder. The tags follow the
+     * new chain. Needs
+     * write access on the folder the file leaves and on the one it enters; refused into the root
+     * and onto a name that folder already holds.
+     */
+    @Transactional
+    public void moveFile(int fileInfoId, int targetFolderId, int principalId) {
+        FileInfo fileInfo = getFileInfo(fileInfoId);
+        Folder target = folderService.requireWithTagGroup(targetFolderId);
+        requireHoldsFiles(target);
+        if (fileInfo.getFolder().getId().equals(target.getId())) {
+            return;
+        }
+        FolderAccess access = folderAccessService.accessFor(principalId);
+        folderAccessService.requireWriteAccess(access, fileInfo);
+        folderAccessService.requireWriteAccess(access, target);
+        if (isDuplicate(fileInfo.getFileName(), target.getId())) {
+            throw new DuplicateResourceException("file with name=" + fileInfo.getFileName()
+                    + " already exists in folder id=" + target.getId());
+        }
+
+        int from = fileInfo.getFolder().getId();
+        fileInfo.setFolder(target);
+        fileInfo.setUpdatedBy(userRepository.getReferenceById(principalId));
+        tagMirrorService.retag(fileInfo);
+
+        actionHistoryService.saveActionHistory(EntityEnum.FileInfo, fileInfoId, ActionEnum.UPDATE_VALUES, principalId,
+                "MOVE FILE_INFO", "MOVE file id=" + fileInfoId + " from folder id=" + from + " to folder id=" + targetFolderId);
     }
 
     @Transactional
@@ -672,7 +719,7 @@ public class FileService {
     }
 
     /**
-     * The directory the file's revisions were stored under - {@code folders/{id}} since
+     * The directory the file's revisions were stored under - {@code files/{file id}} since
      * {@code V2.9}, {@code {category}/{subCategory}} before it: the grandparent directory of any
      * revision's key, whichever layout wrote it. A file always has at least one revision - the whole-file
      * delete is the only reader of a file whose last revision is gone, and it reads the key first.

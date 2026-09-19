@@ -37,9 +37,9 @@ public final class FolderFixture {
             return tag.getId();
         }
 
-        /** Where a new file under the tag folder is stored: {@code folders/{id}} since V2.9. */
+        /** {@code {category}/{subCategory}}: where a file stored before V2.9 lived; since then the directory is the file's own id. */
         public String directory() {
-            return "folders/" + tag.getId();
+            return category.getName() + "/" + subCategory.getName();
         }
     }
 

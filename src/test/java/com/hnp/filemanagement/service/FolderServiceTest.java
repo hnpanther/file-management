@@ -157,13 +157,16 @@ class FolderServiceTest extends MySqlSupport {
         }
 
         @Test
-        @DisplayName("a name is directory-safe, unique among its siblings case-insensitively, and never the storage layout's own directory at the top level")
+        @DisplayName("a name is a safe path segment, unique among its siblings case-insensitively, and never the storage layout's own directory at the top level")
         void namesAreDirectorySafeAndUniqueAmongSiblings() {
-            for (String bad : List.of("", "  ", "with space", "dot.name", "a/b", "x".repeat(101))) {
+            for (String bad : List.of("", "  ", "a/b", "a\\b", "..", "a:b", "trailing.", "x".repeat(101))) {
                 assertThatThrownBy(() -> underTest.create(chain.subCategoryId(), bad, null, null, null, adminId))
                         .as("name %s", bad)
                         .isInstanceOf(InvalidDataException.class);
             }
+            // Spaces, dots and Persian are names, not directories, since V2.9.
+            assertThat(underTest.create(chain.subCategoryId(), "گزارش های ماهانه 2024.03", "گزارش‌های ماهانه", null, null, adminId).name())
+                    .isEqualTo("گزارش های ماهانه 2024.03");
             assertThatThrownBy(() -> underTest.create(chain.subCategoryId(), "ok", "L".repeat(201), null, null, adminId))
                     .isInstanceOf(InvalidDataException.class)
                     .hasMessageContaining("label");
@@ -174,11 +177,11 @@ class FolderServiceTest extends MySqlSupport {
             Folder otherSub = FolderFixture.subCategory(folderRepository, chain.category(), admin, "Else" + TestData.nextSequence());
             assertThat(underTest.create(otherSub.getId(), chain.tag().getName(), null, null, null, adminId).id()).isPositive();
 
-            // "folders" is where the id-based keys live; a top-level folder of that name would share it.
-            assertThatThrownBy(() -> underTest.create(rootId, "Folders", null, null, "g" + TestData.nextSequence(), adminId))
+            // "files" is where the id-based keys live; a top-level folder of that name would share it.
+            assertThatThrownBy(() -> underTest.create(rootId, "Files", null, null, "g" + TestData.nextSequence(), adminId))
                     .isInstanceOf(InvalidDataException.class)
                     .hasMessageContaining("reserved");
-            assertThat(underTest.create(chain.categoryId(), "folders", null, null, null, adminId).id())
+            assertThat(underTest.create(chain.categoryId(), "files", null, null, null, adminId).id())
                     .as("below the top level the name is like any other")
                     .isPositive();
         }

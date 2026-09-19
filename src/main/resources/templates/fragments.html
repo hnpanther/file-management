@@ -84,14 +84,13 @@
         </template>
     </div>
     <div class="folder-chooser-actions">
-        <button type="button" class="btn btn-secondary btn-sm" :disabled="!selectable()" @click="choose()">
-            <i class="bi bi-check2-circle" aria-hidden="true"></i>
-            <span th:text="#{folderChooser.chooseThis}">انتخاب این پوشه</span>
-        </button>
         <span class="folder-chooser-chosen" x-show="chosen" x-cloak>
-            <i class="bi bi-folder2-open text-ink-400" aria-hidden="true"></i>
+            <i class="bi bi-check2-circle text-brand-600" aria-hidden="true"></i>
+            <span th:text="#{folderChooser.chosen}">پوشهٔ انتخاب‌شده:</span>
             <strong x-text="chosen ? chosen.path : ''"></strong>
         </span>
+        <span class="folder-chooser-note" x-show="!chosen && !loading" x-cloak
+              th:text="#{folderChooser.chooseOne}">به پوشهٔ مقصد بروید.</span>
     </div>
 </div>
 
