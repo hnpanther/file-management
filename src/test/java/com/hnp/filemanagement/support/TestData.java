@@ -188,8 +188,9 @@ public final class TestData {
         fileDetails.setFileExtension(extension);
         fileDetails.setContentType("application/octet-stream");
         fileDetails.setDescription(fileName + " description");
-        // The key as FileService writes it since V2.9: a directory per folder id, the file, the version.
-        String storageKey = "folders/" + fileInfo.getFolder().getId()
+        // The key as FileService writes it since V2.9: a directory per file id, the file, the version.
+        // A file with no id yet (unsaved) gets a placeholder; nothing reads the bytes of a fixture.
+        String storageKey = "files/" + (fileInfo.getId() == null ? "0" : fileInfo.getId())
                 + "/" + fileInfo.getFileName() + "/v" + version + "/" + fileName;
         fileDetails.setStorageKey(storageKey);
         fileDetails.setFileSize(1024);

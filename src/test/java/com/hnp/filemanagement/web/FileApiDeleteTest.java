@@ -89,7 +89,7 @@ class FileApiDeleteTest extends MySqlSupport {
         int[] ids = uploadThroughV1("report.txt");
         int fileInfoId = ids[0];
         int fileDetailsId = ids[1];
-        Path fileDirectory = Paths.get(baseDir, "folders", String.valueOf(tagFolderId), "report");
+        Path fileDirectory = Paths.get(baseDir, "files", String.valueOf(fileInfoId), "report");
         assertThat(fileDirectory).exists();
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM file_tag WHERE file_info_id = ?", Integer.class, fileInfoId))
                 .as("the upload tagged it").isEqualTo(3);
@@ -141,8 +141,8 @@ class FileApiDeleteTest extends MySqlSupport {
         assertThat(fileInfoRepository.findById(fileInfoId)).isPresent();
         assertThat(fileDetailsRepository.findById(first[1])).isPresent();
         assertThat(fileDetailsRepository.findById(v2DetailsId)).isEmpty();
-        assertThat(Paths.get(baseDir, "folders", String.valueOf(tagFolderId), "manual", "v1", "manual.txt")).exists();
-        assertThat(Paths.get(baseDir, "folders", String.valueOf(tagFolderId), "manual", "v2")).doesNotExist();
+        assertThat(Paths.get(baseDir, "files", String.valueOf(fileInfoId), "manual", "v1", "manual.txt")).exists();
+        assertThat(Paths.get(baseDir, "files", String.valueOf(fileInfoId), "manual", "v2")).doesNotExist();
         assertThat(fileInfoRepository.findById(fileInfoId).orElseThrow().getLastVersion()).isEqualTo(1);
     }
 

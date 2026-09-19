@@ -950,10 +950,11 @@ Each is independently shippable, and only the fourth cannot be undone.
 > folder asked why it took no folder. Now `kind` is `ROOT`, `FOLDER` or `USER_HOME`; every folder
 > below the root holds folders and files alike; `filemanagement.folders.max-depth` (6) is the
 > only limit, and it is a limit for people. The decision that made it possible is on disk: a file
-> uploaded from here on is stored under `folders/{folder id}/…`, by id, so no rename or move above
-> it changes anything - which also made the file-name rule per folder in fact, closing the
-> per-sub-category workaround of step 4 (issue 79). Files stored before keep their name-based
-> keys; the two layouts share one root, so `folders` is a reserved top-level name and the
+> uploaded from here on is stored under `files/{file id}/…`, by the file's own id, so nothing
+> above or around it - a folder renamed or moved, the file moved - changes anything, and the
+> file-name rule became per folder in fact, closing the per-sub-category workaround of step 4
+> (issue 79). Files stored before keep their name-based keys; the two layouts share one root, so
+> `files` is a reserved top-level name and the
 > migration refuses to run where it is taken. The tags of a file are now one per folder on its
 > chain, in the top-level folder's group; the group is still carried at depth 1 only, and a
 > rename may change it. The three-level readers - the tree page's node types, the search hit's
@@ -970,6 +971,16 @@ Each is independently shippable, and only the fourth cannot be undone.
 > re-tags the subtree. `PUT /resource/folders/{id}/move` under `REST_MOVE_FOLDER`, mapped by
 > `V2.9` onto the roles that may rename; the explorer's "انتقال" opens the folder chooser. No
 > byte moves.
+>
+> **A file moves too.** `FileService.moveFile` / `PUT /resource/files/file-info/{id}/move`
+> (`REST_MOVE_FILE_INFO`): `folder_id` and the tags change, nothing else - and because the
+> bytes live under the file's own id, nothing is left behind in the folder it came from. The
+> explorer's details pane offers it on the selected file, through the same chooser.
+>
+> **Names are what a file system accepts.** The "no dot, no space" rule was a directory rule
+> and directories are ids now: `ValidationUtil` refuses only separators, `<>:"|?*`, control
+> characters, dot-names, a trailing dot or space and Windows' reserved names; a file needs an
+> extension of letters and digits. Spaces, dots and Persian are fine in folder and file names.
 >
 > **A folder can be selected and searched for, like a file.** `GET /resource/folders/{id}`
 > feeds the details pane (`FolderDetailsDTO`: trail, group, direct and total counts, audit), and
@@ -1031,7 +1042,7 @@ tag is not a place.
    (`uq_file_info_name_per_sub_category`) to "per folder". — It could not while the storage
    layout was `{category}/{subCategory}/{name}` with no tag segment (1.3.0 kept the
    per-sub-category rule in code, issue 79); **it did** with `V2.9`, which stores new files
-   under `folders/{folder id}/` and so makes the per-folder index the whole rule.
+   under `files/{file id}/` and so makes the per-folder index the whole rule.
 4. **Uploading still does not check folder access**
    ([issue 76](issues.md#76-a-folder-access-grant-does-not-gate-uploading-into-that-folder--s2)). It
    has to be closed before folders become the structure, or a user will file documents into a folder

@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
+import com.hnp.filemanagement.validation.ValidationUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -100,10 +101,9 @@ public class FileStorageFileSystemService implements FileStorageService {
     }
 
     /**
-     * An address is {@code {category}/{subCategory}[/{fileName}]}: every segment must be a
-     * directory name by the same rule {@code FolderService} applies to a folder name. Empty
-     * segments (a doubled or trailing slash) are tolerated, since {@link #within} normalises them
-     * away; a segment with a dot or a space in it is not.
+     * An address is the directory of a file or of one of its versions: every segment must be a
+     * safe directory name ({@link ValidationUtil#checkCorrectDirectoryName}). Empty segments (a
+     * doubled or trailing slash) are tolerated, since {@link #within} normalises them away.
      */
     private void requireCorrectAddress(String address) {
         if (address == null) {
@@ -111,7 +111,7 @@ public class FileStorageFileSystemService implements FileStorageService {
         }
         for (String segment : address.split("/")) {
             if (!segment.isEmpty() && !checkCorrectDirectoryName(segment)) {
-                throw new BusinessException("character '.' and space and '/' not allow in directory name, address=" + address);
+                throw new BusinessException("a segment of the address is not a safe directory name, address=" + address);
             }
         }
     }
@@ -197,7 +197,7 @@ public class FileStorageFileSystemService implements FileStorageService {
         String fileNameWithoutExtension = fileName.replaceFirst("[.][^.]+$", "");
 
         if(!checkCorrectFileName(fileName)) {
-            throw new BusinessException("file name should contain just one '.' and no space and no '/', your file name=" + fileName);
+            throw new BusinessException("not a safe file name (a separator, a forbidden character, or no extension), your file name=" + fileName);
         }
         requireCorrectAddress(address);
 
@@ -207,7 +207,7 @@ public class FileStorageFileSystemService implements FileStorageService {
         }
 
         if(!checkCorrectDirectoryName(fileNameWithoutExtension)) {
-            throw new BusinessException("character '.' and '/' and space not allow in directory name");
+            throw new BusinessException("the file's name is not a safe directory name");
         }
 
         Path level1Dir = within(address + "/" + fileNameWithoutExtension);
@@ -346,7 +346,7 @@ public class FileStorageFileSystemService implements FileStorageService {
             throw new BusinessException("file extension and parameter extension is different: file name=" + fileName + ",extension=" + extension);
         }
         if(!checkCorrectFileName(fileName)) {
-            throw new BusinessException("file name should contain just one '.' and no space and no '/', your file name=" + fileName);
+            throw new BusinessException("not a safe file name (a separator, a forbidden character, or no extension), your file name=" + fileName);
         }
 
         requireCorrectAddress(address);
@@ -376,7 +376,7 @@ public class FileStorageFileSystemService implements FileStorageService {
 
         if(!isSubDirectory) {
             if(!checkCorrectDirectoryName(title)) {
-                throw new BusinessException("character '.' and space and '/' not allow in directory name, your directory name=" + title);
+                throw new BusinessException("not a safe directory name, your directory name=" + title);
             }
         }
 
@@ -398,17 +398,12 @@ public class FileStorageFileSystemService implements FileStorageService {
     }
 
 
-    private boolean checkCorrectDirectoryName(String directoryName) {
-        int count1 = (int) directoryName.chars().filter(ch -> ch == '.').count();
-        int count2 = (int) directoryName.chars().filter(ch -> ch == ' ').count();
-        int count3 = (int) directoryName.chars().filter(ch -> ch == '/').count();
-        return count1 == 0 && count2 == 0 && count3 == 0;
+    /** One rule, kept in {@link ValidationUtil} so that the service and the storage layer cannot disagree. */
+    private static boolean checkCorrectDirectoryName(String directoryName) {
+        return ValidationUtil.checkCorrectDirectoryName(directoryName);
     }
 
-    private boolean checkCorrectFileName(String fileName) {
-        int count1 = (int) fileName.chars().filter(ch -> ch == '.').count();
-        int count2 = (int) fileName.chars().filter(ch -> ch == ' ').count();
-        int count3 = (int) fileName.chars().filter(ch -> ch == '/').count();
-        return count1 == 1 && count2 == 0 && count3 == 0;
+    private static boolean checkCorrectFileName(String fileName) {
+        return ValidationUtil.checkCorrectFileName(fileName);
     }
 }

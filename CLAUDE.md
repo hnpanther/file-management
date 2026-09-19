@@ -44,8 +44,8 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   `folder.tag_group_id`. Do not treat a tag group as a place. A chain of any depth cannot be
   fetch-joined: load a page's ancestors with `FolderService.ancestryOf`, off the materialised
   path, never by walking `getParent()` per row.
-* **New files are stored by folder id** (`folders/{id}/…`); old ones by the names of the
-  folders above them as they stood. Neither is ever rebuilt from the tree, and `folders` is a
+* **New files are stored by their own id** (`files/{file id}/…`); old ones by the names of the
+  folders above them as they stood. Neither is ever rebuilt from the tree, and `files` is a
   reserved top-level name. Do not move bytes on a rename or a move — what each operation may
   touch (tree, keys, bytes, tags) is tabulated in
   [docs/arch.md](docs/arch.md#what-each-operation-touches); keep it true.

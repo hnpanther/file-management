@@ -105,7 +105,7 @@ class FileServiceTest extends MySqlSupport {
         assertThat(fileInfo.getFileName()).isEqualTo("report");
         assertThat(fileInfo.getLastVersion()).isEqualTo(1);
         assertThat(fileInfo.getFileDetailsList()).hasSize(1);
-        assertThat(storedFile("report", 1, "txt")).exists();
+        assertThat(storedFile(stored.getFileInfoId(), "report", 1, "txt")).exists();
     }
 
     @Test
@@ -117,7 +117,7 @@ class FileServiceTest extends MySqlSupport {
     }
 
     /**
-     * The bytes live at {@code folders/{folder id}/{name}/...} since V2.9, so a name is unique per
+     * The bytes live at {@code files/{file id}/{name}/...} since V2.9, so a name is unique per
      * folder in fact as well as in the index: the same name under a sibling folder is another
      * file, in another directory.
      */
@@ -137,7 +137,7 @@ class FileServiceTest extends MySqlSupport {
         underSibling.setFolderId(sibling.getId());
         FileDetailsDTO stored = underTest.createNewFile(underSibling, principalId, 1);
         assertThat(fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey())
-                .isEqualTo("folders/" + sibling.getId() + "/report/v1/report.txt");
+                .isEqualTo("files/" + stored.getFileInfoId() + "/report/v1/report.txt");
     }
 
     @Test
@@ -158,7 +158,7 @@ class FileServiceTest extends MySqlSupport {
         onTopLevel.setFolderId(chain.categoryId());
         FileDetailsDTO stored = underTest.createNewFile(onTopLevel, principalId, 1);
         assertThat(fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey())
-                .isEqualTo("folders/" + chain.categoryId() + "/report/v1/report.txt");
+                .isEqualTo("files/" + stored.getFileInfoId() + "/report/v1/report.txt");
         assertThat(fileInfoRepository.findById(stored.getFileInfoId()).orElseThrow().getTags())
                 .extracting(com.hnp.filemanagement.entity.Tag::getName)
                 .containsExactly(chain.category().getName());
@@ -167,10 +167,45 @@ class FileServiceTest extends MySqlSupport {
     @Test
     @DisplayName("a file name that is not storable is refused before anything is written")
     void rejectsAnUnstorableFileName() {
-        FileInfoDTO request = uploadRequest("has space.txt");
+        FileInfoDTO request = uploadRequest("has/slash.txt");
 
         assertThatThrownBy(() -> underTest.createNewFile(request, principalId, 1))
                 .isInstanceOf(InvalidDataException.class);
+    }
+
+    // ---------------------------------------------------------------- moving
+
+    @Test
+    @DisplayName("a file moves to another folder as metadata: folder and tags change, the key and the bytes do not; a taken name or the root is refused")
+    void movesAFileWithoutMovingBytes() {
+        FileDetailsDTO stored = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
+        String keyBefore = fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey();
+        var otherSub = FolderFixture.subCategory(folderRepository, chain.category(), creator, "OtherSub" + TestData.nextSequence());
+        var target = FolderFixture.tag(folderRepository, otherSub, creator, "Target" + TestData.nextSequence());
+
+        underTest.moveFile(stored.getFileInfoId(), target.getId(), principalId);
+        entityManager.flush();
+        entityManager.clear();
+
+        FileInfo moved = fileInfoRepository.findByIdAndFetchFileDetails(stored.getFileInfoId()).orElseThrow();
+        assertThat(moved.getFolder().getId()).isEqualTo(target.getId());
+        assertThat(moved.getFileDetailsList().getFirst().getStorageKey()).isEqualTo(keyBefore);
+        assertThat(storedFile(stored.getFileInfoId(), "report", 1, "txt")).exists();
+        assertThat(moved.getTags()).extracting(com.hnp.filemanagement.entity.Tag::getName)
+                .containsExactlyInAnyOrder(chain.category().getName(), otherSub.getName(), target.getName());
+        assertThat(fileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders()).isEmpty();
+        assertThat(underTest.downloadFile(stored.getId(), principalId).getResource().exists()).isTrue();
+
+        // A later version still lands beside the first, under the directory the key names.
+        underTest.createNewFileDetails(versionRequest(stored.getFileInfoId(), "report.txt", 2), principalId);
+        assertThat(storedFile(stored.getFileInfoId(), "report", 2, "txt")).exists();
+
+        underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
+        assertThatThrownBy(() -> underTest.moveFile(stored.getFileInfoId(), tagFolderId, principalId))
+                .as("the original folder now holds a report of its own again")
+                .isInstanceOf(DuplicateResourceException.class);
+        assertThatThrownBy(() -> underTest.moveFile(stored.getFileInfoId(), FolderFixture.root(folderRepository).getId(), principalId))
+                .isInstanceOf(InvalidDataException.class).hasMessageContaining("ROOT");
     }
 
     // ---------------------------------------------------------------- versions and formats
@@ -187,7 +222,7 @@ class FileServiceTest extends MySqlSupport {
         FileInfo fileInfo = fileInfoRepository.findByIdAndFetchFileDetails(fileInfoId).orElseThrow();
         assertThat(fileInfo.getFileDetailsList()).hasSize(2);
         assertThat(fileInfo.getLastVersion()).isEqualTo(2);
-        assertThat(storedFile("report", 2, "txt")).exists();
+        assertThat(storedFile(fileInfoId, "report", 2, "txt")).exists();
     }
 
     @Test
@@ -394,7 +429,7 @@ class FileServiceTest extends MySqlSupport {
         FileInfo fileInfo = fileInfoRepository.findByIdAndFetchFileDetails(stored.getFileInfoId()).orElseThrow();
         assertThat(fileInfo.getFolder().getId()).isEqualTo(tagFolderId);
         assertThat(fileInfo.getFileDetailsList().getFirst().getStorageKey())
-                .isEqualTo("folders/" + tagFolderId + "/report/v1/report.txt");
+                .isEqualTo("files/" + stored.getFileInfoId() + "/report/v1/report.txt");
         assertThat(fileInfo.getTags()).extracting(com.hnp.filemanagement.entity.Tag::getName)
                 .containsExactlyInAnyOrder(categoryName, subCategoryName, chain.tag().getName());
         assertThat(fileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders()).isEmpty();
@@ -488,13 +523,13 @@ class FileServiceTest extends MySqlSupport {
     }
 
     /**
-     * Where the storage layer puts a revision: {@code <base>/folders/<folder id>/<name>/v<n>/<name>.<ext>}.
+     * Where the storage layer puts a revision: {@code <base>/files/<file id>/<name>/v<n>/<name>.<ext>}.
      *
      * <p>The version is a directory, not a suffix on the file name — which is why two formats of
      * one version sit side by side in the same {@code v<n>} directory.
      */
-    private Path storedFile(String name, int version, String extension) {
-        return Paths.get(baseDir, "folders", String.valueOf(tagFolderId), name, "v" + version,
+    private Path storedFile(int fileInfoId, String name, int version, String extension) {
+        return Paths.get(baseDir, "files", String.valueOf(fileInfoId), name, "v" + version,
                 name + "." + extension);
     }
 }

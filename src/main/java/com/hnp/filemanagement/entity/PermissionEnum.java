@@ -123,6 +123,8 @@ public enum PermissionEnum {
     REST_UPDATE_FILE_INFO_DESCRIPTION,
     //@PutMapping("file-info/{fileInfoId}/change-state")
     REST_CHANGE_FILE_INFO_STATE,
+    //@PutMapping("file-info/{fileInfoId}/move") - move a file into another folder
+    REST_MOVE_FILE_INFO,
 
     //@DeleteMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}")
     REST_DELETE_FILE_DETAILS,

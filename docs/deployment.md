@@ -619,28 +619,32 @@ migrations themselves, so no `seeded` line follows.
 **Before:** one check, which the migration also makes and refuses to run on:
 
 ```sql
-SELECT id, name FROM folder WHERE depth = 1 AND LOWER(name) = 'folders';
-SELECT COUNT(*) FROM file_details WHERE storage_key LIKE 'folders/%';
+SELECT id, name FROM folder WHERE depth = 1 AND LOWER(name) = 'files';
+SELECT COUNT(*) FROM file_details WHERE storage_key LIKE 'files/%';
 ```
 
-Both must be empty. `folders/` is where every file uploaded from 1.4.0 on is stored — by
-folder id, not by folder names — and it shares `base-dir` with the old layout. A top-level folder
-of that name has to be renamed first (from the explorer, on 1.3.0).
+Both must be empty. `files/` is where every file uploaded from 1.4.0 on is stored — by the
+file's own id, not by any name — and it shares `base-dir` with the old layout. A top-level
+folder of that name has to be renamed first (from the explorer, on 1.3.0).
 
 **What changes:**
 
 1. **The tree has no fixed levels any more.** Every folder below `Home` takes folders and files
    alike, down to `filemanagement.folders.max-depth` (default 6; set it in
    `application.properties` or `FILEMANAGEMENT_FOLDERS_MAX_DEPTH`). The explorer offers "new
-   folder" wherever the limit allows, "upload here" on any folder but `Home`, and a new
-   "انتقال" (move) that picks the target with a folder chooser. Existing folders keep their
-   places; only their `kind` becomes `FOLDER`.
+   folder" wherever the limit allows, "upload here" on any folder but `Home`, a new "انتقال"
+   (move) for the folder on screen and for a selected file, each picking its target with a
+   folder chooser, and a details pane and search for folders. Existing folders keep their
+   places; only their `kind` becomes `FOLDER`. **Names are no longer restricted to
+   "no dot, no space"**: a folder or file name may hold spaces, dots and Persian; what is still
+   refused is what a file system refuses (`/ \ < > : " | ? *`, a trailing dot or space, `CON`
+   and its kin), and a file still needs an extension of letters and digits.
 
-2. **New files are stored under `{base-dir}/folders/{folder id}/…`.** Files stored before stay
-   where they are and keep working — a version's `storage_key` is what is read, never the
-   folder names. A backup of `base-dir` now has two layouts side by side; that is expected.
-   Renaming or moving a folder changes **nothing** on disk and no stored key, only `folder`
-   rows and the derived tags; the exact effect of every operation on the tree, the keys and the
+2. **New files are stored under `{base-dir}/files/{file id}/…`.** Files stored before stay
+   where they are and keep working — a version's `storage_key` is what is read, never a name.
+   A backup of `base-dir` now has two layouts side by side; that is expected. Renaming or
+   moving a folder, or moving a file, changes **nothing** on disk and no stored key, only
+   `folder` / `file_info` rows and the derived tags; the exact effect of every operation on the tree, the keys and the
    bytes is tabulated in [arch.md](arch.md#what-each-operation-touches). The consequence for a
    backup is unchanged and worth repeating: the directory tree is not a mirror of the folder
    tree, so `base-dir` without the database is a heap of files nobody can place.
@@ -665,7 +669,7 @@ of that name has to be renamed first (from the explorer, on 1.3.0).
    key may have any number of folder segments (including none - a file directly in the bucket).
 
 **Rollback:** restore the database backup and start the 1.3.0 jar; files uploaded on 1.4.0 are
-under `base-dir/folders/` but not in the restored database. `V2.9` changes one column's values
+under `base-dir/files/` but not in the restored database. `V2.9` changes one column's values
 and adds permissions, so on a database that has run it the 1.3.0 jar would fail on the unknown
 `FOLDER` kind — the backup is the way back.
 

@@ -99,8 +99,10 @@
      * folders the person may walk into, and answers with the folder they pick.
      *
      * config: { url, initialId, initialPath: [{id,title}], rootTitle, selectRoot, copy: {loadFailed} }
-     * The chosen folder is exposed as `chosen` ({id, title, path}) and dispatched as a
-     * `folder-chosen` event on the component's root element, for a parent scope to react to.
+     * The folder on screen is the choice, updated on every step of the drill-down: it is exposed
+     * as `chosen` ({id, title, path}, or null while the root is on screen and the caller does not
+     * take it) and dispatched as a `folder-chosen` event on the component's root element, for a
+     * parent scope to react to.
      */
     window.folderChooser = function (config) {
         return {
@@ -143,6 +145,15 @@
                     this.current = data.folder;
                     this.crumbs = data.breadcrumb.concat([data.folder]);
                     this.children = data.folders;
+                    // The folder on screen is the choice: drilling down is choosing, and the
+                    // button below only says so out loud. Nothing is chosen while the root is
+                    // on screen and the caller does not take it.
+                    if (this.selectable()) {
+                        this.choose();
+                    } else {
+                        this.chosen = null;
+                        this.$dispatch("folder-chosen", null);
+                    }
                 } catch (e) {
                     this.error = config.copy.loadFailed;
                 } finally {

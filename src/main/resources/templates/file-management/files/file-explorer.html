@@ -200,7 +200,7 @@
                     <label class="explorer-manage-field">
                         <span th:text="#{explorer.manage.name}">نام پوشه (انگلیسی، بدون فاصله)</span>
                         <input type="text" class="form-control technical" dir="ltr" x-model="manage.name"
-                               required maxlength="100" pattern="[^./ ]+" x-ref="manageName">
+                               required maxlength="100" pattern="[^/\\<>:&quot;|?*]+" x-ref="manageName">
                     </label>
                     <label class="explorer-manage-field">
                         <span th:text="#{explorer.manage.label}">عنوان نمایشی</span>
@@ -241,20 +241,22 @@
             </form>
 
             <!--
-              Moving the folder on screen: the shared chooser picks the new parent (the root
-              included - a folder moved there becomes a top-level one and keeps its group), then
-              one PUT. No byte moves; the tree and the table are re-read afterwards.
+              Moving the folder on screen, or the selected file: the shared chooser picks the
+              target - the folder it has on screen - then one PUT. A folder may go to the root
+              (it becomes a top-level one and keeps its group); a file may not. No byte moves;
+              the target folder is opened afterwards, where the moved thing now is.
             -->
             <div class="explorer-manage" x-show="move.open" x-cloak>
                 <p class="text-sm text-ink-700">
-                    <span th:text="#{explorer.manage.moveTo}">انتقال پوشهٔ</span>
-                    <strong x-text="folder ? folder.title : ''"></strong>
+                    <span x-text="move.subject && move.subject.type === 'file' ? EX.moveFile : EX.moveFolder"></span>
+                    <strong x-text="move.subject ? move.subject.title : ''"></strong>
                     <span th:text="#{explorer.manage.moveToSuffix}">به:</span>
                 </p>
                 <template x-if="move.open">
                     <div x-data="folderChooser({
                              url: EX.childrenUrl, initialId: null, initialPath: [],
-                             rootTitle: EX.rootTitle, selectRoot: true, copy: { loadFailed: EX.loadFailed }
+                             rootTitle: EX.rootTitle, selectRoot: move.subject.type === 'folder',
+                             copy: { loadFailed: EX.loadFailed }
                          })"
                          @folder-chosen="move.target = $event.detail">
                         <div th:replace="~{fragments.html :: folder-chooser}"></div>
@@ -555,6 +557,12 @@
                             <i class="bi bi-download" aria-hidden="true"></i>
                             <span th:text="#{explorer.details.openFile}">صفحهٔ فایل و دانلود نسخه‌ها</span>
                         </a>
+                        <button type="button" class="btn btn-secondary btn-sm mt-2 w-full" x-show="writable" x-cloak
+                                @click="openMoveFile(selectedFile)"
+                                sec:authorize="hasAuthority('REST_MOVE_FILE_INFO') || hasAuthority('ADMIN')">
+                            <i class="bi bi-arrows-move" aria-hidden="true"></i>
+                            <span th:text="#{explorer.manage.moveFile}">انتقال فایل به پوشهٔ دیگر</span>
+                        </button>
                     </div>
                 </template>
             </div>
@@ -591,6 +599,9 @@
         deleteRefused:     [[#{explorer.manage.deleteRefused}]],
         nameTaken:         [[#{explorer.manage.nameTaken}]],
         newTagGroup:       [[#{explorer.manage.newTagGroup}]],
+        moveFolder:        [[#{explorer.manage.moveTo}]],
+        moveFile:          [[#{explorer.manage.moveFileTo}]],
+        filesUrl:          [[@{/resource/files}]],
         keepTagGroup:      [[#{explorer.manage.keepTagGroup}]]
     };
 
@@ -681,7 +692,7 @@
 
             // the create / rename form
             manage: { mode: null, name: "", displayName: "", tagGroupId: "", newTagGroupName: "", groups: [], busy: false, error: "" },
-            move: { open: false, target: null, busy: false, error: "" },
+            move: { open: false, subject: null, target: null, busy: false, error: "" },   // subject: {type, id, title}
 
             treeRows: [],
             treeLoading: false,
@@ -1021,26 +1032,47 @@
                 }
             },
 
+            /** Moving the folder on screen. */
             openMove() {
+                this.startMove({ type: "folder", id: this.folder.id, title: this.crumbTitle(this.folder) });
+            },
+
+            /** Moving a file: the one selected in the details pane. */
+            openMoveFile(file) {
+                this.startMove({ type: "file", id: file.id, title: file.name });
+            },
+
+            startMove(subject) {
                 this.manage.mode = null;
                 this.move.error = "";
                 this.move.busy = false;
                 this.move.target = null;
+                this.move.subject = subject;
                 this.move.open = true;
             },
 
             async submitMove() {
-                if (!this.move.target) {
+                if (!this.move.target || !this.move.subject) {
                     return;
                 }
+                const subject = this.move.subject;
+                const target = this.move.target;
                 this.move.busy = true;
                 this.move.error = "";
                 try {
-                    await writeJson(EX.foldersUrl + "/" + this.folder.id + "/move", "PUT", { parentId: this.move.target.id });
+                    if (subject.type === "file") {
+                        await writeJson(EX.filesUrl + "/file-info/" + subject.id + "/move", "PUT", { folderId: target.id });
+                    } else {
+                        await writeJson(EX.foldersUrl + "/" + subject.id + "/move", "PUT", { parentId: target.id });
+                    }
                     this.move.open = false;
-                    // The folder is where it now is; the tree is rebuilt from the read.
+                    // Open the target: that is where the moved thing now is, which is the one
+                    // view that shows the move happened. The tree is rebuilt from that read.
                     this.treeRows = [];
-                    await this.navigate(this.folder.id);
+                    await this.navigate(target.id);
+                    if (subject.type === "file") {
+                        this.selectedFile = this.files.find(candidate => candidate.id === subject.id) || null;
+                    }
                 } catch (e) {
                     this.move.error = e.status === 409 ? EX.nameTaken : (e.detail || EX.manageFailed);
                 } finally {

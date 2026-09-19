@@ -8,13 +8,14 @@
 --
 -- What changes on disk: a file uploaded from here on is stored under
 --
---     folders/{folder id}/{name}/v{n}/{name}.{ext}
+--     files/{file id}/{name}/v{n}/{name}.{ext}
 --
--- - by the folder's id, not its names, so that a rename or a move of any folder above it changes
--- nothing (V2.2 already made the stored key the only record of a file's place). Files stored
--- before keep the keys they have, under the old {category}/{subCategory}/{name} layout. The two
--- layouts share one directory root, so a top-level folder may never be named "folders": the
--- application refuses the name, and the first statement below refuses to run where one exists.
+-- - by the file's own id, not by any name, so that a rename or a move of a folder, or a move of
+-- the file itself, changes nothing (V2.2 already made the stored key the only record of a file's
+-- place). Files stored before keep the keys they have, under the old
+-- {category}/{subCategory}/{name} layout. The two layouts share one directory root, so a
+-- top-level folder may never be named "files": the application refuses the name, and the first
+-- statement below refuses to run where one exists.
 --
 -- With the id-based layout a file name is unique per folder in fact, not only in the index that
 -- V2.8 added (uq_file_info_name_per_folder): the per-sub-category rule the application kept in
@@ -22,20 +23,20 @@
 --
 -- Everything that can fail on the data runs before the first UPDATE.
 
--- ------------------------------------------------------------------ 1. "folders" is reserved
+-- ------------------------------------------------------------------ 1. "files" is reserved
 
--- Fails (NOT NULL on display_name) if a top-level folder is named "folders", in any case: its
+-- Fails (NOT NULL on display_name) if a top-level folder is named "files", in any case: its
 -- old-layout keys would share a directory with the id-based ones. Rename it first.
 INSERT INTO folder (name)
-SELECT 'a top-level folder named "folders" exists; rename it before this migration'
+SELECT 'a top-level folder named "files" exists; rename it before this migration'
 FROM folder
-WHERE depth = 1 AND LOWER(name) = 'folders';
+WHERE depth = 1 AND LOWER(name) = 'files';
 
 -- The same for a key already stored under that name (a folder once called that and renamed).
 INSERT INTO folder (name)
-SELECT 'a file_details.storage_key begins with "folders/"; see V2.9'
+SELECT 'a file_details.storage_key begins with "files/"; see V2.9'
 FROM file_details
-WHERE storage_key LIKE 'folders/%';
+WHERE storage_key LIKE 'files/%';
 
 -- ------------------------------------------------------------------ 2. one kind of folder
 

@@ -1207,10 +1207,11 @@ other's bytes.
 
 > **Avoided in 1.3.0, closed in 1.4.0.** 1.3.0 kept the rule per sub-category in the application
 > with the per-folder index as the schema-expressible half. `V2.9` took the storage decision:
-> every file uploaded from then on is stored under `folders/{folder id}/…`, a directory per
-> folder, so the per-folder index is the whole rule and the per-sub-category check is gone.
-> Files stored before keep their name-based keys; `folders` is reserved as a top-level name so
-> the two layouts cannot meet.
+> every file uploaded from then on is stored under `files/{file id}/…`, a directory per
+> file, so the per-folder index is the whole rule and the per-sub-category check is gone. (A
+> first cut used the *folder's* id; moving a file out then left its bytes behind for a namesake
+> to collide with, which is why the directory is the file's own id.) Files stored before keep
+> their name-based keys; `files` is reserved as a top-level name so the two layouts cannot meet.
 
 ### 80. Web tests that build folders through repositories must flush the path — **S3**
 
@@ -1231,12 +1232,12 @@ checks passed a key they should have refused. Found by `ObjectStoreApiTest` in t
 ### 81. `base-dir` now holds two layouts side by side — **S3** (by design, recorded)
 
 Files stored before `V2.9` sit at `{category}/{subCategory}/{name}/v{n}/`, files stored after at
-`folders/{folder id}/{name}/v{n}/`. Both are read through `file_details.storage_key`, so nothing
+`files/{file id}/{name}/v{n}/`. Both are read through `file_details.storage_key`, so nothing
 is wrong - but a person browsing `base-dir` by hand sees old files under names that may no
 longer exist in the tree (renamed since) and new files under numbers. Nothing migrates the old
 files, on purpose: moving bytes is the one thing every step of Phase 7 was designed not to do.
 
-> A one-off "relocate" that moves an old file's directory under `folders/{id}/` and rewrites its
+> A one-off "relocate" that moves an old file's directory under `files/{id}/` and rewrites its
 > keys in one transaction would be safe and would leave one layout. Worth doing before Phase 4
 > (S3), where one key shape is simpler than two; not before.
 

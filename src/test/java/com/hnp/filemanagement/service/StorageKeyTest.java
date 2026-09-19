@@ -81,7 +81,7 @@ class StorageKeyTest extends MySqlSupport {
         FileDetails row = fileDetailsRepository.findById(stored.getId()).orElseThrow();
 
         assertThat(row.getStorageKey())
-                .isEqualTo("folders/" + chain.tagId() + "/report/v1/report.txt");
+                .isEqualTo("files/" + stored.getFileInfoId() + "/report/v1/report.txt");
     }
 
     /**
@@ -95,7 +95,7 @@ class StorageKeyTest extends MySqlSupport {
 
         FileDetails row = fileDetailsRepository.findById(stored.getId()).orElseThrow();
 
-        assertThat(row.getStorageKey()).isEqualTo(chain.directory() + "/report/v1/report.txt");
+        assertThat(row.getStorageKey()).isEqualTo("files/" + stored.getFileInfoId() + "/report/v1/report.txt");
     }
     @Test
     @DisplayName("every version and every format gets its own key")
@@ -107,8 +107,8 @@ class StorageKeyTest extends MySqlSupport {
                 .filter(row -> row.getFileInfo().getId().equals(fileInfoId))
                 .map(FileDetails::getStorageKey))
                 .containsExactlyInAnyOrder(
-                        "folders/" + chain.tagId() + "/report/v1/report.txt",
-                        "folders/" + chain.tagId() + "/report/v2/report.txt");
+                        "files/" + fileInfoId + "/report/v1/report.txt",
+                        "files/" + fileInfoId + "/report/v2/report.txt");
     }
 
     // ---------------------------------------------------------------- what it makes possible
@@ -142,7 +142,7 @@ class StorageKeyTest extends MySqlSupport {
                 .as("a later version follows the first one's directory")
                 .singleElement()
                 .satisfies(row -> assertThat(row.getStorageKey())
-                        .isEqualTo("folders/" + chain.tagId() + "/report/v2/report.txt"));
+                        .isEqualTo("files/" + stored.getFileInfoId() + "/report/v2/report.txt"));
     }
 
     @Test

@@ -85,6 +85,34 @@ public class FileResource {
         return ApiResult.updated("fileInfo", fileInfoId);
     }
 
+    /** What a move posts: the folder the file goes into. */
+    public record MoveFileRequest(Integer folderId) {
+    }
+
+    /**
+     * Moves the file into another folder. No byte and no stored key moves; the file's tags
+     * follow. 400 into the root or a missing folder, 403 without write access on both folders,
+     * 409 when the target already holds the name.
+     */
+    //REST_MOVE_FILE_INFO
+    @PreAuthorize("hasAuthority('REST_MOVE_FILE_INFO') || hasAuthority('ADMIN')")
+    @PutMapping("file-info/{fileInfoId}/move")
+    public ApiResult moveFileInfo(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                  @PathVariable("fileInfoId") int fileInfoId,
+                                  @RequestBody MoveFileRequest body,
+                                  HttpServletRequest request) {
+
+        globalGeneralLogging.controllerLogging(userDetails, request, FileResource.class,
+                "move file info id=" + fileInfoId + " to folderId=" + (body == null ? null : body.folderId()));
+
+        if (body == null || body.folderId() == null) {
+            throw new InvalidDataException("folderId is required");
+        }
+        fileService.moveFile(fileInfoId, body.folderId(), userDetails.getId());
+
+        return ApiResult.updated("fileInfo", fileInfoId);
+    }
+
     /** Activates or disables the file as a whole; the service accepts only 0 and -1. */
     //REST_CHANGE_FILE_INFO_STATE
     @PreAuthorize("hasAuthority('REST_CHANGE_FILE_INFO_STATE') || hasAuthority('ADMIN')")

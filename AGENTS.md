@@ -139,9 +139,9 @@ a half-converted file is worse than a consistent one — and see
 Pages just insert it and need no wrapper; `app.css` offsets `<body>` via `body:has(.app-sidebar)`.
 Primary navigation belongs in the sidebar, not the top bar.
 
-**Naming.** Directory names (category, sub-category) must contain no `.`, no space, no `/`.
-File names must contain exactly one `.`, no space, no `/`. Enforced in both `ValidationUtil` and
-`FileStorageFileSystemService` — keep the two in agreement.
+**Naming.** A folder or file name is a safe path segment (`ValidationUtil`): no separator, none of `<>:"|?*`, no control character, not `.`/`..`, no trailing dot or space, not a Windows-reserved name. Spaces, dots and Persian are fine. A file name also needs an extension of letters and digits.
+`FileStorageFileSystemService` delegates to the same two predicates, so there is one copy;
+the traversal cases in `ValidationUtilTest` are the ones never to relax.
 
 ## Things that will bite you
 

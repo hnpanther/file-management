@@ -44,9 +44,10 @@ import java.util.stream.Collectors;
  * was never a folder and is not one now - and the tags of every file beneath are derived in it,
  * one per folder on the way down ({@link TagMirrorService}).
  *
- * <p><b>Names.</b> {@code name} is directory-safe (no dot, no space, no slash), at most 100
+ * <p><b>Names.</b> {@code name} is a safe path segment ({@link ValidationUtil}: no separator,
+ * no forbidden character, not a dot-name - spaces, dots and Persian are fine), at most 100
  * characters, and unique among siblings, case-insensitively, because the column collates that
- * way. It is no longer part of a new revision's storage key - files are stored by folder
+ * way. It is no longer part of a new revision's storage key - files are stored by their own
  * <em>id</em> since {@code V2.9} - so renaming and moving change no stored key and move no byte.
  * Both do change the tags of the files beneath, which are re-derived here. One name is reserved
  * at the top level: {@value #RESERVED_TOP_LEVEL_NAME}, the directory the id-based keys live
@@ -68,8 +69,8 @@ import java.util.stream.Collectors;
 @Service
 public class FolderService {
 
-    /** The top-level directory of the id-based storage layout; no top-level folder may take it. */
-    public static final String RESERVED_TOP_LEVEL_NAME = "folders";
+    /** The top-level directory of the id-based storage layout ({@code files/{file id}}); no top-level folder may take it. */
+    public static final String RESERVED_TOP_LEVEL_NAME = "files";
 
     private static final int STATE_ACTIVE = 0;
 
@@ -401,7 +402,7 @@ public class FolderService {
     private static String requireDirectoryName(String name, boolean topLevel) {
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty() || trimmed.length() > 100 || !ValidationUtil.checkCorrectDirectoryName(trimmed)) {
-            throw new InvalidDataException("a folder name is 1-100 characters with no '.', no space and no '/': " + name);
+            throw new InvalidDataException("a folder name is 1-100 characters, not '.' or '..', with no separator, control or '<>:\"|?*' character and no trailing dot or space: " + name);
         }
         if (topLevel && trimmed.equalsIgnoreCase(RESERVED_TOP_LEVEL_NAME)) {
             throw new InvalidDataException("\"" + RESERVED_TOP_LEVEL_NAME + "\" is reserved at the top level");
