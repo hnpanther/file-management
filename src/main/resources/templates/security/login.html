@@ -10,7 +10,9 @@
 <main class="auth-shell">
     <section class="auth-form-panel" aria-labelledby="login-title">
         <div class="auth-form-inner">
-            <a class="auth-public-link" th:href="@{/files/public-files}" th:text="#{login.publicFilesLink}">فایل‌های عمومی</a>
+            <!-- Offered only while the public files are open to visitors; otherwise it would lead back here. -->
+            <a class="auth-public-link" th:if="${publicFilesAnonymous}" th:href="@{/files/public-files}"
+               th:text="#{login.publicFilesLink}">فایل‌های عمومی</a>
 
             <div class="auth-form-heading">
                 <span class="auth-eyebrow" th:text="#{login.eyebrow}">ورود کاربران</span>

@@ -976,6 +976,11 @@ Each is independently shippable, and only the fourth cannot be undone.
 > the search answers `folders` - by id or a fragment of the name or label, within the scope and
 > the person's reach, at most twenty - beside the paged file `hits`.
 >
+> **The public files have a switch.** `app_setting` (`V2.10`) and `/settings/general`: whether
+> `/files/public-files` and the public download answer a visitor who is not signed in, decided
+> at request time by `PublicFilesAuthorizationManager` in place of the two `permitAll` lines.
+> Open by default, as it always was.
+>
 > **The general tags have their form back.** `/settings/tag-groups` (`TagGroupService`,
 > `TAG_GROUP_PAGE` / `SAVE_TAG_GROUP` / `DELETE_TAG_GROUP`): create, rename, re-title, and delete
 > while no folder carries the group and no tag sits in it.

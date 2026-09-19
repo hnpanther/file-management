@@ -417,6 +417,13 @@ on initial display so the hierarchy and its disclosure controls are immediately 
 user can then open a branch or use **Expand all**. Do not build the whole subtree in the controller:
 every `@ManyToOne` in this codebase is `EAGER`, so one node drags in its whole ancestry.
 
+### The general settings page
+
+`settings/general.html` is one card per switch, each a form of its own posting to the same
+URL. A checkbox that is not ticked is not posted, so the controller reads absence as "off"; the
+box is rendered disabled for someone who may see the page but not save it, and the save button
+is not rendered at all for them.
+
 ### Managing folders from the explorer
 
 The explorer (`file-management/files/file-explorer.html`) is where the tree is edited, since

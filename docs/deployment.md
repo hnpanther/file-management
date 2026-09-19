@@ -612,9 +612,9 @@ structure - but the content types it rewrote stay rewritten, which is harmless.
 
 ### Upgrading from 1.3.0 to 1.4.0 — folders of any depth
 
-A jar swap with one migration (`V2.9`). Take the database backup first, as always. Watch the
-log for `Successfully applied 1 migration`; the four new permissions are inserted by the
-migration itself, so no `seeded` line follows.
+A jar swap with two migrations (`V2.9`, `V2.10`). Take the database backup first, as always.
+Watch the log for `Successfully applied 2 migrations`; the new permissions are inserted by the
+migrations themselves, so no `seeded` line follows.
 
 **Before:** one check, which the migration also makes and refuses to run on:
 
@@ -653,7 +653,13 @@ of that name has to be renamed first (from the explorer, on 1.3.0).
    the general tags' form) is behind `TAG_GROUP_PAGE`, `SAVE_TAG_GROUP` and `DELETE_TAG_GROUP`;
    `ADMIN` needs nothing.
 
-5. **The upload form asks for the target with a folder chooser** instead of three selects; the
+5. **The public files can be closed to visitors.** `V2.10` adds `app_setting`, seeded open, so
+   nothing changes until an administrator unticks "نمایش و دانلود فایل‌های عمومی بدون ورود" on
+   `/settings/general` (`GENERAL_SETTINGS_PAGE` / `SAVE_GENERAL_SETTINGS`; `ADMIN` needs
+   nothing). Off, a visitor is sent to the login form and the login form loses its public-files
+   link; anyone signed in still sees the page. Takes effect on the next request.
+
+6. **The upload form asks for the target with a folder chooser** instead of three selects; the
    file pages show the folder path instead of category / sub-category / tag. Nothing changes
    for `/api/v1/files` or `/api/v2`: `folderId` may now be any folder below the root, and a v2
    key may have any number of folder segments (including none - a file directly in the bucket).
