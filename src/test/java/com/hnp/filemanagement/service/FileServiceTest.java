@@ -90,9 +90,6 @@ class FileServiceTest extends MySqlSupport {
         tagFolderId = chain.tagId();
         categoryName = chain.category().getName();
         subCategoryName = chain.subCategory().getName();
-
-        // The storage layer writes into an existing category/sub-category directory.
-        Files.createDirectories(Paths.get(baseDir, categoryName, subCategoryName));
     }
 
     // ---------------------------------------------------------------- new file
@@ -120,47 +117,51 @@ class FileServiceTest extends MySqlSupport {
     }
 
     /**
-     * The bytes live at {@code {category}/{subCategory}/{name}/...} - no tag segment - so a name
-     * is unique per sub-category: the same name under a sibling tag folder would share a directory
-     * on disk. Under another sub-category it is another file.
+     * The bytes live at {@code folders/{folder id}/{name}/...} since V2.9, so a name is unique per
+     * folder in fact as well as in the index: the same name under a sibling folder is another
+     * file, in another directory.
      */
     @Test
-    @DisplayName("a second file with the same name is a 409 in the same folder and under a sibling tag folder; under another sub-category it is another file")
+    @DisplayName("a second file with the same name in the same folder is a 409; under a sibling folder it is another file")
     void rejectsADuplicateFileName() {
         underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
 
         assertThatThrownBy(() -> underTest.createNewFile(uploadRequest("report.txt"), principalId, 1))
                 .isInstanceOf(DuplicateResourceException.class)
-                .hasMessageContaining("this folder");
+                .hasMessageContaining("folder id=" + tagFolderId);
+        assertThat(underTest.isDuplicate("report", tagFolderId)).isTrue();
 
         var sibling = FolderFixture.tag(folderRepository, chain.subCategory(), creator, "Sibling" + TestData.nextSequence());
+        assertThat(underTest.isDuplicate("report", sibling.getId())).isFalse();
         FileInfoDTO underSibling = uploadRequest("report.txt");
         underSibling.setFolderId(sibling.getId());
-        assertThatThrownBy(() -> underTest.createNewFile(underSibling, principalId, 1))
-                .isInstanceOf(DuplicateResourceException.class)
-                .hasMessageContaining("sibling folder");
-        assertThat(underTest.isDuplicate("report", sibling.getId())).isTrue();
-
-        var otherSub = FolderFixture.subCategory(folderRepository, chain.category(), creator, "OtherSub" + TestData.nextSequence());
-        var farTag = FolderFixture.tag(folderRepository, otherSub, creator, "Far" + TestData.nextSequence());
-        TestData.createStorageDirectory(baseDir, chain.category().getName(), otherSub.getName());
-        FileInfoDTO elsewhere = uploadRequest("report.txt");
-        elsewhere.setFolderId(farTag.getId());
-        assertThat(underTest.createNewFile(elsewhere, principalId, 1).getFileInfoId()).isPositive();
+        FileDetailsDTO stored = underTest.createNewFile(underSibling, principalId, 1);
+        assertThat(fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey())
+                .isEqualTo("folders/" + sibling.getId() + "/report/v1/report.txt");
     }
 
     @Test
-    @DisplayName("a request without a folderId, or naming a folder that cannot hold files, is a 400")
+    @DisplayName("a request without a folderId, or naming the root, is a 400; any folder below the root takes a file")
     void rejectsAMissingOrWrongFolder() {
         FileInfoDTO request = uploadRequest("report.txt");
         request.setFolderId(null);
         assertThatThrownBy(() -> underTest.createNewFile(request, principalId, 1))
                 .isInstanceOf(InvalidDataException.class).hasMessageContaining("folderId");
 
-        FileInfoDTO onSubCategory = uploadRequest("report.txt");
-        onSubCategory.setFolderId(chain.subCategoryId());
-        assertThatThrownBy(() -> underTest.createNewFile(onSubCategory, principalId, 1))
-                .isInstanceOf(InvalidDataException.class).hasMessageContaining("tag folder");
+        FileInfoDTO onRoot = uploadRequest("report.txt");
+        onRoot.setFolderId(FolderFixture.root(folderRepository).getId());
+        assertThatThrownBy(() -> underTest.createNewFile(onRoot, principalId, 1))
+                .isInstanceOf(InvalidDataException.class).hasMessageContaining("ROOT");
+
+        // Since V2.9 a folder at any level holds files - the top-level one included.
+        FileInfoDTO onTopLevel = uploadRequest("report.txt");
+        onTopLevel.setFolderId(chain.categoryId());
+        FileDetailsDTO stored = underTest.createNewFile(onTopLevel, principalId, 1);
+        assertThat(fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey())
+                .isEqualTo("folders/" + chain.categoryId() + "/report/v1/report.txt");
+        assertThat(fileInfoRepository.findById(stored.getFileInfoId()).orElseThrow().getTags())
+                .extracting(com.hnp.filemanagement.entity.Tag::getName)
+                .containsExactly(chain.category().getName());
     }
 
     @Test
@@ -393,7 +394,7 @@ class FileServiceTest extends MySqlSupport {
         FileInfo fileInfo = fileInfoRepository.findByIdAndFetchFileDetails(stored.getFileInfoId()).orElseThrow();
         assertThat(fileInfo.getFolder().getId()).isEqualTo(tagFolderId);
         assertThat(fileInfo.getFileDetailsList().getFirst().getStorageKey())
-                .isEqualTo(categoryName + "/" + subCategoryName + "/report/v1/report.txt");
+                .isEqualTo("folders/" + tagFolderId + "/report/v1/report.txt");
         assertThat(fileInfo.getTags()).extracting(com.hnp.filemanagement.entity.Tag::getName)
                 .containsExactlyInAnyOrder(categoryName, subCategoryName, chain.tag().getName());
         assertThat(fileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders()).isEmpty();
@@ -487,13 +488,13 @@ class FileServiceTest extends MySqlSupport {
     }
 
     /**
-     * Where the storage layer puts a revision: {@code <base>/<cat>/<sub>/<name>/v<n>/<name>.<ext>}.
+     * Where the storage layer puts a revision: {@code <base>/folders/<folder id>/<name>/v<n>/<name>.<ext>}.
      *
      * <p>The version is a directory, not a suffix on the file name — which is why two formats of
      * one version sit side by side in the same {@code v<n>} directory.
      */
     private Path storedFile(String name, int version, String extension) {
-        return Paths.get(baseDir, categoryName, subCategoryName, name, "v" + version,
+        return Paths.get(baseDir, "folders", String.valueOf(tagFolderId), name, "v" + version,
                 name + "." + extension);
     }
 }

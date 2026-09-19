@@ -112,16 +112,16 @@ to provision and nothing machine-specific to configure.
 
 ## Concepts
 
-**The folder tree.** Files are filed three folder levels deep, and no deeper:
+**The folder tree.** Files are filed in folders, to any depth up to a configured limit (six):
 
 ```
-Home → Folder(CATEGORY) → Folder(SUB_CATEGORY) → Folder(TAG) → FileInfo → FileDetails
+Home → Folder → Folder → … → FileInfo → FileDetails
 ```
 
-The category and sub-category names become real directories, so a folder name may not contain
-`.`, spaces or `/` (a display name may say anything). A category carries a `TagGroup` - a label
-group, not a folder - and every file's tags are its three folder names in that group. The tree is
-created, renamed and deleted from the file explorer.
+A folder name may not contain `.`, spaces or `/` (a display name may say anything). A
+top-level folder carries a `TagGroup` - a label group, not a folder - and every file's tags are
+the names of the folders above it, in that group. Files are stored by folder id, so the tree is
+created, renamed, moved and deleted from the file explorer without a byte moving on disk.
 
 **FileInfo vs FileDetails.** A `FileInfo` is the *logical* file — "the Q3 report". A `FileDetails`
 is one concrete artefact of it: a specific version in a specific format. Uploading `report.pdf`

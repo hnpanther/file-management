@@ -18,38 +18,58 @@ import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.validation.ValidationUtil;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
- * The writer of the folder tree (Phase 7 step 4): create, rename and delete, and the one place
- * the tree's shape is enforced.
+ * The writer of the folder tree: create, rename, move and delete, and the one place the tree's
+ * rules are enforced.
  *
- * <p><b>The shape.</b> Three levels under the root, each a kind: a child of the root is a
- * {@link FolderKind#CATEGORY}, of a category a {@link FolderKind#SUB_CATEGORY}, of a
- * sub-category a {@link FolderKind#TAG}. A tag folder holds files and nothing else. This is the
- * taxonomy's shape kept as a rule rather than as four tables, so that everything built on it -
- * storage keys, the v2 key space, the tree page - keeps working; roadmap step 5 is where it may
- * loosen. A general tag was never a folder and is not one now: it is a {@link TagGroup}, carried
- * by the category folder, and the tags of every file beneath are derived in it.
+ * <p><b>The shape.</b> Any depth under the root, up to {@code filemanagement.folders.max-depth}
+ * (a limit for people, not for the code: a tree nobody can navigate is the failure mode of "any
+ * depth"). Every folder below the root holds folders and files alike; the root holds folders
+ * only. A top-level folder carries a {@link TagGroup} - the general tag of the old taxonomy, which
+ * was never a folder and is not one now - and the tags of every file beneath are derived in it,
+ * one per folder on the way down ({@link TagMirrorService}).
  *
- * <p><b>Names.</b> {@code name} is directory-safe (no dot, no space, no slash - the rule the
- * taxonomy applied) and unique among siblings, case-insensitively, because the column collates
- * that way. It becomes part of a <em>new</em> revision's storage key; renaming it changes no
- * stored key and moves no byte (roadmap 7.1). It does change the tags of the files beneath,
- * which are re-derived here.
+ * <p><b>Names.</b> {@code name} is directory-safe (no dot, no space, no slash), at most 100
+ * characters, and unique among siblings, case-insensitively, because the column collates that
+ * way. It is no longer part of a new revision's storage key - files are stored by folder
+ * <em>id</em> since {@code V2.9} - so renaming and moving change no stored key and move no byte.
+ * Both do change the tags of the files beneath, which are re-derived here. One name is reserved
+ * at the top level: {@value #RESERVED_TOP_LEVEL_NAME}, the directory the id-based keys live
+ * under.
+ *
+ * <p><b>Moving</b> rewrites {@code parent}, {@code depth} and {@code path} for the whole subtree
+ * in one transaction, keeps the depth limit, refuses a folder's own subtree as a target, and
+ * carries the tag group across: a folder moved to the top level keeps the group of the top-level
+ * folder it came from; a top-level folder moved beneath another loses its own, since only the top
+ * level carries one.
  *
  * <p><b>Deleting</b> is refused while anything is inside: the foreign keys say so
  * ({@code RESTRICT}), and this says it first with a message.
  *
  * <p><b>Access.</b> Creating or deleting a child is a write into the parent; renaming is a write
- * into the folder itself. Judged like an upload, on the folder's own path.
+ * into the folder itself; moving is a write into both parents. Judged like an upload, on the
+ * folder's own path.
  */
 @Service
 public class FolderService {
+
+    /** The top-level directory of the id-based storage layout; no top-level folder may take it. */
+    public static final String RESERVED_TOP_LEVEL_NAME = "folders";
 
     private static final int STATE_ACTIVE = 0;
 
@@ -60,11 +80,16 @@ public class FolderService {
     private final FolderAccessService folderAccessService;
     private final TagMirrorService tagMirrorService;
     private final ActionHistoryService actionHistoryService;
+    private final int maxDepth;
 
     public FolderService(FolderRepository folderRepository, FileInfoRepository fileInfoRepository,
                          TagGroupRepository tagGroupRepository, UserRepository userRepository,
                          FolderAccessService folderAccessService, TagMirrorService tagMirrorService,
-                         ActionHistoryService actionHistoryService) {
+                         ActionHistoryService actionHistoryService,
+                         @Value("${filemanagement.folders.max-depth:6}") int maxDepth) {
+        if (maxDepth < 1) {
+            throw new IllegalArgumentException("filemanagement.folders.max-depth must be at least 1, was " + maxDepth);
+        }
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.tagGroupRepository = tagGroupRepository;
@@ -72,9 +97,25 @@ public class FolderService {
         this.folderAccessService = folderAccessService;
         this.tagMirrorService = tagMirrorService;
         this.actionHistoryService = actionHistoryService;
+        this.maxDepth = maxDepth;
     }
 
     // ------------------------------------------------------------------ reading
+
+    /** The deepest level a folder may sit at; the root is level 0. */
+    public int maxDepth() {
+        return maxDepth;
+    }
+
+    /** Whether a folder at this depth may take a child folder. */
+    public boolean canHoldFolders(Folder folder) {
+        return folder.getDepth() < maxDepth;
+    }
+
+    /** Whether a file may be filed here: anything but the root. */
+    public static boolean canHoldFiles(Folder folder) {
+        return folder.getKind() != FolderKind.ROOT;
+    }
 
     /** The root every folder descends from - a broken installation if there is not exactly one. */
     @Transactional(readOnly = true)
@@ -86,14 +127,14 @@ public class FolderService {
         return roots.getFirst();
     }
 
-    /** A folder with its two ancestors loaded, or a 400 naming the id. */
+    /** A folder with its parent and its tag group loaded, or a 400 naming the id. */
     @Transactional(readOnly = true)
-    public Folder requireWithChain(int folderId) {
-        return folderRepository.findByIdWithChain(folderId)
+    public Folder requireWithTagGroup(int folderId) {
+        return folderRepository.findByIdWithTagGroup(folderId)
                 .orElseThrow(() -> new InvalidDataException("folder not found, id=" + folderId));
     }
 
-    /** The tag groups, for the create-a-category form. */
+    /** The tag groups, for the create-a-top-level-folder form. */
     @Transactional(readOnly = true)
     public List<TagGroupDTO> tagGroups() {
         return tagGroupRepository.findAll().stream()
@@ -102,32 +143,74 @@ public class FolderService {
                 .toList();
     }
 
-    // ------------------------------------------------------------------ the three levels, read from a folder
+    // ------------------------------------------------------------------ ancestry, read off the path
 
-    /** The category, sub-category and tag folders of a tag folder, outermost first. */
-    public record Chain(Folder category, Folder subCategory, Folder tag) {
-
-        /** {@code {category}/{subCategory}} - the directory a file under this tag is stored beneath. */
-        public String directory() {
-            return category.getName() + "/" + subCategory.getName();
+    /**
+     * The folders from the top level down to each of these, itself last - what a label, a tag
+     * set or a breadcrumb is made of. One query for the whole batch: every id in every path,
+     * loaded at once, which is what {@code path} is for. The root is left out.
+     */
+    @Transactional(readOnly = true)
+    public Map<Integer, List<Folder>> ancestryOf(Collection<Folder> folders) {
+        Set<Integer> ids = new HashSet<>();
+        for (Folder folder : folders) {
+            ids.addAll(idsIn(folder.getPath()));
         }
+        Map<Integer, Folder> byId = folderRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(Folder::getId, Function.identity()));
+        Map<Integer, List<Folder>> ancestry = new LinkedHashMap<>();
+        for (Folder folder : folders) {
+            ancestry.computeIfAbsent(folder.getId(), id -> chainFrom(folder.getPath(), byId));
+        }
+        return ancestry;
     }
 
-    /** Resolves the chain of a TAG folder; anything else is refused, because only a tag holds files. */
-    public static Chain chainOf(Folder folder) {
-        if (folder.getKind() != FolderKind.TAG || folder.getParent() == null || folder.getParent().getParent() == null) {
-            throw new InvalidDataException("folder id=" + folder.getId() + " is a " + folder.getKind()
-                    + "; a document can only be filed into a tag folder");
+    /** The folders from the top level down to this one, itself last. */
+    @Transactional(readOnly = true)
+    public List<Folder> ancestryOf(Folder folder) {
+        return ancestryOf(List.of(folder)).get(folder.getId());
+    }
+
+    /** The top-level folder above this one (itself, at depth 1), whose tag group the subtree's tags are in. */
+    public static Folder topOf(List<Folder> ancestry) {
+        if (ancestry.isEmpty()) {
+            throw new InvalidDataException("the root has no top-level folder above it");
         }
-        return new Chain(folder.getParent().getParent(), folder.getParent(), folder);
+        return ancestry.getFirst();
+    }
+
+    /** The ids a materialised path is made of, outermost first. */
+    static List<Integer> idsIn(String path) {
+        List<Integer> ids = new ArrayList<>();
+        for (String segment : path.split("/")) {
+            if (!segment.isBlank()) {
+                ids.add(Integer.parseInt(segment));
+            }
+        }
+        return ids;
+    }
+
+    /** The folders a path names, outermost first, the root left out. */
+    static List<Folder> chainFrom(String path, Map<Integer, Folder> byId) {
+        List<Folder> chain = new ArrayList<>();
+        for (int id : idsIn(path)) {
+            Folder folder = byId.get(id);
+            if (folder == null) {
+                throw new BusinessException("folder path " + path + " names a folder that does not exist: " + id);
+            }
+            if (folder.getKind() != FolderKind.ROOT) {
+                chain.add(folder);
+            }
+        }
+        return chain;
     }
 
     // ------------------------------------------------------------------ writing
 
     /**
-     * Creates a child of {@code parentId}. The kind follows from the parent; for a category the
-     * tag group is required - an existing one by id, or a new one by name (get-or-create, since a
-     * group is nothing but a name and a title).
+     * Creates a child of {@code parentId}. Under the root the tag group is required - an existing
+     * one by id, or a new one by name (get-or-create, since a group is nothing but a name and a
+     * title); anywhere else a group is refused, because only the top level carries one.
      */
     @Transactional
     public FolderDTO create(int parentId, String name, String displayName, Integer tagGroupId,
@@ -135,24 +218,18 @@ public class FolderService {
         Folder parent = folderAccessService.requireFolder(parentId);
         FolderAccess access = folderAccessService.accessFor(principalId);
         folderAccessService.requireWriteAccess(access, parent);
+        requireRoomBelow(parent);
 
-        FolderKind kind = switch (parent.getKind()) {
-            case ROOT -> FolderKind.CATEGORY;
-            case CATEGORY -> FolderKind.SUB_CATEGORY;
-            case SUB_CATEGORY -> FolderKind.TAG;
-            case TAG -> throw new InvalidDataException("a tag folder holds files, not folders: id=" + parentId);
-            case USER_HOME -> throw new InvalidDataException("a home folder holds no sub-folders yet: id=" + parentId);
-        };
-
-        String directoryName = requireDirectoryName(name);
+        boolean topLevel = parent.getKind() == FolderKind.ROOT;
+        String directoryName = requireDirectoryName(name, topLevel);
         String label = requireLabel(displayName, directoryName);
         requireFreeAmongSiblings(parent, directoryName, null);
 
         TagGroup group = null;
-        if (kind == FolderKind.CATEGORY) {
+        if (topLevel) {
             group = tagGroupFor(tagGroupId, newTagGroupName, principalId);
         } else if (tagGroupId != null || (newTagGroupName != null && !newTagGroupName.isBlank())) {
-            throw new InvalidDataException("only a category carries a tag group");
+            throw new InvalidDataException("only a top-level folder carries a tag group");
         }
 
         Folder folder = new Folder();
@@ -160,7 +237,7 @@ public class FolderService {
         folder.setName(directoryName);
         folder.setDisplayName(label);
         folder.setDepth(parent.getDepth() + 1);
-        folder.setKind(kind);
+        folder.setKind(FolderKind.FOLDER);
         folder.setTagGroup(group);
         folder.setEnabled(1);
         folder.setState(STATE_ACTIVE);
@@ -172,37 +249,112 @@ public class FolderService {
         saved.setPath(parent.childPath(saved.getId()));
 
         actionHistoryService.saveActionHistory(EntityEnum.Folder, saved.getId(), ActionEnum.CREATE, principalId,
-                "CREATE FOLDER", "CREATE " + kind + " folder " + directoryName + " under folder id=" + parentId);
+                "CREATE FOLDER", "CREATE folder " + directoryName + " under folder id=" + parentId);
         return toDto(saved);
     }
 
     /**
-     * Renames a folder: its directory-safe name, its label, or both. The root and a home folder
-     * are not renamed. A changed name re-derives the tags of every file beneath, since they are
-     * the folder names; stored keys and bytes are untouched.
+     * Renames a folder: its directory-safe name, its label, or both - and, for a top-level
+     * folder, its tag group. The root and a home folder are not renamed. A changed name or group
+     * re-derives the tags of every file beneath; stored keys and bytes are untouched.
      */
     @Transactional
-    public FolderDTO rename(int folderId, String name, String displayName, int principalId) {
+    public FolderDTO rename(int folderId, String name, String displayName, Integer tagGroupId, int principalId) {
         Folder folder = requireExisting(folderId);
         if (folder.getKind() == FolderKind.ROOT || folder.getKind() == FolderKind.USER_HOME) {
             throw new InvalidDataException("a " + folder.getKind() + " folder cannot be renamed: id=" + folderId);
         }
         folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), folder);
 
-        String directoryName = requireDirectoryName(name);
+        boolean topLevel = folder.getDepth() == 1;
+        String directoryName = requireDirectoryName(name, topLevel);
         String label = requireLabel(displayName, directoryName);
         requireFreeAmongSiblings(folder.getParent(), directoryName, folder.getId());
 
         boolean nameChanged = !folder.getName().equals(directoryName);
+        boolean groupChanged = false;
+        if (tagGroupId != null) {
+            if (!topLevel) {
+                throw new InvalidDataException("only a top-level folder carries a tag group");
+            }
+            TagGroup group = tagGroupFor(tagGroupId, null, principalId);
+            groupChanged = folder.getTagGroup() == null || !Objects.equals(folder.getTagGroup().getId(), group.getId());
+            folder.setTagGroup(group);
+        }
         folder.setName(directoryName);
         folder.setDisplayName(label);
         folder.setUpdatedBy(userRepository.getReferenceById(principalId));
 
-        if (nameChanged) {
+        if (nameChanged || groupChanged) {
             tagMirrorService.retagFilesUnder(folder);
         }
         actionHistoryService.saveActionHistory(EntityEnum.Folder, folder.getId(), ActionEnum.UPDATE_VALUES, principalId,
-                "RENAME FOLDER", "RENAME folder id=" + folderId + " to " + directoryName + (nameChanged ? " (name changed)" : " (label only)"));
+                "RENAME FOLDER", "RENAME folder id=" + folderId + " to " + directoryName
+                        + (nameChanged ? " (name changed)" : " (label only)") + (groupChanged ? " (tag group changed)" : ""));
+        return toDto(folder);
+    }
+
+    /**
+     * Moves a folder, with everything beneath it, under another parent. A metadata change only:
+     * files are stored by folder id, so no byte and no key moves. Refused into the folder's own
+     * subtree, past the depth limit, and onto a sibling name that is taken.
+     */
+    @Transactional
+    public FolderDTO move(int folderId, int newParentId, int principalId) {
+        Folder folder = requireExisting(folderId);
+        if (folder.getKind() == FolderKind.ROOT || folder.getKind() == FolderKind.USER_HOME) {
+            throw new InvalidDataException("a " + folder.getKind() + " folder cannot be moved: id=" + folderId);
+        }
+        Folder newParent = folderAccessService.requireFolder(newParentId);
+        if (newParent.getPath().startsWith(folder.getPath())) {
+            throw new InvalidDataException("a folder cannot be moved into itself or below itself: id=" + folderId);
+        }
+        Folder oldParent = folder.getParent();
+        if (Objects.equals(oldParent.getId(), newParent.getId())) {
+            return toDto(folder);
+        }
+        FolderAccess access = folderAccessService.accessFor(principalId);
+        folderAccessService.requireWriteAccess(access, oldParent);
+        folderAccessService.requireWriteAccess(access, newParent);
+
+        boolean toTopLevel = newParent.getKind() == FolderKind.ROOT;
+        if (toTopLevel && folder.getName().equalsIgnoreCase(RESERVED_TOP_LEVEL_NAME)) {
+            throw new InvalidDataException("\"" + RESERVED_TOP_LEVEL_NAME + "\" is reserved at the top level");
+        }
+        requireFreeAmongSiblings(newParent, folder.getName(), folder.getId());
+
+        int delta = newParent.getDepth() + 1 - folder.getDepth();
+        Integer deepest = folderRepository.maxDepthUnder(folder.getPath());
+        int deepestAfter = (deepest == null ? folder.getDepth() : deepest) + delta;
+        if (deepestAfter > maxDepth) {
+            throw new InvalidDataException("moving folder id=" + folderId + " there would put a folder at depth "
+                    + deepestAfter + "; the limit is " + maxDepth);
+        }
+
+        // The group the subtree's tags are derived in: the top-level folder's. Carried across so
+        // that the tags can be re-derived without asking anyone which group they mean.
+        TagGroup groupBefore = topOf(ancestryOf(folder)).getTagGroup();
+
+        String oldPrefix = folder.getPath();
+        String newPrefix = newParent.childPath(folder.getId());
+        List<Folder> subtree = folderRepository.findSubtree(oldPrefix);
+        for (Folder each : subtree) {
+            each.setPath(newPrefix + each.getPath().substring(oldPrefix.length()));
+            each.setDepth(each.getDepth() + delta);
+            if (each.getId().equals(folder.getId())) {
+                each.setParent(newParent);
+                each.setTagGroup(toTopLevel ? groupBefore : null);
+                each.setUpdatedBy(userRepository.getReferenceById(principalId));
+            } else if (each.getTagGroup() != null) {
+                each.setTagGroup(null);
+            }
+        }
+        folderRepository.saveAllAndFlush(subtree);
+
+        tagMirrorService.retagFilesUnder(folder);
+        actionHistoryService.saveActionHistory(EntityEnum.Folder, folder.getId(), ActionEnum.UPDATE_VALUES, principalId,
+                "MOVE FOLDER", "MOVE folder id=" + folderId + " from folder id=" + oldParent.getId()
+                        + " to folder id=" + newParentId);
         return toDto(folder);
     }
 
@@ -233,16 +385,26 @@ public class FolderService {
 
     // ------------------------------------------------------------------ pieces
 
-    /** The folder a rename or a delete names in its path: a missing one is a 404, like every other resource. */
+    /** The folder a rename, a move or a delete names in its path: a missing one is a 404, like every other resource. */
     private Folder requireExisting(int folderId) {
         return folderRepository.findById(folderId)
                 .orElseThrow(() -> new ResourceNotFoundException("folder not found, id=" + folderId));
     }
 
-    private static String requireDirectoryName(String name) {
+    private void requireRoomBelow(Folder parent) {
+        if (!canHoldFolders(parent)) {
+            throw new InvalidDataException("folder id=" + parent.getId() + " is at depth " + parent.getDepth()
+                    + ", the deepest a folder may sit at (filemanagement.folders.max-depth=" + maxDepth + ")");
+        }
+    }
+
+    private static String requireDirectoryName(String name, boolean topLevel) {
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty() || trimmed.length() > 100 || !ValidationUtil.checkCorrectDirectoryName(trimmed)) {
             throw new InvalidDataException("a folder name is 1-100 characters with no '.', no space and no '/': " + name);
+        }
+        if (topLevel && trimmed.equalsIgnoreCase(RESERVED_TOP_LEVEL_NAME)) {
+            throw new InvalidDataException("\"" + RESERVED_TOP_LEVEL_NAME + "\" is reserved at the top level");
         }
         return trimmed;
     }
@@ -270,7 +432,7 @@ public class FolderService {
         }
         String name = newName == null ? "" : newName.trim();
         if (name.isEmpty() || name.length() > 100) {
-            throw new InvalidDataException("a category needs a tag group: choose one, or name a new one");
+            throw new InvalidDataException("a top-level folder needs a tag group: choose one, or name a new one");
         }
         return tagGroupRepository.findByName(name).orElseGet(() -> {
             TagGroup group = new TagGroup();

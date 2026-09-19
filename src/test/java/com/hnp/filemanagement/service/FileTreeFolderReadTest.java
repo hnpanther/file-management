@@ -35,13 +35,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The tree read from the folder table alone (Phase 7 step 4): a tag node's children and count,
- * opening a file, and placing a search hit on the branch down to it.
+ * The tree read from the folder table alone: a folder node's children (folders and files
+ * together, since {@code V2.9}) and its count, opening a file, and placing a search hit on the
+ * branch down to it.
  *
- * <p>The oracle is the rows: the files whose {@code folder_id} is the tag folder, the folder's
- * own ancestors, and those rows' display names. A file without a folder cannot exist any more
- * ({@code folder_id} is NOT NULL), so the fail-closed case this class used to hold is gone with
- * the column's nullability.
+ * <p>The oracle is the rows: the files whose {@code folder_id} is the folder, the folder's own
+ * ancestors read off its path, and those rows' display names.
  */
 @ServiceIntegrationTest
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
@@ -102,33 +101,41 @@ class FileTreeFolderReadTest extends MySqlSupport {
     // ---------------------------------------------------------------- a tag node
 
     @Test
-    @DisplayName("a tag node's children are exactly the files filed under that folder, and its count says so")
-    void aTagNodeListsAndCountsItsFiles() {
-        List<TreeNodeDTO> children = underTest.getChildren(NodeType.MAIN_TAG, tagA1, adminId);
+    @DisplayName("a folder node's children are its folders and then its files, and a child's count is both together")
+    void aFolderNodeListsAndCountsItsContents() {
+        List<TreeNodeDTO> children = underTest.getChildren(NodeType.FOLDER, tagA1, adminId);
 
         assertThat(children).extracting(TreeNodeDTO::getName)
                 .containsExactlyElementsOf(expectedNamesUnder(tagA1).stream().sorted().toList());
         assertThat(children).extracting(TreeNodeDTO::getName)
                 .containsExactly("alpha-" + token, "beta-" + token);
 
-        List<TreeNodeDTO> tags = underTest.getChildren(NodeType.SUB_CATEGORY, subAId, adminId);
+        List<TreeNodeDTO> tags = underTest.getChildren(NodeType.FOLDER, subAId, adminId);
         assertThat(tags).filteredOn(node -> node.getId() == tagA1).singleElement()
                 .extracting(TreeNodeDTO::getChildCount).isEqualTo(2);
         assertThat(tags).filteredOn(node -> node.getId() == tagA2).singleElement()
                 .extracting(TreeNodeDTO::getChildCount).isEqualTo(1);
+
+        // Since V2.9 a folder holds folders and files together: a folder under tagA1 is listed
+        // before its files, and counted with them on the parent.
+        Folder deeper = FolderFixture.tag(folderRepository, chain.tag(), adminUser(), "Deeper" + TestData.nextSequence());
+        flushAndClear();
+        assertThat(underTest.getChildren(NodeType.FOLDER, tagA1, adminId))
+                .extracting(TreeNodeDTO::getType)
+                .containsExactly(NodeType.FOLDER, NodeType.FILE, NodeType.FILE);
+        assertThat(underTest.getChildren(NodeType.FOLDER, subAId, adminId))
+                .filteredOn(node -> node.getId() == tagA1).singleElement()
+                .extracting(TreeNodeDTO::getChildCount).isEqualTo(3);
+        assertThat(deeper.getDepth()).isEqualTo(4);
     }
 
     @Test
-    @DisplayName("a node is opened as what it is: a tag folder is not a category, and a category carries its group's title")
-    void aNodeIsOpenedAsItsKind() {
-        assertThatThrownBy(() -> underTest.getChildren(NodeType.CATEGORY, tagA1, adminId))
-                .isInstanceOf(com.hnp.filemanagement.exception.InvalidDataException.class)
-                .hasMessageContaining("TAG");
-
+    @DisplayName("a top-level folder carries its group's title as its note")
+    void aTopLevelFolderCarriesItsGroupTitle() {
         assertThat(underTest.getRoots(adminId))
                 .filteredOn(node -> node.getId() == chain.categoryId()).singleElement()
                 .satisfies(node -> {
-                    assertThat(node.getType()).isEqualTo(NodeType.CATEGORY);
+                    assertThat(node.getType()).isEqualTo(NodeType.FOLDER);
                     assertThat(node.getNote()).isEqualTo(chain.category().getTagGroup().getTitle());
                     assertThat(node.getChildCount()).isEqualTo(1);
                 });
@@ -165,12 +172,9 @@ class FileTreeFolderReadTest extends MySqlSupport {
         Folder subCategory = tag.getParent();
         Folder category = subCategory.getParent();
         assertThat(tag.getId()).isEqualTo(tagA2);
-        assertThat(hit.getMainTagId()).isEqualTo(tag.getId());
-        assertThat(hit.getSubCategoryId()).isEqualTo(subCategory.getId());
-        assertThat(hit.getCategoryId()).isEqualTo(category.getId());
-        assertThat(hit.getMainTagTitle()).isEqualTo(tag.getDisplayName());
-        assertThat(hit.getSubCategoryTitle()).isEqualTo(subCategory.getDisplayName());
-        assertThat(hit.getCategoryTitle()).isEqualTo(category.getDisplayName());
+        assertThat(hit.getFolderIds()).containsExactly(category.getId(), subCategory.getId(), tag.getId());
+        assertThat(hit.getFolderTitles()).containsExactly(
+                category.getDisplayName(), subCategory.getDisplayName(), tag.getDisplayName());
     }
 
     @Test
@@ -213,6 +217,10 @@ class FileTreeFolderReadTest extends MySqlSupport {
         request.setMultipartFile(new MockMultipartFile("file", fileName, "text/plain",
                 ("content of " + fileName).getBytes(StandardCharsets.UTF_8)));
         return fileService.createNewFile(request, adminId, 1);
+    }
+
+    private User adminUser() {
+        return userRepository.findById(adminId).orElseThrow();
     }
 
     private void flushAndClear() {

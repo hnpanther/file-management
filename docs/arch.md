@@ -6,8 +6,8 @@
 ## 1. What the application is
 
 A server-rendered file-management web application. Users organise files into a folder tree
-that is exactly three levels deep (category → sub-category → tag), upload them into the
-deepest level, and create additional **versions** and **formats** of the same logical file. Files live on the local filesystem; all metadata lives in MySQL.
+of any depth up to a configured limit (six by default), upload them into any folder, and create
+additional **versions** and **formats** of the same logical file. Files live on the local filesystem; all metadata lives in MySQL.
 A small machine-facing REST API (`/api/v1/files`) was added later for programmatic upload,
 download and delete.
 
@@ -53,71 +53,78 @@ com.hnp.filemanagement
 
 Since Phase 7 step 4 (migration `V2.8`) a file's place is one thing: a row in `folder`. The
 taxonomy tables that used to sit beside it (`general_tag`, `file_category`, `file_sub_category`,
-`main_tag_file`) are gone, and with them the mirror that kept the two in step.
+`main_tag_file`) are gone, and with them the mirror that kept the two in step. Since `V2.9` the
+three fixed levels the taxonomy left behind are gone too: a folder is a folder, at any depth.
 
 ```
 Folder(ROOT "Home")
-  └─N─ Folder(CATEGORY)       ──N:1──> TagGroup        the "general tag": a label group, not a place
-        └─N─ Folder(SUB_CATEGORY)
-              └─N─ Folder(TAG)
-                    └─N─ FileInfo ──1:N──> FileDetails
+  └─N─ Folder(FOLDER, depth 1) ──N:1──> TagGroup     the "general tag": a label group, not a place
+        └─N─ Folder(FOLDER, depth 2)
+              └─N─ … down to filemanagement.folders.max-depth (6)
+                    └─N─ FileInfo ──1:N──> FileDetails      files sit in any folder below the root
                           └─N:M─> Tag ──N:1──> TagGroup
 ```
 
 * **Folder** — one table, one tree, `parent_id` for structure and `path` as a derived index: a
   materialised path of ids with a leading and trailing slash (`/1/5/26/`), built from ids so a
-  rename costs nothing, and carrying the trailing slash so `/1/7/` cannot match `/1/70/`. `kind`
-  is fixed by depth — `ROOT` (one row, `Home`), `CATEGORY`, `SUB_CATEGORY`, `TAG` — and the tree
-  goes no deeper: `FolderService.create` derives the kind from the parent and refuses a child
-  under a tag folder. `name` is directory-safe (no `.`, no space, no `/`, unique among siblings,
-  case-insensitively) because the two upper names become directories; `display_name` is what a
-  person reads. `USER_HOME` is reserved for Phase 8.
-* **TagGroup** — what the old *general tag* was: a grouping label carried by a category
-  (`folder.tag_group_id`, required on a `CATEGORY` row, absent on every other kind). It is **not a
-  folder**, has no directory and no level in the tree; creating a category names an existing
-  group or a new one, and nothing below a category may carry one.
-* **FileInfo** — the *logical* file (e.g. "the Q3 report"). `folder_id` is `NOT NULL` and must
-  name a `TAG` folder (`FileService.targetFolderOf`). Holds `last_version` and the visibility
-  `state`.
+  rename or a move costs nothing, and carrying the trailing slash so `/1/7/` cannot match
+  `/1/70/`. `kind` is `ROOT` (one row, `Home`), `FOLDER` for everything below it, or `USER_HOME`
+  (reserved for Phase 8); `depth` is the level, and the only thing that varies with it. Every
+  folder below the root holds folders and files alike, down to
+  `filemanagement.folders.max-depth` — a limit for people, not for the code. `name` is
+  directory-safe (no `.`, no space, no `/`, at most 100 characters, unique among siblings,
+  case-insensitively) and one name is reserved at the top level, `folders`, the directory the
+  storage layout lives under; `display_name` is what a person reads.
+* **TagGroup** — what the old *general tag* was: a grouping label carried by a top-level folder
+  (`folder.tag_group_id`, required at depth 1, absent deeper). It is **not a folder**, has no
+  directory and no level in the tree; creating a top-level folder names an existing group or a
+  new one, a rename may change it, and nothing deeper may carry one. Managed on
+  `/settings/tag-groups` (`TagGroupService`): name, title, and a delete refused while a folder
+  carries the group or a tag sits in it.
+* **FileInfo** — the *logical* file (e.g. "the Q3 report"). `folder_id` is `NOT NULL` and names
+  any folder but the root (`FileService.targetFolderOf`). Holds `last_version` and the
+  visibility `state`.
 * **FileDetails** — one *concrete artefact*: a specific (version, format) pair of a `FileInfo`.
   Carries `file_name`, `file_extension`, `content_type`, `file_size`, `version`, `version_name`,
   and `storage_key` — the one record of where its bytes are.
 * **Tag / file_tag** — labels, not places. A file's tags are a *function of its folder chain*:
-  `TagMirrorService.tagsFor(tagFolder)` is one tag per level, in the category's group, named by
-  the folder name and titled by its label; `retag(file)` makes the set exactly that, and
-  `retagFilesUnder(folder)` re-derives the subtree on the one input that changes it, a rename.
-  Unique by `(group, name)`, so a sub-category and a tag both named `HSED` under one group are
-  *one* tag, carried once. `findIdsWhoseTagsDisagreeWithTheFolders` must be empty
-  (`FileServiceTest`, `FolderServiceTest`).
+  `TagMirrorService.tagsFor(folder)` is one tag per folder from the top level down to the file's
+  own, in the top-level folder's group, named by the folder name and titled by its label;
+  `retag(file)` makes the set exactly that, and `retagFilesUnder(folder)` re-derives the subtree
+  on the inputs that change it - a rename, a move, a change of group. Unique by `(group, name)`,
+  so two folders on one chain both named `HSED` are *one* tag, carried once.
+  `findIdsWhoseTagsDisagreeWithTheFolders` must be empty (`FileServiceTest`, `FolderServiceTest`).
 
 ### The chain of a file
 
-`FolderService.chainOf(tagFolder)` reads the three levels off a tag folder and its two loaded
-ancestors, and refuses any other kind. Everything that used to read the taxonomy reads the
-chain: the storage directory of a new file (`{category}/{subCategory}`), the label fields on
-`FileInfoDTO` (`fileCategoryName`, `fileSubCategoryName`, `tagName` and their descriptions, from
-the folders' `name` / `display_name`), the tree's node types, and the v2 object store's bucket and
-prefix. Queries that a converter will walk fetch the chain (`JOIN FETCH f.folder t JOIN FETCH
-t.parent s JOIN FETCH s.parent c LEFT JOIN FETCH c.tagGroup`), so a page of files is one query.
+`FolderService.ancestryOf(folders)` reads, for a whole page of files at once, every folder from
+the top level down to each file's own — one `findAllById` over the ids their paths name, which is
+what the materialised path is for, since a chain of any depth cannot be fetch-joined. Everything
+that used to read three fixed levels reads the chain: the `folderPath` / `folderTitle` on
+`FileInfoDTO` and `PublicFileDetailsDTO` (the labels joined with ` / `), the breadcrumb of a
+search hit in the tree, and the tags. Queries that a converter will walk fetch the file's folder
+(`JOIN FETCH f.folder`) and search across the ancestors with a path-prefix `EXISTS`.
 
 ### Where a file's name is unique
 
-Per **sub-category**, not per tag folder — because the bytes of every file under a sub-category
-share `{category}/{subCategory}/{name}/`, with no tag segment (section 5). The schema can express
-only the per-folder half (`uq_file_info_name_per_folder`); `FileInfoRepository.findByFileNameUnderSubCategory`
-is the rest, checked before every upload (400 → `DuplicateResourceException`, 409), and
-`saveByKey` refusing to overwrite an existing key is the last guard. The same name under another
-sub-category is another file.
+Per **folder** — `uq_file_info_name_per_folder`, and since `V2.9` the storage layout agrees:
+every file's bytes live under `folders/{folder id}/`, so the same name under a sibling folder is
+another file in another directory (section 5). `FileService.isDuplicate` is the friendly error;
+the constraint is the guarantee.
 
 ### Managing the tree
 
-`FolderService` is the one writer of `folder`: `create(parentId, …)`, `rename`, `delete`, each
-needing `WRITE` on the folder concerned (the parent, for a create and a delete) and each writing
-an `action_history` row. A rename changes names and labels only — stored keys and bytes never
-move, which is what `storage_key` is for — and re-tags the subtree. A delete takes an empty folder
-only (409 while it holds folders or files) and its grants go with it (`ON DELETE CASCADE`). The
-root and a `USER_HOME` are neither renamed nor deleted. The explorer is the screen for all three
-(section 6); there are no taxonomy pages any more.
+`FolderService` is the one writer of `folder`: `create(parentId, …)`, `rename`, `move`,
+`delete`, each needing `WRITE` on the folder concerned (the parent for a create and a delete,
+both parents for a move) and each writing an `action_history` row. A rename changes names,
+labels and — at the top level — the group; a move rewrites `parent`, `depth` and `path` for the
+whole subtree in one transaction, refuses the folder's own subtree, the depth limit and a taken
+sibling name, and carries the tag group across (a folder moved to the top level keeps the group
+it came from; a top-level folder moved beneath another loses its own). Neither moves a byte or
+rewrites a key — that is what `storage_key` is for — and both re-tag the subtree. A delete takes
+an empty folder only (409 while it holds folders or files) and its grants go with it
+(`ON DELETE CASCADE`). The root and a `USER_HOME` are neither renamed, moved nor deleted. The
+explorer is the screen for all four (section 6).
 
 ### How the entities are mapped
 
@@ -204,16 +211,24 @@ registered as `@Service("fileSystem") @Primary` and takes `${file.management.bas
 
 ```
 {base-dir}/
-└── {category folder name}/             created on first write (saveByKey creates parents)
-    └── {sub-category folder name}/
-        └── {fileNameWithoutExtension}/ no tag segment: names are unique per sub-category
+├── folders/                            every file uploaded since V2.9 (saveByKey creates parents)
+│   └── {folder id}/
+│       └── {fileNameWithoutExtension}/
+│           └── v{version}/
+│               └── {fileName}.{ext}
+└── {category name}/                    files stored before V2.9, under the names of the two
+    └── {sub-category name}/            folders above them as they stood when written
+        └── {fileNameWithoutExtension}/
             └── v{version}/
                 └── {fileName}.{ext}
 ```
 
-The names in a key are the folder names *at the time the first version was written*; a later
-rename does not move anything, and a later version of the same file goes beside the first
-(`FileService.directoryOf`, read off the existing key), not under the new names.
+By folder *id* so that renaming or moving any folder above a file changes nothing on disk; the
+old layout stays where it is, because a key records where the bytes went and nothing rebuilds it.
+A later version of a file goes beside its first version whichever layout wrote that
+(`FileService.directoryOf`, read off the existing key). The two layouts share one root, which is
+why no top-level folder may be named `folders`: `FolderService` refuses the name and `V2.9`
+refuses to run where one exists.
 
 The interface now has two halves, and which one a caller uses is not a matter of taste.
 
@@ -262,7 +277,7 @@ There are four parallel HTTP surfaces over the same services:
 
 | Package | Base path | Returns | Auth | Purpose |
 |---|---|---|---|---|
-| `controller/` | `/files`, `/file-categories`, `/file-sub-categories`, `/main-tags`, `/general-tags`, `/users`, `/roles`, `/api-keys`, `/settings/upload`, `/settings/content-kinds`, `/file-explorer`, `/` | Thymeleaf view names | form login, session | the UI |
+| `controller/` | `/files`, `/users`, `/roles`, `/api-keys`, `/settings/upload`, `/settings/content-kinds`, `/settings/tag-groups`, `/files/explorer`, `/` | Thymeleaf view names | form login, session | the UI |
 | `resource/` | `/resource/**` | JSON (`ApiResult` or a DTO) | form login, session, CSRF | AJAX called by the pages themselves |
 | `api/` | `/api/v1/files` | JSON | HTTP Basic, stateless | external integrations (the shared machine account) |
 | `api/` | `/api/v2/{bucket}` | JSON, S3-style | `Authorization: Bearer fmk_…` (an API key), stateless | external integrations, scoped to folders |
@@ -354,8 +369,9 @@ document, so a browser navigation still lands on a page.
 |---|---|
 | GET | `/resource/folders/children?folderId=&page=&size=`, `/resource/folders/search?query=&folderId=` (`REST_GET_FOLDER_CONTENT` / `REST_SEARCH_FOLDER_CONTENT`, or `FILE_EXPLORER_PAGE`) |
 | GET | `/resource/folders/tag-groups` (`REST_GET_TAG_GROUPS` or `REST_CREATE_FOLDER`) |
-| POST | `/resource/folders` `{parentId, name, displayName, tagGroupId | newTagGroupName}` → 201 (`REST_CREATE_FOLDER`; a category needs a group, nothing else takes one) |
-| PUT | `/resource/folders/{id}` `{name, displayName}` (`REST_RENAME_FOLDER`) |
+| POST | `/resource/folders` `{parentId, name, displayName, tagGroupId | newTagGroupName}` → 201 (`REST_CREATE_FOLDER`; under the root a group is needed, deeper none is taken; 400 past the depth limit) |
+| PUT | `/resource/folders/{id}` `{name, displayName, tagGroupId?}` (`REST_RENAME_FOLDER`; the group only at the top level) |
+| PUT | `/resource/folders/{id}/move` `{parentId}` (`REST_MOVE_FOLDER`; 400 into itself, past the depth limit; 409 on a taken name) |
 | DELETE | `/resource/folders/{id}` → `{"outcome":"DELETED","resource":"folder"}`, 409 while not empty (`REST_DELETE_FOLDER`) |
 | DELETE, PUT | `/resource/files/file-info/{id}`, `.../change-state` |
 | DELETE, PUT | `/resource/files/file-info/{id}/file-details/{fdId}`, `.../change-state/{newState}` |
@@ -370,7 +386,7 @@ document, so a browser navigation still lands on a page.
 | Method | Path | Permission |
 |---|---|---|
 | GET | `/health-test` | `API_HEALTH_TEST` |
-| POST | `/` (multipart, `?public-file=0` for private; the place is `folderId`, the id of a tag folder — a request without it is a 400 naming the parameter; the pre-step-4 triple is ignored) | `API_SAVE_NEW_FILE` |
+| POST | `/` (multipart, `?public-file=0` for private; the place is `folderId`, the id of any folder below the root — a request without it is a 400 naming the parameter; the pre-step-4 triple is ignored) | `API_SAVE_NEW_FILE` |
 | DELETE | `/file-info/{fileInfoId}/file-details/{fileDetailsId}` | `API_DELETE_FILE_DETAILS` |
 | DELETE | `/file-details/{fileDetailsId}` (the same delete by the version's id alone) | `API_DELETE_FILE_DETAILS` |
 | GET | `/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` |
@@ -395,10 +411,10 @@ own scopes, never its creator's. A bucket is a top-level folder, matched case-in
 | Method | Path | Answers |
 |---|---|---|
 | GET | `/{bucket}?prefix=&delimiter=/&max-keys=&continuation-token=` | 200 listing; 404 no such bucket; 403 outside the key's folders |
-| GET | `/{bucket}/{sub}/{tag}/{file}/v{n}/{file}.{ext}` | 200 bytes with `ETag`, `Last-Modified`, `x-fm-version`; 206 for a `Range`; 404; 403 |
+| GET | `/{bucket}/{folders…}/{file}/v{n}/{file}.{ext}` (zero or more folder segments below the bucket) | 200 bytes with `ETag`, `Last-Modified`, `x-fm-version`; 206 for a `Range`; 404; 403 |
 | GET | `…?metadata`, or `HEAD` on the URL above | 200 metadata as JSON / headers only |
-| PUT | `/{bucket}/{sub}/{tag}/{file}/{file}.{ext}` — **no** version segment; the body is the file | 201 with the canonical key and `x-fm-version`; 409 if the key names a version or the name is taken under a sibling tag; 403 without `WRITE` on the tag folder |
-| DELETE | `/{bucket}/{sub}/{tag}/{file}/v{n}/{file}.{ext}` | 204; removing the last version removes the file |
+| PUT | `/{bucket}/{folders…}/{file}/{file}.{ext}` — **no** version segment; the body is the file | 201 with the canonical key and `x-fm-version`; 409 if the key names a version; 403 without `WRITE` on the folder |
+| DELETE | `/{bucket}/{folders…}/{file}/v{n}/{file}.{ext}` | 204; removing the last version removes the file |
 
 Not S3-compatible: no Signature V4, no XML, so the AWS CLI and SDKs do not connect (roadmap 9.4).
 A runnable client — upload, inspect, download, list, delete, standard library only — is in
@@ -464,8 +480,8 @@ carries `@PreAuthorize("hasAuthority('X') || hasAuthority('ADMIN')")`.
 Since Phase 6 there is a second, independent question: not "may this user list folders" but "may this
 user see *this* folder". Both must pass.
 
-* `folder` is the tree — `Home` → category → sub-category → tag — written only by `FolderService`
-  (section 4).
+* `folder` is the tree — `Home` and folders beneath it to any depth — written only by
+  `FolderService` (section 4).
 * A grant is a row in `role_folder` or `user_folder` naming a folder and a verb, and it covers
   everything beneath that folder. `folder.path` is a materialised path of ids with a leading and
   trailing slash (`/1/5/26/`), so "is this inside that grant?" is a prefix test and an indexed range
@@ -603,10 +619,9 @@ POST /files (multipart)
        ├─ @PreAuthorize SAVE_NEW_FILE || ADMIN
        ├─ @Validated(InsertValidation) → @ValidFile asks ContentTypes (catalogued extension + first bytes)
        └─ FileService.createNewFile(dto, principalId, publicFile)          @Transactional
-            ├─ targetFolderOf(dto): folderId → a TAG folder, else 400
+            ├─ targetFolderOf(dto): folderId → any folder but the root, else 400
             ├─ folderAccessService.requireWriteAccess(access, folder)
-            ├─ FolderService.chainOf(folder) → category / sub-category / tag
-            ├─ findByFileNameUnderSubCategory(chain.subCategory, baseName) → 409 if taken
+            ├─ isDuplicate(baseName, folder) → 409 if taken in this folder
             ├─ ValidationUtil.checkCorrectFileName
             ├─ build FileInfo (folder, state, lastVersion = 1); tagMirrorService.retag(fileInfo)
             ├─ build FileDetails v1: UploadPolicyService.requireAllowed(principal, file) → kind and size for this person
@@ -641,6 +656,7 @@ migrations themselves, in `src/main/resources/db/migration`:
 | `V2.5__Normalise_Content_Type.sql` | data only: `file_details.content_type` rewritten from the extension for the nine accepted kinds, so the column holds the server's word rather than the client's (issues 12, 13) |
 | `V2.6__Add_Upload_Policy.sql` | `upload_policy` (one system-wide row, `role_id` null; one per role that has its own), `upload_policy_rule` (extension → `max_size_bytes`); the system-wide row seeded with the nine default kinds at 20 MB |
 | `V2.7__Add_Content_Kind.sql` | `content_kind`: the custom half of the content catalogue - extension, media type, and a byte signature at an offset or "text only"; empty until an administrator adds one |
+| `V2.9__Folders_Any_Depth.sql` | Folders of any depth: refuses to run where a top-level folder or a stored key is named `folders`; `CATEGORY` / `SUB_CATEGORY` / `TAG` become `FOLDER`; `REST_MOVE_FOLDER` (mapped onto the roles that may rename) and the three `TAG_GROUP` page permissions |
 | `V2.8__Remove_Taxonomy.sql` | Phase 7 step 4. Fails fast first: `file_info.folder_id NOT NULL`, `uq_file_info_name_per_folder`, `folder.tag_group_id` backfilled from each category's general tag and required on every `CATEGORY` row. Then the four `REST_*_FOLDER` / `REST_GET_TAG_GROUPS` permissions, mapped onto the roles that held the taxonomy ones; the 27 taxonomy permissions deleted; `file_info` / `file_details` lose `file_path`, `relative_path`, `file_sub_category_id`, `main_tag_file_id`; `folder` loses `general_tag_id`, `source_type`, `source_id`; `main_tag_file`, `file_sub_category`, `file_category`, `general_tag` dropped. Not reversible without the backup |
 
 `V1.3` turns four rules that lived only in application code into constraints: a sub-category name is
@@ -679,6 +695,7 @@ schema at startup but never modifies it.
 | `file.management.base-dir` | `./TempFiles/files/main/` | `FileStorageFileSystemService` |
 | `spring.servlet.multipart.max-file-size` / `max-request-size` | `20MB` | |
 | `filemanagement.default.page-size` / `element-size` | `30` | injected per-controller with `@Value` |
+| `filemanagement.folders.max-depth` | `6` | `FolderService`: how deep the tree may go below `Home`; a create or a move past it is a 400 |
 | `filemanagement.auth.ldap.activedirectory.enabled` / `.domain` / `.url` | `false`, `hnp.local`, `ldap://172.29.76.9` | |
 
 Note the two different prefixes (`file.management.*` and `filemanagement.*`) and that no

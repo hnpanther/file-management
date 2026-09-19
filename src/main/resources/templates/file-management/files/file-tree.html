@@ -44,8 +44,8 @@
 
                 <!--
                   A label alone does not tell two identically-named branches apart (issue 73 -
-                  a main tag can carry the exact name of an unrelated sub-category elsewhere in
-                  the same category), so this finds a file by id or name and opens a path straight
+                  a folder can carry the exact name of an unrelated folder elsewhere in the same
+                  top-level folder), so this finds a file by id or name and opens a path straight
                   to it instead of asking the user to guess which same-looking folder holds it.
                 -->
                 <form class="mb-4 flex flex-wrap items-start gap-2" @submit.prevent="runSearch()">
@@ -70,7 +70,7 @@
                                 <button type="button" class="w-full text-start" @click="revealHit(hit)">
                                     <span class="technical block" x-text="hit.fileName"></span>
                                     <span class="block text-xs text-ink-400"
-                                          x-text="hit.categoryTitle + ' ◂ ' + hit.subCategoryTitle + ' ◂ ' + hit.mainTagTitle"></span>
+                                          x-text="hit.folderTitles.join(' ◂ ')"></span>
                                 </button>
                             </li>
                         </template>
@@ -231,11 +231,11 @@
             },
 
             /**
-             * Opens every folder (category, sub-category, main tag) but stops short of files.
-             * A file's versions are metadata the user asks for one file at a time, not something
-             * a bulk expand should fetch - on real data a single tag can hold dozens of files,
-             * each with its own version list, so also opening every file here turns "expand all"
-             * into one HTTP request per file in the whole taxonomy.
+             * Opens every folder but stops short of files. A file's versions are metadata the
+             * user asks for one file at a time, not something a bulk expand should fetch - on
+             * real data a single folder can hold dozens of files, each with its own version list,
+             * so also opening every file here turns "expand all" into one HTTP request per file
+             * in the whole tree.
              */
             async expandAll() {
                 let index = 0;
@@ -343,36 +343,22 @@
             },
 
             /**
-             * Opens category -> sub-category -> main tag in turn (each already present as a row,
-             * since categories load at init and every level is fetched by the time its child is
-             * reached) and stops at the file itself - its versions are not needed to show where it
-             * lives. Scrolls the file row into view and flags it for the highlight in app.css.
+             * Opens each folder on the way down in turn (each already present as a row, since the
+             * top level loads at init and every level is fetched by the time its child is reached)
+             * and stops at the file itself - its versions are not needed to show where it lives.
+             * Scrolls the file row into view and flags it for the highlight in app.css.
              */
             async revealHit(hit) {
                 this.searchResults = [];
 
-                const category = this.rows.find(r => r.type === "CATEGORY" && r.id === hit.categoryId);
-                if (!category) {
-                    return;
-                }
-                if (!category.open) {
-                    await this.open(category);
-                }
-
-                const subCategory = this.rows.find(r => r.type === "SUB_CATEGORY" && r.id === hit.subCategoryId);
-                if (!subCategory) {
-                    return;
-                }
-                if (!subCategory.open) {
-                    await this.open(subCategory);
-                }
-
-                const mainTag = this.rows.find(r => r.type === "MAIN_TAG" && r.id === hit.mainTagId);
-                if (!mainTag) {
-                    return;
-                }
-                if (!mainTag.open) {
-                    await this.open(mainTag);
+                for (const folderId of hit.folderIds) {
+                    const folder = this.rows.find(r => r.type === "FOLDER" && r.id === folderId);
+                    if (!folder) {
+                        return;
+                    }
+                    if (!folder.open) {
+                        await this.open(folder);
+                    }
                 }
 
                 const file = this.rows.find(r => r.type === "FILE" && r.id === hit.fileId);

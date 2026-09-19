@@ -14,11 +14,11 @@ Read this together with:
 ## Project in one paragraph
 
 Spring Boot MVC application. Thymeleaf UI plus a REST API. Files go on the local filesystem, metadata
-in MySQL. One folder tree, exactly three levels deep (`Folder` CATEGORY → SUB_CATEGORY → TAG,
-under one ROOT), with files (`FileInfo → FileDetails`) in tag folders only; the two upper folder
-names are also the directories on disk, and a category carries a `TagGroup` (the old "general
-tag", which is a label group and **not** a folder). Authorities are fine-grained per-endpoint
-permissions, not roles. Package root `com.hnp.filemanagement`.
+in MySQL. One folder tree of any depth up to a limit (`Folder`, one `ROOT`), with files
+(`FileInfo → FileDetails`) in any folder below the root, stored on disk by folder id; a top-level
+folder carries a `TagGroup` (the old "general tag", which is a label group and **not** a folder).
+Authorities are fine-grained per-endpoint permissions, not roles. Package root
+`com.hnp.filemanagement`.
 
 ## Commands
 

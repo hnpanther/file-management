@@ -175,6 +175,11 @@
                     <i class="bi bi-file-earmark-code app-nav-icon" aria-hidden="true"></i>
                     <span th:text="#{nav.access.contentKinds}">انواع فایل</span>
                 </a>
+                <a sec:authorize="hasAuthority('TAG_GROUP_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/settings/tag-groups}" class="app-nav-link">
+                    <i class="bi bi-tags app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.access.tagGroups}">برچسب‌های عمومی</span>
+                </a>
             </section>
 
             <div sec:authorize="isAuthenticated()" class="mt-auto border-t border-ink-100 pt-3">

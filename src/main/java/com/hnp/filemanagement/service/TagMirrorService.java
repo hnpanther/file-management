@@ -7,6 +7,7 @@ import com.hnp.filemanagement.entity.TagGroup;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.repository.FileInfoRepository;
+import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.TagRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -14,7 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * The only thing that writes {@code tag} and {@code file_tag} (roadmap 7.2 step 2, 7.3).
@@ -23,15 +27,16 @@ import java.util.Set;
  * back, and get-or-create everywhere so that data written behind the services is converged on
  * rather than failed on.
  *
- * <p><b>A file's tags are a function of its folder chain</b>, nothing more, for this whole
- * phase: the category, the sub-category and the tag folder it sits under, each as a tag in the
- * group the category folder carries. {@link #retag} makes a file's set exactly that, and is
- * called wherever the function's inputs change - an upload, and a folder rename.
- * {@code FileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders} is the check that this held.
+ * <p><b>A file's tags are a function of its folder chain</b>, nothing more: every folder from
+ * the top level down to the one it sits in, each as a tag in the group the top-level folder
+ * carries. {@link #retag} makes a file's set exactly that, and is called wherever the function's
+ * inputs change - an upload, a folder rename, a folder move, a change of a top-level folder's
+ * group. {@code FileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders} is the check that this
+ * held.
  *
  * <p>A tag's title is copied when the tag is created and not followed afterwards. Names merge
- * within a group (a sub-category and a tag folder both called {@code HSED} are one tag), so
- * "which folder's label wins" has no answer until tags are edited as tags, which is step 5.
+ * within a group (two folders on one chain both called {@code HSED} are one tag), so "which
+ * folder's label wins" has no answer until tags are edited as tags.
  */
 @Service
 @Transactional(propagation = Propagation.MANDATORY)
@@ -39,10 +44,13 @@ public class TagMirrorService {
 
     private final TagRepository tagRepository;
     private final FileInfoRepository fileInfoRepository;
+    private final FolderRepository folderRepository;
 
-    public TagMirrorService(TagRepository tagRepository, FileInfoRepository fileInfoRepository) {
+    public TagMirrorService(TagRepository tagRepository, FileInfoRepository fileInfoRepository,
+                            FolderRepository folderRepository) {
         this.tagRepository = tagRepository;
         this.fileInfoRepository = fileInfoRepository;
+        this.folderRepository = folderRepository;
     }
 
     /** Makes this file's tags exactly the ones its folder chain says. */
@@ -64,22 +72,33 @@ public class TagMirrorService {
         }
     }
 
-    /** The tags a file in this tag folder carries: one per level, deduplicated by name. */
-    public Set<Tag> tagsFor(Folder tagFolder) {
-        FolderService.Chain chain = FolderService.chainOf(tagFolder);
-        TagGroup group = chain.category().getTagGroup();
+    /** The tags a file in this folder carries: one per folder on the chain, deduplicated by name. */
+    public Set<Tag> tagsFor(Folder folder) {
+        List<Folder> chain = chainOf(folder);
+        if (chain.isEmpty()) {
+            throw new BusinessException("folder id=" + folder.getId() + " is the root; a file cannot be filed there");
+        }
+        TagGroup group = chain.getFirst().getTagGroup();
         if (group == null) {
-            throw new BusinessException("category folder id=" + chain.category().getId()
+            throw new BusinessException("top-level folder id=" + chain.getFirst().getId()
                     + " has no tag group; the tags of the files beneath it cannot be derived");
         }
 
         // Order matters for a name two levels share: the first to claim it sets the title, and
         // that is the higher level, as in the migration's backfill.
         Set<Tag> tags = new LinkedHashSet<>();
-        tags.add(tagOf(group, chain.category()));
-        tags.add(tagOf(group, chain.subCategory()));
-        tags.add(tagOf(group, chain.tag()));
+        for (Folder each : chain) {
+            tags.add(tagOf(group, each));
+        }
         return tags;
+    }
+
+    /** The folders on this one's path, outermost first, itself last; the root left out. */
+    private List<Folder> chainOf(Folder folder) {
+        List<Integer> ids = FolderService.idsIn(folder.getPath());
+        Map<Integer, Folder> byId = folderRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(Folder::getId, Function.identity()));
+        return FolderService.chainFrom(folder.getPath(), byId);
     }
 
     // ------------------------------------------------------------------ get-or-create

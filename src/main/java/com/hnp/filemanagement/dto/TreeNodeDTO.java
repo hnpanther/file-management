@@ -16,12 +16,8 @@ import lombok.Data;
 public class TreeNodeDTO {
 
     public enum NodeType {
-        /** Creates a directory today. */
-        CATEGORY,
-        /** Creates a directory today. */
-        SUB_CATEGORY,
-        /** Metadata today, a folder in the target model. */
-        MAIN_TAG,
+        /** Any folder below the root; holds folders and files alike. */
+        FOLDER,
         /** A logical file - the directory that holds its versions. */
         FILE,
         /** A version directory, v1, v2 ... */
@@ -41,7 +37,7 @@ public class TreeNodeDTO {
     /** Persian label shown to the user. Falls back to {@link #name} when there is none. */
     private String title;
 
-    /** Small muted note on the right of the row: the general tag, a version name, a size. */
+    /** Small muted note on the right of the row: a top-level folder's tag group, a version name, a size. */
     private String note;
 
     /** Whether the twisty should be offered. Leaves render an invisible spacer instead. */

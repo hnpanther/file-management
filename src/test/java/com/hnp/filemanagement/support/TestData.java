@@ -131,22 +131,21 @@ public final class TestData {
     }
 
     /**
-     * One folder under a parent, unsaved, with the kind the level implies. The path holds the
-     * row's own id, which only the insert assigns, so a caller that saves it must call
-     * {@link #placed(Folder)} afterwards - {@link FolderFixture} does both.
+     * One folder under a parent, unsaved. The path holds the row's own id, which only the insert
+     * assigns, so a caller that saves it must call {@link #placed(Folder)} afterwards -
+     * {@link FolderFixture} does both. A group goes on a top-level folder only, as the service
+     * insists.
      */
     public static Folder folder(User creator, Folder parent, String name, TagGroup group) {
+        if (group != null && parent.getKind() != FolderKind.ROOT) {
+            throw new IllegalArgumentException("only a top-level folder carries a tag group");
+        }
         Folder folder = new Folder();
         folder.setParent(parent);
         folder.setName(name);
         folder.setDisplayName(name + " description");
         folder.setDepth(parent.getDepth() + 1);
-        folder.setKind(switch (parent.getKind()) {
-            case ROOT -> FolderKind.CATEGORY;
-            case CATEGORY -> FolderKind.SUB_CATEGORY;
-            case SUB_CATEGORY -> FolderKind.TAG;
-            default -> throw new IllegalArgumentException("a " + parent.getKind() + " folder holds no folders");
-        });
+        folder.setKind(FolderKind.FOLDER);
         folder.setTagGroup(group);
         folder.setEnabled(1);
         folder.setState(0);
@@ -161,8 +160,8 @@ public final class TestData {
         return saved;
     }
 
-    /** A file with no versions yet, in a tag folder; add versions with {@link #fileDetails}. */
-    public static FileInfo fileInfo(User creator, Folder tagFolder, String fileName) {
+    /** A file with no versions yet, in a folder; add versions with {@link #fileDetails}. */
+    public static FileInfo fileInfo(User creator, Folder folder, String fileName) {
         FileInfo fileInfo = new FileInfo();
         fileInfo.setFileName(fileName);
         fileInfo.setCodeName(fileName);
@@ -172,7 +171,7 @@ public final class TestData {
         fileInfo.setEnabled(1);
         fileInfo.setState(0);
         fileInfo.setCreatedBy(creator);
-        fileInfo.setFolder(tagFolder);
+        fileInfo.setFolder(folder);
         return fileInfo;
     }
 
@@ -189,9 +188,8 @@ public final class TestData {
         fileDetails.setFileExtension(extension);
         fileDetails.setContentType("application/octet-stream");
         fileDetails.setDescription(fileName + " description");
-        // The key as FileService writes it: the two upper folder names, the file, the version.
-        Folder tag = fileInfo.getFolder();
-        String storageKey = tag.getParent().getParent().getName() + "/" + tag.getParent().getName()
+        // The key as FileService writes it since V2.9: a directory per folder id, the file, the version.
+        String storageKey = "folders/" + fileInfo.getFolder().getId()
                 + "/" + fileInfo.getFileName() + "/v" + version + "/" + fileName;
         fileDetails.setStorageKey(storageKey);
         fileDetails.setFileSize(1024);

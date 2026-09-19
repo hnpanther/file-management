@@ -44,8 +44,8 @@ import java.util.stream.Collectors;
  * level-first: it answers "the sub-categories of this category", "the tags of this
  * sub-category" — one kind of level at a time. This one is folder-first: child folders come
  * straight out of the {@code folder} table by {@code parent_id}, and the files the same way,
- * from {@code file_info.folder_id}. A file can be *in* a {@code TAG} folder and nowhere else, so
- * the response tells the client which folders can hold files from {@code kind}.
+ * from {@code file_info.folder_id}. Any folder but the root holds files (since {@code V2.9}), and
+ * the response says which from {@code kind}.
  *
  * <p><b>Folders are not paged, files are.</b> One level of folders is bounded by the tree - the
  * widest node on the installation this was measured against holds 29 children - and paging them
@@ -73,15 +73,18 @@ public class FolderContentService {
     private final FileInfoRepository fileInfoRepository;
     private final FileDetailsRepository fileDetailsRepository;
     private final FolderAccessService folderAccessService;
+    private final FolderService folderService;
 
     public FolderContentService(FolderRepository folderRepository,
                                 FileInfoRepository fileInfoRepository,
                                 FileDetailsRepository fileDetailsRepository,
-                                FolderAccessService folderAccessService) {
+                                FolderAccessService folderAccessService,
+                                FolderService folderService) {
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.folderAccessService = folderAccessService;
+        this.folderService = folderService;
     }
 
     /**
@@ -108,8 +111,9 @@ public class FolderContentService {
         return new FolderContentDTO(
                 refOf(folder),
                 readable,
-                folder.getKind() == FolderKind.TAG && access.canWrite(folder.getPath()),
+                FolderService.canHoldFiles(folder) && access.canWrite(folder.getPath()),
                 access.canWrite(folder.getPath()),
+                folderService.canHoldFolders(folder),
                 breadcrumbOf(folder),
                 childFoldersOf(folder, access),
                 filePage == null ? List.of() : entriesOf(filePage.getContent()),
@@ -356,7 +360,7 @@ public class FolderContentService {
                 ChildCount::parentId, ChildCount::total, (a, b) -> a, LinkedHashMap::new));
     }
 
-    /** The tag group that labels a category, shown as a muted note. Null everywhere else. */
+    /** The tag group that labels a top-level folder, shown as a muted note. Null everywhere else. */
     private static String noteOf(Folder folder) {
         return folder.getTagGroup() == null ? null : folder.getTagGroup().getTitle();
     }
@@ -364,16 +368,12 @@ public class FolderContentService {
     // ------------------------------------------------------------------ files
 
     /**
-     * The page of files directly in this folder, by {@code file_info.folder_id}, or null when the
-     * folder cannot hold any.
-     *
-     * <p>Null for anything but a {@code TAG} folder: uploading still files a document under a main
-     * tag and nowhere else (roadmap 7.2 step 5 changes that), so a category folder is not "empty of
-     * files" - it cannot hold one - and the client tells the two apart from {@code kind} rather than
-     * from an empty list. The read itself no longer cares about the kind.
+     * The page of files directly in this folder, by {@code file_info.folder_id}, or null for the
+     * root, which cannot hold any - the client tells "empty" and "cannot hold files" apart from
+     * {@code kind} rather than from an empty list.
      */
     private Page<FileInfo> filePageOf(Folder folder, PageRequest pageRequest) {
-        if (folder.getKind() != FolderKind.TAG) {
+        if (!FolderService.canHoldFiles(folder)) {
             return null;
         }
         return fileInfoRepository.findByFolderId(folder.getId(), pageRequest);

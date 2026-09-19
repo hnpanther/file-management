@@ -610,6 +610,54 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 1.3.0 to 1.4.0 — folders of any depth
+
+A jar swap with one migration (`V2.9`). Take the database backup first, as always. Watch the
+log for `Successfully applied 1 migration`; the four new permissions are inserted by the
+migration itself, so no `seeded` line follows.
+
+**Before:** one check, which the migration also makes and refuses to run on:
+
+```sql
+SELECT id, name FROM folder WHERE depth = 1 AND LOWER(name) = 'folders';
+SELECT COUNT(*) FROM file_details WHERE storage_key LIKE 'folders/%';
+```
+
+Both must be empty. `folders/` is where every file uploaded from 1.4.0 on is stored — by
+folder id, not by folder names — and it shares `base-dir` with the old layout. A top-level folder
+of that name has to be renamed first (from the explorer, on 1.3.0).
+
+**What changes:**
+
+1. **The tree has no fixed levels any more.** Every folder below `Home` takes folders and files
+   alike, down to `filemanagement.folders.max-depth` (default 6; set it in
+   `application.properties` or `FILEMANAGEMENT_FOLDERS_MAX_DEPTH`). The explorer offers "new
+   folder" wherever the limit allows, "upload here" on any folder but `Home`, and a new
+   "انتقال" (move) that picks the target with a folder chooser. Existing folders keep their
+   places; only their `kind` becomes `FOLDER`.
+
+2. **New files are stored under `{base-dir}/folders/{folder id}/…`.** Files stored before stay
+   where they are and keep working — a version's `storage_key` is what is read, never the
+   folder names. A backup of `base-dir` now has two layouts side by side; that is expected.
+
+3. **A file name is unique per folder.** The per-sub-category rule that 1.3.0 kept because of the
+   old disk layout is gone: the same name under a sibling folder is another file.
+
+4. **Grant `REST_MOVE_FOLDER`** to whoever should move folders — the migration gives it to every
+   role that holds `REST_RENAME_FOLDER`. The tag-group settings page (`/settings/tag-groups`,
+   the general tags' form) is behind `TAG_GROUP_PAGE`, `SAVE_TAG_GROUP` and `DELETE_TAG_GROUP`;
+   `ADMIN` needs nothing.
+
+5. **The upload form asks for the target with a folder chooser** instead of three selects; the
+   file pages show the folder path instead of category / sub-category / tag. Nothing changes
+   for `/api/v1/files` or `/api/v2`: `folderId` may now be any folder below the root, and a v2
+   key may have any number of folder segments (including none - a file directly in the bucket).
+
+**Rollback:** restore the database backup and start the 1.3.0 jar; files uploaded on 1.4.0 are
+under `base-dir/folders/` but not in the restored database. `V2.9` changes one column's values
+and adds permissions, so on a database that has run it the 1.3.0 jar would fail on the unknown
+`FOLDER` kind — the backup is the way back.
+
 ### Upgrading from 1.2.0 to 1.3.0 — Phase 7 step 4
 
 **This is the one upgrade in this project that a restored backup is the only way back from.**

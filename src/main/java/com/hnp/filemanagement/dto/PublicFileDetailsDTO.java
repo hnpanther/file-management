@@ -15,11 +15,8 @@ public class PublicFileDetailsDTO {
 
     private String description;
 
-    private String categoryNameDescription;
-
-    private String subCategoryNameDescription;
-
-    private String tagDescription;
+    /** The folders above the file, outermost first, as one readable line. */
+    private String folderTitle;
 
     private String version;
 

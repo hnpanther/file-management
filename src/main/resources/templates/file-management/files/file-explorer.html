@@ -143,12 +143,13 @@
                         <span th:text="#{explorer.uploadHere}">بارگذاری در این پوشه</span>
                     </a>
                     <!--
-                      Managing the tree (Phase 7 step 4): a new child under a folder that can hold
-                      one, a rename, and a delete of an empty folder. Shown where the caller holds
-                      WRITE on the folder on screen; each endpoint checks its own permission.
+                      Managing the tree (Phase 7 step 4; any depth since V2.9): a new child while
+                      the depth limit allows one, a rename, a move, and a delete of an empty
+                      folder. Shown where the caller holds WRITE on the folder on screen; each
+                      endpoint checks its own permission.
                     -->
                     <button type="button" class="btn btn-secondary btn-sm" x-cloak
-                            x-show="manageable && folder && folder.kind !== 'TAG' && folder.kind !== 'USER_HOME'"
+                            x-show="manageable && canHoldFolders"
                             @click="openManage('create')"
                             sec:authorize="hasAuthority('REST_CREATE_FOLDER') || hasAuthority('ADMIN')">
                         <i class="bi bi-folder-plus" aria-hidden="true"></i>
@@ -160,6 +161,13 @@
                             sec:authorize="hasAuthority('REST_RENAME_FOLDER') || hasAuthority('ADMIN')">
                         <i class="bi bi-pencil" aria-hidden="true"></i>
                         <span th:text="#{explorer.manage.rename}">تغییر نام</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" x-cloak
+                            x-show="manageable && folder && folder.kind !== 'ROOT' && folder.kind !== 'USER_HOME'"
+                            @click="openMove()"
+                            sec:authorize="hasAuthority('REST_MOVE_FOLDER') || hasAuthority('ADMIN')">
+                        <i class="bi bi-arrows-move" aria-hidden="true"></i>
+                        <span th:text="#{explorer.manage.move}">انتقال</span>
                     </button>
                     <button type="button" class="btn btn-secondary btn-sm" x-cloak
                             x-show="manageable && folder && folder.kind !== 'ROOT' && folder.kind !== 'USER_HOME' && folders.length === 0 && files.length === 0"
@@ -198,18 +206,23 @@
                         <span th:text="#{explorer.manage.label}">عنوان نمایشی</span>
                         <input type="text" class="form-control" x-model="manage.displayName" maxlength="200">
                     </label>
-                    <!-- A category carries a tag group: pick one, or name a new one. -->
-                    <template x-if="manage.mode === 'create' && folder && folder.kind === 'ROOT'">
+                    <!--
+                      A top-level folder carries a tag group: creating one under the root picks
+                      an existing group or names a new one; renaming a top-level folder may
+                      change its group (blank keeps it).
+                    -->
+                    <template x-if="manageTagGroup()">
                         <div class="explorer-manage-field">
                             <span th:text="#{explorer.manage.tagGroup}">برچسب عمومی (گروه تگ)</span>
                             <div class="flex flex-wrap gap-2">
                                 <select class="form-control" x-model="manage.tagGroupId">
-                                    <option value="" th:text="#{explorer.manage.newTagGroup}">گروه جدید...</option>
+                                    <option value="" x-text="manage.mode === 'create' ? EX.newTagGroup : EX.keepTagGroup"></option>
                                     <template x-for="g in manage.groups" :key="g.id">
                                         <option :value="g.id" x-text="g.title + ' (' + g.name + ')'"></option>
                                     </template>
                                 </select>
-                                <input type="text" class="form-control" x-show="!manage.tagGroupId" x-model="manage.newTagGroupName"
+                                <input type="text" class="form-control" x-show="manage.mode === 'create' && !manage.tagGroupId"
+                                       x-model="manage.newTagGroupName"
                                        maxlength="100" th:placeholder="#{explorer.manage.newTagGroupName}">
                             </div>
                         </div>
@@ -226,6 +239,38 @@
                     <span class="text-sm text-red-600" x-text="manage.error" x-show="manage.error"></span>
                 </div>
             </form>
+
+            <!--
+              Moving the folder on screen: the shared chooser picks the new parent (the root
+              included - a folder moved there becomes a top-level one and keeps its group), then
+              one PUT. No byte moves; the tree and the table are re-read afterwards.
+            -->
+            <div class="explorer-manage" x-show="move.open" x-cloak>
+                <p class="text-sm text-ink-700">
+                    <span th:text="#{explorer.manage.moveTo}">انتقال پوشهٔ</span>
+                    <strong x-text="folder ? folder.title : ''"></strong>
+                    <span th:text="#{explorer.manage.moveToSuffix}">به:</span>
+                </p>
+                <template x-if="move.open">
+                    <div x-data="folderChooser({
+                             url: EX.childrenUrl, initialId: null, initialPath: [],
+                             rootTitle: EX.rootTitle, selectRoot: true, copy: { loadFailed: EX.loadFailed }
+                         })"
+                         @folder-chosen="move.target = $event.detail">
+                        <div th:replace="~{fragments.html :: folder-chooser}"></div>
+                    </div>
+                </template>
+                <div class="flex items-center gap-2">
+                    <button type="button" class="btn btn-primary btn-sm" :disabled="move.busy || !move.target" @click="submitMove()">
+                        <i class="bi bi-arrows-move" aria-hidden="true"></i>
+                        <span th:text="#{explorer.manage.moveHere}">انتقال به پوشهٔ انتخاب‌شده</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" @click="move.open = false">
+                        <span th:text="#{explorer.manage.cancel}">انصراف</span>
+                    </button>
+                    <span class="text-sm text-red-600" x-text="move.error" x-show="move.error"></span>
+                </div>
+            </div>
 
             <div class="explorer-scroll">
 
@@ -446,7 +491,9 @@
         manageFailed:      [[#{explorer.manage.failed}]],
         confirmDelete:     [[#{explorer.manage.confirmDelete}]],
         deleteRefused:     [[#{explorer.manage.deleteRefused}]],
-        nameTaken:         [[#{explorer.manage.nameTaken}]]
+        nameTaken:         [[#{explorer.manage.nameTaken}]],
+        newTagGroup:       [[#{explorer.manage.newTagGroup}]],
+        keepTagGroup:      [[#{explorer.manage.keepTagGroup}]]
     };
 
     const INITIAL_FOLDER_ID = /*[[${initialFolderId}]]*/ null;
@@ -531,10 +578,12 @@
             readable: true,
             writable: false,
             manageable: false,
+            canHoldFolders: false,
             currentFolderId: null,
 
             // the create / rename form
             manage: { mode: null, name: "", displayName: "", tagGroupId: "", newTagGroupName: "", groups: [], busy: false, error: "" },
+            move: { open: false, target: null, busy: false, error: "" },
 
             treeRows: [],
             treeLoading: false,
@@ -590,7 +639,9 @@
                 this.readable = content.readable;
                 this.writable = content.writable;
                 this.manageable = content.manageable;
+                this.canHoldFolders = content.canHoldFolders;
                 this.manage.mode = null;
+                this.move.open = false;
             },
 
             fetchContent(folderId, pageNumber) {
@@ -775,13 +826,18 @@
             },
 
             iconFor(entry) {
-                if (entry.kind === "TAG") {
-                    return "bi-folder2";
+                return entry.folderCount > 0 ? "bi-folder-fill" : "bi-folder2";
+            },
+
+            /** Whether the form on screen is about a top-level folder, which is what carries a tag group. */
+            manageTagGroup() {
+                if (!this.folder) {
+                    return false;
                 }
-                if (entry.kind === "SUB_CATEGORY") {
-                    return "bi-folder";
+                if (this.manage.mode === "create") {
+                    return this.folder.kind === "ROOT";
                 }
-                return "bi-folder-fill";
+                return this.manage.mode === "rename" && this.breadcrumb.length === 1;
             },
 
             // ------------------------------------------------------------ managing the tree
@@ -790,21 +846,22 @@
             async openManage(mode) {
                 this.manage.error = "";
                 this.manage.busy = false;
+                this.move.open = false;
                 this.manage.mode = mode;
+                this.manage.tagGroupId = "";
+                this.manage.newTagGroupName = "";
                 if (mode === "rename") {
                     this.manage.name = this.folder.name;
                     this.manage.displayName = this.folder.title === this.folder.name ? "" : this.folder.title;
                 } else {
                     this.manage.name = "";
                     this.manage.displayName = "";
-                    this.manage.tagGroupId = "";
-                    this.manage.newTagGroupName = "";
-                    if (this.folder.kind === "ROOT" && this.manage.groups.length === 0) {
-                        try {
-                            this.manage.groups = await readJson(EX.foldersUrl + "/tag-groups");
-                        } catch (e) {
-                            this.manage.groups = [];
-                        }
+                }
+                if (this.manageTagGroup() && this.manage.groups.length === 0) {
+                    try {
+                        this.manage.groups = await readJson(EX.foldersUrl + "/tag-groups");
+                    } catch (e) {
+                        this.manage.groups = [];
                     }
                 }
                 this.$nextTick(() => this.$refs.manageName && this.$refs.manageName.focus());
@@ -818,7 +875,8 @@
                     ? { parentId: this.folder.id, name: this.manage.name, displayName: this.manage.displayName,
                         tagGroupId: this.manage.tagGroupId ? Number(this.manage.tagGroupId) : null,
                         newTagGroupName: this.manage.tagGroupId ? null : this.manage.newTagGroupName }
-                    : { name: this.manage.name, displayName: this.manage.displayName };
+                    : { name: this.manage.name, displayName: this.manage.displayName,
+                        tagGroupId: this.manage.tagGroupId ? Number(this.manage.tagGroupId) : null };
                 try {
                     const answer = await writeJson(creating ? EX.foldersUrl : EX.foldersUrl + "/" + this.folder.id,
                             creating ? "POST" : "PUT", body);
@@ -832,6 +890,33 @@
                     this.manage.error = e.status === 409 ? EX.nameTaken : (e.detail || EX.manageFailed);
                 } finally {
                     this.manage.busy = false;
+                }
+            },
+
+            openMove() {
+                this.manage.mode = null;
+                this.move.error = "";
+                this.move.busy = false;
+                this.move.target = null;
+                this.move.open = true;
+            },
+
+            async submitMove() {
+                if (!this.move.target) {
+                    return;
+                }
+                this.move.busy = true;
+                this.move.error = "";
+                try {
+                    await writeJson(EX.foldersUrl + "/" + this.folder.id + "/move", "PUT", { parentId: this.move.target.id });
+                    this.move.open = false;
+                    // The folder is where it now is; the tree is rebuilt from the read.
+                    this.treeRows = [];
+                    await this.navigate(this.folder.id);
+                } catch (e) {
+                    this.move.error = e.status === 409 ? EX.nameTaken : (e.detail || EX.manageFailed);
+                } finally {
+                    this.move.busy = false;
                 }
             },
 

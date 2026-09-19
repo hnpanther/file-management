@@ -81,7 +81,7 @@ class FileTreeTest extends MySqlSupport {
     @Test
     void theChildrenEndpointAnswersJsonEvenWhenTheFolderIdIsWrong() throws Exception {
         mockMvc.perform(get("/resource/files/tree/children")
-                        .param("type", "CATEGORY")
+                        .param("type", "FOLDER")
                         .param("id", "999999")
                         .with(user(principal(PermissionEnum.REST_GET_FILE_TREE)))
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -102,7 +102,7 @@ class FileTreeTest extends MySqlSupport {
     @Test
     void thePagePermissionAloneIsEnoughToLoadTheTree() throws Exception {
         mockMvc.perform(get("/resource/files/tree/children")
-                        .param("type", "CATEGORY")
+                        .param("type", "FOLDER")
                         .param("id", "999999")
                         .with(user(principal(PermissionEnum.FILE_TREE_PAGE)))
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -121,7 +121,7 @@ class FileTreeTest extends MySqlSupport {
     @Test
     void theChildrenEndpointRefusesSomeoneWithoutThePermission() throws Exception {
         mockMvc.perform(get("/resource/files/tree/children")
-                        .param("type", "CATEGORY")
+                        .param("type", "FOLDER")
                         .param("id", "1")
                         .with(user(principal(PermissionEnum.PUBLIC_FILE_PAGE)))
                         .accept(MediaType.APPLICATION_JSON))

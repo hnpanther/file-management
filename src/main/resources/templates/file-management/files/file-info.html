@@ -48,9 +48,7 @@
                         <th scope="col" th:text="#{field.id}">شناسه</th>
                         <th scope="col" th:text="#{field.fileTitle}">عنوان فایل</th>
                         <th scope="col" th:text="#{field.description}">توضیحات</th>
-                        <th scope="col" th:text="#{field.category}">دسته‌بندی اصلی</th>
-                        <th scope="col" th:text="#{field.subCategory}">زیردسته‌بندی</th>
-                        <th scope="col" th:text="#{field.tag}">برچسب</th>
+                        <th scope="col" th:text="#{field.folder}">پوشه</th>
                         <th scope="col" th:text="#{field.actions}">عملیات</th>
                     </tr>
                     </thead>
@@ -59,9 +57,7 @@
                         <td class="text-nowrap" th:text="${file.getId()}"></td>
                         <td class="technical" th:text="${file.getFileName()}"></td>
                         <td th:text="${file.getDescription()}"></td>
-                        <td th:text="${file.getFileCategoryDisplayName()}"></td>
-                        <td th:text="${file.getFileSubCategoryNameDescription()}"></td>
-                        <td th:text="${file.getTagName() + ' — ' + file.getTagDescription()}"></td>
+                        <td th:text="${file.getFolderTitle()}"></td>
                         <td>
                             <a class="btn btn-sm btn-outline-secondary"
                                th:href="@{'/files/file-info/' + ${file.getId()}}" th:text="#{action.viewAndManage}">مشاهده و مدیریت</a>

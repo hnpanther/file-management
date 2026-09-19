@@ -130,7 +130,7 @@ class FolderContentFolderReadTest extends MySqlSupport {
 
         assertThat(root.folders()).filteredOn(entry -> entry.id() == chain.categoryId()).singleElement()
                 .satisfies(entry -> {
-                    assertThat(entry.kind()).isEqualTo("CATEGORY");
+                    assertThat(entry.kind()).isEqualTo("FOLDER");
                     assertThat(entry.note()).isEqualTo(chain.category().getTagGroup().getTitle());
                     assertThat(entry.folderCount()).isEqualTo(2L);
                 });

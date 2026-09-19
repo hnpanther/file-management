@@ -29,9 +29,11 @@ import java.util.Optional;
  * {@code MainTagFileDAO} — spelled a table {@code file_Info}, which MySQL on Windows accepted and
  * PostgreSQL would not have.
  *
- * <p><b>Reads that a converter will walk fetch the whole chain.</b> {@code ModelConverterUtil} goes
- * from a file to its folder, that folder's parent and grandparent, and the category's tag group.
- * Without the fetch joins below, a page of forty files is forty files plus four lazy loads each.
+ * <p><b>Reads that a converter will walk fetch the folder.</b> {@code ModelConverterUtil} goes
+ * from a file to its folder and from there to every folder above it; the folder is fetched with
+ * the file, and the chain above - of any depth since {@code V2.9} - is loaded for the whole page
+ * in one query by {@code FolderService.ancestryOf}, off the materialised path. Without either, a
+ * page of forty files is forty files plus a lazy load per level each.
  *
  * <p>Since Phase 7 step 4 a file's place is {@code folder_id} and nothing else; every query here
  * that names a place names a folder.
@@ -39,7 +41,7 @@ import java.util.Optional;
 public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
 
     /**
-     * One file with its revisions and its whole folder chain, by id.
+     * One file with its revisions and its folder, by id.
      *
      * <p>{@code LEFT JOIN FETCH} on the revisions, not {@code JOIN FETCH}: an inner join drops a
      * file that has no versions, and this method is used on the delete path, where a file whose
@@ -49,48 +51,39 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT DISTINCT f FROM FileInfo f
             LEFT JOIN FETCH f.fileDetailsList
             JOIN FETCH f.folder t
-            JOIN FETCH t.parent s
-            JOIN FETCH s.parent c
-            LEFT JOIN FETCH c.tagGroup
             WHERE f.id = :id
             """)
     Optional<FileInfo> findByIdAndFetchFileDetails(@Param("id") int id);
 
-    /** The file with this name in this folder, with its revisions and chain. */
+    /** The file with this name in this folder, with its revisions. */
     @Query("""
             SELECT DISTINCT f FROM FileInfo f
             LEFT JOIN FETCH f.fileDetailsList
             JOIN FETCH f.folder t
-            JOIN FETCH t.parent s
-            JOIN FETCH s.parent c
-            LEFT JOIN FETCH c.tagGroup
             WHERE t.id = :folderId AND f.fileName = :name
             """)
     Optional<FileInfo> findByFolderIdAndFileNameWithDetails(@Param("folderId") int folderId, @Param("name") String name);
 
     /**
-     * The file list page: one query, one row per file, whole folder chain attached.
+     * The file list page: one query, one row per file, its folder attached. The folders above
+     * it are loaded for the page as a batch by {@code FolderService.ancestryOf}, since a chain
+     * of any depth cannot be fetch-joined.
      *
      * <p>A null or blank {@code search} matches everything, so the page needs no second query for
-     * the unfiltered case. The term is matched against the file and the three folder levels — a
-     * {@code LIKE '%term%'} across the graph, which no index can serve; replacing it with a real
-     * search index is issue 21.
+     * the unfiltered case. The term is matched against the file and every folder above it, found
+     * by the path prefix — a {@code LIKE '%term%'} across the graph, which no index can serve;
+     * replacing it with a real search index is issue 21.
      */
     @Query("""
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
-            JOIN FETCH t.parent s
-            JOIN FETCH s.parent c
-            LEFT JOIN FETCH c.tagGroup
             WHERE (:search) IS NULL
                OR f.fileName LIKE CONCAT('%', (:search), '%')
                OR f.description LIKE CONCAT('%', (:search), '%')
-               OR t.name LIKE CONCAT('%', (:search), '%')
-               OR t.displayName LIKE CONCAT('%', (:search), '%')
-               OR s.name LIKE CONCAT('%', (:search), '%')
-               OR s.displayName LIKE CONCAT('%', (:search), '%')
-               OR c.name LIKE CONCAT('%', (:search), '%')
-               OR c.displayName LIKE CONCAT('%', (:search), '%')
+               OR EXISTS (SELECT a FROM Folder a
+                          WHERE t.path LIKE CONCAT(a.path, '%') AND a.depth > 0
+                            AND (a.name LIKE CONCAT('%', (:search), '%')
+                                 OR a.displayName LIKE CONCAT('%', (:search), '%')))
             """)
     Page<FileInfo> search(@Param("search") String search, Pageable pageable);
 
@@ -104,19 +97,14 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     @Query("""
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
-            JOIN FETCH t.parent s
-            JOIN FETCH s.parent c
-            LEFT JOIN FETCH c.tagGroup
             WHERE t.id IN (:folderIds)
               AND ((:search) IS NULL
                OR f.fileName LIKE CONCAT('%', (:search), '%')
                OR f.description LIKE CONCAT('%', (:search), '%')
-               OR t.name LIKE CONCAT('%', (:search), '%')
-               OR t.displayName LIKE CONCAT('%', (:search), '%')
-               OR s.name LIKE CONCAT('%', (:search), '%')
-               OR s.displayName LIKE CONCAT('%', (:search), '%')
-               OR c.name LIKE CONCAT('%', (:search), '%')
-               OR c.displayName LIKE CONCAT('%', (:search), '%'))
+               OR EXISTS (SELECT a FROM Folder a
+                          WHERE t.path LIKE CONCAT(a.path, '%') AND a.depth > 0
+                            AND (a.name LIKE CONCAT('%', (:search), '%')
+                                 OR a.displayName LIKE CONCAT('%', (:search), '%'))))
             """)
     Page<FileInfo> searchWithinFolders(@Param("search") String search,
                                        @Param("folderIds") Collection<Integer> folderIds,
@@ -126,14 +114,12 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
      * Tree "find a file" search — see issue 73: two nodes at different depths of the same category
      * can carry the identical label, so a label alone cannot find a file or say where it lives. This
      * matches by exact id (when the query parses as one) or a fragment of the name/description, and
-     * fetches the file's folder with its two ancestors - the branch the tree opens on the way to the
-     * hit.
+     * fetches the file's folder; the branch the tree opens on the way to the hit is read off the
+     * folder's path.
      */
     @Query("""
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder d
-            JOIN FETCH d.parent p
-            JOIN FETCH p.parent
             WHERE (:id IS NOT NULL AND f.id = :id)
                OR f.fileName LIKE CONCAT('%', :term, '%')
                OR f.description LIKE CONCAT('%', :term, '%')
@@ -168,24 +154,10 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     @Query("SELECT f FROM FileInfo f WHERE f.folder.id IN :folderIds")
     List<FileInfo> findByFolderIdIn(@Param("folderIds") Collection<Integer> folderIds);
 
-    /** The file with this name in this folder, without its revisions. */
+    /** The file with this name in this folder, without its revisions - the duplicate check on upload. */
     @Query("SELECT f FROM FileInfo f WHERE f.folder.id = :folderId AND f.fileName = :name")
     Optional<FileInfo> findByFolderIdAndFileName(@Param("folderId") int folderId, @Param("name") String name);
 
-    /**
-     * The file with this name under any tag folder of one sub-category - the duplicate check on
-     * upload. Names are unique per <em>sub-category</em>, not per tag folder, because the bytes of
-     * a file live at {@code {category}/{subCategory}/{name}/...} with no tag segment: two files
-     * of one name under sibling tags would share a directory on disk. The schema can only express
-     * the per-folder part of that rule ({@code uq_file_info_name_per_folder}); this query is the
-     * rest, and the storage service refusing to overwrite an existing key is the last guard.
-     */
-    @Query("""
-            SELECT f FROM FileInfo f
-            JOIN FETCH f.folder t
-            WHERE t.parent.id = :subCategoryId AND f.fileName = :name
-            """)
-    Optional<FileInfo> findByFileNameUnderSubCategory(@Param("subCategoryId") int subCategoryId, @Param("name") String name);
 
     /** Every file beneath a folder, by its materialised path - what a rename re-tags. */
     @Query("SELECT f FROM FileInfo f JOIN f.folder d WHERE d.path LIKE CONCAT(:pathPrefix, '%')")
@@ -230,24 +202,25 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     /**
      * The files whose tags are not exactly the ones their folder chain says: a tag missing, a tag
      * too many, or a tag from the wrong group. Empty is the only acceptable answer, and
-     * {@code FileServiceTest} and {@code FolderServiceTest} ask after every upload and rename they
-     * make. Native, because the comparison is between two
-     * counts and a set membership, which JPQL expresses badly.
+     * {@code FileServiceTest} and {@code FolderServiceTest} ask after every upload, rename and
+     * move they make. Native, because the comparison is between two counts and a set membership,
+     * which JPQL expresses badly. The chain is every folder whose path is a prefix of the file's
+     * folder's path, the root left out; the group is the top-level folder's.
      */
     @Query(value = """
             SELECT fi.id
             FROM file_info fi
                 JOIN folder t ON t.id = fi.folder_id
-                JOIN folder s ON s.id = t.parent_id
-                JOIN folder c ON c.id = s.parent_id
-            WHERE c.tag_group_id IS NULL
+                JOIN folder top ON top.depth = 1 AND t.path LIKE CONCAT(top.path, '%')
+            WHERE top.tag_group_id IS NULL
                OR (SELECT COUNT(*) FROM file_tag ft WHERE ft.file_info_id = fi.id)
                   <> (SELECT COUNT(DISTINCT tg.id) FROM tag tg
-                      WHERE tg.group_id = c.tag_group_id AND tg.name IN (c.name, s.name, t.name))
+                      WHERE tg.group_id = top.tag_group_id
+                        AND tg.name IN (SELECT a.name FROM folder a WHERE a.depth > 0 AND t.path LIKE CONCAT(a.path, '%')))
                OR EXISTS (SELECT 1 FROM file_tag ft JOIN tag tg ON tg.id = ft.tag_id
                           WHERE ft.file_info_id = fi.id
-                            AND (tg.group_id <> c.tag_group_id
-                                 OR tg.name NOT IN (c.name, s.name, t.name)))
+                            AND (tg.group_id <> top.tag_group_id
+                                 OR tg.name NOT IN (SELECT a.name FROM folder a WHERE a.depth > 0 AND t.path LIKE CONCAT(a.path, '%'))))
             """, nativeQuery = true)
     List<Integer> findIdsWhoseTagsDisagreeWithTheFolders();
 }

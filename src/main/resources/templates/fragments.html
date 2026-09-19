@@ -53,6 +53,49 @@
 </th:block>
 
 <!--
+  The folder chooser's markup; its behaviour is window.folderChooser in app.js. The enclosing
+  element declares x-data="folderChooser({...})" and, if it wants the choice posted, renders the
+  hidden input itself - so the same markup serves a form (the upload target) and a dialog (the
+  explorer's move). Every label is a message key; the caller passes only rootTitle and copy.
+-->
+<div th:fragment="folder-chooser" class="folder-chooser">
+    <nav class="folder-chooser-crumbs" th:aria-label="#{explorer.aria.breadcrumb}">
+        <template x-for="(crumb, index) in crumbs" :key="crumb.id">
+            <span class="flex items-center gap-1">
+                <button type="button" class="folder-chooser-crumb" :class="{ 'is-current': index === crumbs.length - 1 }"
+                        @click="open(crumb.id)" x-text="crumbTitle(crumb)"></button>
+                <i class="bi bi-chevron-left text-[0.6rem] text-ink-400" aria-hidden="true"
+                   x-show="index < crumbs.length - 1"></i>
+            </span>
+        </template>
+    </nav>
+    <div class="folder-chooser-list">
+        <p class="folder-chooser-note" x-show="loading" x-cloak th:text="#{explorer.tree.loading}">در حال بارگذاری…</p>
+        <p class="folder-chooser-note text-red-600" x-show="error" x-cloak x-text="error"></p>
+        <p class="folder-chooser-note" x-show="!loading && !error && children.length === 0" x-cloak
+           th:text="#{folderChooser.noSubfolders}">زیرپوشه‌ای ندارد.</p>
+        <template x-for="child in children" :key="child.id">
+            <button type="button" class="folder-chooser-item" @click="open(child.id)">
+                <i class="bi text-ink-400" :class="child.folderCount > 0 ? 'bi-folder-fill' : 'bi-folder2'" aria-hidden="true"></i>
+                <span class="min-w-0 truncate" x-text="child.title"></span>
+                <span class="explorer-badge" x-show="child.folderCount + child.fileCount > 0"
+                      x-text="child.folderCount + child.fileCount"></span>
+            </button>
+        </template>
+    </div>
+    <div class="folder-chooser-actions">
+        <button type="button" class="btn btn-secondary btn-sm" :disabled="!selectable()" @click="choose()">
+            <i class="bi bi-check2-circle" aria-hidden="true"></i>
+            <span th:text="#{folderChooser.chooseThis}">انتخاب این پوشه</span>
+        </button>
+        <span class="folder-chooser-chosen" x-show="chosen" x-cloak>
+            <i class="bi bi-folder2-open text-ink-400" aria-hidden="true"></i>
+            <strong x-text="chosen ? chosen.path : ''"></strong>
+        </span>
+    </div>
+</div>
+
+<!--
   The rules table. One row per catalogued kind: a checkbox that allows it, and its limit in whole
   megabytes. On the role page the whole table follows a mode radio and is disabled while the
   role is governed by the system-wide policy: the Alpine scope that owns `mode` is the role

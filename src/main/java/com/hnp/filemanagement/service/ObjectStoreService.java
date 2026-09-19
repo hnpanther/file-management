@@ -10,7 +10,6 @@ import com.hnp.filemanagement.dto.ObjectMetadataDTO;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.Folder;
-import com.hnp.filemanagement.entity.FolderKind;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -184,9 +183,6 @@ public class ObjectStoreService {
         }
 
         Folder folder = requireFolder(bucketFolder, parsed.folders());
-        if (folder.getKind() != FolderKind.TAG) {
-            throw new InvalidDataException("objects can only be written into a tag folder, not " + folder.getKind());
-        }
         if (!access.canWrite(folder.getPath())) {
             throw new AccessDeniedException("no write access to " + key);
         }
@@ -195,20 +191,8 @@ public class ObjectStoreService {
                     "the object name must be the file name plus an extension: " + parsed.objectName());
         }
 
-        // File names are unique per sub-category, not per tag folder (the bytes live under
-        // {category}/{subCategory}/{name} with no tag segment), so a name can already be taken by
-        // a file under a *sibling* tag. Without this check the write would append a version to
-        // that other file - the caller's write access to the folder they named would be checked,
-        // then the version would land somewhere else and the canonical key answered with would
-        // not resolve. A conflict up front, before anything is stored.
-        fileInfoRepository.findByFileNameUnderSubCategory(folder.getParent().getId(), parsed.fileName())
-                .filter(taken -> !taken.getFolder().getId().equals(folder.getId()))
-                .ifPresent(taken -> {
-                    throw new DuplicateResourceException("a file named " + parsed.fileName()
-                            + " already exists under another folder of the same sub-category");
-                });
-
-        // In this folder, an existing file of this name is this file's next version.
+        // Names are unique per folder, so an existing file of this name here is this file's
+        // next version; anywhere else it is simply another file.
         FileInfo existing = fileInfoRepository
                 .findByFolderIdAndFileNameWithDetails(folder.getId(), parsed.fileName())
                 .orElse(null);

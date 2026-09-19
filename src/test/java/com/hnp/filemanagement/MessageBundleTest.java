@@ -36,6 +36,7 @@ class MessageBundleTest {
             "navbar.html", "security/login.html", "error.html",
             "api-key/api-keys.html",
             "api-key/save-api-key.html",
+            "settings/tag-groups.html",
             "file-management/files/file-explorer.html",
             "file-management/files/file-info-page.html",
             "file-management/files/file-info.html",

@@ -33,7 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>This is the contract the file-explorer screen will be built on, and it is deliberately
  * separate from {@code FileTreeResource}. That one serves the tree page and speaks in node
  * types, one level of children at a time. This one speaks only folders, and since Phase 7 step 4
- * it is also where the tree is managed: create, rename and delete, below.
+ * it is also where the tree is managed: create, rename, move and delete, below.
  *
  * <p><b>One endpoint, and the root is the same request without an id.</b> The alternative - a
  * separate "roots" endpoint - would need its own permission, and would be the second place a change
@@ -115,16 +115,20 @@ public class FolderResource {
 
     // ------------------------------------------------------------------ managing the tree (Phase 7 step 4)
 
-    /** What a create posts. A category (a child of the root) names its tag group, one way or the other. */
+    /** What a create posts. A top-level folder (a child of the root) names its tag group, one way or the other. */
     public record CreateFolderRequest(Integer parentId, String name, String displayName,
                                       Integer tagGroupId, String newTagGroupName) {
     }
 
-    /** What a rename posts: a new directory-safe name, a new label, or both. */
-    public record RenameFolderRequest(String name, String displayName) {
+    /** What a rename posts: a new directory-safe name, a new label, or both - and, at the top level, optionally a new tag group. */
+    public record RenameFolderRequest(String name, String displayName, Integer tagGroupId) {
     }
 
-    /** The tag groups a new category folder may carry. */
+    /** What a move posts: the folder to become the parent. */
+    public record MoveFolderRequest(Integer parentId) {
+    }
+
+    /** The tag groups a new top-level folder may carry. */
     //REST_GET_TAG_GROUPS
     @PreAuthorize("hasAuthority('REST_GET_TAG_GROUPS') || hasAuthority('REST_CREATE_FOLDER') || hasAuthority('ADMIN')")
     @GetMapping("tag-groups")
@@ -134,9 +138,9 @@ public class FolderResource {
     }
 
     /**
-     * Creates a folder under {@code parentId}. The kind follows from the parent - category under
-     * the root, sub-category under a category, tag under a sub-category - and a tag folder takes
-     * no children. Write access on the parent is required.
+     * Creates a folder under {@code parentId} - any folder that has not reached the depth limit.
+     * Under the root it needs a tag group; anywhere else it takes none. Write access on the
+     * parent is required.
      */
     //REST_CREATE_FOLDER
     @PreAuthorize("hasAuthority('REST_CREATE_FOLDER') || hasAuthority('ADMIN')")
@@ -164,7 +168,27 @@ public class FolderResource {
                                   HttpServletRequest request) {
         globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
                 "rename folder id=" + folderId + " to " + body.name());
-        return folderService.rename(folderId, body.name(), body.displayName(), userDetails.getId());
+        return folderService.rename(folderId, body.name(), body.displayName(), body.tagGroupId(), userDetails.getId());
+    }
+
+    /**
+     * Moves a folder, with everything beneath it, under another parent. No byte and no stored key
+     * moves; the tags of the files beneath follow the new place. 400 into itself, past the depth
+     * limit, or onto a taken name; 403 without write access on both parents.
+     */
+    //REST_MOVE_FOLDER
+    @PreAuthorize("hasAuthority('REST_MOVE_FOLDER') || hasAuthority('ADMIN')")
+    @PutMapping("{folderId}/move")
+    public FolderDTO moveFolder(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                @PathVariable("folderId") int folderId,
+                                @RequestBody MoveFolderRequest body,
+                                HttpServletRequest request) {
+        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
+                "move folder id=" + folderId + " under folderId=" + body.parentId());
+        if (body.parentId() == null) {
+            throw new InvalidDataException("parentId is required");
+        }
+        return folderService.move(folderId, body.parentId(), userDetails.getId());
     }
 
     /** Deletes an empty folder: 409 while it still holds folders or files. */

@@ -74,16 +74,12 @@ class FileApiDeleteTest extends MySqlSupport {
 
     private int principalId;
     private int tagFolderId;
-    private String categoryName;
-    private String subCategoryName;
 
     @BeforeEach
     void setUp() {
         User owner = userRepository.save(TestData.user());
         principalId = owner.getId();
         FolderFixture.Chain chain = FolderFixture.chain(folderRepository, tagGroupRepository, owner);
-        categoryName = chain.category().getName();
-        subCategoryName = chain.subCategory().getName();
         tagFolderId = chain.tagId();
     }
 
@@ -93,7 +89,7 @@ class FileApiDeleteTest extends MySqlSupport {
         int[] ids = uploadThroughV1("report.txt");
         int fileInfoId = ids[0];
         int fileDetailsId = ids[1];
-        Path fileDirectory = Paths.get(baseDir, categoryName, subCategoryName, "report");
+        Path fileDirectory = Paths.get(baseDir, "folders", String.valueOf(tagFolderId), "report");
         assertThat(fileDirectory).exists();
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM file_tag WHERE file_info_id = ?", Integer.class, fileInfoId))
                 .as("the upload tagged it").isEqualTo(3);
@@ -145,8 +141,8 @@ class FileApiDeleteTest extends MySqlSupport {
         assertThat(fileInfoRepository.findById(fileInfoId)).isPresent();
         assertThat(fileDetailsRepository.findById(first[1])).isPresent();
         assertThat(fileDetailsRepository.findById(v2DetailsId)).isEmpty();
-        assertThat(Paths.get(baseDir, categoryName, subCategoryName, "manual", "v1", "manual.txt")).exists();
-        assertThat(Paths.get(baseDir, categoryName, subCategoryName, "manual", "v2")).doesNotExist();
+        assertThat(Paths.get(baseDir, "folders", String.valueOf(tagFolderId), "manual", "v1", "manual.txt")).exists();
+        assertThat(Paths.get(baseDir, "folders", String.valueOf(tagFolderId), "manual", "v2")).doesNotExist();
         assertThat(fileInfoRepository.findById(fileInfoId).orElseThrow().getLastVersion()).isEqualTo(1);
     }
 
