@@ -69,38 +69,31 @@
                         </div>
                     </div>
 
+                    <!--
+                      Plain mode: the three folder levels as dependent selects, fed by the same
+                      endpoint the explorer reads. Only the last one is posted - as folderId, the
+                      tag folder the file goes into (Phase 7 step 4). The first two are navigation.
+                    -->
                     <th:block th:if="${file.getFolderId() == null}">
                     <div class="form-group">
-                        <label for="fileCategoryId" th:text="#{select.category}">انتخاب دسته‌بندی اصلی</label>
-                        <select class="form-control fileCategoryId" name="fileCategoryId" id="fileCategoryId"
-                                required th:disabled="${#strings.equals(pageType, 'update')}">
+                        <label for="categoryFolder" th:text="#{select.category}">انتخاب دسته‌بندی اصلی</label>
+                        <select class="form-control" id="categoryFolder" required>
                             <option value=""></option>
-                            <option th:each="f: ${listCategory}" th:value="${f.getId()}"
-                                    th:text="${f.getDisplayName()}"
-                                    th:selected="${f.getId() == file.getFileCategoryId()}"></option>
+                            <option th:each="f: ${listCategory}" th:value="${f.id()}" th:text="${f.title()}"></option>
                         </select>
                     </div>
 
                     <div class="form-group">
-                        <label for="fileSubCategoryId" th:text="#{select.subCategory}">انتخاب زیردسته‌بندی</label>
-                        <select class="form-control fileSubCategoryId" name="fileSubCategoryId"
-                                id="fileSubCategoryId" required
-                                th:disabled="${#strings.equals(pageType, 'update')}">
+                        <label for="subCategoryFolder" th:text="#{select.subCategory}">انتخاب زیردسته‌بندی</label>
+                        <select class="form-control" id="subCategoryFolder" required>
                             <option value=""></option>
-                            <option th:if="${#strings.equals(pageType, 'update')}"
-                                    th:value="${file.getFileSubCategoryId()}"
-                                    th:text="${file.getFileSubCategoryNameDescription()}" selected></option>
                         </select>
                     </div>
 
                     <div class="form-group">
-                        <label for="mainTagFileId" th:text="#{select.tag}">انتخاب برچسب</label>
-                        <select class="form-control mainTagFileId" name="mainTagFileId" id="mainTagFileId"
-                                required th:disabled="${#strings.equals(pageType, 'update')}">
+                        <label for="folderId" th:text="#{select.tag}">انتخاب برچسب</label>
+                        <select class="form-control" name="folderId" id="folderId" required>
                             <option value=""></option>
-                            <option th:if="${#strings.equals(pageType, 'update')}"
-                                    th:value="${file.getMainTagFileId()}"
-                                    th:text="${file.getTagDescription()}" selected></option>
                         </select>
                     </div>
                     </th:block>
@@ -161,9 +154,9 @@
     };
 
     $(function () {
-        const category = $("#fileCategoryId");
-        const subCategory = $("#fileSubCategoryId");
-        const tag = $("#mainTagFileId");
+        const category = $("#categoryFolder");
+        const subCategory = $("#subCategoryFolder");
+        const tag = $("#folderId");
         const fileInput = $("#multipartFile");
 
         // In folder mode the selects are not on the page at all; there is nothing to wire.
@@ -180,10 +173,10 @@
         }
 
         category.on("change", function () {
-            loadSubCategories(category.val(), subCategory, tag);
+            loadChildren(category.val(), subCategory, FILE_FORM_COPY.subCategory, tag);
         });
         subCategory.on("change", function () {
-            loadTags(subCategory.val(), tag);
+            loadChildren(subCategory.val(), tag, FILE_FORM_COPY.tag, null);
         });
         fileInput.on("change", function () {
             const selectedName = this.files && this.files.length ? this.files[0].name : [[#{file.upload.none}]];
@@ -204,43 +197,26 @@
         select.empty().append(new Option("", "", true, true)).val(null).trigger("change.select2");
     }
 
-    function loadSubCategories(categoryId, subCategory, tag) {
-        resetSelect(subCategory);
-        resetSelect(tag);
-        if (!categoryId) {
+    /** The child folders of one folder, from the explorer's endpoint, into one select. */
+    function loadChildren(folderId, target, placeholder, next) {
+        resetSelect(target);
+        if (next) {
+            resetSelect(next);
+        }
+        if (!folderId) {
             return;
         }
 
         $.ajax({
             type: "GET",
-            url: [[@{/resource/file-categories/}]] + categoryId + "/sub-categories",
+            url: [[@{/resource/folders/children}]] + "?size=1&folderId=" + encodeURIComponent(folderId),
             headers: ajaxHeaders()
         }).then(function (data) {
-            subCategory.select2({
+            target.select2({
                 width: "100%",
                 dir: "rtl",
-                placeholder: FILE_FORM_COPY.subCategory,
-                data: data.results
-            }).val(null).trigger("change.select2");
-        });
-    }
-
-    function loadTags(subCategoryId, tag) {
-        resetSelect(tag);
-        if (!subCategoryId) {
-            return;
-        }
-
-        $.ajax({
-            type: "GET",
-            url: [[@{/resource/file-sub-categories/}]] + subCategoryId + "/main-tags",
-            headers: ajaxHeaders()
-        }).then(function (data) {
-            tag.select2({
-                width: "100%",
-                dir: "rtl",
-                placeholder: FILE_FORM_COPY.tag,
-                data: data.results
+                placeholder: placeholder,
+                data: data.folders.map(function (f) { return { id: f.id, text: f.title }; })
             }).val(null).trigger("change.select2");
         });
     }

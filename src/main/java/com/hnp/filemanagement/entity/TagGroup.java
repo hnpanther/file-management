@@ -16,9 +16,11 @@ import java.time.LocalDateTime;
 /**
  * A kind of label (roadmap 7.3): the tags in one group say the same sort of thing about a file.
  *
- * <p>During Phase 7 there is one group per general tag, matched by {@code name} - a general tag is
- * "a top-level grouping label with no directory of its own", which is what a group of tags is.
- * {@code TagMirrorService} is the only writer until the taxonomy is gone.
+ * <p>This is what the old taxonomy called a general tag - "a top-level grouping label with no
+ * directory of its own", which is what a group of tags is. It is <em>not</em> a folder: a
+ * {@code CATEGORY} folder carries one ({@code folder.tag_group_id}), and the tags of every file
+ * beneath that category are in it. Created by {@code FolderService} when a category names a new
+ * group; {@code TagMirrorService} writes the tags.
  */
 @Entity
 @Table(name = "tag_group")

@@ -5,9 +5,9 @@
 
 ## 1. What the application is
 
-A server-rendered file-management web application. Users organise files into a fixed
-five-level taxonomy, upload them, and create additional **versions** and **formats** of the
-same logical file. Files live on the local filesystem; all metadata lives in MySQL.
+A server-rendered file-management web application. Users organise files into a folder tree
+that is exactly three levels deep (category → sub-category → tag), upload them into the
+deepest level, and create additional **versions** and **formats** of the same logical file. Files live on the local filesystem; all metadata lives in MySQL.
 A small machine-facing REST API (`/api/v1/files`) was added later for programmatic upload,
 download and delete.
 
@@ -51,99 +51,73 @@ com.hnp.filemanagement
 
 ## 4. The domain model
 
-Five entities form a strict parent→child chain, and `FileDetails` hangs off the end:
+Since Phase 7 step 4 (migration `V2.8`) a file's place is one thing: a row in `folder`. The
+taxonomy tables that used to sit beside it (`general_tag`, `file_category`, `file_sub_category`,
+`main_tag_file`) are gone, and with them the mirror that kept the two in step.
 
 ```
-GeneralTag ──1:N──> FileCategory ──1:N──> FileSubCategory ──1:N──> MainTagFile
-                                                 │                      │
-                                                 └──────────┬───────────┘
-                                                            ▼
-                                                        FileInfo ──1:N──> FileDetails
+Folder(ROOT "Home")
+  └─N─ Folder(CATEGORY)       ──N:1──> TagGroup        the "general tag": a label group, not a place
+        └─N─ Folder(SUB_CATEGORY)
+              └─N─ Folder(TAG)
+                    └─N─ FileInfo ──1:N──> FileDetails
+                          └─N:M─> Tag ──N:1──> TagGroup
 ```
 
-* **GeneralTag** — top-level grouping label. Purely organisational; it has no directory of its own.
-* **FileCategory** — first physical directory level. `category_name` is unique and must contain
-  no `.`, no space and no `/`, because it becomes a directory name.
-* **FileSubCategory** — second physical directory level, scoped to a category.
-* **MainTagFile** — a tag scoped to a sub-category. Every `FileInfo` must point at one, and
-  `FileService.createNewFile` re-validates that the tag's sub-category and category match the
-  ones submitted on the form.
-* **FileInfo** — the *logical* file (e.g. "the Q3 report"). Holds `last_version` and the
-  visibility `state`.
+* **Folder** — one table, one tree, `parent_id` for structure and `path` as a derived index: a
+  materialised path of ids with a leading and trailing slash (`/1/5/26/`), built from ids so a
+  rename costs nothing, and carrying the trailing slash so `/1/7/` cannot match `/1/70/`. `kind`
+  is fixed by depth — `ROOT` (one row, `Home`), `CATEGORY`, `SUB_CATEGORY`, `TAG` — and the tree
+  goes no deeper: `FolderService.create` derives the kind from the parent and refuses a child
+  under a tag folder. `name` is directory-safe (no `.`, no space, no `/`, unique among siblings,
+  case-insensitively) because the two upper names become directories; `display_name` is what a
+  person reads. `USER_HOME` is reserved for Phase 8.
+* **TagGroup** — what the old *general tag* was: a grouping label carried by a category
+  (`folder.tag_group_id`, required on a `CATEGORY` row, absent on every other kind). It is **not a
+  folder**, has no directory and no level in the tree; creating a category names an existing
+  group or a new one, and nothing below a category may carry one.
+* **FileInfo** — the *logical* file (e.g. "the Q3 report"). `folder_id` is `NOT NULL` and must
+  name a `TAG` folder (`FileService.targetFolderOf`). Holds `last_version` and the visibility
+  `state`.
 * **FileDetails** — one *concrete artefact*: a specific (version, format) pair of a `FileInfo`.
-  Carries `file_name`, `file_extension`, `content_type`, `file_size`, `version`, `version_name`.
+  Carries `file_name`, `file_extension`, `content_type`, `file_size`, `version`, `version_name`,
+  and `storage_key` — the one record of where its bytes are.
+* **Tag / file_tag** — labels, not places. A file's tags are a *function of its folder chain*:
+  `TagMirrorService.tagsFor(tagFolder)` is one tag per level, in the category's group, named by
+  the folder name and titled by its label; `retag(file)` makes the set exactly that, and
+  `retagFilesUnder(folder)` re-derives the subtree on the one input that changes it, a rename.
+  Unique by `(group, name)`, so a sub-category and a tag both named `HSED` under one group are
+  *one* tag, carried once. `findIdsWhoseTagsDisagreeWithTheFolders` must be empty
+  (`FileServiceTest`, `FolderServiceTest`).
 
-`FileInfo` and `FileDetails` both denormalise `file_path` (absolute) and `relative_path` onto the
-row, so the physical location is recorded in three places: the two path columns and the directory
-structure itself.
+### The chain of a file
 
-### The folder mirror
+`FolderService.chainOf(tagFolder)` reads the three levels off a tag folder and its two loaded
+ancestors, and refuses any other kind. Everything that used to read the taxonomy reads the
+chain: the storage directory of a new file (`{category}/{subCategory}`), the label fields on
+`FileInfoDTO` (`fileCategoryName`, `fileSubCategoryName`, `tagName` and their descriptions, from
+the folders' `name` / `display_name`), the tree's node types, and the v2 object store's bucket and
+prefix. Queries that a converter will walk fetch the chain (`JOIN FETCH f.folder t JOIN FETCH
+t.parent s JOIN FETCH s.parent c LEFT JOIN FETCH c.tagGroup`), so a page of files is one query.
 
-Alongside the taxonomy, and derived from it, is a single tree in `folder` (migration `V1.4`):
+### Where a file's name is unique
 
-```
-Home ──> {category} ──> {sub-category} ──> {main tag}
- ROOT      CATEGORY       SUB_CATEGORY        TAG
-```
+Per **sub-category**, not per tag folder — because the bytes of every file under a sub-category
+share `{category}/{subCategory}/{name}/`, with no tag segment (section 5). The schema can express
+only the per-folder half (`uq_file_info_name_per_folder`); `FileInfoRepository.findByFileNameUnderSubCategory`
+is the rest, checked before every upload (400 → `DuplicateResourceException`, 409), and
+`saveByKey` refusing to overwrite an existing key is the last guard. The same name under another
+sub-category is another file.
 
-It exists because folder-level access cannot be granted against three separate tables at a fixed
-depth — one of which is not even a directory. One table means one kind of grant, inherited down an
-arbitrary depth.
+### Managing the tree
 
-* **The taxonomy stays authoritative.** Every folder row is written by `FolderMirrorService`, in the
-  same transaction as the category, sub-category or main tag it reflects, and read only by the
-  folder-access code. Rolling the whole thing back is `DROP TABLE folder`.
-* **`parent_id` is the structure; `path` is a derived index.** `path` is a materialised path of ids
-  with a leading and trailing slash (`/1/5/26/`), built from ids so a rename costs nothing, and
-  carrying the trailing slash so `/1/7/` cannot match `/1/70/`. It exists so "every descendant of
-  these folders" is a prefix scan rather than a recursive query.
-* **`source_type` + `source_id`** point back at the mirrored row, unique together, which is what makes
-  the backfill re-runnable and reconciliation a join. Both columns disappear when `folder` becomes
-  authoritative (roadmap 6.8).
-* **It self-heals.** A taxonomy row written straight through a repository has no folder; rather than
-  fail the next legitimate write, the missing ancestry is created on the spot.
-  `FolderMirrorReconciliationTest` is what proves the mirror describes the *whole* taxonomy, and it
-  runs on every build.
-
-### What a file is attached to, during Phase 7
-
-Phase 7 separates *where a file is* from *what it is about*. Both halves already exist on every
-file, written alongside the taxonomy keys (roadmap 7.2 steps 1–2). Step 3 moves the readers over
-one at a time. The v2 object store reads files by `folder_id` — its listing is three queries
-with no tag translation, and a key resolves to its file through the folder the key walked to.
-The explorer does too: a folder's files, each child's file count and every search hit come from
-`folder_id`, and folder access is applied as a set of folder ids in the query. So does folder
-access in `FileService`: a download, the file page and a new version ask the file's own folder
-(`requireReadAccess` / `requireWriteAccess` on a `FileInfo`), and the list page filters on
-`readableFolderIds`; a file with no folder is refused to a restricted principal (fail closed). And
-the tree: a tag node's files and count, opening a file, and the branch a search hit is placed on.
-And uploading: a new file's place may be named as a `folderId` as well as by the taxonomy triple,
-the folder is what write access is checked on, and the two addressings must agree when both are
-sent. The taxonomy keys on `file_info` are still written, for the taxonomy pages and the
-per-sub-category uniqueness rule, until step 4. The tags are still read by nothing.
-
-```
-FileInfo ──N:1──> Folder            file_info.folder_id   the folder mirroring its main tag   (V2.3)
-FileInfo ──N:M──> Tag ──N:1──> TagGroup                   its category, sub-category and       (V2.4)
-                  file_tag           tag / tag_group      main tag as labels, in the group of
-                                                          its general tag
-```
-
-* **The folder** is `FolderMirrorService.folderOf(mainTag)` — get-or-create, so an upload into a
-  tag written behind the services heals the mirror rather than storing a null. The foreign key is
-  `RESTRICT`: a folder with files in it cannot be deleted by any route.
-* **The tags** are written by `TagMirrorService`, the one writer of `tag_group`, `tag` and
-  `file_tag` while the taxonomy is authoritative, with the same rules as the folder mirror
-  (`MANDATORY` transaction, get-or-create). A file's tags are a *function of its taxonomy* —
-  `retag(file)` makes the set exactly that — and are re-derived on the one input that can change,
-  a main-tag rename.
-* **A tag is a label, not a place.** Unique by `(group, name)`; a sub-category and a main tag both
-  named `HSED` under one general tag are *one* tag, carried once. The files are still told apart
-  by their folders. Titles are copied at creation and not followed (which of the merged rows'
-  labels should win has no answer until tags are edited as tags, step 5).
-* **Both are reconciled on every build**: `FileInfoRepository.findRowsWhoseFolderDisagreesWithTheMirror`
-  and `findIdsWhoseTagsDisagreeWithTheTaxonomy` must be empty (`FileFolderLinkTest`, `FileTagTest`),
-  and each migration's backfill is the statement the test runs, cut out of the file.
+`FolderService` is the one writer of `folder`: `create(parentId, …)`, `rename`, `delete`, each
+needing `WRITE` on the folder concerned (the parent, for a create and a delete) and each writing
+an `action_history` row. A rename changes names and labels only — stored keys and bytes never
+move, which is what `storage_key` is for — and re-tags the subtree. A delete takes an empty folder
+only (409 while it holds folders or files) and its grants go with it (`ON DELETE CASCADE`). The
+root and a `USER_HOME` are neither renamed nor deleted. The explorer is the screen for all three
+(section 6); there are no taxonomy pages any more.
 
 ### How the entities are mapped
 
@@ -182,7 +156,7 @@ also what makes the login query legal — two `List` collections in one `JOIN FE
 With lazy associations, a query states what it needs. Two shapes appear in the repositories:
 
 * fetching `@ManyToOne` chains is free to paginate — one row per entity either way — so
-  `FileInfoRepository.search` returns a `Page` with the whole taxonomy attached;
+  `FileInfoRepository.search` returns a `Page` with the whole folder chain attached;
 * fetching a collection cannot be paginated in SQL, so those queries return a single row
   (`findByIdAndFetchFileDetails`) and use `DISTINCT`.
 
@@ -191,11 +165,11 @@ rendering silently issues a query from the view layer, which is an N+1 invisible
 code. With it off, anything a page needs must be fetched inside a `@Transactional` service method —
 which is why no service returns an entity.
 
-**Children are read by query, not through the parent's collection.** `getFileSubCategoryOfCategory`,
-`getMainTagsOfSubCategory`, `getFileCategoryOfGeneralTag` and all three delete checks query the
-child table directly. Reading `parent.getChildren()` answers from the persistence context, which
-can hand back a collection initialised earlier in the same transaction when it was empty — a
-category that had just gained a sub-category looked empty, and the delete check passed.
+**Children are read by query, not through the parent's collection.** `FolderRepository.findChildrenWithTagGroup`,
+`countChildFoldersByParent` and `FolderService.delete`'s emptiness checks query the child
+tables directly. Reading a parent's collection answers from the persistence context, which can
+hand back a collection initialised earlier in the same transaction when it was empty — a folder
+that had just gained a child looked empty, and a delete check passed.
 
 ### Versions vs. formats
 
@@ -230,12 +204,16 @@ registered as `@Service("fileSystem") @Primary` and takes `${file.management.bas
 
 ```
 {base-dir}/
-└── {CategoryName}/                     created by FileCategoryService.createCategory
-    └── {SubCategoryName}/              created by FileSubCategoryService.createFileSubCategory
-        └── {fileNameWithoutExtension}/ created lazily by FileStorageFileSystemService.save
+└── {category folder name}/             created on first write (saveByKey creates parents)
+    └── {sub-category folder name}/
+        └── {fileNameWithoutExtension}/ no tag segment: names are unique per sub-category
             └── v{version}/
                 └── {fileName}.{ext}
 ```
+
+The names in a key are the folder names *at the time the first version was written*; a later
+rename does not move anything, and a later version of the same file goes beside the first
+(`FileService.directoryOf`, read off the existing key), not under the new names.
 
 The interface now has two halves, and which one a caller uses is not a matter of taste.
 
@@ -249,8 +227,8 @@ void     deleteByKey(String storageKey);
 ```
 
 Every read and write of a single file goes through these, so **where the bytes are is what was
-recorded when they were written**, not something rebuilt from the taxonomy at read time. That is
-what lets Phase 7 rename and move folders without moving a byte or orphaning a file.
+recorded when they were written**, not something rebuilt from the folder names at read time. That
+is what lets a folder be renamed without moving a byte or orphaning a file (`StorageKeyTest`).
 
 **One boundary for both halves.** Every method, key-shaped or path-shaped, turns its relative
 input into an absolute path through `within(relative)`: the root is resolved to an absolute,
@@ -365,7 +343,6 @@ document, so a browser navigation still lands on a page.
 | GET | `/files/file-info`, `/files/file-info/{id}` | `GET_ALL_FILE_INFO_PAGE`, `FILE_INFO_PAGE` |
 | GET | `/files/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `DOWNLOAD_FILE` |
 | GET / POST | `/files/file-info/{fileInfoId}/file-details/create`, `.../file-details` | `SAVE_NEW_FILE_DETAILS_PAGE`, `SAVE_NEW_FILE_DETAILS` |
-| GET / POST | `/file-categories/**`, `/file-sub-categories/**`, `/main-tags/**`, `/general-tags/**` | one permission per handler |
 | GET / POST | `/users/**`, `/roles/**` | one permission per handler |
 
 </details>
@@ -375,12 +352,11 @@ document, so a browser navigation still lands on a page.
 
 | Method | Path |
 |---|---|
-| GET | `/resource/file-categories/{id}/sub-categories` |
-| DELETE | `/resource/file-categories/{id}` |
-| GET | `/resource/file-sub-categories/{id}/main-tags` |
-| DELETE | `/resource/file-sub-categories/{id}` |
-| GET, DELETE | `/resource/general-tags`, `/resource/general-tags/{id}` |
-| DELETE | `/resource/main-tags/{id}` |
+| GET | `/resource/folders/children?folderId=&page=&size=`, `/resource/folders/search?query=&folderId=` (`REST_GET_FOLDER_CONTENT` / `REST_SEARCH_FOLDER_CONTENT`, or `FILE_EXPLORER_PAGE`) |
+| GET | `/resource/folders/tag-groups` (`REST_GET_TAG_GROUPS` or `REST_CREATE_FOLDER`) |
+| POST | `/resource/folders` `{parentId, name, displayName, tagGroupId | newTagGroupName}` → 201 (`REST_CREATE_FOLDER`; a category needs a group, nothing else takes one) |
+| PUT | `/resource/folders/{id}` `{name, displayName}` (`REST_RENAME_FOLDER`) |
+| DELETE | `/resource/folders/{id}` → `{"outcome":"DELETED","resource":"folder"}`, 409 while not empty (`REST_DELETE_FOLDER`) |
 | DELETE, PUT | `/resource/files/file-info/{id}`, `.../change-state` |
 | DELETE, PUT | `/resource/files/file-info/{id}/file-details/{fdId}`, `.../change-state/{newState}` |
 | PUT | `/resource/users/{userId}/change-enabled`, `.../change-login-type/{type}` |
@@ -394,14 +370,14 @@ document, so a browser navigation still lands on a page.
 | Method | Path | Permission |
 |---|---|---|
 | GET | `/health-test` | `API_HEALTH_TEST` |
-| POST | `/` (multipart, `?public-file=0` for private; the place as `fileCategoryId` + `fileSubCategoryId` + `mainTagFileId`, or as `folderId`, or both agreeing; a request without `folderId` is answered with `Deprecation: true` and logged as `v1-upload-by-triple`, since the triple goes in Phase 7 step 4) | `API_SAVE_NEW_FILE` |
+| POST | `/` (multipart, `?public-file=0` for private; the place is `folderId`, the id of a tag folder — a request without it is a 400 naming the parameter; the pre-step-4 triple is ignored) | `API_SAVE_NEW_FILE` |
 | DELETE | `/file-info/{fileInfoId}/file-details/{fileDetailsId}` | `API_DELETE_FILE_DETAILS` |
 | DELETE | `/file-details/{fileDetailsId}` (the same delete by the version's id alone) | `API_DELETE_FILE_DETAILS` |
 | GET | `/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` |
 | GET | `/file-details/{fileDetailsId}/download` (the same download by the version's id alone) | `API_DOWNLOAD_FILE` |
 
-The id-only forms with `folderId` on the upload are the contract an integration keeps after Phase 7
-step 4: nothing in them names the taxonomy. Both deletes are judged on the file's own folder
+The id-only forms with `folderId` on the upload are the contract an integration keeps since Phase 7
+step 4: nothing in them names anything but a folder and a version. Both deletes are judged on the file's own folder
 (`requireWriteAccess` on the `FileInfo`), the same way a download and a new version are. The
 whole group accepts either credential: the shared account's Basic password, or a Bearer API key,
 which reaches its own folders only.
@@ -488,8 +464,8 @@ carries `@PreAuthorize("hasAuthority('X') || hasAuthority('ADMIN')")`.
 Since Phase 6 there is a second, independent question: not "may this user list folders" but "may this
 user see *this* folder". Both must pass.
 
-* `folder` mirrors the taxonomy as one tree — `Home` → category → sub-category → main tag — written
-  only by `FolderMirrorService`, always in the same transaction as the row it mirrors.
+* `folder` is the tree — `Home` → category → sub-category → tag — written only by `FolderService`
+  (section 4).
 * A grant is a row in `role_folder` or `user_folder` naming a folder and a verb, and it covers
   everything beneath that folder. `folder.path` is a materialised path of ids with a leading and
   trailing slash (`/1/5/26/`), so "is this inside that grant?" is a prefix test and an indexed range
@@ -521,10 +497,8 @@ user see *this* folder". Both must pass.
   (pushed into the query, so paging counts stay honest), the file page, both download endpoints and
   — since roadmap 9.1 — every upload path, which is what closed issue 76. The `permitAll` public
   download is deliberately outside it.
-* **The tree addresses a node by its folder id**, not by the taxonomy row behind it — including the
-  ids a search hit reports. The taxonomy id stays inside `FileTreeService`. A file is the one
-  exception: it has no folder until roadmap 6.8, so it is still addressed by its own id and
-  authorised through its tag.
+* **The tree addresses a node by its folder id** — including the ids a search hit reports; there is
+  no other id since step 4. A file is addressed by its own id and authorised through its folder.
 
 **It is off by default.** `filemanagement.folder-access.enabled` is `false`, because turning it on
 before any grant exists empties the tree for every non-administrator. Grants are set on the role
@@ -588,10 +562,8 @@ keep their rows and are served as `application/octet-stream` attachments.
 `BootstrapConfig`'s runner runs only when `spring.profiles.active=prod`. `DataInitializer`
 inserts any missing `PermissionEnum` value, creates the `ADMIN` and `USER` roles, and creates the
 `Admin` account if absent (password from `filemanagement.bootstrap.admin-password`, or generated
-and logged once). `FolderReadinessReport` then asks the Phase 7 step 4 pre-flight queries -
-files without a folder, files whose folder is not their tag's mirror, files whose tags disagree
-with the taxonomy, names shared within a folder - and logs one line, INFO when every figure is
-zero and WARN with the figures otherwise. It changes nothing.
+and logged once). The pre-flight report that preceded step 4 is gone with the step: `V2.8`
+itself refuses to run on a database that would have failed it (section 10).
 
 ## 8. Cross-cutting concerns
 
@@ -631,11 +603,12 @@ POST /files (multipart)
        ├─ @PreAuthorize SAVE_NEW_FILE || ADMIN
        ├─ @Validated(InsertValidation) → @ValidFile asks ContentTypes (catalogued extension + first bytes)
        └─ FileService.createNewFile(dto, principalId, publicFile)          @Transactional
-            ├─ MainTagFileService.getMainTagFileByIdOrTagName
-            ├─ verify tag.subCategory / tag.subCategory.category match the form
-            ├─ isDuplicate(baseName, subCategoryId)
+            ├─ targetFolderOf(dto): folderId → a TAG folder, else 400
+            ├─ folderAccessService.requireWriteAccess(access, folder)
+            ├─ FolderService.chainOf(folder) → category / sub-category / tag
+            ├─ findByFileNameUnderSubCategory(chain.subCategory, baseName) → 409 if taken
             ├─ ValidationUtil.checkCorrectFileName
-            ├─ build FileInfo (paths, state, lastVersion = 1)
+            ├─ build FileInfo (folder, state, lastVersion = 1); tagMirrorService.retag(fileInfo)
             ├─ build FileDetails v1: UploadPolicyService.requireAllowed(principal, file) → kind and size for this person
             │                        then hashId = random UUID, storageKey, content_type = ContentTypes.detect
             ├─ fileInfoRepository.save(fileInfo)          ← cascades to FileDetails
@@ -654,7 +627,7 @@ migrations themselves, in `src/main/resources/db/migration`:
 
 | Version | Contents |
 |---|---|
-| `V1.0__Initial_Setup.sql` | `user`, `role`, `user_role`, `permission`, `permission_role`, `general_tag`, `file_category`, `file_sub_category`, `main_tag_file`, `file_info`, `file_details` |
+| `V1.0__Initial_Setup.sql` | `user`, `role`, `user_role`, `permission`, `permission_role`, `general_tag`, `file_category`, `file_sub_category`, `main_tag_file` (the four dropped by `V2.8`), `file_info`, `file_details` |
 | `V1.1__Add_LoginType_To_User.sql` | `user.login_type INT NOT NULL DEFAULT 0 AFTER updated_at` |
 | `V1.2__Add_Action_History_Table.sql` | `action_history` |
 | `V1.3__Add_Uniqueness_And_Indexes.sql` | the composite unique constraints the services check in Java, and indexes on the filtered columns |
@@ -668,6 +641,7 @@ migrations themselves, in `src/main/resources/db/migration`:
 | `V2.5__Normalise_Content_Type.sql` | data only: `file_details.content_type` rewritten from the extension for the nine accepted kinds, so the column holds the server's word rather than the client's (issues 12, 13) |
 | `V2.6__Add_Upload_Policy.sql` | `upload_policy` (one system-wide row, `role_id` null; one per role that has its own), `upload_policy_rule` (extension → `max_size_bytes`); the system-wide row seeded with the nine default kinds at 20 MB |
 | `V2.7__Add_Content_Kind.sql` | `content_kind`: the custom half of the content catalogue - extension, media type, and a byte signature at an offset or "text only"; empty until an administrator adds one |
+| `V2.8__Remove_Taxonomy.sql` | Phase 7 step 4. Fails fast first: `file_info.folder_id NOT NULL`, `uq_file_info_name_per_folder`, `folder.tag_group_id` backfilled from each category's general tag and required on every `CATEGORY` row. Then the four `REST_*_FOLDER` / `REST_GET_TAG_GROUPS` permissions, mapped onto the roles that held the taxonomy ones; the 27 taxonomy permissions deleted; `file_info` / `file_details` lose `file_path`, `relative_path`, `file_sub_category_id`, `main_tag_file_id`; `folder` loses `general_tag_id`, `source_type`, `source_id`; `main_tag_file`, `file_sub_category`, `file_category`, `general_tag` dropped. Not reversible without the backup |
 
 `V1.3` turns four rules that lived only in application code into constraints: a sub-category name is
 unique per category, a main-tag name per sub-category, a file name per sub-category, and a
@@ -702,7 +676,7 @@ schema at startup but never modifies it.
 | `spring.datasource.*` | `jdbc:mysql://localhost:3306/file_management`, user/pass `file_management` | |
 | `spring.jpa.hibernate.ddl-auto` | `validate` | |
 | `spring.flyway.baseline-on-migrate` | `true` | |
-| `file.management.base-dir` | `./TempFiles/files/main/` | `FileStorageFileSystemService`, `FileService`, `FileCategoryService`, `FileSubCategoryService`, `MainTagFileService` |
+| `file.management.base-dir` | `./TempFiles/files/main/` | `FileStorageFileSystemService` |
 | `spring.servlet.multipart.max-file-size` / `max-request-size` | `20MB` | |
 | `filemanagement.default.page-size` / `element-size` | `30` | injected per-controller with `@Value` |
 | `filemanagement.auth.ldap.activedirectory.enabled` / `.domain` / `.url` | `false`, `hnp.local`, `ldap://172.29.76.9` | |
@@ -727,7 +701,7 @@ Four kinds, and the kind is the point — each answers something the others cann
 Two things about the service tests are deliberate corrections of how they used to work.
 
 **The beans are Spring's, not `new`.** They used to be constructed by hand —
-`new GeneralTagService(entityManager, repository, actionHistoryService)` — which produces an object
+`new SomeService(entityManager, repository, actionHistoryService)` — which produces an object
 with no proxy, so every `@Transactional` on the class under test was inert. Those tests could not
 have caught a missing transaction boundary, which is precisely the class of bug that turned out to
 be there.

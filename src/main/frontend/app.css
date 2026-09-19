@@ -592,6 +592,10 @@
 
     .explorer-subbar   { @apply flex shrink-0 flex-wrap items-center gap-2 border-b border-ink-200 bg-white px-3 py-2; }
     .explorer-crumbs   { @apply flex min-w-0 flex-1 flex-wrap items-center gap-0.5 text-sm text-ink-500; }
+    /* The create / rename form under the sub-bar (Phase 7 step 4). */
+    .explorer-manage        { @apply flex shrink-0 flex-col gap-3 border-b border-ink-200 bg-ink-50 px-3 py-3; }
+    .explorer-manage-fields { @apply grid grid-cols-1 gap-3 md:grid-cols-3; }
+    .explorer-manage-field  { @apply flex flex-col gap-1 text-sm text-ink-700; }
     .explorer-crumb    { @apply max-w-[13rem] truncate rounded-[var(--radius-control)] px-1.5 py-0.5 hover:bg-ink-100 hover:text-ink-800; }
     .explorer-crumb-current { @apply max-w-[16rem] truncate px-1.5 py-0.5 font-semibold text-ink-800; }
     .explorer-crumb-sep { @apply select-none text-ink-300; }

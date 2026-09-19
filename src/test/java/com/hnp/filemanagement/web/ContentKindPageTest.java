@@ -1,24 +1,17 @@
 package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
-import com.hnp.filemanagement.dto.FileCategoryDTO;
-import com.hnp.filemanagement.dto.FileSubCategoryDTO;
-import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.ContentKindService;
-import com.hnp.filemanagement.service.FileCategoryService;
-import com.hnp.filemanagement.service.FileSubCategoryService;
-import com.hnp.filemanagement.service.MainTagFileService;
 import com.hnp.filemanagement.service.UploadPolicyService;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.repository.FolderRepository;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -68,28 +61,16 @@ class ContentKindPageTest extends MySqlSupport {
     @Autowired
     private UploadPolicyService uploadPolicyService;
     @Autowired
-    private FileCategoryService fileCategoryService;
-    @Autowired
-    private FileSubCategoryService fileSubCategoryService;
-    @Autowired
-    private MainTagFileService mainTagFileService;
-    @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
-    @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private FolderRepository folderRepository;
+    @Autowired
+    private TagGroupRepository tagGroupRepository;
     @Autowired
     private RoleRepository roleRepository;
 
     private int adminId;
-    private int categoryId;
-    private int subCategoryId;
-    private int tagId;
+    private int tagFolderId;
 
     @BeforeEach
     void setUp() {
@@ -97,35 +78,7 @@ class ContentKindPageTest extends MySqlSupport {
         admin.getRoles().add(roleRepository.save(TestData.role("ADMIN")));
         adminId = userRepository.save(admin).getId();
 
-        int generalTagId = generalTagRepository.save(TestData.generalTag(admin, "gt" + TestData.nextSequence())).getId();
-        FileCategoryDTO category = new FileCategoryDTO();
-        category.setCategoryName("Cat" + TestData.nextSequence());
-        category.setCategoryNameDescription(category.getCategoryName() + " label");
-        category.setDescription("a category");
-        category.setGeneralTagId(generalTagId);
-        fileCategoryService.createCategory(category, adminId);
-        categoryId = fileCategoryRepository.findAll().stream()
-                .filter(c -> c.getCategoryName().equals(category.getCategoryName())).findFirst().orElseThrow().getId();
-
-        FileSubCategoryDTO subCategory = new FileSubCategoryDTO();
-        subCategory.setSubCategoryName("Sub" + TestData.nextSequence());
-        subCategory.setSubCategoryNameDescription(subCategory.getSubCategoryName() + " label");
-        subCategory.setDescription("a sub-category");
-        subCategory.setFileCategoryId(categoryId);
-        fileSubCategoryService.createFileSubCategory(subCategory, adminId);
-        subCategoryId = fileSubCategoryRepository.findAll().stream()
-                .filter(sc -> sc.getSubCategoryName().equals(subCategory.getSubCategoryName())).findFirst().orElseThrow().getId();
-
-        MainTagFileDTO tag = new MainTagFileDTO();
-        tag.setTagName("Tag" + TestData.nextSequence());
-        tag.setTagNameDescription(tag.getTagName() + " label");
-        tag.setDescription("a tag " + tag.getTagName());
-        tag.setFileSubCategoryId(subCategoryId);
-        tag.setFileCategoryId(categoryId);
-        tag.setType(0);
-        mainTagFileService.createMainTagFile(tag, adminId);
-        tagId = mainTagFileRepository.findAll().stream()
-                .filter(t -> t.getTagName().equals(tag.getTagName())).findFirst().orElseThrow().getId();
+        tagFolderId = FolderFixture.chain(folderRepository, tagGroupRepository, admin).tagId();
     }
 
     @AfterTransaction
@@ -232,9 +185,7 @@ class ContentKindPageTest extends MySqlSupport {
         return mockMvc.perform(multipart("/api/v1/files")
                 .file(new MockMultipartFile("multipartFile", fileName, "application/octet-stream", bytes))
                 .param("description", "uploaded through v1")
-                .param("fileCategoryId", String.valueOf(categoryId))
-                .param("fileSubCategoryId", String.valueOf(subCategoryId))
-                .param("mainTagFileId", String.valueOf(tagId))
+                .param("folderId", String.valueOf(tagFolderId))
                 .with(user(principal(PermissionEnum.API_SAVE_NEW_FILE)))
                 .accept(MediaType.APPLICATION_JSON));
     }

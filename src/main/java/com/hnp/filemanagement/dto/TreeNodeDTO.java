@@ -5,13 +5,12 @@ import lombok.Data;
 /**
  * One node of the file tree.
  *
- * <p>The tree deliberately presents category, sub-category and main tag as <em>folders</em>, even
- * though only the first two create a directory on disk today and a main tag is metadata. The
- * intended direction is that all three become real folders; modelling them as folders now means
- * that change is a data migration rather than a rewrite of this view.
+ * <p>Category, sub-category and tag are the three kinds of folder (since Phase 7 step 4 the
+ * only structure there is); the node types keep the names the tree always used, so
+ * {@code MAIN_TAG} is a tag folder. A file's tags are labels, not nodes.
  *
  * <p>A node carries no children: the view loads one level at a time, so opening a folder costs one
- * query instead of walking the whole taxonomy up front.
+ * query instead of walking the whole tree up front.
  */
 @Data
 public class TreeNodeDTO {

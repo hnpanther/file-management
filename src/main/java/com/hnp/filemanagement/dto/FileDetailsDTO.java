@@ -17,7 +17,6 @@ public class FileDetailsDTO {
 
     private String description;
 
-    private String filePath;
 
     private String fileLink;
 

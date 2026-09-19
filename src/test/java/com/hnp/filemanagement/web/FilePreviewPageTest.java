@@ -3,20 +3,15 @@ package com.hnp.filemanagement.web;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
-import com.hnp.filemanagement.entity.FileCategory;
-import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.GeneralTag;
-import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.repository.FolderRepository;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -73,37 +68,25 @@ class FilePreviewPageTest extends MySqlSupport {
     private FileService fileService;
 
     @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
-    @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private FolderRepository folderRepository;
+    @Autowired
+    private TagGroupRepository tagGroupRepository;
 
     @Value("${file.management.base-dir}")
     private String baseDir;
 
     private int principalId;
-    private int categoryId;
-    private int subCategoryId;
-    private int mainTagId;
+    private int tagFolderId;
 
     @BeforeEach
     void setUp() throws Exception {
         User creator = userRepository.save(TestData.user());
         principalId = creator.getId();
 
-        GeneralTag generalTag = generalTagRepository.save(TestData.generalTag(creator, "gt" + TestData.nextSequence()));
-        FileCategory category = fileCategoryRepository.save(TestData.category(creator, generalTag, "cat" + TestData.nextSequence()));
-        categoryId = category.getId();
-        FileSubCategory subCategory = fileSubCategoryRepository.save(TestData.subCategory(creator, category, "sub" + TestData.nextSequence()));
-        subCategoryId = subCategory.getId();
-        mainTagId = mainTagFileRepository.save(TestData.mainTag(creator, subCategory, "tag" + TestData.nextSequence())).getId();
-
-        Files.createDirectories(Paths.get(baseDir, category.getCategoryName(), subCategory.getSubCategoryName()));
+        FolderFixture.Chain chain = FolderFixture.chain(folderRepository, tagGroupRepository, creator);
+        tagFolderId = chain.tagId();
     }
 
     private static UserDetailsImpl administrator() {
@@ -189,9 +172,7 @@ class FilePreviewPageTest extends MySqlSupport {
         FileInfoDTO request = new FileInfoDTO();
         request.setDescription("description of " + fileName);
         request.setFileNameDescription(fileName);
-        request.setFileCategoryId(categoryId);
-        request.setFileSubCategoryId(subCategoryId);
-        request.setMainTagFileId(mainTagId);
+        request.setFolderId(tagFolderId);
         request.setMultipartFile(new MockMultipartFile("file", fileName, "application/octet-stream",
                 TestData.bytesFor(fileName)));
         return fileService.createNewFile(request, principalId, 1);

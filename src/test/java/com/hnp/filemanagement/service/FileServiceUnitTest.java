@@ -3,7 +3,9 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FileUploadDTO;
 import com.hnp.filemanagement.entity.FileInfo;
-import com.hnp.filemanagement.entity.MainTagFile;
+import com.hnp.filemanagement.entity.Folder;
+import com.hnp.filemanagement.entity.FolderKind;
+import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
@@ -55,8 +57,6 @@ class FileServiceUnitTest {
     @Mock
     private FileStorageService fileStorageService;
     @Mock
-    private MainTagFileService mainTagFileService;
-    @Mock
     private ActionHistoryService actionHistoryService;
     /**
      * Lenient and silent by default, so the guard clauses below are tested on their own. What it
@@ -64,12 +64,9 @@ class FileServiceUnitTest {
      */
     @Mock
     private FolderAccessService folderAccessService;
-    /**
-     * Answers the tag's folder when a test stubs it - the upload resolves its target folder before
-     * the access check and the taxonomy check, so the guards below need one to exist.
-     */
+    /** Answers the tag folder, with its chain, when a test stubs it - the upload resolves it first. */
     @Mock
-    private FolderMirrorService folderMirrorService;
+    private FolderService folderService;
     @Mock
     private TagMirrorService tagMirrorService;
     /** Lenient and silent: a mock refuses nothing, so the guards below are tested on their own. */
@@ -79,31 +76,27 @@ class FileServiceUnitTest {
     @InjectMocks
     private FileService underTest;
 
-    private MainTagFile mainTag;
-
-    /** The folder mirroring {@code mainTag}: a TAG folder whose source is the tag. */
-    private com.hnp.filemanagement.entity.Folder tagFolder() {
-        var folder = new com.hnp.filemanagement.entity.Folder();
-        folder.setId(70);
-        folder.setKind(com.hnp.filemanagement.entity.FolderKind.TAG);
-        folder.setSourceType(com.hnp.filemanagement.entity.FolderSourceType.MAIN_TAG);
-        folder.setSourceId(mainTag.getId());
-        folder.setPath("/1/2/3/70/");
-        return folder;
-    }
+    private User user;
+    private Folder tagFolder;
 
     @BeforeEach
     void setUp() {
-        var user = TestData.user();
+        user = TestData.user();
         user.setId(1);
-        var generalTag = TestData.generalTag(user, "tag");
-        generalTag.setId(1);
-        var category = TestData.category(user, generalTag, "documents");
-        category.setId(1);
-        var subCategory = TestData.subCategory(user, category, "invoices");
-        subCategory.setId(2);
-        mainTag = TestData.mainTag(user, subCategory, "tag");
-        mainTag.setId(3);
+        Folder root = new Folder();
+        root.setId(1);
+        root.setKind(FolderKind.ROOT);
+        root.setDepth(0);
+        root.setPath("/1/");
+        Folder category = TestData.folder(user, root, "documents", TestData.tagGroup(user, "gt"));
+        category.setId(2);
+        category.setPath("/1/2/");
+        Folder subCategory = TestData.folder(user, category, "invoices", null);
+        subCategory.setId(3);
+        subCategory.setPath("/1/2/3/");
+        tagFolder = TestData.folder(user, subCategory, "tag", null);
+        tagFolder.setId(70);
+        tagFolder.setPath("/1/2/3/70/");
     }
 
     @Test
@@ -117,60 +110,60 @@ class FileServiceUnitTest {
         assertThatThrownBy(() -> underTest.createNewFile(request, 1, 1))
                 .isInstanceOf(InvalidDataException.class);
 
-        verifyNoInteractions(fileStorageService, mainTagFileService, actionHistoryService);
+        verifyNoInteractions(fileStorageService, folderService, actionHistoryService);
     }
 
     @Test
-    @DisplayName("an unstorable file name is refused before the tag is even looked up")
+    @DisplayName("an unstorable file name is refused before the folder is even looked up")
     void refusesAnUnstorableName() {
         FileInfoDTO request = uploadRequest("has space.txt");
 
         assertThatThrownBy(() -> underTest.createNewFile(request, 1, 1))
                 .isInstanceOf(InvalidDataException.class);
 
-        verifyNoInteractions(fileStorageService, mainTagFileService);
+        verifyNoInteractions(fileStorageService, folderService);
     }
 
     @Test
-    @DisplayName("a mismatched taxonomy is refused, and nothing is written to storage")
-    void refusesAMismatchedTaxonomy() {
-        when(mainTagFileService.getMainTagFileEntity(anyInt())).thenReturn(mainTag);
-        when(folderMirrorService.folderOf(mainTag)).thenReturn(tagFolder());
-
+    @DisplayName("a request without a folderId is refused, and nothing is written to storage")
+    void refusesARequestWithoutAFolder() {
         FileInfoDTO request = uploadRequest("report.txt");
-        request.setFileCategoryId(999);
+        request.setFolderId(null);
 
         assertThatThrownBy(() -> underTest.createNewFile(request, 1, 1))
-                .isInstanceOf(InvalidDataException.class);
+                .isInstanceOf(InvalidDataException.class)
+                .hasMessageContaining("folderId");
 
-        verifyNoInteractions(fileStorageService);
+        verifyNoInteractions(fileStorageService, folderService);
         verify(fileInfoRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
-    /**
-     * The write check runs before the category/sub-category/tag chain is validated, and this is the
-     * test that pins that order. Answering "your triple is inconsistent" to somebody who may not
-     * write here would tell them which triples are consistent — a slow way to map a taxonomy they
-     * were never shown.
-     */
     @Test
-    @DisplayName("a write outside the grant is refused before the taxonomy is even checked")
+    @DisplayName("a folder that is not a tag folder is refused: only a tag folder holds files")
+    void refusesANonTagFolder() {
+        Folder subCategory = tagFolder.getParent();
+        when(folderService.requireWithChain(anyInt())).thenReturn(subCategory);
+
+        assertThatThrownBy(() -> underTest.createNewFile(uploadRequest("report.txt"), 1, 1))
+                .isInstanceOf(InvalidDataException.class)
+                .hasMessageContaining("tag folder");
+
+        verifyNoInteractions(fileStorageService);
+    }
+
+    /** The write check runs before the duplicate check, and this is the test that pins that order. */
+    @Test
+    @DisplayName("a write outside the grant is refused before anything about the file is looked at")
     void refusesAWriteOutsideTheGrantBeforeAnythingElse() {
-        when(mainTagFileService.getMainTagFileEntity(anyInt())).thenReturn(mainTag);
-        when(folderMirrorService.folderOf(mainTag)).thenReturn(tagFolder());
+        when(folderService.requireWithChain(anyInt())).thenReturn(tagFolder);
         org.mockito.Mockito.doThrow(new org.springframework.security.access.AccessDeniedException("no"))
                 .when(folderAccessService).requireWriteAccess(
                         org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(com.hnp.filemanagement.entity.Folder.class));
 
-        FileInfoDTO request = uploadRequest("report.txt");
-        // Also inconsistent, which is what makes the order observable: the taxonomy check would
-        // otherwise answer first.
-        request.setFileCategoryId(999);
-
-        assertThatThrownBy(() -> underTest.createNewFile(request, 1, 1))
+        assertThatThrownBy(() -> underTest.createNewFile(uploadRequest("report.txt"), 1, 1))
                 .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
 
-        verifyNoInteractions(fileStorageService);
+        verifyNoInteractions(fileStorageService, fileInfoRepository);
     }
 
     @Test
@@ -241,17 +234,15 @@ class FileServiceUnitTest {
     // ---------------------------------------------------------------- helpers
 
     private FileInfo existingFile() {
-        FileInfo fileInfo = TestData.fileInfo(mainTag.getCreatedBy(), mainTag, "report");
+        FileInfo fileInfo = TestData.fileInfo(user, tagFolder, "report");
         fileInfo.setId(10);
-        fileInfo.setLastVersion(1);
+        TestData.fileDetails(user, fileInfo, 1, "txt");
         return fileInfo;
     }
 
     private FileInfoDTO uploadRequest(String fileName) {
         FileInfoDTO request = new FileInfoDTO();
-        request.setFileCategoryId(1);
-        request.setFileSubCategoryId(2);
-        request.setMainTagFileId(3);
+        request.setFolderId(70);
         request.setDescription("a description");
         request.setMultipartFile(multipart(fileName));
         return request;

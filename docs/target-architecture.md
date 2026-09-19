@@ -53,7 +53,7 @@ Package names follow the existing `com.hnp.filemanagement` root:
 
 ```
 com.hnp.filemanagement
-├── catalog/            the taxonomy: GeneralTag → Category → SubCategory → MainTag
+├── folder/             the tree: Folder (CATEGORY → SUB_CATEGORY → TAG), TagGroup, grants
 │   ├── domain/         entities + services
 │   ├── persistence/    repositories
 │   └── web/            controllers + API

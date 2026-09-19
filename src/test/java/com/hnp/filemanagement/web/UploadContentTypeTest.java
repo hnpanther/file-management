@@ -2,27 +2,18 @@ package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.ApiKeyDTO;
-import com.hnp.filemanagement.dto.FileCategoryDTO;
-import com.hnp.filemanagement.dto.FileSubCategoryDTO;
-import com.hnp.filemanagement.dto.MainTagFileDTO;
 import com.hnp.filemanagement.entity.FileDetails;
-import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.ApiKeyService;
-import com.hnp.filemanagement.service.FileCategoryService;
-import com.hnp.filemanagement.service.FileSubCategoryService;
-import com.hnp.filemanagement.service.MainTagFileService;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import com.jayway.jsonpath.JsonPath;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -73,25 +64,13 @@ class UploadContentTypeTest extends MySqlSupport {
     @Autowired
     private ApiKeyService apiKeyService;
     @Autowired
-    private FileCategoryService fileCategoryService;
-    @Autowired
-    private FileSubCategoryService fileSubCategoryService;
-    @Autowired
-    private MainTagFileService mainTagFileService;
-    @Autowired
     private FileDetailsRepository fileDetailsRepository;
     @Autowired
     private FolderRepository folderRepository;
     @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
-    @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private TagGroupRepository tagGroupRepository;
     @Autowired
     private RoleRepository roleRepository;
     @Autowired
@@ -101,11 +80,9 @@ class UploadContentTypeTest extends MySqlSupport {
 
     private int adminId;
     private String bucket;
-    private int categoryId;
-    private int subCategoryId;
     private String subCategoryName;
-    private int tagId;
     private String tagName;
+    private int tagFolderId;
 
     @BeforeEach
     void setUp() {
@@ -113,39 +90,11 @@ class UploadContentTypeTest extends MySqlSupport {
         User admin = TestData.user();
         admin.getRoles().add(adminRole);
         adminId = userRepository.save(admin).getId();
-        int generalTagId = generalTagRepository.save(TestData.generalTag(admin, "gt" + TestData.nextSequence())).getId();
-
-        FileCategoryDTO category = new FileCategoryDTO();
-        category.setCategoryName("Cat" + TestData.nextSequence());
-        category.setCategoryNameDescription(category.getCategoryName() + " label");
-        category.setDescription("a category");
-        category.setGeneralTagId(generalTagId);
-        fileCategoryService.createCategory(category, adminId);
-        bucket = category.getCategoryName();
-        categoryId = fileCategoryRepository.findAll().stream()
-                .filter(c -> c.getCategoryName().equals(bucket)).findFirst().orElseThrow().getId();
-
-        FileSubCategoryDTO subCategory = new FileSubCategoryDTO();
-        subCategory.setSubCategoryName("Sub" + TestData.nextSequence());
-        subCategory.setSubCategoryNameDescription(subCategory.getSubCategoryName() + " label");
-        subCategory.setDescription("a sub-category");
-        subCategory.setFileCategoryId(categoryId);
-        fileSubCategoryService.createFileSubCategory(subCategory, adminId);
-        subCategoryName = subCategory.getSubCategoryName();
-        subCategoryId = fileSubCategoryRepository.findAll().stream()
-                .filter(sc -> sc.getSubCategoryName().equals(subCategoryName)).findFirst().orElseThrow().getId();
-
-        MainTagFileDTO tag = new MainTagFileDTO();
-        tag.setTagName("Tag" + TestData.nextSequence());
-        tag.setTagNameDescription(tag.getTagName() + " label");
-        tag.setDescription("a tag " + tag.getTagName());
-        tag.setFileSubCategoryId(subCategoryId);
-        tag.setFileCategoryId(categoryId);
-        tag.setType(0);
-        mainTagFileService.createMainTagFile(tag, adminId);
-        tagName = tag.getTagName();
-        tagId = mainTagFileRepository.findAll().stream()
-                .filter(t -> t.getTagName().equals(tagName)).findFirst().orElseThrow().getId();
+        FolderFixture.Chain chain = FolderFixture.chain(folderRepository, tagGroupRepository, admin);
+        bucket = chain.category().getName();
+        subCategoryName = chain.subCategory().getName();
+        tagName = chain.tag().getName();
+        tagFolderId = chain.tagId();
     }
 
     // ================================================================ storing (issue 12)
@@ -185,7 +134,7 @@ class UploadContentTypeTest extends MySqlSupport {
     @Test
     @DisplayName("v2: the raw body is judged the same way, and the declared Content-Type header is ignored")
     void v2IsHeldToTheSameRule() throws Exception {
-        String credential = apiKey(folderRepository.findBySourceTypeAndSourceId(FolderSourceType.MAIN_TAG, tagId).orElseThrow().getId() + ":WRITE");
+        String credential = apiKey(tagFolderId + ":WRITE");
         String prefix = subCategoryName + "/" + tagName;
 
         mockMvc.perform(put("/api/v2/" + bucket + "/" + prefix + "/photo/photo.png")
@@ -216,9 +165,7 @@ class UploadContentTypeTest extends MySqlSupport {
                         .file(new MockMultipartFile("multipartFile", "page.html", "text/plain",
                                 "<html/>".getBytes(StandardCharsets.UTF_8)))
                         .param("description", "d").param("fileName", "page")
-                        .param("fileCategoryId", String.valueOf(categoryId))
-                        .param("fileSubCategoryId", String.valueOf(subCategoryId))
-                        .param("mainTagFileId", String.valueOf(tagId))
+                        .param("folderId", String.valueOf(tagFolderId))
                         .with(user(principal(PermissionEnum.ADMIN)))
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(status().isOk());   // the form re-renders with a message
@@ -296,9 +243,7 @@ class UploadContentTypeTest extends MySqlSupport {
         return mockMvc.perform(multipart("/api/v1/files")
                 .file(new MockMultipartFile("multipartFile", fileName, declaredType, bytes))
                 .param("description", "uploaded through v1")
-                .param("fileCategoryId", String.valueOf(categoryId))
-                .param("fileSubCategoryId", String.valueOf(subCategoryId))
-                .param("mainTagFileId", String.valueOf(tagId))
+                .param("folderId", String.valueOf(tagFolderId))
                 .with(user(principal(PermissionEnum.API_SAVE_NEW_FILE)))
                 .accept(MediaType.APPLICATION_JSON));
     }

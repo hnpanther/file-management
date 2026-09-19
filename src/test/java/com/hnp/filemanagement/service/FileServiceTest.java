@@ -4,26 +4,21 @@ import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FileInfoPageDTO;
 import com.hnp.filemanagement.dto.FileUploadDTO;
-import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
-import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.GeneralTag;
-import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.repository.FolderRepository;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -68,15 +63,11 @@ class FileServiceTest extends MySqlSupport {
     @Autowired
     private FileDetailsRepository fileDetailsRepository;
     @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
-    @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private FolderRepository folderRepository;
+    @Autowired
+    private TagGroupRepository tagGroupRepository;
     @Autowired
     private EntityManager entityManager;
 
@@ -85,9 +76,8 @@ class FileServiceTest extends MySqlSupport {
 
     private User creator;
     private int principalId;
-    private int categoryId;
-    private int subCategoryId;
-    private int mainTagId;
+    private FolderFixture.Chain chain;
+    private int tagFolderId;
     private String categoryName;
     private String subCategoryName;
 
@@ -96,22 +86,10 @@ class FileServiceTest extends MySqlSupport {
         creator = userRepository.save(TestData.user());
         principalId = creator.getId();
 
-        GeneralTag generalTag = generalTagRepository.save(
-                TestData.generalTag(creator, "tag" + TestData.nextSequence()));
-
-        FileCategory category = fileCategoryRepository.save(
-                TestData.category(creator, generalTag, "documents" + TestData.nextSequence()));
-        categoryId = category.getId();
-        categoryName = category.getCategoryName();
-
-        FileSubCategory subCategory = fileSubCategoryRepository.save(
-                TestData.subCategory(creator, category, "invoices" + TestData.nextSequence()));
-        subCategoryId = subCategory.getId();
-        subCategoryName = subCategory.getSubCategoryName();
-
-        MainTagFile mainTag = mainTagFileRepository.save(
-                TestData.mainTag(creator, subCategory, "tag" + TestData.nextSequence()));
-        mainTagId = mainTag.getId();
+        chain = FolderFixture.chain(folderRepository, tagGroupRepository, creator);
+        tagFolderId = chain.tagId();
+        categoryName = chain.category().getName();
+        subCategoryName = chain.subCategory().getName();
 
         // The storage layer writes into an existing category/sub-category directory.
         Files.createDirectories(Paths.get(baseDir, categoryName, subCategoryName));
@@ -141,23 +119,48 @@ class FileServiceTest extends MySqlSupport {
         assertThat(fileInfoRepository.findById(stored.getFileInfoId()).orElseThrow().getState()).isEqualTo(-1);
     }
 
+    /**
+     * The bytes live at {@code {category}/{subCategory}/{name}/...} - no tag segment - so a name
+     * is unique per sub-category: the same name under a sibling tag folder would share a directory
+     * on disk. Under another sub-category it is another file.
+     */
     @Test
-    @DisplayName("a second file with the same name in the same sub-category is a 409")
+    @DisplayName("a second file with the same name is a 409 in the same folder and under a sibling tag folder; under another sub-category it is another file")
     void rejectsADuplicateFileName() {
         underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
 
         assertThatThrownBy(() -> underTest.createNewFile(uploadRequest("report.txt"), principalId, 1))
-                .isInstanceOf(DuplicateResourceException.class);
+                .isInstanceOf(DuplicateResourceException.class)
+                .hasMessageContaining("this folder");
+
+        var sibling = FolderFixture.tag(folderRepository, chain.subCategory(), creator, "Sibling" + TestData.nextSequence());
+        FileInfoDTO underSibling = uploadRequest("report.txt");
+        underSibling.setFolderId(sibling.getId());
+        assertThatThrownBy(() -> underTest.createNewFile(underSibling, principalId, 1))
+                .isInstanceOf(DuplicateResourceException.class)
+                .hasMessageContaining("sibling folder");
+        assertThat(underTest.isDuplicate("report", sibling.getId())).isTrue();
+
+        var otherSub = FolderFixture.subCategory(folderRepository, chain.category(), creator, "OtherSub" + TestData.nextSequence());
+        var farTag = FolderFixture.tag(folderRepository, otherSub, creator, "Far" + TestData.nextSequence());
+        TestData.createStorageDirectory(baseDir, chain.category().getName(), otherSub.getName());
+        FileInfoDTO elsewhere = uploadRequest("report.txt");
+        elsewhere.setFolderId(farTag.getId());
+        assertThat(underTest.createNewFile(elsewhere, principalId, 1).getFileInfoId()).isPositive();
     }
 
     @Test
-    @DisplayName("a category that does not match the tag's own chain is a 400")
-    void rejectsAMismatchedCategory() {
+    @DisplayName("a request without a folderId, or naming a folder that cannot hold files, is a 400")
+    void rejectsAMissingOrWrongFolder() {
         FileInfoDTO request = uploadRequest("report.txt");
-        request.setFileCategoryId(categoryId + 999);
-
+        request.setFolderId(null);
         assertThatThrownBy(() -> underTest.createNewFile(request, principalId, 1))
-                .isInstanceOf(InvalidDataException.class);
+                .isInstanceOf(InvalidDataException.class).hasMessageContaining("folderId");
+
+        FileInfoDTO onSubCategory = uploadRequest("report.txt");
+        onSubCategory.setFolderId(chain.subCategoryId());
+        assertThatThrownBy(() -> underTest.createNewFile(onSubCategory, principalId, 1))
+                .isInstanceOf(InvalidDataException.class).hasMessageContaining("tag folder");
     }
 
     @Test
@@ -381,13 +384,19 @@ class FileServiceTest extends MySqlSupport {
     }
 
     @Test
-    @DisplayName("files are counted per main tag")
-    void countsFilesPerTag() {
-        assertThat(underTest.countFileWithSameTag(mainTagId)).isZero();
+    @DisplayName("a stored file carries its folder, its tags from the folder names, and a key under the folder names")
+    void storesFolderTagsAndKey() {
+        FileDetailsDTO stored = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
+        entityManager.flush();
+        entityManager.clear();
 
-        underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
-
-        assertThat(underTest.countFileWithSameTag(mainTagId)).isEqualTo(1);
+        FileInfo fileInfo = fileInfoRepository.findByIdAndFetchFileDetails(stored.getFileInfoId()).orElseThrow();
+        assertThat(fileInfo.getFolder().getId()).isEqualTo(tagFolderId);
+        assertThat(fileInfo.getFileDetailsList().getFirst().getStorageKey())
+                .isEqualTo(categoryName + "/" + subCategoryName + "/report/v1/report.txt");
+        assertThat(fileInfo.getTags()).extracting(com.hnp.filemanagement.entity.Tag::getName)
+                .containsExactlyInAnyOrder(categoryName, subCategoryName, chain.tag().getName());
+        assertThat(fileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders()).isEmpty();
     }
 
     @Test
@@ -444,9 +453,7 @@ class FileServiceTest extends MySqlSupport {
         FileInfoDTO request = new FileInfoDTO();
         request.setDescription("description of " + fileName);
         request.setFileNameDescription(fileName);
-        request.setFileCategoryId(categoryId);
-        request.setFileSubCategoryId(subCategoryId);
-        request.setMainTagFileId(mainTagId);
+        request.setFolderId(tagFolderId);
         request.setMultipartFile(multipart(fileName));
         return request;
     }

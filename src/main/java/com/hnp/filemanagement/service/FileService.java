@@ -10,10 +10,7 @@ import com.hnp.filemanagement.entity.ActionEnum;
 import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
-import com.hnp.filemanagement.entity.FileSubCategory;
 import com.hnp.filemanagement.entity.Folder;
-import com.hnp.filemanagement.entity.FolderKind;
-import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -45,7 +42,7 @@ import java.util.UUID;
  * <p>The vocabulary matters when reading this class:
  *
  * <ul>
- *   <li>a {@code FileInfo} is the logical file: one name, one sub-category, one main tag;</li>
+ *   <li>a {@code FileInfo} is the logical file: one name, one tag folder;</li>
  *   <li>a {@code FileDetails} is one stored revision, identified by version <em>and</em> extension,
  *       so {@code report.pdf} and {@code report.docx} can both be version 2;</li>
  *   <li>{@code lastVersion} on the parent is a denormalised {@code MAX(version)}, kept so the list
@@ -90,32 +87,29 @@ public class FileService {
     private final FileDetailsRepository fileDetailsRepository;
     private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
-    private final MainTagFileService mainTagFileService;
     private final ActionHistoryService actionHistoryService;
     private final FolderAccessService folderAccessService;
-    private final FolderMirrorService folderMirrorService;
     private final UploadPolicyService uploadPolicyService;
     private final TagMirrorService tagMirrorService;
+    private final FolderService folderService;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileDetailsRepository fileDetailsRepository,
                        UserRepository userRepository,
                        FileStorageService fileStorageService,
-                       MainTagFileService mainTagFileService,
                        ActionHistoryService actionHistoryService,
                        FolderAccessService folderAccessService,
-                       FolderMirrorService folderMirrorService,
                        TagMirrorService tagMirrorService,
-                       UploadPolicyService uploadPolicyService) {
+                       UploadPolicyService uploadPolicyService,
+                       FolderService folderService) {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
         this.fileStorageService = fileStorageService;
-        this.mainTagFileService = mainTagFileService;
         this.actionHistoryService = actionHistoryService;
         this.folderAccessService = folderAccessService;
-        this.folderMirrorService = folderMirrorService;
         this.uploadPolicyService = uploadPolicyService;
+        this.folderService = folderService;
         this.tagMirrorService = tagMirrorService;
     }
 
@@ -141,41 +135,34 @@ public class FileService {
         String name = ModelConverterUtil.getFileNameWithoutExtension(originalFilename);
         String extension = getFileExtension(originalFilename);
 
-        // Where the file goes: a folder, named either directly or through the taxonomy triple
-        // (roadmap 7.2 step 3, reader 5). Resolved first, then the access check, then the
-        // consistency of whatever else the caller sent - in that order, so that somebody who may
-        // not write here is told nothing about which combinations would have been consistent.
+        // Where the file goes: a tag folder, named by its id - the one addressing there is since
+        // Phase 7 step 4. Resolved first, then the access check, on the folder's own path.
         Folder folder = targetFolderOf(fileInfoDTO);
         folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), folder);
+        FolderService.Chain chain = FolderService.chainOf(folder);
 
-        MainTagFile mainTagFile = mainTagFileService.getMainTagFileEntity(folder.getSourceId());
-        FileSubCategory subCategory = mainTagFile.getFileSubCategory();
-        requireConsistentAddressing(fileInfoDTO, mainTagFile, subCategory);
-
-        // The uniqueness scope is the sub-category the resolved folder sits in - not whatever the
-        // request said, which may be absent when the folder alone named the place.
-        if (isDuplicate(name, subCategory.getId())) {
-            throw new DuplicateResourceException(
-                    "file with name=" + name + " exists in sub category with id=" + subCategory.getId());
-        }
+        // Names are unique per sub-category, because that is where the bytes go: the storage key
+        // is {category}/{subCategory}/{name}/..., with no tag segment. This is the friendly error;
+        // the storage service refusing to overwrite an existing key is the guarantee.
+        fileInfoRepository.findByFileNameUnderSubCategory(chain.subCategory().getId(), name).ifPresent(taken -> {
+            throw new DuplicateResourceException("file with name=" + name + " already exists under "
+                    + (taken.getFolder().getId().equals(folder.getId()) ? "this folder" : "a sibling folder of the same sub-category")
+                    + " (folder id=" + taken.getFolder().getId() + ")");
+        });
 
         FileInfo fileInfo = new FileInfo();
         fileInfo.setFileName(name);
         fileInfo.setCodeName(name);
         fileInfo.setFileNameDescription(name);
         fileInfo.setDescription(fileInfoDTO.getDescription());
-        fileInfo.setFilePath(subCategory.getPath() + "/" + name);
-        fileInfo.setRelativePath(subCategory.getRelativePath() + "/" + name);
         fileInfo.setEnabled(1);
         fileInfo.setState(publicFile == 1 ? STATE_ACTIVE : STATE_DISABLED);
         fileInfo.setLastVersion(1);
         fileInfo.setCreatedBy(userRepository.getReferenceById(principalId));
-        fileInfo.setMainTagFile(mainTagFile);
-        fileInfo.setFileSubCategory(subCategory);
         fileInfo.setFolder(folder);
         tagMirrorService.retag(fileInfo);
 
-        FileDetails fileDetails = newFileDetails(fileInfo, multipartFile, 1, "V1",
+        FileDetails fileDetails = newFileDetails(fileInfo, chain.directory(), multipartFile, 1, "V1",
                 fileInfoDTO.getDescription(), principalId);
         fileInfo.addFileDetails(fileDetails);
 
@@ -196,81 +183,40 @@ public class FileService {
     }
 
     /**
-     * What the upload form shows when it was opened on a folder: the folder, the taxonomy ids it
-     * mirrors, and their labels (roadmap 7.2 step 5). Refused - the same way the upload itself
+     * What the upload form shows when it was opened on a folder: the folder and the labels of its
+     * chain (roadmap 7.2 step 5). Refused - the same way the upload itself
      * would refuse - for a folder that cannot hold documents or that the person may not write into,
      * so the form never promises a target the submit would reject.
      */
     @Transactional(readOnly = true)
     public FileInfoDTO uploadTargetOf(int folderId, int principalId) {
-        Folder folder = folderAccessService.requireFolder(folderId);
-        if (folder.getKind() != FolderKind.TAG || folder.getSourceId() == null) {
-            throw new InvalidDataException("folder id=" + folderId + " is a " + folder.getKind()
-                    + "; a document can only be filed into a tag folder");
-        }
+        Folder folder = folderService.requireWithChain(folderId);
+        FolderService.Chain chain = FolderService.chainOf(folder);
         folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), folder);
-
-        MainTagFile mainTagFile = mainTagFileService.getMainTagFileEntity(folder.getSourceId());
-        FileSubCategory subCategory = mainTagFile.getFileSubCategory();
 
         FileInfoDTO target = new FileInfoDTO();
         target.setFolderId(folder.getId());
-        target.setMainTagFileId(mainTagFile.getId());
-        target.setTagDescription(mainTagFile.getTagNameDescription());
-        target.setFileSubCategoryId(subCategory.getId());
-        target.setFileSubCategoryNameDescription(subCategory.getSubCategoryNameDescription());
-        target.setFileCategoryId(subCategory.getFileCategory().getId());
-        target.setFileCategoryNameDescription(subCategory.getFileCategory().getCategoryNameDescription());
+        target.setTagName(chain.tag().getName());
+        target.setTagDescription(chain.tag().getDisplayName());
+        target.setFileSubCategoryName(chain.subCategory().getName());
+        target.setFileSubCategoryNameDescription(chain.subCategory().getDisplayName());
+        target.setFileCategoryName(chain.category().getName());
+        target.setFileCategoryNameDescription(chain.category().getDisplayName());
         return target;
     }
 
     /**
-     * The folder a new file is filed into, from whichever addressing the request used.
-     *
-     * <p>{@code folderId} names it directly. Without one, the main tag names it - the taxonomy
-     * triple every existing caller sends - and the folder is the tag's mirror, created on the spot
-     * if a tag was written behind the services. Neither is a 400 that says what to send. A folder
-     * that is not a tag folder is refused as well: until Phase 7 step 5, a document sits under a
-     * main tag and nowhere else, whichever way the caller named the place.
+     * The folder a new file is filed into: a TAG folder named by {@code folderId}. The taxonomy
+     * triple that v1 accepted alongside it until Phase 7 step 4 is gone; a request without a
+     * {@code folderId} is a 400 that says so.
      */
     private Folder targetFolderOf(FileInfoDTO fileInfoDTO) {
-        if (fileInfoDTO.getFolderId() != null) {
-            Folder folder = folderAccessService.requireFolder(fileInfoDTO.getFolderId());
-            if (folder.getKind() != FolderKind.TAG || folder.getSourceId() == null) {
-                throw new InvalidDataException("folder id=" + folder.getId() + " is a " + folder.getKind()
-                        + "; a document can only be filed into a tag folder");
-            }
-            return folder;
+        if (fileInfoDTO.getFolderId() == null) {
+            throw new InvalidDataException("no target: send folderId (the id of the tag folder)");
         }
-        if (fileInfoDTO.getMainTagFileId() == null) {
-            throw new InvalidDataException("no target: send folderId, or fileCategoryId, fileSubCategoryId and mainTagFileId");
-        }
-        return folderMirrorService.folderOf(mainTagFileService.getMainTagFileEntity(fileInfoDTO.getMainTagFileId()));
-    }
-
-    /**
-     * Whatever else the request said about the place must agree with the folder it resolved to.
-     *
-     * <p>The upload form posts all three taxonomy levels, and they have to describe one chain, or
-     * the file would be filed under a tag that belongs somewhere else entirely. A request that
-     * sends a {@code folderId} <em>and</em> some of the triple is held to the same rule - two ways
-     * of naming one place must name the same place - while a request that sends only one of the
-     * two is checked only on what it sent.
-     */
-    private static void requireConsistentAddressing(FileInfoDTO fileInfoDTO, MainTagFile mainTagFile,
-                                                    FileSubCategory subCategory) {
-        if (fileInfoDTO.getMainTagFileId() != null
-                && !Objects.equals(mainTagFile.getId(), fileInfoDTO.getMainTagFileId())) {
-            throw new InvalidDataException("folderId and mainTagFileId name different places");
-        }
-        if (fileInfoDTO.getFileSubCategoryId() != null
-                && !Objects.equals(subCategory.getId(), fileInfoDTO.getFileSubCategoryId())) {
-            throw new InvalidDataException("invalid category and sub category");
-        }
-        if (fileInfoDTO.getFileCategoryId() != null
-                && !Objects.equals(subCategory.getFileCategory().getId(), fileInfoDTO.getFileCategoryId())) {
-            throw new InvalidDataException("invalid category and sub category");
-        }
+        Folder folder = folderService.requireWithChain(fileInfoDTO.getFolderId());
+        FolderService.chainOf(folder);
+        return folder;
     }
 
     /**
@@ -366,8 +312,10 @@ public class FileService {
     private FileDetails persistNewVersionRow(FileInfo fileInfo, FileUploadDTO fileUploadDTO, int version,
                                              String versionName, int principalId) {
 
-        FileDetails fileDetails = newFileDetails(fileInfo, fileUploadDTO.getMultipartFile(), version, versionName,
-                fileUploadDTO.getFileDetailsDescription(), principalId);
+        // A new revision sits beside the existing ones: same directory as the first revision's
+        // key, whatever the folders have been renamed to since - one file, one place on disk.
+        FileDetails fileDetails = newFileDetails(fileInfo, directoryOf(fileInfo), fileUploadDTO.getMultipartFile(),
+                version, versionName, fileUploadDTO.getFileDetailsDescription(), principalId);
 
         fileInfo.addFileDetails(fileDetails);
         // Saved explicitly rather than left to the cascade, because the audit row below needs the
@@ -384,7 +332,7 @@ public class FileService {
      * Builds one stored revision. Every field that all three upload paths share is set here, which
      * is the point: they used to set them separately and disagree about two of them.
      */
-    private FileDetails newFileDetails(FileInfo fileInfo, MultipartFile multipartFile, int version,
+    private FileDetails newFileDetails(FileInfo fileInfo, String directory, MultipartFile multipartFile, int version,
                                        String versionName, String description, int principalId) {
 
         // The policy first - is this kind allowed for this principal, and is the file small
@@ -393,10 +341,9 @@ public class FileService {
 
         String originalFilename = multipartFile.getOriginalFilename();
         String name = ModelConverterUtil.getFileNameWithoutExtension(originalFilename);
-        String versionDirectory = "/" + name + "/v" + version + "/" + originalFilename;
-        // One expression, two columns. They hold the same string today and must not be able to
-        // disagree; roadmap 7.1 keeps the key and drops or derives the paths in step 4.
-        String storageKey = fileInfo.getFileSubCategory().getRelativePath() + versionDirectory;
+        // {category}/{subCategory}/{name}/v{n}/{name.ext}: the folder names as they are when the
+        // revision is written, recorded beside the bytes and never rebuilt from the tree (roadmap 7.1).
+        String storageKey = directory + "/" + name + "/v" + version + "/" + originalFilename;
 
         FileDetails fileDetails = new FileDetails();
         fileDetails.setFileName(originalFilename);
@@ -408,8 +355,6 @@ public class FileService {
         // the enforcement: every route that stores a file - form, v1, v2 - passes through here.
         fileDetails.setContentType(ContentTypes.detect(multipartFile));
         fileDetails.setDescription(description);
-        fileDetails.setFilePath(fileInfo.getFileSubCategory().getPath() + versionDirectory);
-        fileDetails.setRelativePath(storageKey);
         fileDetails.setStorageKey(storageKey);
         fileDetails.setFileSize((int) multipartFile.getSize());
         fileDetails.setVersion(version);
@@ -479,6 +424,8 @@ public class FileService {
     public void deleteCompleteFileById(int id, int principalId) {
 
         FileInfo fileInfo = getFileInfoWithFileDetails(id);
+        // The file's own directory on disk - the parent of every revision's version directory -
+        // read from a stored key, not rebuilt from folder names that may have changed since.
         String address = directoryOf(fileInfo) + "/" + fileInfo.getFileName();
 
         fileInfoRepository.delete(fileInfo);
@@ -651,12 +598,10 @@ public class FileService {
         return pageDTO;
     }
 
-    public int countFileWithSameTag(int mainTagFileId) {
-        return fileInfoRepository.countFileWithTagId(mainTagFileId);
-    }
-
-    public boolean isDuplicate(String fileName, int subCategoryId) {
-        return !fileInfoRepository.checkExistsFile(fileName, subCategoryId).isEmpty();
+    /** Whether a file of this name may not be created under this tag folder: taken there or under a sibling. */
+    public boolean isDuplicate(String fileName, int folderId) {
+        Folder folder = folderAccessService.requireFolder(folderId);
+        return fileInfoRepository.findByFileNameUnderSubCategory(folder.getParent().getId(), fileName).isPresent();
     }
 
     /** One file with its versions, for the file page — refused when it is outside the caller's folders. */
@@ -668,15 +613,6 @@ public class FileService {
         return ModelConverterUtil.convertFileInfoToFileInfoDTO(fileInfo);
     }
 
-    public FileInfoDTO getFileInfoDtoWithFileDetails(int subCategoryId, String fileName) {
-        FileInfo fileInfo = fileInfoRepository.findByNameAndSubCategoryId(subCategoryId, fileName).orElseThrow(
-                () -> new ResourceNotFoundException(
-                        "file info not exists, subCategoryId=" + subCategoryId + ", fileName=" + fileName)
-        );
-        return ModelConverterUtil.convertFileInfoToFileInfoDTO(fileInfo);
-    }
-
-    /** The entity with its versions attached. Package-private: an entity must not reach a controller. */
     FileInfo getFileInfoWithFileDetails(int id) {
         return fileInfoRepository.findByIdAndFetchFileDetails(id).orElseThrow(
                 () -> new ResourceNotFoundException("file info not exists, id=" + id)
@@ -712,9 +648,8 @@ public class FileService {
     /**
      * The storage directory of a file: category/sub-category, relative to {@code base-dir}.
      *
-     * <p>Built through the main tag, which is how the upload paths did it; the file's own
-     * sub-category column says the same thing, and {@code createNewFile} is what enforces that.
-     * This was written out at six call sites, each walking four associations by hand.
+     * <p>Read off the first revision's key rather than off the folder names, because the names
+     * can have changed since the file was written and the bytes did not move with them.
      */
     /** The directory holding a stored object, as a relative address - the key without its last segment. */
     private static String parentOf(String storageKey) {
@@ -725,9 +660,17 @@ public class FileService {
         return storageKey.substring(0, lastSeparator);
     }
 
+    /**
+     * {@code {category}/{subCategory}} as the file's revisions were stored: the grandparent
+     * directory of any revision's key. A file always has at least one revision - the whole-file
+     * delete is the only reader of a file whose last revision is gone, and it reads the key first.
+     */
     private static String directoryOf(FileInfo fileInfo) {
-        FileSubCategory subCategory = fileInfo.getMainTagFile().getFileSubCategory();
-        return subCategory.getFileCategory().getCategoryName() + "/" + subCategory.getSubCategoryName();
+        if (fileInfo.getFileDetailsList().isEmpty()) {
+            throw new InvalidDataException("file id=" + fileInfo.getId() + " has no stored revision to place it by");
+        }
+        String key = fileInfo.getFileDetailsList().getFirst().getStorageKey();
+        return parentOf(parentOf(parentOf(key)));
     }
 
     private static void requireValidState(int newState) {

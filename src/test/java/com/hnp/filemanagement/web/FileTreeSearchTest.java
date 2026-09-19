@@ -1,25 +1,17 @@
 package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
-import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileInfo;
-import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.FolderSourceType;
-import com.hnp.filemanagement.entity.GeneralTag;
-import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.service.FolderMirrorService;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -53,29 +45,14 @@ class FileTreeSearchTest extends MySqlSupport {
     @Autowired
     private UserRepository userRepository;
     @Autowired
-    private GeneralTagRepository generalTagRepository;
-    @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
+    private TagGroupRepository tagGroupRepository;
     @Autowired
     private FileInfoRepository fileInfoRepository;
     @Autowired
     private FolderRepository folderRepository;
-    @Autowired
-    private FolderMirrorService folderMirrorService;
 
-    private FileCategory category;
-    private FileSubCategory subCategory;
-    private MainTagFile mainTag;
+    private FolderFixture.Chain chain;
     private FileInfo fileInfo;
-
-    /** A hit reports folder ids - the ids the tree itself renders - not taxonomy ids. */
-    private int folderId(FolderSourceType sourceType, int sourceId) {
-        return folderRepository.findBySourceTypeAndSourceId(sourceType, sourceId).orElseThrow().getId();
-    }
 
     private static UserDetailsImpl principal(PermissionEnum... permissions) {
         UserDetailsImpl userDetails = new UserDetailsImpl();
@@ -92,27 +69,11 @@ class FileTreeSearchTest extends MySqlSupport {
     @BeforeEach
     void setUp() {
         User creator = userRepository.save(TestData.user());
-        GeneralTag generalTag = generalTagRepository.save(
-                TestData.generalTag(creator, "tag" + TestData.nextSequence()));
-        category = fileCategoryRepository.save(
-                TestData.category(creator, generalTag, "IMS" + TestData.nextSequence()));
-        subCategory = fileSubCategoryRepository.save(
-                TestData.subCategory(creator, category, "DocSystem" + TestData.nextSequence()));
-        // Named like the reported case: a main tag whose label happens to collide with something
+        // Named like the reported case: a tag folder whose label happens to collide with something
         // else in the tree is exactly what issue 73 is about, but the search has to find it either
         // way - the point of a hit is that it does not depend on the label being unique.
-        mainTag = mainTagFileRepository.save(
-                TestData.mainTag(creator, subCategory, "HSED" + TestData.nextSequence()));
-        fileInfo = fileInfoRepository.save(TestData.fileInfo(creator, mainTag, "WI-HSE-SA" + TestData.nextSequence()));
-
-        // Built through repositories, so nothing mirrored them; the mirror heals the whole
-        // ancestry upwards from the tag, which is what makes the branch addressable by folder id.
-        folderMirrorService.created(mainTag);
-        // And the file is placed in that folder, as the V2.3 backfill does: since roadmap 7.2
-        // step 3 a search hit is placed by the file's own folder_id, and a file without one is
-        // deliberately left out (FileTreeFolderReadTest covers that case).
-        fileInfo.setFolder(folderMirrorService.folderOf(mainTag));
-        fileInfoRepository.save(fileInfo);
+        chain = FolderFixture.chain(folderRepository, tagGroupRepository, creator);
+        fileInfo = fileInfoRepository.save(TestData.fileInfo(creator, chain.tag(), "WI-HSE-SA" + TestData.nextSequence()));
     }
 
     @Test
@@ -126,10 +87,10 @@ class FileTreeSearchTest extends MySqlSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)))
                 .andExpect(jsonPath("$[0].fileId").value(fileInfo.getId()))
-                .andExpect(jsonPath("$[0].categoryId").value(folderId(FolderSourceType.CATEGORY, category.getId())))
-                .andExpect(jsonPath("$[0].subCategoryId").value(folderId(FolderSourceType.SUB_CATEGORY, subCategory.getId())))
-                .andExpect(jsonPath("$[0].mainTagId").value(folderId(FolderSourceType.MAIN_TAG, mainTag.getId())))
-                .andExpect(jsonPath("$[0].mainTagTitle").value(mainTag.getTagNameDescription()));
+                .andExpect(jsonPath("$[0].categoryId").value(chain.categoryId()))
+                .andExpect(jsonPath("$[0].subCategoryId").value(chain.subCategoryId()))
+                .andExpect(jsonPath("$[0].mainTagId").value(chain.tagId()))
+                .andExpect(jsonPath("$[0].mainTagTitle").value(chain.tag().getDisplayName()));
     }
 
     @Test

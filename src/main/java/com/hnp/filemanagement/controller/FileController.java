@@ -5,11 +5,11 @@ import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.UploadRefusedException;
-import com.hnp.filemanagement.service.FileCategoryService;
+import com.hnp.filemanagement.dto.FolderContentDTO;
 import com.hnp.filemanagement.service.FileService;
+import com.hnp.filemanagement.service.FolderContentService;
+import com.hnp.filemanagement.service.FolderService;
 import com.hnp.filemanagement.service.UploadPolicyService;
-import com.hnp.filemanagement.service.FileSubCategoryService;
-import com.hnp.filemanagement.service.MainTagFileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import com.hnp.filemanagement.validation.InsertValidation;
@@ -52,9 +52,8 @@ public class FileController {
 
     private final GlobalGeneralLogging globalGeneralLogging;
 
-    private final FileCategoryService fileCategoryService;
-    private final FileSubCategoryService fileSubCategoryService;
-    private final MainTagFileService mainTagFileService;
+    private final FolderContentService folderContentService;
+    private final FolderService folderService;
 
     private final FileService fileService;
     private final UploadPolicyService uploadPolicyService;
@@ -66,13 +65,22 @@ public class FileController {
     private int defaultElementSize;
 
 
-    public FileController(GlobalGeneralLogging globalGeneralLogging, FileCategoryService fileCategoryService, FileSubCategoryService fileSubCategoryService, MainTagFileService mainTagFileService, FileService fileService, UploadPolicyService uploadPolicyService) {
+    public FileController(GlobalGeneralLogging globalGeneralLogging, FolderContentService folderContentService,
+                          FolderService folderService, FileService fileService, UploadPolicyService uploadPolicyService) {
         this.globalGeneralLogging = globalGeneralLogging;
-        this.fileCategoryService = fileCategoryService;
-        this.fileSubCategoryService = fileSubCategoryService;
-        this.mainTagFileService = mainTagFileService;
+        this.folderContentService = folderContentService;
+        this.folderService = folderService;
         this.fileService = fileService;
         this.uploadPolicyService = uploadPolicyService;
+    }
+
+    /**
+     * The first level of the upload form's selects: the category folders this person may at
+     * least walk into. The two levels below come from {@code /resource/folders/children} as the
+     * person chooses, the same endpoint the explorer reads.
+     */
+    private List<FolderContentDTO.FolderEntry> categoryFoldersFor(int principalId) {
+        return folderContentService.contentOf(folderService.root().getId(), 0, 1, principalId).folders();
     }
 
     /**
@@ -139,7 +147,7 @@ public class FileController {
         }
 
         model.addAttribute("file", fileInfoDTO);
-        model.addAttribute("listCategory", fileCategoryService.getAllFileCategoriesForSelection());
+        model.addAttribute("listCategory", categoryFoldersFor(principalId));
         model.addAttribute("pageType", "create");
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", false);
@@ -220,9 +228,8 @@ public class FileController {
             }
         }
 
-        List<FileCategoryDTO> allFileCategories = fileCategoryService.getAllFileCategoriesForSelection();
         model.addAttribute("file", fileInfoDTO);
-        model.addAttribute("listCategory", allFileCategories);
+        model.addAttribute("listCategory", categoryFoldersFor(principalId));
         model.addAttribute("pageType", "create");
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);

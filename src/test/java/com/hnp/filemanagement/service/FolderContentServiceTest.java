@@ -1,33 +1,22 @@
 package com.hnp.filemanagement.service;
 
-import com.hnp.filemanagement.dto.FileCategoryDTO;
-import com.hnp.filemanagement.dto.FileSubCategoryDTO;
 import com.hnp.filemanagement.dto.FolderContentDTO;
 import com.hnp.filemanagement.dto.FolderSearchDTO;
-import com.hnp.filemanagement.dto.MainTagFileDTO;
-import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileInfo;
-import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderPermission;
-import com.hnp.filemanagement.entity.FolderSourceType;
-import com.hnp.filemanagement.entity.GeneralTag;
-import com.hnp.filemanagement.entity.MainTagFile;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.entity.UserFolderGrant;
 import com.hnp.filemanagement.exception.InvalidDataException;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -57,29 +46,17 @@ class FolderContentServiceTest extends MySqlSupport {
     @Autowired
     private FolderContentService folderContentService;
 
-    @Autowired
-    private FileCategoryService fileCategoryService;
-    @Autowired
-    private FileSubCategoryService fileSubCategoryService;
-    @Autowired
-    private MainTagFileService mainTagFileService;
 
     @Autowired
     private FolderRepository folderRepository;
     @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
     private FileInfoRepository fileInfoRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
     @Autowired
     private RoleRepository roleRepository;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private TagGroupRepository tagGroupRepository;
 
     private int adminId;
     private int restrictedId;
@@ -105,22 +82,15 @@ class FolderContentServiceTest extends MySqlSupport {
 
         restrictedId = userRepository.save(TestData.user()).getId();
 
-        GeneralTag generalTag = generalTagRepository.save(
-                TestData.generalTag(owner, "gt" + TestData.nextSequence()));
+        FolderFixture.Chain chain = FolderFixture.chain(folderRepository, tagGroupRepository, owner);
+        categoryId = chain.categoryId();
+        subCategoryId = chain.subCategoryId();
+        otherSubCategoryId = FolderFixture.subCategory(folderRepository, chain.category(), owner,
+                "Other" + TestData.nextSequence()).getId();
+        tagId = chain.tagId();
 
-        categoryId = createCategory(owner, generalTag);
-        subCategoryId = createSubCategory(owner, categoryId);
-        otherSubCategoryId = createSubCategory(owner, categoryId);
-        tagId = createMainTag(owner, categoryId, subCategoryId);
-
-        MainTagFile tag = mainTagFileRepository.findById(tagId).orElseThrow();
         fileName = "report" + TestData.nextSequence();
-        FileInfo fileInfo = TestData.fileInfo(owner, tag, fileName);
-        // Written through the repository, the file has no folder - exactly a row from before V2.3
-        // that the backfill missed - and the explorer reads files by folder now (roadmap 7.2 step 3),
-        // so such a row is deliberately invisible (FolderContentFolderReadTest). Link it as the
-        // backfill would.
-        fileInfo.setFolder(folderRepository.findBySourceTypeAndSourceId(FolderSourceType.MAIN_TAG, tagId).orElseThrow());
+        FileInfo fileInfo = TestData.fileInfo(owner, chain.tag(), fileName);
         TestData.fileDetails(owner, fileInfo, 1, "pdf");
         TestData.fileDetails(owner, fileInfo, 2, "docx");
         TestData.fileDetails(owner, fileInfo, 2, "pdf");
@@ -139,17 +109,17 @@ class FolderContentServiceTest extends MySqlSupport {
         assertThat(content.files()).isEmpty();
         assertThat(content.folders())
                 .extracting(FolderContentDTO.FolderEntry::id)
-                .contains(folderIdOf(FolderSourceType.CATEGORY, categoryId));
+                .contains(categoryId);
     }
 
     @Test
     @DisplayName("a child folder carries what is under it, counted by kind")
     void childFoldersCarryTheirOwnCounts() {
         FolderContentDTO content = folderContentService.contentOf(
-                folderIdOf(FolderSourceType.CATEGORY, categoryId), 0, 100, adminId);
+                categoryId, 0, 100, adminId);
 
         assertThat(content.folders())
-                .filteredOn(entry -> entry.id() == folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId))
+                .filteredOn(entry -> entry.id() == subCategoryId)
                 .singleElement()
                 .satisfies(entry -> {
                     assertThat(entry.kind()).isEqualTo("SUB_CATEGORY");
@@ -161,7 +131,7 @@ class FolderContentServiceTest extends MySqlSupport {
     @Test
     @DisplayName("the breadcrumb is the chain of ancestors, root first and without the folder itself")
     void theBreadcrumbIsTheAncestorChain() {
-        int tagFolderId = folderIdOf(FolderSourceType.MAIN_TAG, tagId);
+        int tagFolderId = tagId;
 
         FolderContentDTO content = folderContentService.contentOf(tagFolderId, 0, 100, adminId);
 
@@ -178,7 +148,7 @@ class FolderContentServiceTest extends MySqlSupport {
     @DisplayName("a tag folder lists its files, described by their newest version alone")
     void aTagFolderListsItsFiles() {
         FolderContentDTO content = folderContentService.contentOf(
-                folderIdOf(FolderSourceType.MAIN_TAG, tagId), 0, 100, adminId);
+                tagId, 0, 100, adminId);
 
         assertThat(content.readable()).isTrue();
         assertThat(content.folders()).isEmpty();
@@ -197,21 +167,21 @@ class FolderContentServiceTest extends MySqlSupport {
     @Test
     @DisplayName("a folder on the way to a grant opens, says it is not readable, and shows only the route")
     void aTraversalOnlyFolderOpensWithoutRevealingItsContents() {
-        grantDirectly(restrictedId, FolderSourceType.MAIN_TAG, tagId);
+        grantDirectly(restrictedId, tagId);
 
         FolderContentDTO category = folderContentService.contentOf(
-                folderIdOf(FolderSourceType.CATEGORY, categoryId), 0, 100, restrictedId);
+                categoryId, 0, 100, restrictedId);
 
         assertThat(category.readable()).as("the grant is below it, not on it").isFalse();
         assertThat(category.folders())
                 .extracting(FolderContentDTO.FolderEntry::id)
-                .containsExactly(folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId));
+                .containsExactly(subCategoryId);
         assertThat(category.folders())
                 .extracting(FolderContentDTO.FolderEntry::id)
-                .doesNotContain(folderIdOf(FolderSourceType.SUB_CATEGORY, otherSubCategoryId));
+                .doesNotContain(otherSubCategoryId);
 
         FolderContentDTO tag = folderContentService.contentOf(
-                folderIdOf(FolderSourceType.MAIN_TAG, tagId), 0, 100, restrictedId);
+                tagId, 0, 100, restrictedId);
 
         assertThat(tag.readable()).isTrue();
         assertThat(tag.files()).hasSize(1);
@@ -232,7 +202,7 @@ class FolderContentServiceTest extends MySqlSupport {
     @DisplayName("a named folder outside every grant is refused")
     void aFolderOutsideEveryGrantIsRefused() {
         assertThatThrownBy(() -> folderContentService.contentOf(
-                folderIdOf(FolderSourceType.CATEGORY, categoryId), 0, 100, restrictedId))
+                categoryId, 0, 100, restrictedId))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
@@ -241,7 +211,7 @@ class FolderContentServiceTest extends MySqlSupport {
     @Test
     @DisplayName("a page size out of range is clamped, not refused")
     void thePageSizeIsClamped() {
-        int tagFolderId = folderIdOf(FolderSourceType.MAIN_TAG, tagId);
+        int tagFolderId = tagId;
 
         assertThat(folderContentService.contentOf(tagFolderId, 0, 100_000, adminId).page().size())
                 .isEqualTo(FolderContentService.MAX_PAGE_SIZE);
@@ -271,7 +241,7 @@ class FolderContentServiceTest extends MySqlSupport {
         assertThat(found.hits()).singleElement().satisfies(hit -> {
             assertThat(hit.file().name()).isEqualTo(fileName);
             assertThat(hit.file().formats()).containsExactly("docx", "pdf");
-            assertThat(hit.folder().id()).isEqualTo(folderIdOf(FolderSourceType.MAIN_TAG, tagId));
+            assertThat(hit.folder().id()).isEqualTo(tagId);
             assertThat(hit.breadcrumb())
                     .as("the same shape a listing returns, so one client renders both")
                     .extracting(FolderContentDTO.FolderRef::kind)
@@ -308,12 +278,12 @@ class FolderContentServiceTest extends MySqlSupport {
     @DisplayName("a scope confines the search to one subtree")
     void theScopeConfinesTheSearch() {
         FolderSearchDTO inside = folderContentService.search(
-                fileName, folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId), 0, 25, adminId);
-        assertThat(inside.scope().id()).isEqualTo(folderIdOf(FolderSourceType.SUB_CATEGORY, subCategoryId));
+                fileName, subCategoryId, 0, 25, adminId);
+        assertThat(inside.scope().id()).isEqualTo(subCategoryId);
         assertThat(inside.hits()).hasSize(1);
 
         FolderSearchDTO elsewhere = folderContentService.search(
-                fileName, folderIdOf(FolderSourceType.SUB_CATEGORY, otherSubCategoryId), 0, 25, adminId);
+                fileName, otherSubCategoryId, 0, 25, adminId);
         assertThat(elsewhere.hits()).as("the file is not in this branch").isEmpty();
         assertThat(elsewhere.page().totalElements()).isZero();
     }
@@ -325,12 +295,12 @@ class FolderContentServiceTest extends MySqlSupport {
                 .as("no grant at all")
                 .isEmpty();
 
-        grantDirectly(restrictedId, FolderSourceType.SUB_CATEGORY, otherSubCategoryId);
+        grantDirectly(restrictedId, otherSubCategoryId);
         assertThat(folderContentService.search(fileName, null, 0, 25, restrictedId).hits())
                 .as("the category above the file is now walkable, which is not permission to read it")
                 .isEmpty();
 
-        grantDirectly(restrictedId, FolderSourceType.MAIN_TAG, tagId);
+        grantDirectly(restrictedId, tagId);
         assertThat(folderContentService.search(fileName, null, 0, 25, restrictedId).hits())
                 .hasSize(1);
     }
@@ -339,66 +309,18 @@ class FolderContentServiceTest extends MySqlSupport {
     @DisplayName("a scope folder outside every grant is refused rather than quietly emptied")
     void aScopeOutsideEveryGrantIsRefused() {
         assertThatThrownBy(() -> folderContentService.search(
-                fileName, folderIdOf(FolderSourceType.CATEGORY, categoryId), 0, 25, restrictedId))
+                fileName, categoryId, 0, 25, restrictedId))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
     // ---------------------------------------------------------------- helpers
 
-    private int createCategory(User owner, GeneralTag generalTag) {
-        FileCategoryDTO category = new FileCategoryDTO();
-        category.setCategoryName("cat" + TestData.nextSequence());
-        category.setCategoryNameDescription(category.getCategoryName() + " label");
-        category.setDescription("a category");
-        category.setGeneralTagId(generalTag.getId());
-        fileCategoryService.createCategory(category, owner.getId());
 
-        return fileCategoryRepository.findAll().stream()
-                .filter(c -> c.getCategoryName().equals(category.getCategoryName()))
-                .findFirst().map(FileCategory::getId).orElseThrow();
-    }
-
-    private int createSubCategory(User owner, int parentCategoryId) {
-        FileSubCategoryDTO subCategory = new FileSubCategoryDTO();
-        subCategory.setSubCategoryName("sub" + TestData.nextSequence());
-        subCategory.setSubCategoryNameDescription(subCategory.getSubCategoryName() + " label");
-        subCategory.setDescription("a sub-category");
-        subCategory.setFileCategoryId(parentCategoryId);
-        fileSubCategoryService.createFileSubCategory(subCategory, owner.getId());
-
-        return fileSubCategoryRepository.findAll().stream()
-                .filter(sc -> sc.getSubCategoryName().equals(subCategory.getSubCategoryName()))
-                .findFirst().map(FileSubCategory::getId).orElseThrow();
-    }
-
-    private int createMainTag(User owner, int parentCategoryId, int parentSubCategoryId) {
-        MainTagFileDTO tag = new MainTagFileDTO();
-        tag.setTagName("tag" + TestData.nextSequence());
-        tag.setTagNameDescription(tag.getTagName() + " label");
-        tag.setDescription("a tag");
-        tag.setFileSubCategoryId(parentSubCategoryId);
-        tag.setFileCategoryId(parentCategoryId);
-        tag.setType(0);
-        mainTagFileService.createMainTagFile(tag, owner.getId());
-
-        return mainTagFileRepository.findAll().stream()
-                .filter(mt -> mt.getTagName().equals(tag.getTagName()))
-                .findFirst().map(MainTagFile::getId).orElseThrow();
-    }
-
-    private void grantDirectly(int userId, FolderSourceType sourceType, int sourceId) {
+    private void grantDirectly(int userId, int folderId) {
         User user = userRepository.findById(userId).orElseThrow();
         List<UserFolderGrant> grants = new ArrayList<>(user.getFolderGrants());
-        grants.add(new UserFolderGrant(user, folderOf(sourceType, sourceId), FolderPermission.READ));
+        grants.add(new UserFolderGrant(user, folderRepository.findById(folderId).orElseThrow(), FolderPermission.READ));
         user.replaceFolderGrants(grants);
         userRepository.save(user);
-    }
-
-    private int folderIdOf(FolderSourceType sourceType, int sourceId) {
-        return folderOf(sourceType, sourceId).getId();
-    }
-
-    private Folder folderOf(FolderSourceType sourceType, int sourceId) {
-        return folderRepository.findBySourceTypeAndSourceId(sourceType, sourceId).orElseThrow();
     }
 }

@@ -78,9 +78,9 @@ class RestContractTest extends MySqlSupport {
     }
 
     @Test
-    void deletingAGeneralTagThatDoesNotExistIs404() throws Exception {
-        mockMvc.perform(delete("/resource/general-tags/{id}", MISSING_ID)
-                        .with(user(principal(PermissionEnum.REST_DELETE_GENERAL_TAG)))
+    void deletingAFolderThatDoesNotExistIs404() throws Exception {
+        mockMvc.perform(delete("/resource/folders/{id}", MISSING_ID)
+                        .with(user(principal(PermissionEnum.REST_DELETE_FOLDER)))
                         .with(csrf())
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound())

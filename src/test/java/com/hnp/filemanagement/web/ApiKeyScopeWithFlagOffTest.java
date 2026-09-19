@@ -2,25 +2,16 @@ package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.ApiKeyDTO;
-import com.hnp.filemanagement.dto.FileCategoryDTO;
-import com.hnp.filemanagement.dto.FileSubCategoryDTO;
-import com.hnp.filemanagement.dto.MainTagFileDTO;
-import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.repository.FileCategoryRepository;
-import com.hnp.filemanagement.repository.FileSubCategoryRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
-import com.hnp.filemanagement.repository.GeneralTagRepository;
-import com.hnp.filemanagement.repository.MainTagFileRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.ApiKeyService;
-import com.hnp.filemanagement.service.FileCategoryService;
-import com.hnp.filemanagement.service.FileSubCategoryService;
 import com.hnp.filemanagement.service.FolderAccessService;
-import com.hnp.filemanagement.service.MainTagFileService;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.support.FolderFixture;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -60,23 +51,11 @@ class ApiKeyScopeWithFlagOffTest extends MySqlSupport {
     @Autowired
     private ApiKeyService apiKeyService;
     @Autowired
-    private FileCategoryService fileCategoryService;
-    @Autowired
-    private FileSubCategoryService fileSubCategoryService;
-    @Autowired
-    private MainTagFileService mainTagFileService;
-    @Autowired
     private FolderRepository folderRepository;
     @Autowired
-    private FileCategoryRepository fileCategoryRepository;
-    @Autowired
-    private FileSubCategoryRepository fileSubCategoryRepository;
-    @Autowired
-    private MainTagFileRepository mainTagFileRepository;
-    @Autowired
-    private GeneralTagRepository generalTagRepository;
-    @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private TagGroupRepository tagGroupRepository;
 
     private int ownerId;
     private int tagFolderId;
@@ -88,32 +67,11 @@ class ApiKeyScopeWithFlagOffTest extends MySqlSupport {
     void setUp() {
         User owner = userRepository.save(TestData.user());
         ownerId = owner.getId();
-        int generalTagId = generalTagRepository.save(TestData.generalTag(owner, "gt" + TestData.nextSequence())).getId();
-
-        FileCategoryDTO category = new FileCategoryDTO();
-        category.setCategoryName("Cat" + TestData.nextSequence());
-        category.setCategoryNameDescription(category.getCategoryName() + " label");
-        category.setDescription("a category");
-        category.setGeneralTagId(generalTagId);
-        fileCategoryService.createCategory(category, ownerId);
-        bucket = category.getCategoryName();
-        int categoryId = fileCategoryRepository.findAll().stream()
-                .filter(c -> c.getCategoryName().equals(bucket)).findFirst().orElseThrow().getId();
-
-        FileSubCategoryDTO subCategory = new FileSubCategoryDTO();
-        subCategory.setSubCategoryName("Sub" + TestData.nextSequence());
-        subCategory.setSubCategoryNameDescription(subCategory.getSubCategoryName() + " label");
-        subCategory.setDescription("a sub-category");
-        subCategory.setFileCategoryId(categoryId);
-        fileSubCategoryService.createFileSubCategory(subCategory, ownerId);
-        int subCategoryId = fileSubCategoryRepository.findAll().stream()
-                .filter(sc -> sc.getSubCategoryName().equals(subCategory.getSubCategoryName())).findFirst().orElseThrow().getId();
-
-        int tagId = tag(categoryId, subCategoryId, "Tag" + TestData.nextSequence());
-        int otherTagId = tag(categoryId, subCategoryId, "Other" + TestData.nextSequence());
-        tagFolderId = folderRepository.findBySourceTypeAndSourceId(FolderSourceType.MAIN_TAG, tagId).orElseThrow().getId();
-        otherTagFolderId = folderRepository.findBySourceTypeAndSourceId(FolderSourceType.MAIN_TAG, otherTagId).orElseThrow().getId();
-        prefix = subCategory.getSubCategoryName() + "/" + mainTagFileRepository.findById(tagId).orElseThrow().getTagName();
+        FolderFixture.Chain chain = FolderFixture.chain(folderRepository, tagGroupRepository, owner);
+        bucket = chain.category().getName();
+        tagFolderId = chain.tagId();
+        otherTagFolderId = FolderFixture.tag(folderRepository, chain.subCategory(), owner, "Other" + TestData.nextSequence()).getId();
+        prefix = chain.subCategory().getName() + "/" + chain.tag().getName();
     }
 
     @Test
@@ -154,19 +112,6 @@ class ApiKeyScopeWithFlagOffTest extends MySqlSupport {
     }
 
     // ---------------------------------------------------------------- helpers
-
-    private int tag(int categoryId, int subCategoryId, String name) {
-        MainTagFileDTO tag = new MainTagFileDTO();
-        tag.setTagName(name);
-        tag.setTagNameDescription(name + " label");
-        tag.setDescription("a tag " + name);
-        tag.setFileSubCategoryId(subCategoryId);
-        tag.setFileCategoryId(categoryId);
-        tag.setType(0);
-        mainTagFileService.createMainTagFile(tag, ownerId);
-        return mainTagFileRepository.findAll().stream()
-                .filter(t -> t.getTagName().equals(name)).findFirst().orElseThrow().getId();
-    }
 
     private String apiKey(String... grants) {
         ApiKeyDTO request = new ApiKeyDTO();

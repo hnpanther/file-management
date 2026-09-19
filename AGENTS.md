@@ -14,9 +14,11 @@ Read this together with:
 ## Project in one paragraph
 
 Spring Boot MVC application. Thymeleaf UI plus a REST API. Files go on the local filesystem, metadata
-in MySQL. A five-level taxonomy (`GeneralTag → FileCategory → FileSubCategory → MainTagFile →
-FileInfo → FileDetails`) where the middle two levels are also real directories. Authorities are
-fine-grained per-endpoint permissions, not roles. Package root `com.hnp.filemanagement`.
+in MySQL. One folder tree, exactly three levels deep (`Folder` CATEGORY → SUB_CATEGORY → TAG,
+under one ROOT), with files (`FileInfo → FileDetails`) in tag folders only; the two upper folder
+names are also the directories on disk, and a category carries a `TagGroup` (the old "general
+tag", which is a label group and **not** a folder). Authorities are fine-grained per-endpoint
+permissions, not roles. Package root `com.hnp.filemanagement`.
 
 ## Commands
 
@@ -83,7 +85,7 @@ history row that outlives a rolled-back change. Inside a transaction a loaded en
 service**, in the transaction that loaded the data. `spring.jpa.open-in-view` is off, so an entity
 that reaches a controller is a lazy graph with no persistence context behind it. No service method
 returns an entity; the few that must share one with a sibling service are package-private
-(`getFileCategoryEntity`, `getMainTagFileEntity`, …).
+(`FolderService.requireWithChain`, `FolderAccessService.requireFolder`, …).
 
 **Entities extend `AbstractEntity`** (id, `equals`, `hashCode`, `toString`) or `AuditableEntity`
 (those four plus the audit columns). Do not add `@Data` to an entity, do not override the three
@@ -253,7 +255,7 @@ Rules for new tests:
 * **Build fixtures with `support/TestData`.** It fills every `NOT NULL` column and generates the
   unique ones; override only what the test is about.
 * **Name what the test proves**, not the method it calls: `refusesToDeleteATagInUse`, not
-  `deleteMainTagFileTest`. Add `@DisplayName` in a sentence.
+  `deleteFolderTest`. Add `@DisplayName` in a sentence.
 
 ## Definition of done
 

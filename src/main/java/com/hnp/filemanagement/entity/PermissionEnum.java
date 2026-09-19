@@ -5,20 +5,6 @@ public enum PermissionEnum {
 
     ADMIN,
 
-    // FileCategoryController @RequestMapping("/file-categories") =======================================
-    //@GetMapping("create")
-    CREATE_FILE_CATEGORY_PAGE,
-    //@PostMapping
-    SAVE_NEW_FILE_CATEGORY,
-    //@GetMapping("{id}")
-    UPDATE_FILE_CATEGORY_PAGE,
-    //@PostMapping({"{id}"})
-    SAVE_UPDATED_FILE_CATEGORY,
-    //@GetMapping
-    GET_ALL_FILE_CATEGORY_PAGE,
-
-    // ===================================================================================================
-
     // FileController @RequestMapping("/files") ===========================================================
     //@GetMapping("create")
     CREATE_FILE_PAGE,
@@ -45,35 +31,6 @@ public enum PermissionEnum {
 
 
     SAVE_NEW_FILE_DETAILS,
-
-    // ===================================================================================================
-
-    // FileSubCategoryController @RequestMapping("file-sub-categories") ==================================
-    //@GetMapping("create")
-    GET_CREATE_SUB_CATEGORY_PAGE,
-
-    //@PostMapping
-    SAVE_NEW_SUB_CATEGORY,
-    //@GetMapping("{id}")
-    GET_EDIT_SUB_CATEGORY_PAGE,
-    //@PostMapping("{id}")
-    SAVE_UPDATED_SUB_CATEGORY,
-    //@GetMapping
-    GET_ALL_SUB_CATEGORY_PAGE,
-
-    // ===================================================================================================
-
-    // MainTagFileController @RequestMapping("/main-tags") ===============================================
-    //@GetMapping("create")
-    CREATE_MAIN_TAG_FILE_PAGE,
-    //@PostMapping
-    SAVE_NEW_MAIN_TAG_FILE,
-    //@GetMapping("{id}")
-    UPDATE_MAIN_TAG_FILE_PAGE,
-    //@PostMapping("{id}")
-    SAVE_UPDATED_MAIN_TAG_FILE,
-    //@GetMapping
-    GET_ALL_MAIN_TAG_FILE_PAGE,
 
     // ===================================================================================================
 
@@ -142,17 +99,6 @@ public enum PermissionEnum {
 
     // ===================================================================================================
 
-    // FileCategoryResource @RequestMapping("/resource/file-categories")==================================
-    //@GetMapping("{id}/sub-categories")
-    REST_GET_ALL_SUB_CATEGORY_OF_CATEGORY,
-
-    //@DeleteMapping("{id}")
-    REST_DELETE_FILE_CATEGORY,
-
-
-
-    // ===================================================================================================
-
     // FileResource @RequestMapping("/resource/files")====================================================
     //@DeleteMapping("file-info/{fileInfoId}")
     REST_DELETE_FILE_INFO,
@@ -182,6 +128,18 @@ public enum PermissionEnum {
 
     //@GetMapping("search")
     REST_SEARCH_FOLDER_CONTENT,
+
+    //@PostMapping - create a child folder (Phase 7 step 4: the explorer manages the tree)
+    REST_CREATE_FOLDER,
+
+    //@PutMapping("{folderId}") - rename a folder
+    REST_RENAME_FOLDER,
+
+    //@DeleteMapping("{folderId}") - delete an empty folder
+    REST_DELETE_FOLDER,
+
+    //@GetMapping("tag-groups") - the groups a new category folder may carry
+    REST_GET_TAG_GROUPS,
 
     // ===================================================================================================
 
@@ -221,15 +179,6 @@ public enum PermissionEnum {
 
     // ===================================================================================================
 
-    // FileSubCategoryResource @RequestMapping("/resource/file-sub-categories") ==========================
-    //@GetMapping("{id}/main-tags")
-    REST_GET_ALL_MAIN_TAGS_OF_SUB_CATEGORY_FILE,
-
-    //@DeleteMapping("{id}")
-    REST_DELETE_FILE_SUB_CATEGORY,
-
-    // ===================================================================================================
-
     // UserResource @RequestMapping("/resource/users") ===================================================
     //@PutMapping("{userId}/change-enabled")
     REST_CHANGE_USER_ENABLED,
@@ -242,46 +191,6 @@ public enum PermissionEnum {
     // HomeController ====================================================================================
     //@GetMapping
     ACCESS_HOME,
-
-    // ===================================================================================================
-
-    // GeneralTagController @RequestMapping("/general-tags") ==============================================
-
-    //@GetMapping("create")
-    CREATE_GENERAL_TAG_PAGE,
-
-    //@PostMapping
-    SAVE_NEW_GENERAL_TAG,
-
-    //@GetMapping
-    GET_ALL_GENERAL_TAG_PAGE,
-
-    //@GetMapping("{id}")
-    UPDATE_GENERAL_TAG_PAGE,
-
-    //@PostMapping("{id}")
-    SAVE_UPDATED_GENERAL_TAG,
-
-    // ===================================================================================================
-
-
-    // GeneralTagResource @RequestMapping("/resource/general-tags") ======================================
-
-    //@GetMapping()
-    REST_GET_ALL_GENERAL_TAG,
-
-
-    //@DeleteMapping("{id}")
-    REST_DELETE_GENERAL_TAG,
-
-
-    // ===================================================================================================
-
-    // MainTagFileResource @RequestMapping("/resource/main-tags") ======================================
-
-    //@DeleteMapping("{id}")
-    REST_DELETE_MAIN_TAG_FILE,
-
 
     // ===================================================================================================
 

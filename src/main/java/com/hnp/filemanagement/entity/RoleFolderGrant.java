@@ -27,7 +27,7 @@ import java.util.Objects;
  *
  * <p><b>The database still cascades deletes, and that is not redundant.</b> {@code V1.5} put
  * {@code ON DELETE CASCADE} on both foreign keys so that deleting a mirrored folder would not fail
- * on a grant row, and the mirror does delete folders whenever a taxonomy row goes. Hibernate does
+ * on a grant row, and {@code FolderService.delete} does delete folders. Hibernate does
  * not know about that path — it deletes a {@code Folder} with a plain {@code DELETE} — so the
  * database is still the only thing that can clean up after it. What changes is that grants are now
  * <em>also</em> managed from the role's side, where an administrator edits them.

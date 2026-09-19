@@ -2,7 +2,6 @@ package com.hnp.filemanagement.repository;
 
 import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderKind;
-import com.hnp.filemanagement.entity.FolderSourceType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,7 +11,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The folder tree that mirrors the taxonomy (roadmap Phase 6).
+ * The folder tree (roadmap Phase 6; the structure itself since Phase 7 step 4).
  *
  * <p>Two access patterns dominate and shape everything here: one level of the tree by
  * {@code parent}, and <em>every descendant</em> of a set of folders, which folder-level access
@@ -29,15 +28,7 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     @Query("SELECT f FROM Folder f WHERE f.parent IS NULL")
     List<Folder> findRoots();
 
-    Optional<Folder> findBySourceTypeAndSourceId(FolderSourceType sourceType, Integer sourceId);
 
-    /**
-     * The folders mirroring a whole level of the taxonomy at once.
-     *
-     * <p>Rendering one level of the tree has to ask "may this be shown?" of every child. Asking per
-     * child would put a query on each row of every folder opened; this asks once per level.
-     */
-    List<Folder> findBySourceTypeAndSourceIdIn(FolderSourceType sourceType, Collection<Integer> sourceIds);
 
     Optional<Folder> findByPath(String path);
 
@@ -56,20 +47,36 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
 
     List<Folder> findByParentIdOrderByNameAsc(Integer parentId);
 
+    /** A sibling by name - the uniqueness check before a create or rename, case-insensitive like the column. */
+    Optional<Folder> findByParentIdAndNameIgnoreCase(Integer parentId, String name);
+
+    /** One folder with its two ancestors and the category's group - the chain a file page or a storage key needs. */
+    @Query("""
+            SELECT f FROM Folder f
+            LEFT JOIN FETCH f.parent p
+            LEFT JOIN FETCH p.parent g
+            LEFT JOIN FETCH g.tagGroup
+            LEFT JOIN FETCH f.tagGroup
+            WHERE f.id = :id
+            """)
+    Optional<Folder> findByIdWithChain(@Param("id") int id);
+
+    List<Folder> findByTagGroupId(Integer tagGroupId);
+
     /**
-     * One level of the tree with each folder's general tag already attached.
+     * One level of the tree with each folder's tag group already attached.
      *
-     * <p>{@code generalTag} is {@code LAZY}, so reading it while mapping a listing would be one
+     * <p>{@code tagGroup} is {@code LAZY}, so reading it while mapping a listing would be one
      * extra query per row. The explorer shows it as the note on a category, so it is fetched with
      * the level rather than after it.
      */
     @Query("""
             SELECT f FROM Folder f
-            LEFT JOIN FETCH f.generalTag
+            LEFT JOIN FETCH f.tagGroup
             WHERE f.parent.id = :parentId
             ORDER BY f.name ASC
             """)
-    List<Folder> findChildrenWithGeneralTag(@Param("parentId") int parentId);
+    List<Folder> findChildrenWithTagGroup(@Param("parentId") int parentId);
 
     /**
      * How many child folders each of these folders has, in one query.
@@ -105,8 +112,6 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
             """)
     List<Folder> findRowsWhoseDerivedColumnsDisagree();
 
-    /** Mirror rows of one kind of source, for the reconciliation check. */
-    List<Folder> findBySourceType(FolderSourceType sourceType);
 
     /**
      * Every folder at or below a path prefix, shallowest first — the prefix scan {@code path} was

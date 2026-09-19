@@ -1,15 +1,12 @@
 package com.hnp.filemanagement.service;
 
-import com.hnp.filemanagement.entity.FileCategory;
 import com.hnp.filemanagement.entity.FileInfo;
-import com.hnp.filemanagement.entity.FileSubCategory;
-import com.hnp.filemanagement.entity.GeneralTag;
-import com.hnp.filemanagement.entity.MainTagFile;
+import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.Tag;
 import com.hnp.filemanagement.entity.TagGroup;
 import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.repository.FileInfoRepository;
-import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.TagRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -20,94 +17,82 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The only thing that writes {@code tag_group}, {@code tag} and {@code file_tag} while the
- * taxonomy is still authoritative (roadmap 7.2 step 2, 7.3).
+ * The only thing that writes {@code tag} and {@code file_tag} (roadmap 7.2 step 2, 7.3).
  *
- * <p>Same shape and same rules as {@link FolderMirrorService}, for the same reasons: one writer,
- * {@link Propagation#MANDATORY} so a tag can never be committed for a file that then rolls back,
- * and get-or-create everywhere so that data written behind the services - which most test
- * fixtures and any data migration do - is converged on rather than failed on.
+ * <p>{@link Propagation#MANDATORY}, so a tag can never be committed for a file that then rolls
+ * back, and get-or-create everywhere so that data written behind the services is converged on
+ * rather than failed on.
  *
- * <p><b>A file's tags are a function of its taxonomy</b>, nothing more, for this whole phase:
- * the category, the sub-category and the main tag it sits under, each as a tag in the group of
- * its general tag. {@link #retag} makes a file's set exactly that, and is called wherever the
- * function's inputs change - an upload, and a main-tag rename, which is the one level whose
- * name can change. {@code FileInfoRepository.findRowsWhoseTagsDisagreeWithTheTaxonomy} is the
- * check that this held.
+ * <p><b>A file's tags are a function of its folder chain</b>, nothing more, for this whole
+ * phase: the category, the sub-category and the tag folder it sits under, each as a tag in the
+ * group the category folder carries. {@link #retag} makes a file's set exactly that, and is
+ * called wherever the function's inputs change - an upload, and a folder rename.
+ * {@code FileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders} is the check that this held.
  *
  * <p>A tag's title is copied when the tag is created and not followed afterwards. Names merge
- * within a group (a sub-category and a main tag both called {@code HSED} are one tag), so "which
- * row's label wins" has no answer until tags are edited as tags, which is step 5.
+ * within a group (a sub-category and a tag folder both called {@code HSED} are one tag), so
+ * "which folder's label wins" has no answer until tags are edited as tags, which is step 5.
  */
 @Service
 @Transactional(propagation = Propagation.MANDATORY)
 public class TagMirrorService {
 
-    private final TagGroupRepository tagGroupRepository;
     private final TagRepository tagRepository;
     private final FileInfoRepository fileInfoRepository;
 
-    public TagMirrorService(TagGroupRepository tagGroupRepository, TagRepository tagRepository,
-                            FileInfoRepository fileInfoRepository) {
-        this.tagGroupRepository = tagGroupRepository;
+    public TagMirrorService(TagRepository tagRepository, FileInfoRepository fileInfoRepository) {
         this.tagRepository = tagRepository;
         this.fileInfoRepository = fileInfoRepository;
     }
 
-    /** Makes this file's tags exactly the ones its taxonomy says. */
+    /** Makes this file's tags exactly the ones its folder chain says. */
     public void retag(FileInfo file) {
-        Set<Tag> derived = tagsFor(file.getMainTagFile());
+        Set<Tag> derived = tagsFor(file.getFolder());
         file.getTags().retainAll(derived);
         file.getTags().addAll(derived);
     }
 
     /**
-     * Every file under this main tag, after its name changed. The tag with the old name is left
-     * where it is: a label nothing carries is not a fault, and another branch may still carry it.
+     * Every file beneath this folder, after a name in the chain changed. The tag with the old name
+     * is left where it is: a label nothing carries is not a fault, and another branch may still
+     * carry it.
      */
-    public void retagFilesUnder(MainTagFile mainTag) {
-        List<FileInfo> files = fileInfoRepository.findByMainTagFileIdIn(List.of(mainTag.getId()));
+    public void retagFilesUnder(Folder folder) {
+        List<FileInfo> files = fileInfoRepository.findBySubtree(folder.getPath());
         for (FileInfo file : files) {
             retag(file);
         }
     }
 
-    /** The tags a file under this main tag carries: one per level, deduplicated by name. */
-    public Set<Tag> tagsFor(MainTagFile mainTag) {
-        FileSubCategory subCategory = mainTag.getFileSubCategory();
-        FileCategory category = subCategory.getFileCategory();
-        TagGroup group = groupOf(category.getGeneralTag());
+    /** The tags a file in this tag folder carries: one per level, deduplicated by name. */
+    public Set<Tag> tagsFor(Folder tagFolder) {
+        FolderService.Chain chain = FolderService.chainOf(tagFolder);
+        TagGroup group = chain.category().getTagGroup();
+        if (group == null) {
+            throw new BusinessException("category folder id=" + chain.category().getId()
+                    + " has no tag group; the tags of the files beneath it cannot be derived");
+        }
 
         // Order matters for a name two levels share: the first to claim it sets the title, and
         // that is the higher level, as in the migration's backfill.
         Set<Tag> tags = new LinkedHashSet<>();
-        tags.add(tagOf(group, category.getCategoryName(), category.getCategoryNameDescription(), category.getCreatedBy()));
-        tags.add(tagOf(group, subCategory.getSubCategoryName(), subCategory.getSubCategoryNameDescription(), subCategory.getCreatedBy()));
-        tags.add(tagOf(group, mainTag.getTagName(), mainTag.getTagNameDescription(), mainTag.getCreatedBy()));
+        tags.add(tagOf(group, chain.category()));
+        tags.add(tagOf(group, chain.subCategory()));
+        tags.add(tagOf(group, chain.tag()));
         return tags;
     }
 
     // ------------------------------------------------------------------ get-or-create
 
-    public TagGroup groupOf(GeneralTag generalTag) {
-        return tagGroupRepository.findByName(generalTag.getTagName()).orElseGet(() -> {
-            TagGroup group = new TagGroup();
-            group.setName(generalTag.getTagName());
-            group.setTitle(generalTag.getTagNameDescription());
-            group.setEnabled(1);
-            group.setCreatedBy(generalTag.getCreatedBy());
-            return tagGroupRepository.save(group);
-        });
-    }
-
-    private Tag tagOf(TagGroup group, String name, String title, User createdBy) {
-        return tagRepository.findByGroupIdAndName(group.getId(), name).orElseGet(() -> {
+    private Tag tagOf(TagGroup group, Folder folder) {
+        return tagRepository.findByGroupIdAndName(group.getId(), folder.getName()).orElseGet(() -> {
             Tag tag = new Tag();
             tag.setGroup(group);
-            tag.setName(name);
-            tag.setTitle(title);
+            tag.setName(folder.getName());
+            tag.setTitle(folder.getDisplayName());
             tag.setEnabled(1);
-            tag.setCreatedBy(createdBy);
+            User creator = folder.getCreatedBy();
+            tag.setCreatedBy(creator);
             return tagRepository.save(tag);
         });
     }

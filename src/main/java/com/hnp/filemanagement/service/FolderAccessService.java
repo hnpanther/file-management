@@ -5,7 +5,6 @@ import com.hnp.filemanagement.dto.FolderAccess;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderPermission;
-import com.hnp.filemanagement.entity.FolderSourceType;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.GrantedPath;
@@ -18,14 +17,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * The second of the two authorization questions: <em>may this user touch this folder?</em>
@@ -49,8 +44,6 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(readOnly = true)
 public class FolderAccessService {
-
-    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(FolderAccessService.class);
 
     private static final String ADMIN_ROLE = "ADMIN";
 
@@ -146,25 +139,7 @@ public class FolderAccessService {
         return FolderAccess.of(folderRepository.findGrantsOfApiKey(apiKeyId));
     }
 
-    /** The folder mirroring one taxonomy row, if the mirror has one. */
-    public Optional<Folder> folderOf(FolderSourceType sourceType, int sourceId) {
-        return folderRepository.findBySourceTypeAndSourceId(sourceType, sourceId);
-    }
 
-    /**
-     * The folders mirroring a whole level of the taxonomy, keyed by the row each one mirrors — one
-     * query for the level rather than one per row.
-     *
-     * <p>The tree needs both halves of this at once: the folder's id, which is how a node is
-     * addressed, and its path, which is how access is decided.
-     */
-    public Map<Integer, Folder> foldersBySourceId(FolderSourceType sourceType, Collection<Integer> sourceIds) {
-        if (sourceIds.isEmpty()) {
-            return Map.of();
-        }
-        return folderRepository.findBySourceTypeAndSourceIdIn(sourceType, sourceIds).stream()
-                .collect(Collectors.toMap(Folder::getSourceId, folder -> folder, (a, b) -> a, LinkedHashMap::new));
-    }
 
     /**
      * One folder by its own id, which is how the tree addresses a node.
@@ -179,8 +154,8 @@ public class FolderAccessService {
     }
 
     /**
-     * Every main tag whose files this person may read — the filter the file list and the download
-     * path push into their queries.
+     * The folders this access may read, as ids: every folder beneath a readable path — the
+     * filter the file list and the explorer push into their queries.
      *
      * <p>Empty {@link Optional} means "no restriction"; an empty <em>set</em> means the opposite,
      * that nothing is readable. Those two must not be confused, which is why this is not just a set.
@@ -188,12 +163,6 @@ public class FolderAccessService {
      * <p>One prefix scan per grant, and grants are few and reduced beforehand so none is a prefix of
      * another. The alternative — a {@code LIKE} per grant stitched into the list query — would mean
      * building the query text at runtime for a filter that changes only when a grant does.
-     */
-    /**
-     * The folders this access may read, as ids: every folder beneath a readable path. Empty
-     * {@code Optional} for an unrestricted principal, an empty set for one granted nothing - the
-     * same two answers as {@link #readableMainTagIds}, for the readers that have moved to
-     * {@code file_info.folder_id} (roadmap 7.2 step 3).
      */
     public Optional<Set<Integer>> readableFolderIds(FolderAccess access) {
         if (access.unrestricted()) {
@@ -206,98 +175,18 @@ public class FolderAccessService {
         return Optional.of(folderIds);
     }
 
-    public Optional<Set<Integer>> readableMainTagIds(FolderAccess access) {
-        if (access.unrestricted()) {
-            return Optional.empty();
-        }
-        Set<Integer> tagIds = new LinkedHashSet<>();
-        for (String granted : access.readablePaths()) {
-            folderRepository.findSubtree(granted).stream()
-                    .filter(folder -> folder.getSourceType() == FolderSourceType.MAIN_TAG)
-                    .map(Folder::getSourceId)
-                    .forEach(tagIds::add);
-        }
-        return Optional.of(tagIds);
-    }
 
-    /**
-     * Whether a taxonomy row is reachable — for filtering a list rather than refusing one item.
-     *
-     * <p><b>A row with no mirrored folder is denied, not allowed.</b> It should not be possible:
-     * migration {@code V1.4} backfilled every existing row, {@code FolderMirrorService} writes one
-     * for every new row in the same transaction and repairs any ancestry it finds missing, and the
-     * reconciliation test asserts completeness on every build. But this is the one place in the
-     * codebase where guessing wrong shows somebody data they were not granted, so a gap here fails
-     * closed. The failure that follows is "a folder is missing from a list", which is visible and
-     * fixable; the alternative is invisible.
-     */
-    public boolean allows(FolderAccess access, FolderSourceType sourceType, int sourceId) {
-        return holds(access, sourceType, sourceId, FolderPermission.READ);
-    }
 
-    /** The same question about writing: may documents be filed into this taxonomy row's folder? */
-    public boolean allowsWrite(FolderAccess access, FolderSourceType sourceType, int sourceId) {
-        return holds(access, sourceType, sourceId, FolderPermission.WRITE);
-    }
 
-    private boolean holds(FolderAccess access, FolderSourceType sourceType, int sourceId,
-                          FolderPermission required) {
-        if (access.unrestricted()) {
-            return true;
-        }
-        return folderOf(sourceType, sourceId)
-                .map(folder -> required == FolderPermission.WRITE
-                        ? access.canWrite(folder.getPath())
-                        : access.canRead(folder.getPath()))
-                .orElse(false);
-    }
 
-    /**
-     * Refuses unless this taxonomy row's folder is inside the granted set — the check for anything
-     * that reads <em>contents</em>: a tag's files, a file's versions, a download.
-     *
-     * <p>Called from the service, never from a controller: an annotation can say "may they list
-     * folders", only the domain can say "may they list <em>this</em> one".
-     */
-    public void requireAccess(FolderAccess access, FolderSourceType sourceType, int sourceId) {
-        if (!allows(access, sourceType, sourceId)) {
-            throw new AccessDeniedException("no folder access to " + sourceType + " id=" + sourceId);
-        }
-    }
 
-    /**
-     * Refuses unless documents may be filed into this taxonomy row's folder — the check every upload
-     * path has to make.
-     *
-     * <p>Its absence is {@code docs/issues.md} issue 76: until this existed, a principal holding
-     * {@code SAVE_NEW_FILE} could file a document under any tag they could name on the form,
-     * including one in a department they could not even open in the tree. The read side was closed
-     * in Phase 6; this is the other half.
-     */
-    public void requireWriteAccess(FolderAccess access, FolderSourceType sourceType, int sourceId) {
-        if (!allowsWrite(access, sourceType, sourceId)) {
-            throw new AccessDeniedException(
-                    "no write access to " + sourceType + " id=" + sourceId);
-        }
-    }
 
-    /** Resolves this person's access and refuses unless they may write there. */
-    public void requireWriteAccess(int principalId, FolderSourceType sourceType, int sourceId) {
-        requireWriteAccess(accessFor(principalId), sourceType, sourceId);
-    }
 
     // ------------------------------------------------------------------ by the file's own folder (roadmap 7.2 step 3)
 
     /**
      * Refuses unless this file's own folder is readable - the check for a download and a file
-     * page, answered from {@code file_info.folder_id} rather than by translating the file's main
-     * tag into a folder first.
-     *
-     * <p><b>A file with no folder is refused, not allowed.</b> Only a row from before {@code V2.3}
-     * that escaped the backfill can be one; an unrestricted principal still reaches it, everybody
-     * else is denied and the gap is logged. This is the one place where guessing wrong shows
-     * somebody a document they were not granted, so it fails closed - the same rule
-     * {@link #holds} applies to a taxonomy row without a mirror.
+     * page, answered from {@code file_info.folder_id}, which every file has (Phase 7 step 4).
      */
     public void requireReadAccess(FolderAccess access, FileInfo file) {
         if (!holdsOn(access, file, FolderPermission.READ)) {
@@ -329,32 +218,8 @@ public class FolderAccessService {
             return true;
         }
         Folder folder = file.getFolder();
-        if (folder == null) {
-            logger.warn("file id={} has no folder_id and is refused to a restricted principal; "
-                    + "run the V2.3 backfill (see the migration's header)", file.getId());
-            return false;
-        }
         return required == FolderPermission.WRITE
                 ? access.canWrite(folder.getPath())
                 : access.canRead(folder.getPath());
-    }
-
-    /**
-     * Refuses unless the folder may at least be <em>seen</em> — it is readable, or an ancestor of
-     * something readable and therefore a step on the way to it.
-     *
-     * <p>This is the check for opening a node in the tree, and it is deliberately weaker than
-     * {@link #requireAccess}: walking through a folder is not the same as reading what is in it.
-     */
-    public void requireVisible(FolderAccess access, FolderSourceType sourceType, int sourceId) {
-        if (access.unrestricted()) {
-            return;
-        }
-        boolean visible = folderOf(sourceType, sourceId)
-                .map(folder -> access.visible(folder.getPath()))
-                .orElse(false);
-        if (!visible) {
-            throw new AccessDeniedException("no folder access to " + sourceType + " id=" + sourceId);
-        }
     }
 }

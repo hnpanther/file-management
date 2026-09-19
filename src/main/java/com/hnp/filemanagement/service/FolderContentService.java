@@ -41,18 +41,13 @@ import java.util.stream.Collectors;
  * live.
  *
  * <p><b>Why this is not another method on {@code FileTreeService}.</b> That service is
- * taxonomy-first: it answers "the sub-categories of this category", "the main tags of this
- * sub-category" — one kind of level at a time — and the folder id it is given is translated back
- * into a taxonomy id on arrival. This one is folder-first: child folders come straight out of the
- * {@code folder} table by {@code parent_id}, and since roadmap 7.2 step 3 the files come the same
- * way, from {@code file_info.folder_id} — no taxonomy is involved at all. The only trace of it
- * left is that a file can be *in* a {@code TAG} folder and nowhere else today, so the response
- * still tells the client which folders can hold files from {@code kind}.
+ * level-first: it answers "the sub-categories of this category", "the tags of this
+ * sub-category" — one kind of level at a time. This one is folder-first: child folders come
+ * straight out of the {@code folder} table by {@code parent_id}, and the files the same way,
+ * from {@code file_info.folder_id}. A file can be *in* a {@code TAG} folder and nowhere else, so
+ * the response tells the client which folders can hold files from {@code kind}.
  *
- * <p>A file without a folder — a row that predates {@code V2.3} and escaped the backfill — is
- * not listed, not counted and not placeable by search; it is logged rather than failing anything.
- *
- * <p><b>Folders are not paged, files are.</b> One level of folders is bounded by the taxonomy - the
+ * <p><b>Folders are not paged, files are.</b> One level of folders is bounded by the tree - the
  * widest node on the installation this was measured against holds 29 children - and paging them
  * would produce a tree pane that scrolls into nothing. Files have no such bound and never did
  * ({@code docs/issues.md}, issue 71). If Phase 7 ever produces a folder with hundreds of
@@ -64,8 +59,6 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(readOnly = true)
 public class FolderContentService {
-
-    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(FolderContentService.class);
 
     /** Enough that no real folder needs a second request today, small enough to bound the response. */
     static final int DEFAULT_PAGE_SIZE = 100;
@@ -116,6 +109,7 @@ public class FolderContentService {
                 refOf(folder),
                 readable,
                 folder.getKind() == FolderKind.TAG && access.canWrite(folder.getPath()),
+                access.canWrite(folder.getPath()),
                 breadcrumbOf(folder),
                 childFoldersOf(folder, access),
                 filePage == null ? List.of() : entriesOf(filePage.getContent()),
@@ -127,7 +121,7 @@ public class FolderContentService {
      * folder.
      *
      * <p><b>The scope is a subtree, and it is applied as a filter in the query.</b> Both it and
-     * folder access come down to the same thing — a set of main tags — so they are intersected once
+     * folder access come down to the same thing — a set of folders — so they are intersected once
      * and pushed into SQL together. Narrowing the rows afterwards would leave the total counting
      * matches that were then removed, which is how a pager comes to disagree with the list it pages.
      *
@@ -222,21 +216,12 @@ public class FolderContentService {
         Map<Integer, List<FileDetails>> latestByFile = latestVersionsOf(files);
 
         List<FolderSearchDTO.Hit> hits = new ArrayList<>();
-        boolean unplaceable = false;
         for (FileInfo file : files) {
             Folder folder = file.getFolder();
-            if (folder == null) {
-                unplaceable = true;
-                continue;
-            }
             hits.add(new FolderSearchDTO.Hit(
                     toEntry(file, latestByFile.getOrDefault(file.getId(), List.of())),
                     refOf(folder),
                     breadcrumbs.getOrDefault(folder.getId(), List.of())));
-        }
-        if (unplaceable) {
-            logger.warn("a search matched file(s) with no folder_id, which were left out; "
-                    + "run the V2.3 backfill (see the migration's header)");
         }
         return hits;
     }
@@ -341,7 +326,7 @@ public class FolderContentService {
      * of any kind gets the right numbers without the caller knowing which kinds hold files.
      */
     private List<FolderEntry> childFoldersOf(Folder folder, FolderAccess access) {
-        List<Folder> children = folderRepository.findChildrenWithGeneralTag(folder.getId()).stream()
+        List<Folder> children = folderRepository.findChildrenWithTagGroup(folder.getId()).stream()
                 .filter(child -> access.visible(child.getPath()))
                 .toList();
 
@@ -371,9 +356,9 @@ public class FolderContentService {
                 ChildCount::parentId, ChildCount::total, (a, b) -> a, LinkedHashMap::new));
     }
 
-    /** The general tag that labels a category, shown as a muted note. Null everywhere else. */
+    /** The tag group that labels a category, shown as a muted note. Null everywhere else. */
     private static String noteOf(Folder folder) {
-        return folder.getGeneralTag() == null ? null : folder.getGeneralTag().getTagNameDescription();
+        return folder.getTagGroup() == null ? null : folder.getTagGroup().getTitle();
     }
 
     // ------------------------------------------------------------------ files

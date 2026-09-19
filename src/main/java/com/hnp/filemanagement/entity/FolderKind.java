@@ -12,13 +12,13 @@ public enum FolderKind {
     /** The single folder every other one descends from. Created by migration {@code V1.4}. */
     ROOT,
 
-    /** Mirrors a {@code FileCategory} — the first level that is a real directory on disk. */
+    /** Depth 1: a category. Carries the tag group its subtree's tags are derived in. */
     CATEGORY,
 
-    /** Mirrors a {@code FileSubCategory} — the second real directory level. */
+    /** Depth 2: a sub-category. */
     SUB_CATEGORY,
 
-    /** Mirrors a {@code MainTagFile}, which is metadata today and a folder in the target model. */
+    /** Depth 3: the only kind that holds files. */
     TAG,
 
     /** A user's personal folder, {@code Home/{username}}. Carries {@code ownerUserId}. */

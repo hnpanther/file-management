@@ -28,31 +28,26 @@ public class FileInfoDTO {
 
     private String fileNameDescription;
 
-    private String filePath;
-
     private String fileLink;
 
     private Integer lastVersion;
 
     /**
-     * Where the file goes, named as a folder (roadmap 7.2 step 3, reader 5). Either this or the
-     * taxonomy triple below must be given; both may be, and then they must agree. The triple was
-     * {@code @NotNull} until the folder could name the target on its own; the "one or the other"
-     * rule cannot be expressed per field, so {@code FileService.createNewFile} checks it and
-     * answers 400 with a message that says which is missing.
+     * The tag folder the file is in. On an upload it is the target and the only way to name one
+     * (Phase 7 step 4); on a read it is where the file is. The label fields below carry the three
+     * folder levels under the names the pages have always used for them: {@code fileCategory*}
+     * is the category folder, {@code fileSubCategory*} the sub-category folder, {@code tag*} the
+     * tag folder itself. {@code fileCategoryDisplayName} adds the category's tag group in brackets.
      */
     private Integer folderId;
 
-    private Integer fileSubCategoryId;
     private String fileSubCategoryName;
     private String fileSubCategoryNameDescription;
 
-    private Integer fileCategoryId;
     private String fileCategoryName;
     private String fileCategoryNameDescription;
     private String fileCategoryDisplayName;
 
-    private Integer mainTagFileId;
     private String tagName;
     private String tagDescription;
 
