@@ -68,6 +68,13 @@ public enum PermissionEnum {
     //@PostMapping("/{extension}/delete")
     DELETE_CONTENT_KIND,
 
+    // ------------------------------------------------------------------ GeneralSettingsController - /settings/general
+
+    //@GetMapping - the general settings page
+    GENERAL_SETTINGS_PAGE,
+    //@PostMapping - saves the general settings
+    SAVE_GENERAL_SETTINGS,
+
     // ------------------------------------------------------------------ TagGroupController - /settings/tag-groups
 
     //@GetMapping - the tag groups (the "general tags") a top-level folder may carry

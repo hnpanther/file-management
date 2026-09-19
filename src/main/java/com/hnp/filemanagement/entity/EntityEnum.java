@@ -24,7 +24,8 @@ public enum EntityEnum {
     UploadPolicy("upload_policy"),
     ContentKind("content_kind"),
     Folder("folder"),
-    TagGroup("tag_group")
+    TagGroup("tag_group"),
+    AppSetting("app_setting")
     ;
 
 

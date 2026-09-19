@@ -180,6 +180,11 @@
                     <i class="bi bi-tags app-nav-icon" aria-hidden="true"></i>
                     <span th:text="#{nav.access.tagGroups}">برچسب‌های عمومی</span>
                 </a>
+                <a sec:authorize="hasAuthority('GENERAL_SETTINGS_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/settings/general}" class="app-nav-link">
+                    <i class="bi bi-gear app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.access.generalSettings}">تنظیمات عمومی</span>
+                </a>
             </section>
 
             <div sec:authorize="isAuthenticated()" class="mt-auto border-t border-ink-100 pt-3">

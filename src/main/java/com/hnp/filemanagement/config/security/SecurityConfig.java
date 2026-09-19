@@ -119,7 +119,8 @@ public class SecurityConfig {
 
     @Bean
     @Order(2)
-    public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity, AuthenticationManager authenticationManager) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity, AuthenticationManager authenticationManager,
+                                                   PublicFilesAuthorizationManager publicFilesAccess) throws Exception {
 
 //        return httpSecurity
 //                .csrf(csrf -> csrf.disable())
@@ -136,8 +137,11 @@ public class SecurityConfig {
 //                .cors(cors -> cors.disable())
                 .authorizeHttpRequests(
                         auth -> {
-                            auth.requestMatchers("/files/public-files/**").permitAll();
-                            auth.requestMatchers("/files/public-download/**").permitAll();
+                            // Open to everyone, or to signed-in people only: the administrator's
+                            // choice on /settings/general, asked on every request so that it
+                            // takes effect without a restart.
+                            auth.requestMatchers("/files/public-files/**", "/files/public-download/**")
+                                    .access(publicFilesAccess);
                             auth.requestMatchers("/").permitAll();
                             auth.requestMatchers("/favicon.ico").permitAll();
                             auth.requestMatchers("/webjars/**").permitAll();

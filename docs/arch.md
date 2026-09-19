@@ -327,7 +327,7 @@ There are four parallel HTTP surfaces over the same services:
 
 | Package | Base path | Returns | Auth | Purpose |
 |---|---|---|---|---|
-| `controller/` | `/files`, `/users`, `/roles`, `/api-keys`, `/settings/upload`, `/settings/content-kinds`, `/settings/tag-groups`, `/files/explorer`, `/` | Thymeleaf view names | form login, session | the UI |
+| `controller/` | `/files`, `/users`, `/roles`, `/api-keys`, `/settings/upload`, `/settings/content-kinds`, `/settings/tag-groups`, `/settings/general`, `/files/explorer`, `/` | Thymeleaf view names | form login, session | the UI |
 | `resource/` | `/resource/**` | JSON (`ApiResult` or a DTO) | form login, session, CSRF | AJAX called by the pages themselves |
 | `api/` | `/api/v1/files` | JSON | HTTP Basic, stateless | external integrations (the shared machine account) |
 | `api/` | `/api/v2/{bucket}` | JSON, S3-style | `Authorization: Bearer fmk_…` (an API key), stateless | external integrations, scoped to folders |
@@ -403,8 +403,9 @@ document, so a browser navigation still lands on a page.
 | GET | `/` | `ACCESS_HOME` |
 | GET | `/login` | permitAll |
 | GET / POST | `/files/create`, `/files` | `CREATE_FILE_PAGE`, `SAVE_NEW_FILE` |
-| GET | `/files/public-files` | `PUBLIC_FILE_PAGE` (path is also permitAll in the chain) |
-| GET | `/files/public-download/{id}` | permitAll (`?inline=1` is honoured only for `ContentTypes.inlineSafe` kinds; every download carries `nosniff` and a `default-src 'none'` CSP) |
+| GET | `/files/public-files` | open to everyone, or to signed-in people only - the `public-files.anonymous` setting, asked on every request (`PublicFilesAuthorizationManager`); no permission beyond being signed in |
+| GET | `/files/public-download/{id}` | the same switch (`?inline=1` is honoured only for `ContentTypes.inlineSafe` kinds; every download carries `nosniff` and a `default-src 'none'` CSP) |
+| GET / POST | `/settings/general` | `GENERAL_SETTINGS_PAGE`, `SAVE_GENERAL_SETTINGS` |
 | GET | `/files/file-info`, `/files/file-info/{id}` | `GET_ALL_FILE_INFO_PAGE`, `FILE_INFO_PAGE` |
 | GET | `/files/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `DOWNLOAD_FILE` |
 | GET / POST | `/files/file-info/{fileInfoId}/file-details/create`, `.../file-details` | `SAVE_NEW_FILE_DETAILS_PAGE`, `SAVE_NEW_FILE_DETAILS` |
@@ -561,8 +562,9 @@ user see *this* folder". Both must pass.
   first question, `isOnPathTo` the second, and `visible` is their union.
 * Enforcement covers the tree, the folder listing and search behind the explorer, the file list
   (pushed into the query, so paging counts stay honest), the file page, both download endpoints and
-  — since roadmap 9.1 — every upload path, which is what closed issue 76. The `permitAll` public
-  download is deliberately outside it.
+  — since roadmap 9.1 — every upload path, which is what closed issue 76. The public page and
+  download are deliberately outside it: they show files marked public, to everyone or to
+  signed-in people, as the `public-files.anonymous` setting says.
 * **The tree addresses a node by its folder id** — including the ids a search hit reports; there is
   no other id since step 4. A file is addressed by its own id and authorised through its folder.
 
@@ -573,6 +575,19 @@ off, `accessFor` answers "unrestricted" for everyone.
 
 With the flag off, holding `DOWNLOAD_FILE` still grants download of every file, private ones
 included (issue 14) — the endpoint permission is then the only check there is.
+
+### Run-time settings
+
+`app_setting` (`V2.10`) holds the switches an administrator flips without a restart, one row per
+name, read by `AppSettingService` on every use - a lookup by unique key, chosen over a cache
+because the one reader that matters is the security chain. The first switch,
+`public-files.anonymous`, decides whether `/files/public-files` and `/files/public-download/**`
+answer a visitor who is not signed in: `PublicFilesAuthorizationManager` sits on those two
+paths in the browser chain in place of the `permitAll` they carried, grants everyone while the
+switch is on, and otherwise grants only an authenticated, non-anonymous principal - so a
+visitor is sent to the login form like any other protected page, and the login form drops its
+"public files" link while the switch is off. Edited on `/settings/general`
+(`GENERAL_SETTINGS_PAGE` / `SAVE_GENERAL_SETTINGS`); every change is an `action_history` row.
 
 ### The upload policy
 
@@ -706,6 +721,7 @@ migrations themselves, in `src/main/resources/db/migration`:
 | `V2.5__Normalise_Content_Type.sql` | data only: `file_details.content_type` rewritten from the extension for the nine accepted kinds, so the column holds the server's word rather than the client's (issues 12, 13) |
 | `V2.6__Add_Upload_Policy.sql` | `upload_policy` (one system-wide row, `role_id` null; one per role that has its own), `upload_policy_rule` (extension → `max_size_bytes`); the system-wide row seeded with the nine default kinds at 20 MB |
 | `V2.7__Add_Content_Kind.sql` | `content_kind`: the custom half of the content catalogue - extension, media type, and a byte signature at an offset or "text only"; empty until an administrator adds one |
+| `V2.10__Add_App_Setting.sql` | `app_setting` (name → value, audited), seeded with `public-files.anonymous = true`, the behaviour there always was; `GENERAL_SETTINGS_PAGE` and `SAVE_GENERAL_SETTINGS` |
 | `V2.9__Folders_Any_Depth.sql` | Folders of any depth: refuses to run where a top-level folder or a stored key is named `folders`; `CATEGORY` / `SUB_CATEGORY` / `TAG` become `FOLDER`; `REST_MOVE_FOLDER` (mapped onto the roles that may rename) and the three `TAG_GROUP` page permissions |
 | `V2.8__Remove_Taxonomy.sql` | Phase 7 step 4. Fails fast first: `file_info.folder_id NOT NULL`, `uq_file_info_name_per_folder`, `folder.tag_group_id` backfilled from each category's general tag and required on every `CATEGORY` row. Then the four `REST_*_FOLDER` / `REST_GET_TAG_GROUPS` permissions, mapped onto the roles that held the taxonomy ones; the 27 taxonomy permissions deleted; `file_info` / `file_details` lose `file_path`, `relative_path`, `file_sub_category_id`, `main_tag_file_id`; `folder` loses `general_tag_id`, `source_type`, `source_id`; `main_tag_file`, `file_sub_category`, `file_category`, `general_tag` dropped. Not reversible without the backup |
 

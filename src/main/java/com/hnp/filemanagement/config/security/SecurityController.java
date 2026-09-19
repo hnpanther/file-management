@@ -7,7 +7,9 @@ import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import com.hnp.filemanagement.service.AppSettingService;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.servlet.ModelAndView;
 
@@ -16,10 +18,19 @@ public class SecurityController {
 
     private final GlobalGeneralLogging globalGeneralLogging;
     private final MessageSource messageSource;
+    private final AppSettingService appSettingService;
 
-    public SecurityController(GlobalGeneralLogging globalGeneralLogging, MessageSource messageSource) {
+    public SecurityController(GlobalGeneralLogging globalGeneralLogging, MessageSource messageSource,
+                              AppSettingService appSettingService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.messageSource = messageSource;
+        this.appSettingService = appSettingService;
+    }
+
+    /** Whether the login page offers the public-files link: only while those pages are open to visitors. */
+    @ModelAttribute("publicFilesAnonymous")
+    public boolean publicFilesAnonymous() {
+        return appSettingService.isPublicFilesAnonymous();
     }
 
 

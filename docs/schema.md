@@ -106,7 +106,7 @@ Two groups:
 
 | Group | Tables | State |
 |---|---|---|
-| **Identity and permissions** | `user`, `role`, `user_role`, `permission`, `permission_role`, `api_key`, `api_key_folder`, `upload_policy`, `upload_policy_rule`, `content_kind` | stable |
+| **Identity and permissions** | `user`, `role`, `user_role`, `permission`, `permission_role`, `api_key`, `api_key_folder`, `upload_policy`, `upload_policy_rule`, `content_kind`, `app_setting` | stable |
 | **Where a file is** | `folder`, `role_folder`, `user_folder`, `file_info.folder_id` | authoritative since `V2.8` (Phase 7 step 4); any depth since `V2.9`; `folder_id` is `NOT NULL` and names any folder but the root |
 | **What a file is, and about** | `file_info`, `file_details`, `tag_group`, `tag`, `file_tag` | stable; a file's tags are derived from its folder chain, `tag_group` is the label group a category carries |
 
@@ -121,7 +121,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V2.9`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
+_As of migration `V2.10`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
 
 ### `action_history`
 
@@ -178,6 +178,20 @@ _As of migration `V2.9`. Types and defaults are MySQL's own; every table is Inno
 * **foreign key** `fk_api_key_folder_folder` `folder_id` → `folder` (`id`), on delete cascade
 * **foreign key** `fk_api_key_folder_key` `api_key_id` → `api_key` (`id`), on delete cascade
 * **index** `ix_api_key_folder_key` (`api_key_id`)
+
+### `app_setting`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `setting_key` | `varchar(100)` | no |  |  |
+| `setting_value` | `varchar(500)` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `updated_by` | `int` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_app_setting_key` (`setting_key`)
+* **foreign key** `fk_app_setting_updated_by_user` `updated_by` → `user` (`id`)
 
 ### `content_kind`
 
