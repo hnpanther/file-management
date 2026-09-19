@@ -46,7 +46,9 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   path, never by walking `getParent()` per row.
 * **New files are stored by folder id** (`folders/{id}/…`); old ones by the names of the
   folders above them as they stood. Neither is ever rebuilt from the tree, and `folders` is a
-  reserved top-level name. Do not move bytes on a rename or a move.
+  reserved top-level name. Do not move bytes on a rename or a move — what each operation may
+  touch (tree, keys, bytes, tags) is tabulated in
+  [docs/arch.md](docs/arch.md#what-each-operation-touches); keep it true.
 * **Adding a field to `ModelConverterUtil` can add joins to every list page**, because every
   `@ManyToOne` is `EAGER`.
 * **Flyway owns the schema; `docs/schema.md` describes it.** The old `schema-db/schema.sql`

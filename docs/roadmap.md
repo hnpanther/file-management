@@ -971,6 +971,11 @@ Each is independently shippable, and only the fourth cannot be undone.
 > `V2.9` onto the roles that may rename; the explorer's "انتقال" opens the folder chooser. No
 > byte moves.
 >
+> **A folder can be selected and searched for, like a file.** `GET /resource/folders/{id}`
+> feeds the details pane (`FolderDetailsDTO`: trail, group, direct and total counts, audit), and
+> the search answers `folders` - by id or a fragment of the name or label, within the scope and
+> the person's reach, at most twenty - beside the paged file `hits`.
+>
 > **The general tags have their form back.** `/settings/tag-groups` (`TagGroupService`,
 > `TAG_GROUP_PAGE` / `SAVE_TAG_GROUP` / `DELETE_TAG_GROUP`): create, rename, re-title, and delete
 > while no folder carries the group and no tag sits in it.

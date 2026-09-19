@@ -262,14 +262,64 @@ void     delete(String address, String fileName, int version, String extension, 
 void     createDirectory(String title, boolean isSubDirectory);
 ```
 
-`address` is always `"{CategoryName}/{SubCategoryName}"` (with `/{fileName}` or `/v{n}` appended for
-directory deletes) and is rebuilt by walking the entity graph at every call site. Because the
-signature bakes in "directory + version + extension", it cannot express an object-store key without
-change — this is the first thing the S3 work has to fix.
+`address` is the directory of a file or of one of its versions, and it is **derived from a stored
+key** (`FileService.directoryOf`: the grandparent directory of the first revision's key), never
+from the folder names. Because the signature bakes in "directory + version + extension", it
+cannot express an object-store key without change — this is the first thing the S3 work has to
+fix.
 
 Name rules enforced at the storage boundary: directory names must contain **zero** of `.`, ` `, `/`,
 applied to every segment of an address; file names must contain **exactly one** `.` and zero of
 ` `, `/`.
+
+### What each operation touches
+
+Three things describe where a file is, and they are deliberately independent: the **tree**
+(`folder.parent_id`, `folder.depth`, and `folder.path`, a materialised path of ids such as
+`/1/5/412/`), the **key** (`file_details.storage_key`, one per stored version, e.g.
+`folders/412/report/v2/report.pdf`), and the **bytes** (the file under `base-dir` at exactly the
+key's relative path). The key is written once, when the version is stored, and is the only thing
+a read ever consults; the tree is what people navigate; the bytes follow the key. The table is
+exhaustive — an operation not listed here (changing a description, a state, a permission) touches
+none of the three.
+
+| Operation | Tree (`folder` rows) | Keys (`storage_key`) | Bytes on disk | Tags (`file_tag`) |
+|---|---|---|---|---|
+| **Upload a new file** (`FileService.createNewFile`; web form, v1, v2 `PUT`) | — | one new key, `folders/{folder id}/{name}/v1/{name}.{ext}` | one file written at that path; `saveByKey` creates the directories and refuses an existing path | derived: one tag per folder from the top level down, in the top-level folder's group |
+| **New version / new format of a file** (`createNewFileDetails`) | — | one new key **beside the first version's**: the directory is read off that key (`directoryOf`), so a file stored under the old `{category}/{sub}` layout keeps growing there, one stored under `folders/{id}` there | one file written; nothing else moves | — |
+| **Delete one version or format** (`deleteFileDetails`) | — | that row's key gone | that file removed; when it was the last format of its version, the `v{n}` directory too | — |
+| **Delete a file** (`deleteCompleteFileById`, or deleting its last version) | — | every key of the file gone | the file's whole directory (`…/{name}/`) removed, read off a stored key; the folder's directory (`folders/{id}/` or `{category}/{sub}/`) stays, possibly empty | rows cascade |
+| **Create a folder** (`FolderService.create`) | one row: `parent_id`, `depth = parent + 1`, `path = parent.path + id + "/"` | — | **nothing** — a folder has no directory until its first upload | — |
+| **Rename a folder** (`rename`: name, label, or at the top level the group) | that row's `name` / `display_name` / `tag_group_id`; `path` and `depth` unchanged (they are ids) | **nothing** | **nothing** — a file stored under the old layout keeps its old directory name; one stored under `folders/{id}` never had the name in it | re-derived for every file beneath, when the name or the group changed |
+| **Move a folder** (`move`) | the folder's `parent_id`; `depth` and `path` **rewritten for the whole subtree** (`/1/5/412/…` → `/1/9/412/…`) in one transaction; `tag_group_id` set to the former top-level folder's group when the target is the root, cleared when a top-level folder goes below another | **nothing** | **nothing** | re-derived for every file beneath (the chain of names changed, and possibly the group) |
+| **Delete a folder** (`delete`; empty only) | that row gone; its grants cascade | — | **nothing** — its `folders/{id}/` directory, if an upload ever created it, is left empty | — |
+| **Change a tag group's name or title** (`/settings/tag-groups`) | — | — | — | — (tags hang off the group's id) |
+
+What follows from the table:
+
+* **`folder.path` and `storage_key` are two different things.** The first is an index over the
+  tree and changes with every move; the second is an address on disk and never changes. A move of
+  a folder holding ten thousand files is a few `UPDATE`s on `folder` and `file_tag` and zero disk
+  I/O.
+* **The directory tree under `base-dir` is not a mirror of the folder tree**, and it stops being
+  one the first time a folder is renamed or moved. For files stored since `V2.9` it never was:
+  `folders/412/` says nothing about where folder 412 sits. The database is the only source of a
+  file's place; a backup is the database **and** `base-dir` together
+  ([deployment.md](deployment.md)).
+* **Old layout, new layout, one root.** A file stored before `V2.9` lives under the names its
+  two upper folders had when it was written and stays there through every rename and move;
+  every later version of it goes beside it. A file stored since lives under its folder's id. The
+  only place the two could meet is a top-level folder literally named `folders`, which
+  `FolderService` refuses and `V2.9` checks for. Nothing relocates the old files
+  ([issue 81](issues.md#81-base-dir-now-holds-two-layouts-side-by-side--s3-by-design-recorded)).
+* **Deleting removes the file's own directory and nothing above it.** An emptied
+  `folders/{id}/` or `{category}/{sub}/` is left on disk. That is deliberate: the directory is
+  cheap, and removing a parent would mean deciding whether it is "ours", which the old layout
+  cannot answer safely.
+* **Tags are derived, never stored independently.** Every operation that changes a file's chain
+  of folder names re-derives `file_tag` for the files beneath, and
+  `FileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders` is empty after each
+  (`FolderServiceTest`, `FileServiceTest`).
 
 ## 6. HTTP layers
 
@@ -367,7 +417,7 @@ document, so a browser navigation still lands on a page.
 
 | Method | Path |
 |---|---|
-| GET | `/resource/folders/children?folderId=&page=&size=`, `/resource/folders/search?query=&folderId=` (`REST_GET_FOLDER_CONTENT` / `REST_SEARCH_FOLDER_CONTENT`, or `FILE_EXPLORER_PAGE`) |
+| GET | `/resource/folders/children?folderId=&page=&size=`, `/resource/folders/{id}` (one folder's details: trail, group, direct and total counts, audit), `/resource/folders/search?query=&folderId=` (folders by id / name / label as `folders`, at most 20; files paged as `hits`) (`REST_GET_FOLDER_CONTENT` / `REST_SEARCH_FOLDER_CONTENT`, or `FILE_EXPLORER_PAGE`) |
 | GET | `/resource/folders/tag-groups` (`REST_GET_TAG_GROUPS` or `REST_CREATE_FOLDER`) |
 | POST | `/resource/folders` `{parentId, name, displayName, tagGroupId | newTagGroupName}` → 201 (`REST_CREATE_FOLDER`; under the root a group is needed, deeper none is taken; 400 past the depth limit) |
 | PUT | `/resource/folders/{id}` `{name, displayName, tagGroupId?}` (`REST_RENAME_FOLDER`; the group only at the top level) |

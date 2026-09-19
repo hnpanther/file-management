@@ -2,6 +2,8 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FolderAccess;
 import com.hnp.filemanagement.dto.FolderContentDTO;
+import com.hnp.filemanagement.dto.FolderDetailsDTO;
+import com.hnp.filemanagement.dto.TagGroupDTO;
 import com.hnp.filemanagement.dto.FolderContentDTO.FileEntry;
 import com.hnp.filemanagement.dto.FolderContentDTO.FolderEntry;
 import com.hnp.filemanagement.dto.FolderContentDTO.FolderRef;
@@ -11,6 +13,7 @@ import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderKind;
+import com.hnp.filemanagement.entity.TagGroup;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.ChildCount;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
@@ -149,14 +152,77 @@ public class FolderContentService {
         if (term == null) {
             // The trimmed term is echoed in both branches, so a client matching a late response
             // against the box on screen compares the same thing whether or not anything matched.
-            return new FolderSearchDTO(term, scope == null ? null : refOf(scope), List.of(),
+            return new FolderSearchDTO(term, scope == null ? null : refOf(scope), List.of(), List.of(),
                     pageInfoOf(null, pageRequest));
         }
 
         Page<FileInfo> found = matches(term, folderFilter(access, scope), pageRequest);
 
-        return new FolderSearchDTO(term, scope == null ? null : refOf(scope), hitsOf(found.getContent()),
+        return new FolderSearchDTO(term, scope == null ? null : refOf(scope),
+                folderHitsOf(term, scope, access), hitsOf(found.getContent()),
                 pageInfoOf(found, pageRequest));
+    }
+
+    /**
+     * The folders a term names - by id, or by a fragment of the name or the label - inside the
+     * scope, that this person may at least walk into. A short list, never paged: the query reads
+     * a little more than it shows so that a folder hidden by access does not leave a gap.
+     */
+    private List<FolderSearchDTO.FolderHit> folderHitsOf(String term, Folder scope, FolderAccess access) {
+        String prefix = (scope == null ? rootFolder() : scope).getPath();
+        List<Folder> visible = folderRepository
+                .searchFolders(SearchTerms.asFileId(term), term, prefix,
+                        PageRequest.of(0, FolderSearchDTO.MAX_FOLDER_HITS * 5))
+                .stream()
+                .filter(folder -> access.visible(folder.getPath()))
+                .limit(FolderSearchDTO.MAX_FOLDER_HITS)
+                .toList();
+        if (visible.isEmpty()) {
+            return List.of();
+        }
+        List<Integer> ids = visible.stream().map(Folder::getId).toList();
+        Map<Integer, Long> folderCounts = countsOf(folderRepository.countChildFoldersByParent(ids));
+        Map<Integer, Long> fileCounts = countsOf(fileInfoRepository.countFilesByFolder(ids));
+        Map<Integer, List<FolderRef>> breadcrumbs = breadcrumbsFor(visible);
+        return visible.stream()
+                .map(folder -> new FolderSearchDTO.FolderHit(
+                        entryOf(folder, folderCounts.getOrDefault(folder.getId(), 0L), fileCounts.getOrDefault(folder.getId(), 0L)),
+                        breadcrumbs.getOrDefault(folder.getId(), List.of())))
+                .toList();
+    }
+
+    // ------------------------------------------------------------------ one folder's details
+
+    /**
+     * One folder as the details pane shows it: the folder, its trail, its group, what it holds
+     * directly and in total, and who made and last changed it. Refused, like a listing, for a
+     * folder this person may not even walk into.
+     */
+    public FolderDetailsDTO detailsOf(int folderId, int principalId) {
+        FolderAccess access = folderAccessService.accessFor(principalId);
+        Folder folder = folderRepository.findByIdWithDetails(folderId)
+                .orElseThrow(() -> new InvalidDataException("folder not found, id=" + folderId));
+        if (folder.getKind() != FolderKind.ROOT && !access.visible(folder.getPath())) {
+            throw new AccessDeniedException("no folder access to folder id=" + folderId);
+        }
+
+        List<Folder> ancestry = folderService.ancestryOf(folder);
+        TagGroup group = ancestry.isEmpty() ? null : FolderService.topOf(ancestry).getTagGroup();
+        long folderCount = countsOf(folderRepository.countChildFoldersByParent(List.of(folderId))).getOrDefault(folderId, 0L);
+        long fileCount = fileInfoRepository.countByFolderId(folderId);
+
+        return new FolderDetailsDTO(
+                refOf(folder),
+                folder.getDepth(),
+                breadcrumbOf(folder),
+                group == null ? null : new TagGroupDTO(group.getId(), group.getName(), group.getTitle()),
+                folderCount,
+                fileCount,
+                fileInfoRepository.countBySubtree(folder.getPath()),
+                folder.getCreatedAt(),
+                folder.getCreatedBy() == null ? null : folder.getCreatedBy().getUsername(),
+                folder.getUpdatedAt(),
+                folder.getUpdatedBy() == null ? null : folder.getUpdatedBy().getUsername());
     }
 
     /**
@@ -343,15 +409,21 @@ public class FolderContentService {
         Map<Integer, Long> fileCounts = countsOf(fileInfoRepository.countFilesByFolder(childIds));
 
         return children.stream()
-                .map(child -> new FolderEntry(
-                        child.getId(),
-                        child.getName(),
-                        titleOf(child.getDisplayName(), child.getName()),
-                        child.getKind().name(),
-                        noteOf(child),
+                .map(child -> entryOf(child,
                         folderCounts.getOrDefault(child.getId(), 0L),
                         fileCounts.getOrDefault(child.getId(), 0L)))
                 .toList();
+    }
+
+    private static FolderEntry entryOf(Folder folder, long folderCount, long fileCount) {
+        return new FolderEntry(
+                folder.getId(),
+                folder.getName(),
+                titleOf(folder.getDisplayName(), folder.getName()),
+                folder.getKind().name(),
+                noteOf(folder),
+                folderCount,
+                fileCount);
     }
 
     /** A grouped count returns no row for a parent with none, so a missing key means zero. */

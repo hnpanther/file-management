@@ -2,6 +2,7 @@ package com.hnp.filemanagement.repository;
 
 import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderKind;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -61,6 +62,35 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
 
     /** How many top-level folders carry this group - what stands in the way of deleting it. */
     long countByTagGroupId(Integer tagGroupId);
+
+    /**
+     * Folders found by id, or by a fragment of the name or the label, inside one subtree (the
+     * root's own path covers everything). The root itself is never a hit. Folder access is applied
+     * by the caller on the rows' paths, so the page is a little wider than what is shown.
+     */
+    @Query("""
+            SELECT f FROM Folder f
+            LEFT JOIN FETCH f.tagGroup
+            WHERE f.kind <> com.hnp.filemanagement.entity.FolderKind.ROOT
+              AND f.path LIKE CONCAT(:pathPrefix, '%')
+              AND ((:id IS NOT NULL AND f.id = :id)
+               OR f.name LIKE CONCAT('%', :term, '%')
+               OR f.displayName LIKE CONCAT('%', :term, '%'))
+            ORDER BY f.depth ASC, f.name ASC
+            """)
+    List<Folder> searchFolders(@Param("id") Integer id, @Param("term") String term,
+                               @Param("pathPrefix") String pathPrefix, Pageable pageable);
+
+    /** One folder with its parent, tag group and audit users loaded - the details pane. */
+    @Query("""
+            SELECT f FROM Folder f
+            LEFT JOIN FETCH f.parent
+            LEFT JOIN FETCH f.tagGroup
+            LEFT JOIN FETCH f.createdBy
+            LEFT JOIN FETCH f.updatedBy
+            WHERE f.id = :id
+            """)
+    Optional<Folder> findByIdWithDetails(@Param("id") int id);
 
     /** The deepest level under a folder (its own included), for the depth limit on a move. */
     @Query("SELECT MAX(f.depth) FROM Folder f WHERE f.path LIKE CONCAT(:pathPrefix, '%')")
