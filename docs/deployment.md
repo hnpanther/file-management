@@ -616,7 +616,11 @@ A jar swap with two migrations (`V2.9`, `V2.10`). Take the database backup first
 Watch the log for `Successfully applied 2 migrations`; the new permissions are inserted by the
 migrations themselves, so no `seeded` line follows.
 
-**Before:** one check, which the migration also makes and refuses to run on:
+**Before:** a JDK 25 on the host, and one check, which the migration also makes and refuses
+to run on. 1.4.0 is compiled for Java 25 (`-release 25`); on a JDK 21 the jar fails at start
+with `UnsupportedClassVersionError ... class file version 69.0`. Install Temurin 25 (LTS) beside
+the 21, point the service's `<executable>` and `JAVA_HOME` at it (the WinSW section below), and
+only then swap the jar. The check:
 
 ```sql
 SELECT id, name FROM folder WHERE depth = 1 AND LOWER(name) = 'files';
@@ -838,10 +842,10 @@ not optional.
 
     <!-- An absolute path on purpose: a service must not depend on an interactive user's PATH.
          When the JDK is upgraded, this and JAVA_HOME below both have to change. -->
-    <executable>C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot\bin\java.exe</executable>
+    <executable>C:\Program Files\Eclipse Adoptium\jdk-25.0.3.9-hotspot\bin\java.exe</executable>
     <arguments>-Xms256m -Xmx1g -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8 -Duser.timezone=Asia/Tehran -jar "D:\MyApp\file-management\file-management.jar"</arguments>
     <workingdirectory>D:\MyApp\file-management</workingdirectory>
-    <env name="JAVA_HOME" value="C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot"/>
+    <env name="JAVA_HOME" value="C:\Program Files\Eclipse Adoptium\jdk-25.0.3.9-hotspot"/>
 
     <env name="FILEMANAGEMENT_DB_URL" value="jdbc:mysql://localhost:3306/file_management"/>
     <env name="FILEMANAGEMENT_DB_USERNAME" value="file_management"/>
@@ -1022,7 +1026,7 @@ Then reproduce it outside the service, which separates "WinSW is misconfigured" 
 application cannot start":
 
 ```powershell
-& "C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot\bin\java.exe" `
+& "C:\Program Files\Eclipse Adoptium\jdk-25.0.3.9-hotspot\bin\java.exe" `
   -Dfile.encoding=UTF-8 -jar "D:\MyApp\file-management\file-management.jar"
 ```
 

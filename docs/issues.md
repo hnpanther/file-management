@@ -1248,3 +1248,11 @@ files, on purpose: moving bytes is the one thing every step of Phase 7 was desig
 both search it; the explorer also manages it. With the taxonomy gone the tree page has no job the
 explorer does not do, and every change to the tree (`V2.9` touched both) is made twice. Keep it
 until the drag-and-drop of Phase 5.2 decides which page it lives on, then remove the other.
+
+### 83. The docs describe a CI workflow that was removed — **S3**
+
+`README.md` (the layout tree), `docs/roadmap.md` (Phase 0 item 4) and issue 36's resolution say
+`.github/workflows/build.yml` runs `./mvnw verify` on JDK 21 and 25. Commit `d07fa86` removed the
+workflow and nothing replaced it; the three mentions are stale, and since 1.4.0 the build targets
+Java 25 only. Either restore a workflow (one JDK now) or strike the mentions - not done here,
+because whether this repository has CI is a decision, not a doc fix.
