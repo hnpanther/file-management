@@ -115,8 +115,14 @@ class DependencyPinTest {
         assertThat(atLeast(property("testcontainers.version"), "1.21.0")).isTrue();
     }
 
+    /**
+     * Moved from 21 in 1.4.0, once the JDK on every host was 25 and every bytecode-reading
+     * dependency (Lombok, Byte Buddy for Mockito) read Java 25 classes. Pinned so that the level
+     * changes on purpose, with the docs, not by a merge.
+     */
     @Test
-    void theBuildStillTargetsJava21() throws IOException {
-        assertThat(property("java.version")).isEqualTo("21");
+    void theBuildTargetsJava25() throws IOException {
+        assertThat(property("java.version")).isEqualTo("25");
+        assertThat(Runtime.version().feature()).as("the tests run on the JDK the build targets").isGreaterThanOrEqualTo(25);
     }
 }

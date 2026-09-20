@@ -15,7 +15,7 @@ download and delete.
 
 | Concern | Choice | Version |
 |---|---|---|
-| Language | Java | 21 |
+| Language | Java | 25 (since 1.4.0; 21 before) |
 | Framework | Spring Boot | 4.1.1 (Framework 7.0.9, Security 7.1.1, Hibernate 7.4.5, Jackson 3) |
 | Packaging | Executable JAR (embedded Tomcat) | `java -jar target/file-management.jar` |
 | View layer | Thymeleaf + `thymeleaf-extras-springsecurity6` | |

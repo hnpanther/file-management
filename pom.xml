@@ -16,10 +16,16 @@
 	<packaging>jar</packaging>
 
 	<properties>
-		<java.version>21</java.version>
-		<!-- Spring Boot 3.2.1 pins Lombok 1.18.30, whose annotation processor cannot run on a
-		     JDK 25 javac. Override until the platform upgrade (docs/roadmap.md, Phase 1). -->
+		<!-- The language level: compiled with -release 25, run on a JDK 25 (Temurin 25 LTS). Moved
+		     from 21 in 1.4.0; nothing below pins a class-file version - Lombok 1.18.48 and Byte Buddy
+		     1.18.11 (Mockito's) both read Java 25 classes. -->
+		<java.version>25</java.version>
+		<!-- Spring Boot 4.1.1 manages an older Lombok; 1.18.48 is the first with a JDK 25 javac
+		     annotation processor. Kept explicit so a Boot upgrade cannot silently lower it. -->
 		<lombok.version>1.18.48</lombok.version>
+		<!-- Extra JVM options for the test run, appended by surefire below. Empty by default so that
+		     -DargLine=... on the command line (SchemaDocumentationTest's write switch) still works. -->
+		<argLine></argLine>
 		<springdoc.version>3.1.0</springdoc.version>
 		<tika.version>3.3.2</tika.version>
 		<!-- Boot 3.2.1 pins Testcontainers 1.19.3, which predates Docker context support and
@@ -190,6 +196,29 @@
 	<build>
 		<finalName>${project.artifactId}</finalName>
 		<plugins>
+			<!-- Exposes each dependency's jar path as a property, for the -javaagent below. -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>dependency-paths</id>
+						<goals>
+							<goal>properties</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<!-- Mockito's inline mock maker attaches Byte Buddy as an agent. JDK 21+ warns when an
+					     agent is loaded dynamically and will refuse it by default one day, so it is loaded
+					     the supported way, on the command line. -->
+					<argLine>-javaagent:${net.bytebuddy:byte-buddy-agent:jar} ${argLine}</argLine>
+				</configuration>
+			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>

@@ -9,7 +9,7 @@ working, and to depend only on what came before.
 | Phase | Goal | Depends on | Status |
 |---|---|---|---|
 | 0 | Safety net — CI, smoke test, containerised dev environment | — | **done** |
-| 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done** |
+| 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done**; the language level moved to 25 in 1.4.0, on its own, once every host ran a JDK 25 |
 | 2 | Architectural restructuring | 1 | |
 | 3 | PostgreSQL migration | 1, partly 2, **and 7** | |
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
