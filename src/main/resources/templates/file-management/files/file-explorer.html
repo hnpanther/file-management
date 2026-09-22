@@ -343,6 +343,7 @@
                         <th class="hidden md:table-cell" th:text="#{explorer.details.location}">محل نگهداری</th>
                         <th class="hidden sm:table-cell" th:text="#{explorer.column.formats}">قالب‌ها</th>
                         <th class="hidden sm:table-cell" th:text="#{explorer.column.size}">حجم</th>
+                        <th class="w-10"><span class="sr-only" th:text="#{explorer.column.actions}">عملیات</span></th>
                     </tr>
                     </thead>
                     <tbody>
@@ -366,6 +367,14 @@
                                 </template>
                             </td>
                             <td class="explorer-cell-muted hidden sm:table-cell" x-text="size(hit.file.size)"></td>
+                            <td>
+                                <a class="explorer-row-action" :href="downloadHref(hit.file)" @click.stop
+                                   x-show="hit.file.latestFileDetailsId" x-cloak
+                                   :title="downloadTitle(hit.file)"
+                                   sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')">
+                                    <i class="bi bi-download" aria-hidden="true"></i>
+                                </a>
+                            </td>
                         </tr>
                     </template>
                     </tbody>
@@ -383,6 +392,7 @@
                         <th class="hidden lg:table-cell" th:text="#{explorer.column.formats}">قالب‌ها</th>
                         <th class="hidden sm:table-cell" th:text="#{explorer.column.size}">حجم</th>
                         <th class="hidden lg:table-cell" th:text="#{explorer.column.date}">تاریخ ایجاد</th>
+                        <th class="w-10"><span class="sr-only" th:text="#{explorer.column.actions}">عملیات</span></th>
                     </tr>
                     </thead>
                     <tbody>
@@ -402,7 +412,8 @@
                             <td class="explorer-cell-muted hidden sm:table-cell" x-text="contentsOf(entry)"></td>
                             <td class="hidden lg:table-cell"></td>
                             <td class="hidden sm:table-cell"></td>
-                            <td class="hidden lg:table-cell">
+                            <td class="hidden lg:table-cell"></td>
+                            <td>
                                 <!-- Opening a folder is the row; its details are this, so the two do not fight over a click. -->
                                 <button type="button" class="explorer-row-action" @click.stop="showFolder(entry.id)"
                                         th:title="#{explorer.details.folder}">
@@ -433,6 +444,18 @@
                             </td>
                             <td class="explorer-cell-muted hidden sm:table-cell" x-text="size(entry.size)"></td>
                             <td class="explorer-cell-muted hidden lg:table-cell" x-text="date(entry.createdAt)"></td>
+                            <td>
+                                <!--
+                                  Selecting a file is the row; downloading its latest revision is this - the same
+                                  link the file page offers for that revision, so no visit to the page is needed.
+                                -->
+                                <a class="explorer-row-action" :href="downloadHref(entry)" @click.stop
+                                   x-show="entry.latestFileDetailsId" x-cloak
+                                   :title="downloadTitle(entry)"
+                                   sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')">
+                                    <i class="bi bi-download" aria-hidden="true"></i>
+                                </a>
+                            </td>
                         </tr>
                     </template>
                     </tbody>
@@ -553,9 +576,15 @@
                         <p class="explorer-detail-term" th:text="#{explorer.details.created}">تاریخ ایجاد</p>
                         <p class="explorer-detail-value" x-text="date(selectedFile.createdAt)"></p>
 
-                        <a class="btn btn-primary btn-sm w-full" :href="EX.filePage + selectedFile.id">
+                        <a class="btn btn-primary btn-sm w-full" :href="downloadHref(selectedFile)"
+                           x-show="selectedFile.latestFileDetailsId" x-cloak
+                           sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')">
                             <i class="bi bi-download" aria-hidden="true"></i>
-                            <span th:text="#{explorer.details.openFile}">صفحهٔ فایل و دانلود نسخه‌ها</span>
+                            <span x-text="downloadTitle(selectedFile)"></span>
+                        </a>
+                        <a class="btn btn-secondary btn-sm mt-2 w-full" :href="EX.filePage + selectedFile.id">
+                            <i class="bi bi-file-earmark-text" aria-hidden="true"></i>
+                            <span th:text="#{explorer.details.openFile}">صفحهٔ فایل و همهٔ نسخه‌ها</span>
                         </a>
                         <button type="button" class="btn btn-secondary btn-sm mt-2 w-full" x-show="writable" x-cloak
                                 @click="openMoveFile(selectedFile)"
@@ -593,6 +622,7 @@
         childrenUrl:       [[@{/resource/folders/children}]],
         searchUrl:         [[@{/resource/folders/search}]],
         filePage:          [[@{/files/file-info/}]],
+        downloadLatest:    [[#{explorer.details.downloadLatest}]],
         foldersUrl:        [[@{/resource/folders}]],
         manageFailed:      [[#{explorer.manage.failed}]],
         confirmDelete:     [[#{explorer.manage.confirmDelete}]],
@@ -1091,6 +1121,20 @@
                 } catch (e) {
                     this.error = e.status === 409 ? EX.deleteRefused : (e.detail || EX.manageFailed);
                 }
+            },
+
+            /**
+             * The download of a file's latest revision - of the latest version, the format
+             * uploaded last, which the content read names - through the same endpoint the file
+             * page links for that revision.
+             */
+            downloadHref(file) {
+                return EX.filePage + file.id + "/file-details/" + file.latestFileDetailsId + "/download";
+            },
+
+            downloadTitle(file) {
+                return EX.downloadLatest.replace("{0}", "v" + this.number(file.lastVersion))
+                        .replace("{1}", file.latestFormat || "");
             },
 
             /** The upload form, opened on the folder on screen. */

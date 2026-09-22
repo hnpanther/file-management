@@ -440,7 +440,7 @@ document, so a browser navigation still lands on a page.
 
 | Method | Path |
 |---|---|
-| GET | `/resource/folders/children?folderId=&page=&size=`, `/resource/folders/{id}` (one folder's details: trail, group, direct and total counts, audit), `/resource/folders/search?query=&folderId=` (folders by id / name / label as `folders`, at most 20; files paged as `hits`) (`REST_GET_FOLDER_CONTENT` / `REST_SEARCH_FOLDER_CONTENT`, or `FILE_EXPLORER_PAGE`) |
+| GET | `/resource/folders/children?folderId=&page=&size=` (each file entry names its latest revision - of the latest version, the format uploaded last - as `latestFileDetailsId`, for the explorer's download), `/resource/folders/{id}` (one folder's details: trail, group, direct and total counts, audit), `/resource/folders/search?query=&folderId=` (folders by id / name / label as `folders`, at most 20; files paged as `hits`) (`REST_GET_FOLDER_CONTENT` / `REST_SEARCH_FOLDER_CONTENT`, or `FILE_EXPLORER_PAGE`) |
 | GET | `/resource/folders/tag-groups` (`REST_GET_TAG_GROUPS` or `REST_CREATE_FOLDER`) |
 | POST | `/resource/folders` `{parentId, name, displayName, tagGroupId | newTagGroupName}` → 201 (`REST_CREATE_FOLDER`; under the root a group is needed, deeper none is taken; 400 past the depth limit) |
 | PUT | `/resource/folders/{id}` `{name, displayName, tagGroupId?}` (`REST_RENAME_FOLDER`; the group only at the top level) |

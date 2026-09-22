@@ -450,6 +450,18 @@ name, the trail, depth, the tag group, direct contents, total files beneath, cre
 changed by whom, and an "open" button. `selectedFile` and `selectedFolder` are exclusive; Escape
 and the overlay clear both.
 
+**Downloading from the explorer** (roadmap 10.2) needs no visit to the file page. Every file
+row, every file hit in a search, and the details pane carry a download of the file's *latest
+revision*: of the latest version, the format uploaded last (`latestFileDetailsId` and
+`latestFormat` on the content read, chosen by creation time and then id). The link is the same
+`/files/file-info/{id}/file-details/{revision}/download` the file page offers for that
+revision, so it is one endpoint and one permission (`DOWNLOAD_FILE`, `sec:authorize` on the
+control); the row's link is an `.explorer-row-action` in a last, always-visible action column
+that the folder rows use for their info button, with `@click.stop` so it does not select the
+row. In the pane the download is the primary button, titled with the version and format
+(`explorer.details.downloadLatest`), and the file page - every version, every format - the
+secondary one beneath it.
+
 **Search** finds folders as well as files, by id or by a fragment of the name or label. The
 response carries `folders` (a short list, never paged) and `hits` (files, paged); the results
 pane renders the folders first, each with its trail and counts and its own info button, and the
