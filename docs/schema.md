@@ -121,7 +121,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V2.10`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
+_As of migration `V2.11`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
 
 ### `action_history`
 
@@ -300,6 +300,7 @@ _As of migration `V2.10`. Types and defaults are MySQL's own; every table is Inn
 | `kind` | `varchar(30)` | no |  |  |
 | `owner_user_id` | `int` | yes |  |  |
 | `tag_group_id` | `int` | yes |  |  |
+| `quota_bytes` | `bigint` | yes |  |  |
 | `enabled` | `int` | no |  |  |
 | `state` | `int` | no |  |  |
 | `created_at` | `datetime` | no |  |  |
@@ -308,6 +309,7 @@ _As of migration `V2.10`. Types and defaults are MySQL's own; every table is Inn
 | `updated_by` | `int` | yes |  |  |
 
 * **primary key** `id`
+* **unique** `uq_folder_owner_user` (`owner_user_id`)
 * **unique** `uq_folder_sibling_name` (`parent_id`, `name`)
 * **foreign key** `fk_folder_created_by_user` `created_by` → `user` (`id`)
 * **foreign key** `fk_folder_owner_user` `owner_user_id` → `user` (`id`)

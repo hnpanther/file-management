@@ -1259,3 +1259,16 @@ until the drag-and-drop of Phase 5.2 decides which page it lives on, then remove
 workflow and nothing replaced it; the three mentions are stale, and since 1.4.0 the build targets
 Java 25 only. Either restore a workflow (one JDK now) or strike the mentions - not done here,
 because whether this repository has CI is a decision, not a doc fix.
+
+## Found while adding personal folders (1.5.0)
+
+### 84. The new-user page asks for a permission that does not exist — **S3**
+
+`UserController.createUser` (`GET /users/create`) is guarded by
+`hasAuthority('CREATE_NEW_USER')`, but the enum - and therefore the `permission` table - has
+`CREATE_NEW_USER_PAGE`, and no constant named `CREATE_NEW_USER`. Nobody but `ADMIN` can open the
+form, whatever a role is granted; the `POST /users` behind it correctly asks for `SAVE_NEW_USER`.
+Found writing `UserHomeWebTest`, which had to sign in as `ADMIN` to reach the page. The fix is one
+word in the annotation (and a look for other handlers whose string drifted from the enum - a
+test that reads every `@PreAuthorize` and checks the name against `PermissionEnum` would end the
+class of defect); not done here because it changes who may open a page, which is a decision.

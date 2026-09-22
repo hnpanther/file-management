@@ -58,4 +58,11 @@ public class UserDTO {
     private Integer loginType;
 
     private List<RoleDTO> roleList;
+
+    /**
+     * On the new-user form: whether to create the user's personal folder with the user
+     * (roadmap 10.4). Ticked by default; an unticked checkbox is not posted, so the controller
+     * reads its absence as false.
+     */
+    private Boolean createHome;
 }

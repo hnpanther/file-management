@@ -82,12 +82,13 @@ public class FolderService {
     private final FolderAccessService folderAccessService;
     private final TagMirrorService tagMirrorService;
     private final ActionHistoryService actionHistoryService;
+    private final FolderQuotaService folderQuotaService;
     private final int maxDepth;
 
     public FolderService(FolderRepository folderRepository, FileInfoRepository fileInfoRepository,
                          TagGroupRepository tagGroupRepository, UserRepository userRepository,
                          FolderAccessService folderAccessService, TagMirrorService tagMirrorService,
-                         ActionHistoryService actionHistoryService,
+                         ActionHistoryService actionHistoryService, FolderQuotaService folderQuotaService,
                          @Value("${filemanagement.folders.max-depth:6}") int maxDepth) {
         if (maxDepth < 1) {
             throw new IllegalArgumentException("filemanagement.folders.max-depth must be at least 1, was " + maxDepth);
@@ -99,6 +100,7 @@ public class FolderService {
         this.folderAccessService = folderAccessService;
         this.tagMirrorService = tagMirrorService;
         this.actionHistoryService = actionHistoryService;
+        this.folderQuotaService = folderQuotaService;
         this.maxDepth = maxDepth;
     }
 
@@ -111,12 +113,18 @@ public class FolderService {
 
     /** Whether a folder at this depth may take a child folder. */
     public boolean canHoldFolders(Folder folder) {
-        return folder.getDepth() < maxDepth;
+        return folder.getKind() != FolderKind.PROFILES && folder.getDepth() < maxDepth;
     }
 
     /** Whether a file may be filed here: anything but the root. */
     public static boolean canHoldFiles(Folder folder) {
-        return folder.getKind() != FolderKind.ROOT;
+        return folder.getKind() != FolderKind.ROOT && folder.getKind() != FolderKind.PROFILES;
+    }
+
+    /** The kinds nobody renames, moves or deletes by hand: the root, the Profiles folder, a home. */
+    static boolean isSystemFolder(Folder folder) {
+        return folder.getKind() == FolderKind.ROOT || folder.getKind() == FolderKind.PROFILES
+                || folder.getKind() == FolderKind.USER_HOME;
     }
 
     /** The root every folder descends from - a broken installation if there is not exactly one. */
@@ -263,7 +271,7 @@ public class FolderService {
     @Transactional
     public FolderDTO rename(int folderId, String name, String displayName, Integer tagGroupId, int principalId) {
         Folder folder = requireExisting(folderId);
-        if (folder.getKind() == FolderKind.ROOT || folder.getKind() == FolderKind.USER_HOME) {
+        if (isSystemFolder(folder)) {
             throw new InvalidDataException("a " + folder.getKind() + " folder cannot be renamed: id=" + folderId);
         }
         folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), folder);
@@ -304,7 +312,7 @@ public class FolderService {
     @Transactional
     public FolderDTO move(int folderId, int newParentId, int principalId) {
         Folder folder = requireExisting(folderId);
-        if (folder.getKind() == FolderKind.ROOT || folder.getKind() == FolderKind.USER_HOME) {
+        if (isSystemFolder(folder)) {
             throw new InvalidDataException("a " + folder.getKind() + " folder cannot be moved: id=" + folderId);
         }
         Folder newParent = folderAccessService.requireFolder(newParentId);
@@ -325,6 +333,10 @@ public class FolderService {
         }
         requireFreeAmongSiblings(newParent, folder.getName(), folder.getId());
 
+        if (!canHoldFolders(newParent)) {
+            throw new InvalidDataException("folder id=" + newParent.getId() + " (" + newParent.getKind()
+                    + ", depth " + newParent.getDepth() + ") takes no folders");
+        }
         int delta = newParent.getDepth() + 1 - folder.getDepth();
         Integer deepest = folderRepository.maxDepthUnder(folder.getPath());
         int deepestAfter = (deepest == null ? folder.getDepth() : deepest) + delta;
@@ -332,6 +344,9 @@ public class FolderService {
             throw new InvalidDataException("moving folder id=" + folderId + " there would put a folder at depth "
                     + deepestAfter + "; the limit is " + maxDepth);
         }
+        // The subtree's bytes arrive under the new parent: a quota above it that does not already
+        // hold the folder must have room (roadmap 10.4). Nothing on disk moves.
+        folderQuotaService.requireRoom(newParent, folderQuotaService.usageOf(folder), folder.getPath());
 
         // The group the subtree's tags are derived in: the top-level folder's. Carried across so
         // that the tags can be re-derived without asking anyone which group they mean.
@@ -364,7 +379,7 @@ public class FolderService {
     @Transactional
     public void delete(int folderId, int principalId) {
         Folder folder = requireExisting(folderId);
-        if (folder.getKind() == FolderKind.ROOT || folder.getKind() == FolderKind.USER_HOME) {
+        if (isSystemFolder(folder)) {
             throw new InvalidDataException("a " + folder.getKind() + " folder cannot be deleted: id=" + folderId);
         }
         folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), folder.getParent());

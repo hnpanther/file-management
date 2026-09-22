@@ -94,6 +94,58 @@
 
                     </ul>
                 </div>
+
+                <!--
+                  The personal folder (roadmap 10.4): where it is, how full it is, and its quota - or,
+                  for a user made without one, the button that creates it. Both posts come back here
+                  with a flash message.
+                -->
+                <div class="card mt-3" id="home-card">
+                    <div class="card-body">
+                        <h6 class="mb-2" th:text="#{user.home.title}">پوشهٔ شخصی</h6>
+
+                        <div th:if="${homeMessage != null}"
+                             th:class="${homeValid} ? 'alert alert-success' : 'alert alert-warning'"
+                             role="status" th:text="${homeMessage}"></div>
+
+                        <th:block th:if="${home != null}">
+                            <p class="mb-1">
+                                <a th:href="@{/files/explorer(folder=${home.id()})}" class="technical" dir="ltr"
+                                   th:text="'Profiles/' + ${home.name()}">Profiles/username</a>
+                            </p>
+                            <p class="mb-1 text-secondary">
+                                <span th:text="#{user.home.used}">استفاده‌شده:</span>
+                                <span class="technical" dir="ltr" th:text="${home.usedMegabytes()} + ' MB'">0 MB</span>
+                                <th:block th:if="${home.quotaBytes() != null}">
+                                    <span th:text="#{user.home.of}">از</span>
+                                    <span class="technical" dir="ltr" th:text="${home.quotaMegabytes()} + ' MB'">100 MB</span>
+                                    <span th:text="#{user.home.percent(${home.percentUsed()})}">(0٪)</span>
+                                </th:block>
+                                <span th:if="${home.quotaBytes() == null}" th:text="#{user.home.noQuota}">— بدون سقف</span>
+                            </p>
+                            <form th:action="@{'/users/' + ${user.getId()} + '/home/quota'}" method="post" class="mt-2"
+                                  sec:authorize="hasAuthority('SET_FOLDER_QUOTA') || hasAuthority('ADMIN')">
+                                <label for="quotaMb" class="text-sm" th:text="#{user.home.quotaLabel}">سهمیه (مگابایت؛ خالی = بدون سقف)</label>
+                                <div class="flex items-center gap-2 mt-1">
+                                    <input id="quotaMb" name="quotaMb" type="number" min="1" step="1" class="form-control technical" dir="ltr"
+                                           th:value="${home.quotaMegabytes()}">
+                                    <button type="submit" class="btn btn-secondary btn-sm" th:text="#{user.home.saveQuota}">ذخیرهٔ سهمیه</button>
+                                </div>
+                            </form>
+                        </th:block>
+
+                        <th:block th:if="${home == null}">
+                            <p class="text-secondary mb-2" th:text="#{user.home.none}">این کاربر پوشهٔ شخصی ندارد.</p>
+                            <form th:action="@{'/users/' + ${user.getId()} + '/home'}" method="post"
+                                  sec:authorize="hasAuthority('CREATE_USER_HOME') || hasAuthority('ADMIN')">
+                                <button type="submit" class="btn btn-secondary btn-sm">
+                                    <i class="bi bi-folder-plus" aria-hidden="true"></i>
+                                    <span th:text="#{user.home.create}">ساخت پوشهٔ شخصی</span>
+                                </button>
+                            </form>
+                        </th:block>
+                    </div>
+                </div>
             </div>
             <div class="col-md-8">
                 <div class="card mb-3">

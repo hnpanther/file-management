@@ -85,6 +85,14 @@ public class Folder extends AbstractEntity {
     @JoinColumn(name = "tag_group_id")
     private TagGroup tagGroup;
 
+    /**
+     * A cap on the total size of every revision of every file anywhere beneath this folder, in
+     * bytes; null means none ({@code V2.11}). Enforced by {@code FolderQuotaService} on every
+     * upload and every move in. Usually on a {@code USER_HOME}, allowed on any folder.
+     */
+    @Column(name = "quota_bytes")
+    private Long quotaBytes;
+
     @Column(name = "enabled", nullable = false)
     private Integer enabled;
 

@@ -72,6 +72,8 @@ class FileServiceUnitTest {
     /** Lenient and silent: a mock refuses nothing, so the guards below are tested on their own. */
     @Mock
     private UploadPolicyService uploadPolicyService;
+    @Mock
+    private FolderQuotaService folderQuotaService;
 
     @InjectMocks
     private FileService underTest;

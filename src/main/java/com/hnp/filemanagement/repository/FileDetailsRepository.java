@@ -38,6 +38,21 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
             """)
     Optional<FileDetails> findPublicFile(@Param("id") int id);
 
+    /**
+     * The bytes stored anywhere beneath a folder, itself included: every revision of every file,
+     * summed as a {@code long} (the column is a 32-bit {@code int}, issue 6). What a quota is
+     * checked against; zero for an empty subtree.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(fd.fileSize), 0) FROM FileDetails fd
+            WHERE fd.fileInfo.folder.path LIKE CONCAT(:pathPrefix, '%')
+            """)
+    long sumSizeUnder(@Param("pathPrefix") String pathPrefix);
+
+    /** The bytes of one file's revisions, summed - what a move carries into a quota. */
+    @Query("SELECT COALESCE(SUM(fd.fileSize), 0) FROM FileDetails fd WHERE fd.fileInfo.id = :fileInfoId")
+    long sumSizeOf(@Param("fileInfoId") int fileInfoId);
+
     /** One version with everything the download and the public list need, regardless of state. */
     @Query("""
             SELECT fd FROM FileDetails fd

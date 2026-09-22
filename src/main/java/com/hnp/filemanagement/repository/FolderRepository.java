@@ -129,6 +129,9 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
 
     Optional<Folder> findByKindAndOwnerUserId(FolderKind kind, Integer ownerUserId);
 
+    /** The one folder of a kind - the root, or the Profiles folder. */
+    Optional<Folder> findFirstByKind(FolderKind kind);
+
     long countByKind(FolderKind kind);
 
     /**

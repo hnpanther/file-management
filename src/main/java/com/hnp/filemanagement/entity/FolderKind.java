@@ -22,6 +22,17 @@ public enum FolderKind {
     /** Any folder below the root. Holds folders and files alike. */
     FOLDER,
 
-    /** A user's personal folder, {@code Home/{username}}. Carries {@code ownerUserId}. */
+    /**
+     * The one top-level folder the personal folders sit under, {@code Home/Profiles}
+     * ({@code V2.11}). Nobody renames, moves or deletes it, nobody files anything directly into
+     * it, and only {@code UserHomeService} creates folders under it.
+     */
+    PROFILES,
+
+    /**
+     * A user's personal folder, {@code Home/Profiles/{username}}. Carries {@code ownerUser};
+     * named after the user and renamed with them, never by hand; moved by nobody; deleted only
+     * with its user. Usually carries a {@code quotaBytes}.
+     */
     USER_HOME
 }

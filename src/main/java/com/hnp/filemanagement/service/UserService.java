@@ -71,17 +71,20 @@ public class UserService {
     private final RoleService roleService;
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
     private final ActionHistoryService actionHistoryService;
+    private final UserHomeService userHomeService;
 
     public UserService(UserRepository userRepository,
                        PermissionRepository permissionRepository,
                        RoleService roleService,
                        BCryptPasswordEncoder bCryptPasswordEncoder,
-                       ActionHistoryService actionHistoryService) {
+                       ActionHistoryService actionHistoryService,
+                       UserHomeService userHomeService) {
         this.userRepository = userRepository;
         this.permissionRepository = permissionRepository;
         this.roleService = roleService;
         this.bCryptPasswordEncoder = bCryptPasswordEncoder;
         this.actionHistoryService = actionHistoryService;
+        this.userHomeService = userHomeService;
     }
 
     // ------------------------------------------------------------------ commands
@@ -112,6 +115,13 @@ public class UserService {
 
         actionHistoryService.saveActionHistory(EntityEnum.User, user.getId(), ActionEnum.CREATE, principalId,
                 "CREATE NEW USER", "CREATE NEW USER");
+
+        // The personal folder, when asked for, in the same transaction as the user: a user with
+        // half a home cannot exist (roadmap 10.4). The form ticks the box by default; whether it
+        // stays ticked is the administrator's decision.
+        if (Boolean.TRUE.equals(userDTO.getCreateHome())) {
+            userHomeService.ensureHome(user.getId(), principalId);
+        }
     }
 
     /**
@@ -140,6 +150,8 @@ public class UserService {
 
         if (newUsername != null) {
             user.setUsername(newUsername);
+            // The home is named after the user and follows the name; nothing on disk changes.
+            userHomeService.renameHomeOf(user.getId(), newUsername, principalId);
         }
         if (newNationalCode != null) {
             user.setNationalCode(newNationalCode);

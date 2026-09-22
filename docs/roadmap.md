@@ -18,7 +18,7 @@ working, and to depend only on what came before.
 | 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | **done** (`V2.8` 1.3.0, `V2.9` 1.4.0): the taxonomy is gone, the folder is the structure at any depth up to a limit, and it is created, renamed, moved and deleted from the explorer |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
-| 10 | After 1.4.0: sharded storage, download from the explorer, recursive delete, `Profiles` with a quota, share links | 7, 9 | in that order; 10.1–10.3 **done** (1.5.0) |
+| 10 | After 1.4.0: sharded storage, download from the explorer, recursive delete, `Profiles` with a quota, share links | 7, 9 | in that order; 10.1–10.4 **done** (1.5.0) |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -1627,7 +1627,7 @@ migration where the schema changes, tests, `docs/arch.md` and `docs/deployment.m
 | 10.1 | Shard the id-based storage layout | none | **done** (1.5.0) |
 | 10.2 | Download the latest version from the explorer | none | **done** (1.5.0) |
 | 10.3 | Delete a folder with everything in it | none | **done** (1.5.0) |
-| 10.4 | `Profiles`: a home folder per user, with a quota | `V2.11` | large; needs 10.3 |
+| 10.4 | `Profiles`: a home folder per user, with a quota | `V2.11` | **done** (1.5.0) |
 | 10.5 | Temporary share links | `V2.12` | large; independent |
 
 ### 10.1 Shard the id-based storage layout — **done** (1.5.0)
@@ -1740,7 +1740,14 @@ a later sweep can remove them.
 included, tags and grants with it; the cap refuses; `USER_HOME` refuses; a holder of
 `REST_DELETE_FOLDER` alone gets 403 on `recursive=true`.
 
-### 10.4 `Profiles`: a home folder per user, with a quota
+### 10.4 `Profiles`: a home folder per user, with a quota — **done** (1.5.0)
+
+> Shipped as planned, with two decisions taken: `Profiles` is a kind of its own (`PROFILES`)
+> rather than a plain folder, so that the tree refuses to rename, move, delete or fill it by
+> hand without special-casing a name; and there is no automatic creation on a sign-in — the
+> box on the new-user form (ticked by default) and the button on the user's page are the two
+> ways, both an administrator's decision. `UserHomeService`, `FolderQuotaService`,
+> `QuotaExceededException`; `arch.md`, "Personal folders and quotas".
 
 The `USER_HOME` kind and `folder.owner_user_id` have waited for this since `V1.4`
 ([6.7](#67-home-per-user-folders-and-the-two-system-roles)); this is that step, with a quota.

@@ -610,11 +610,26 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
-### Upgrading from 1.4.0 to 1.5.0 — sharded storage, downloads and deletes in the explorer
+### Upgrading from 1.4.0 to 1.5.0 — sharded storage, explorer downloads and deletes, personal folders
 
-A jar swap with no migration and no check. Nothing to do before; the backup is taken as
-always. On the first start the log says `seeded 1 new permission(s): [REST_DELETE_FOLDER_TREE]`
-- a permission nobody holds until an administrator grants it (below).
+A jar swap with one migration (`V2.11`). **Take the database backup first**, as always: this
+release is not rolled back by putting the old jar back (below). Watch the log for
+`Successfully applied 1 migration` and, on the same start,
+`seeded 1 new permission(s): [REST_DELETE_FOLDER_TREE]` - the two other new permissions come
+from the migration itself. None of the three is held by anyone until an administrator grants
+it.
+
+**Before:** one look, which changes nothing if it comes back empty:
+
+```sql
+SELECT id, name, kind FROM folder WHERE depth = 1 AND LOWER(name) = 'profiles';
+```
+
+`V2.11` creates a top-level folder named `Profiles` for the personal folders. If one already
+exists - made by hand - the migration **adopts** it instead: its kind becomes `PROFILES`,
+whatever it holds stays, and from then on nothing can be created, renamed, moved or deleted
+in it by hand. If that is not what you want, rename the existing folder first (from the
+explorer, on 1.4.0).
 
 **What changes:**
 
@@ -643,9 +658,26 @@ always. On the first start the log says `seeded 1 new permission(s): [REST_DELET
    a larger tree is refused with the count and is deleted in parts. Raise it only knowing that
    one request then holds one transaction and one pass over the disk for that many files.
 
-**Rollback** is the 1.4.0 jar: no schema changed, and 1.4.0 reads a sharded key like any other.
-Files uploaded on 1.5.0 stay readable and deletable on 1.4.0; new ones go flat again. The
-seeded permission row stays and is harmless.
+4. **Personal folders and quotas.** The new-user form has a box, ticked by default, that
+   creates `Profiles/{username}` with the user - a folder the user has `WRITE` on directly,
+   whatever their roles and whether or not folder access is switched on; the user's page has
+   a button for a user made without one, and a field for the folder's quota (megabytes, blank
+   for none), which can be raised or lowered at any time. Nothing is created on a sign-in:
+   whether a person gets a folder is decided on one of those two screens. A user who has one
+   lands in it after signing in (if they may open the explorer). Grant `CREATE_USER_HOME` and
+   `SET_FOLDER_QUOTA` to the roles that manage users. `filemanagement.profiles.default-quota-mb`
+   (`FILEMANAGEMENT_PROFILES_DEFAULT_QUOTA_MB`, default `0` = none) is the quota a new folder
+   starts with; a quota caps every revision of every file anywhere beneath the folder, on
+   every upload and every move in, and an upload over it is refused with the numbers - in
+   the forms in Persian, on the APIs as a 409. Homes are never renamed by hand (they follow
+   the username), moved or deleted; a disabled user's home stays, to be emptied with "delete
+   with contents" if wanted.
+
+**Rollback** is the pre-upgrade backup plus the 1.4.0 jar, not the jar alone: `V2.11` adds a
+column 1.4.0 does not know (harmless) and a folder of a kind it does not know (`PROFILES`),
+which 1.4.0 cannot read - the explorer's root listing would fail on it. Files uploaded on
+1.5.0 under the sharded layout stay readable on 1.4.0 after the restore, as far as the restored
+rows know them. The seeded permission rows are harmless.
 
 ### Upgrading from 1.3.0 to 1.4.0 — folders of any depth
 
