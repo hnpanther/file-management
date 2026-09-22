@@ -175,6 +175,13 @@ public class UserHomeService {
             if (!ValidationUtil.checkCorrectDirectoryName(newUsername)) {
                 throw new InvalidDataException("username '" + newUsername + "' cannot name a folder");
             }
+            // The sibling index would refuse it at flush, as a 500; said here, as a 409.
+            folderRepository.findByParentIdAndNameIgnoreCase(home.getParent().getId(), newUsername)
+                    .filter(taken -> !taken.getId().equals(home.getId()))
+                    .ifPresent(taken -> {
+                        throw new DuplicateResourceException("a folder named '" + newUsername
+                                + "' already exists under Profiles, id=" + taken.getId() + "; the home cannot follow the username");
+                    });
             String before = home.getName();
             home.setName(newUsername);
             home.setUpdatedBy(userRepository.getReferenceById(principalId));

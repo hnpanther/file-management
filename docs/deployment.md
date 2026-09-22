@@ -622,14 +622,18 @@ it.
 **Before:** one look, which changes nothing if it comes back empty:
 
 ```sql
-SELECT id, name, kind FROM folder WHERE depth = 1 AND LOWER(name) = 'profiles';
+SELECT f.id, f.name, f.kind, (SELECT COUNT(*) FROM file_info fi WHERE fi.folder_id = f.id) AS files
+FROM folder f WHERE f.depth = 1 AND LOWER(f.name) = 'profiles';
 ```
 
 `V2.11` creates a top-level folder named `Profiles` for the personal folders. If one already
-exists - made by hand - the migration **adopts** it instead: its kind becomes `PROFILES`,
-whatever it holds stays, and from then on nothing can be created, renamed, moved or deleted
-in it by hand. If that is not what you want, rename the existing folder first (from the
-explorer, on 1.4.0).
+exists - made by hand - the migration **adopts** it instead: its kind becomes `PROFILES`, the
+folders it holds stay, and from then on nothing can be created, renamed, moved or deleted in
+it by hand. It **refuses to run** while that folder holds files directly (`files` above
+greater than zero), because a `PROFILES` folder lists no files and they would vanish from the
+explorer with no way to move them: move the files out or rename the folder first (from the
+explorer, on 1.4.0), then start 1.5.0 again. If adoption is not what you want at all, rename
+the folder first.
 
 **What changes:**
 
@@ -653,7 +657,9 @@ explorer, on 1.4.0).
    `REST_DELETE_FOLDER_TREE`, separate from `REST_DELETE_FOLDER` (empty folders only) on
    purpose: grant it to the roles that should be able to erase a subtree, and to no other. The
    explorer shows "delete with contents" on a full folder to a holder, asks with the counts,
-   and removes rows first and bytes last. One call is bounded by
+   and removes rows first and bytes last - and a directory that cannot be removed (locked, or
+   already missing) never undoes the delete: it is logged with its address, named in the audit
+   row, and left as an orphan to remove by hand. One call is bounded by
    `filemanagement.folders.max-delete-files` (default `1000`; `FILEMANAGEMENT_FOLDERS_MAX_DELETE_FILES`):
    a larger tree is refused with the count and is deleted in parts. Raise it only knowing that
    one request then holds one transaction and one pass over the disk for that many files.

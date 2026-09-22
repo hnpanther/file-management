@@ -5,7 +5,7 @@
 -- Profiles, of a kind of its own (PROFILES): nobody renames, moves or deletes it, nobody files
 -- anything directly into it, and only the application creates folders under it. If a top-level
 -- folder named Profiles already exists - made by hand before this - it is adopted: its kind
--- changes and whatever it holds stays.
+-- changes and the folders it holds stay; one holding files directly refuses the migration.
 --
 -- The quota is a column on folder, not on the user: quota_bytes caps the total size of every
 -- revision of every file anywhere beneath the folder, NULL meaning none. It is set on a home
@@ -27,7 +27,18 @@ INSERT INTO tag_group (name, title, enabled, created_at)
 SELECT 'profiles', 'Profiles', 1, NOW()
 WHERE NOT EXISTS (SELECT 1 FROM tag_group WHERE name = 'profiles');
 
--- Adopt a hand-made Profiles at the top level, if there is one.
+-- A hand-made Profiles at the top level is adopted - unless it holds files directly. A PROFILES
+-- folder takes no files and lists none, and cannot be renamed, moved or deleted, so adopting one
+-- with files in it would hide them with no way back. Fails (NOT NULL on display_name) in that
+-- case: rename the folder first, on 1.4.0, and run again. Files in folders *beneath* it are fine.
+INSERT INTO folder (name)
+SELECT 'a top-level folder named "Profiles" holds files; rename it before this migration'
+FROM folder f
+WHERE f.depth = 1
+  AND LOWER(f.name) = 'profiles'
+  AND f.kind = 'FOLDER'
+  AND EXISTS (SELECT 1 FROM file_info fi WHERE fi.folder_id = f.id);
+
 UPDATE folder
 SET kind = 'PROFILES'
 WHERE depth = 1

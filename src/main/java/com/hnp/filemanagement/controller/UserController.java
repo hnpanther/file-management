@@ -370,7 +370,9 @@ public class UserController {
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,
                         request.getMethod() + " " + path, "UserController.class",
                         "DuplicateResourceException:" + e.getMessage());
-                message = "کاربری با این مشخصات در سیستم وجود دارد";
+                message = e.getMessage().contains("under Profiles")
+                        ? "پوشه‌ای با این نام کاربری از قبل زیر Profiles وجود دارد؛ پوشهٔ شخصی نمی‌تواند نام جدید را بگیرد"
+                        : "کاربری با این مشخصات در سیستم وجود دارد";
             }
         }
 

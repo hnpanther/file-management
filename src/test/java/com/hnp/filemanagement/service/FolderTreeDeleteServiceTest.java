@@ -171,6 +171,59 @@ class FolderTreeDeleteServiceTest extends MySqlSupport {
         assertThat(neighbour).exists();
     }
 
+    /**
+     * The bytes never fail the delete. A file whose directory is already gone (lost in an
+     * earlier partial failure, a restore without base-dir) is nothing to remove; were it an
+     * error, the rows would roll back after the files before it had their bytes erased, and
+     * every retry would erase more. So: all rows go, the other files' bytes go, the audit row is
+     * written, and the missing one is logged.
+     */
+    @Test
+    @DisplayName("a file whose bytes are already gone does not stop the tree: every row goes, every other file's bytes go")
+    void aMissingDirectoryDoesNotStopTheTree() throws IOException {
+        FileDetailsDTO kept = upload("kept.txt", chain.tagId());
+        FileDetailsDTO lost = upload("lost.txt", chain.tagId());
+        FileDetailsDTO alsoKept = upload("also-kept.txt", chain.subCategoryId());
+        Path lostDir = Paths.get(baseDir).resolve(StorageLayout.directoryFor(lost.getFileInfoId()));
+        Path keptDir = Paths.get(baseDir).resolve(StorageLayout.directoryFor(kept.getFileInfoId()));
+        Path alsoKeptDir = Paths.get(baseDir).resolve(StorageLayout.directoryFor(alsoKept.getFileInfoId()));
+        deleteRecursively(lostDir);
+        assertThat(lostDir).doesNotExist();
+        entityManager.flush();
+        entityManager.clear();
+
+        FolderTreeDeleteService.DeletedTree deleted = underTest.deleteTree(chain.subCategoryId(), adminId);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(deleted.files()).isEqualTo(3);
+        assertThat(fileInfoRepository.findById(lost.getFileInfoId())).isEmpty();
+        assertThat(fileInfoRepository.findById(kept.getFileInfoId())).isEmpty();
+        assertThat(fileInfoRepository.findById(alsoKept.getFileInfoId())).isEmpty();
+        assertThat(folderRepository.findById(chain.subCategoryId())).isEmpty();
+        assertThat(keptDir).doesNotExist();
+        assertThat(alsoKeptDir).doesNotExist();
+        assertThat(actionHistoryService.getActionHistoriesOfEntity(chain.subCategoryId(), EntityEnum.Folder))
+                .extracting(h -> h.getDescription())
+                .anySatisfy(d -> assertThat(d).contains("3 file(s)").doesNotContain("could not be removed"));
+    }
+
+    @Test
+    @DisplayName("the same for a single file: one whose bytes are already gone is still deleted")
+    void aSingleFileWithMissingBytesIsStillDeleted() throws IOException {
+        FileDetailsDTO lost = upload("single-lost.txt", chain.tagId());
+        Path lostDir = Paths.get(baseDir).resolve(StorageLayout.directoryFor(lost.getFileInfoId()));
+        deleteRecursively(lostDir);
+        entityManager.flush();
+        entityManager.clear();
+
+        fileService.deleteCompleteFileById(lost.getFileInfoId(), adminId);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(fileInfoRepository.findById(lost.getFileInfoId())).isEmpty();
+    }
+
     @Test
     @DisplayName("more files than one call may remove is a 409 that names the count, and nothing goes")
     void refusesATreeAboveTheCap() {
