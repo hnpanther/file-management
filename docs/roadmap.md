@@ -11,7 +11,7 @@ working, and to depend only on what came before.
 | 0 | Safety net — CI, smoke test, containerised dev environment | — | **done** |
 | 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done**; the language level moved to 25 in 1.4.0, on its own, once every host ran a JDK 25 |
 | 2 | Architectural restructuring | 1 | |
-| 3 | PostgreSQL migration | 1, partly 2, **and 7** | |
+| 3 | PostgreSQL migration | 1, partly 2, **and 7** | planned, not a priority; three releases, the middle one runs on both databases (3.2) |
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done**; the move it needs **done** (7.2 step 5d, 1.4.0); the drag handlers are what is left |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**; enforcement switched on per installation, after the grants exist |
@@ -229,6 +229,7 @@ enforced in the domain, and the storage contract test green.
 > four tables into a new schema for the sole purpose of dropping them shortly after — along with
 > their data migration, their indexes and their foreign keys. Phase 7 also removes the
 > `file_path` / `relative_path` columns this phase would otherwise have to translate.
+> — Phase 7 is done; this phase can start whenever it becomes a priority.
 
 **Target: PostgreSQL 17** (the driver in the Spring Boot 4.1.1 BOM is `postgresql` 42.7.13).
 
@@ -237,64 +238,154 @@ enforced in the domain, and the storage contract test green.
 `@Table(name = "user")` (issue 30). `user` is reserved in PostgreSQL. Rename the table to `app_user`
 in the migration and update `@Table`. Do not solve it with quoted identifiers.
 
-### 3.2 Strategy: a new baseline, not a portable rewrite
+### 3.2 Strategy: one release that runs on both, then a cut-over that is only data
 
-V1.0–V1.2 are irreducibly MySQL-specific (issue 31): `ENGINE = InnoDB`, `utf8mb4` collations,
-`AUTO_INCREMENT`, `#` comments, `ADD COLUMN ... AFTER`. Making them dialect-neutral is more work than
-writing a clean PostgreSQL baseline and is worth nothing afterwards.
+> Rewritten after 1.4.0. The plan below supersedes the earlier "V2.0 baseline" wording: `V2.x`
+> has meanwhile been used by seventeen MySQL migrations (`V1.0`–`V2.10`), so the PostgreSQL
+> baseline is **`V3.0`**, and the numbering says which side of the cut-over a file belongs to.
 
-Use Flyway's location-per-vendor support:
+The whole risk of a database move is a release that runs *only* on the new database: if anything
+is wrong on the night, there is no way back but a restore. So the move is made in three
+releases, and only the middle one is the actual cut-over:
+
+| Release | Runs on | What it does |
+|---|---|---|
+| **A — neutralise** (a normal 1.x release) | MySQL | every schema and code change that PostgreSQL needs, made *on MySQL* through ordinary `V2.x` migrations, so that the code no longer says anything MySQL-specific |
+| **B — dual** (`2.0.0`) | MySQL **or** PostgreSQL, chosen by the JDBC URL | the PostgreSQL baseline `V3.0`, the driver, the vendor-specific Flyway location, the test suite running against **both**; nothing else. This is the jar that is running during the cut-over, and the one that rolls back by changing one property |
+| **C — PostgreSQL only** (`2.1.0`) | PostgreSQL | the MySQL driver, `flyway-mysql`, `MySqlSupport` and `db/migration/mysql` go; from here migrations are `V3.x` and PostgreSQL-only (`TIMESTAMPTZ`, full-text search — issues 24, 21 — come *after* this, not with it) |
+
+The window between B going live on PostgreSQL and C is the rollback window. Do not add
+migrations during it: every one would have to be written twice.
+
+### 3.3 Release A — what to neutralise on MySQL first
+
+Each is an ordinary migration plus a code change, shipped and verified on MySQL, so that the
+cut-over changes no behaviour:
+
+| Change | Why |
+|---|---|
+| `RENAME TABLE user TO app_user`; `@Table(name = "app_user")` | `user` is reserved in PostgreSQL (issue 30); quoting it would spread into every native query and every operator's `psql` session |
+| `file_details.file_size INT` → `BIGINT`; the field `Integer` → `long` | issue 6; a type change on MySQL now, so the PostgreSQL baseline is not the first place the entity meets a wider column |
+| every search `LIKE` on user text becomes `LOWER(column) LIKE LOWER(:term)` (22 places in the repositories; the path-prefix `LIKE`s stay as they are) | MySQL's `utf8mb4` collations compare case-insensitively and PostgreSQL's `LIKE` does not; without this, a search that finds `Report` today stops finding it on `report` after the move. Made on MySQL first so the behaviour is the same on both, and the queries stay JPQL |
+| the one native query (`findIdsWhoseTagsDisagreeWithTheFolders`) checked against PostgreSQL syntax | it is plain SQL-92 (`LIKE CONCAT`, subselects) and should pass unchanged; the check is a test in release B, not a rewrite |
+| `# comments`, `ENGINE`, `AFTER`, `AUTO_INCREMENT` in `V1.0`–`V2.10` | left alone: they never run on PostgreSQL (3.4) |
+
+Nothing here is user-visible except the case-insensitive search, which is what users already
+have.
+
+### 3.4 Release B — the dual-database jar
+
+**Migrations by vendor.** Flyway's `{vendor}` placeholder picks the directory from the driver:
 
 ```
 src/main/resources/db/migration/
-├── mysql/          V1.0, V1.1, V1.2       ← kept for reference, no longer executed
-└── postgresql/     V2.0__Baseline.sql, V2.1__…
+├── mysql/          V1.0 … V2.10, V2.11 (release A)   ← the existing files, moved, unchanged
+└── postgresql/     V3.0__Baseline.sql
 ```
 
 ```properties
-spring.flyway.locations=classpath:db/migration/postgresql
+spring.flyway.locations=classpath:db/migration/{vendor}
 ```
 
-### 3.3 What the V2.0 baseline changes
+`V3.0__Baseline.sql` is the schema **as it stands after release A**, written by hand in
+PostgreSQL syntax — `docs/schema.md` is the specification and `spring.jpa.hibernate.ddl-auto=validate`
+on start-up is the check. Seed rows (`Home`, `ADMIN`, the permission catalogue, `app_setting`,
+the content catalogue) are in it too, so that an empty PostgreSQL boots to a working application
+exactly as an empty MySQL does.
 
-| MySQL | PostgreSQL |
+| MySQL (as it is) | PostgreSQL `V3.0` |
 |---|---|
-| `INT AUTO_INCREMENT` | `INTEGER GENERATED BY DEFAULT AS IDENTITY` |
-| `DATETIME` | `TIMESTAMPTZ` (issue 24) |
-| `ENGINE = InnoDB DEFAULT CHARSET = utf8mb4` | dropped — database-level `UTF8` encoding |
-| table `user` | table `app_user` (issue 30) |
-| `file_size INT` | `file_size BIGINT` (issue 6) |
-| `enabled` / `state` `INT` | `VARCHAR` + `CHECK` constraint, mapped to enums (issue 22) |
-| `file_path` / `relative_path` | `storage_key`, `storage_backend`, `checksum_sha256`, `status` (issues 7, 35) |
-| — | indexes on `file_info(file_name)`, `file_details(file_info_id, version)`, `file_details(status, state)`, `action_history(entity_name, entity_id)` (issue 34) |
-| — | `NOT NULL` constraints aligned with the entity mappings (issue 33) |
-| `LIKE '%term%'` search | `tsvector` column + GIN index + `websearch_to_tsquery` (issue 21) |
+| `INT AUTO_INCREMENT` | `INTEGER GENERATED BY DEFAULT AS IDENTITY` (the entities use `IDENTITY`; unchanged) |
+| `DATETIME` | `TIMESTAMP` — *without* time zone, so `LocalDateTime` keeps its meaning; `TIMESTAMPTZ` is issue 24, a later `V3.x` |
+| `TINYINT(1)` / `INT` flags | the one `boolean` field becomes `BOOLEAN`; `enabled` / `state` integers stay `INTEGER` (issue 22 is separate) |
+| `ENGINE`, `CHARSET`, collations | dropped; the database is created `ENCODING 'UTF8'` |
+| `LIKE` search | as after release A; `tsvector` (issue 21) is a later `V3.x` |
+| indexes and constraints | the same set, the same names, so `schema.md` describes both |
 
-### 3.4 Dependency changes
+**Dependencies.** `org.postgresql:postgresql` and `org.flywaydb:flyway-database-postgresql` are
+added beside the MySQL pair (removed only in C).
 
-```xml
-<!-- remove -->  com.mysql:mysql-connector-j
-<!-- remove -->  org.flywaydb:flyway-mysql
-<!-- add    -->  org.postgresql:postgresql
-<!-- add    -->  org.flywaydb:flyway-database-postgresql
-```
+**Tests on both.** `MySqlSupport` gains a sibling `PostgresSupport`; the database-backed tests
+run against whichever the `db` system property names (`-Ddb=postgresql`, MySQL by default), and
+CI runs the suite twice. `SchemaDocumentationTest` writes `schema.md` from PostgreSQL once C
+lands; until then from MySQL. `ddl-auto=validate` failing on either container fails the build —
+that is the test that the two baselines agree.
 
-Testcontainers switches from `MySQLContainer` to `PostgreSQLContainer`.
+**One property decides.** `FILEMANAGEMENT_DB_URL=jdbc:postgresql://…` runs the jar on
+PostgreSQL; the MySQL URL runs it on MySQL. Nothing else in the environment file changes.
 
-### 3.5 Data migration for the existing installation
+### 3.5 Copying the data
 
-1. Stand up PostgreSQL and run `V2.0` to create the empty schema.
-2. Copy data with `pgloader` (which handles the MySQL type mapping) into a staging schema.
-3. Run a one-off transform: `user` → `app_user`, `state`/`enabled` integers → enum strings,
-   `file_path` → `storage_key` (derived from `file_info_id` / `version` / `id`), and compute
-   `checksum_sha256` by reading each file once.
-4. Verify: row counts per table, and a checksum-vs-disk audit over every `file_details`.
-5. Cut over. Keep the MySQL instance read-only for a rollback window.
+The bytes on disk do not move — `file_details.storage_key` is relative to `base-dir` and knows
+nothing about the database. What moves is the tables, in foreign-key order, with their ids kept
+(every id is referenced somewhere: `storage_key` directories, `action_history.entity_id`, the
+PL/SQL clients' `file_id` / `file_details_id` columns).
 
-The checksum backfill in step 3 is also what makes the Phase 4 migration verifiable — do not skip it.
+**The copier.** `pgloader` if a Linux host or WSL can reach both servers (it maps the types,
+keeps ids, and does the whole thing in one command from a `.load` file); otherwise a one-off
+`copy` profile in the application itself — two `DataSource`s, `SELECT *` per table into
+`INSERT` batches in FK order — which is less magic and runs on the Windows host. Either way:
 
-**Done when:** the suite runs against PostgreSQL via Testcontainers, full-text search replaces the
-`LIKE` queries, and the production data has been copied and audited.
+1. `flyway_schema_history` is **not** copied: PostgreSQL has its own, written by `V3.0`.
+2. `user` (MySQL, after release A: `app_user`) → `app_user`; every other table keeps its name.
+3. After the copy, every identity sequence is set past the copied ids:
+   `SELECT setval(pg_get_serial_sequence('file_info', 'id'), (SELECT MAX(id) FROM file_info));`
+   — one line per table, or the first insert after cut-over fails with a duplicate key.
+4. The copy is run against a **rehearsal** PostgreSQL first, from a backup, days before; the
+   verification below is scripted then and re-run on the night.
+
+**Verification, scripted (`tools/pg-verify.sql`, run on both sides and diffed):**
+
+* `COUNT(*)` per table;
+* per table, `MAX(id)` and `SUM(id)` — a cheap check that the same rows arrived;
+* `file_details`: `COUNT(DISTINCT storage_key)`, `SUM(file_size)`, `MAX(version)`;
+* `folder`: `COUNT(*)` per `depth`, and every `path` ends with the row's own id;
+* `SELECT … findIdsWhoseTagsDisagreeWithTheFolders` returns nothing (tags and tree agree);
+* the application on PostgreSQL: starts (`validate` passes), `/actuator/health` is `UP`, an
+  administrator signs in, the explorer opens the deepest folder, a file stored before 1.4.0 and one
+  after both download, a `v1` download with an API key returns 200, and an upload lands under
+  `files/…` with the next id.
+
+### 3.6 Production runbook
+
+The production host is Windows (WinSW, [deployment.md](deployment.md)); PostgreSQL 17 runs there
+as a service from the EDB installer, or on a separate host — either way reachable only from the
+application host and the administrator's workstation (`pg_hba.conf`, the firewall rule beside
+the existing one).
+
+**Weeks before.**
+1. Release A is in production and has run for a while; `LOWER(...) LIKE` searches behave.
+2. PostgreSQL 17 installed: `ENCODING 'UTF8'`, `shared_buffers` at a quarter of RAM,
+   `max_connections` above the Hikari pool, `log_min_duration_statement` on. A role
+   `file_management` with `CREATEDB` for the rehearsal only, `LOGIN` afterwards. The password goes
+   in the environment file as today, never in a script.
+3. The nightly backup job gains a `pg_dump -Fc` beside the `mysqldump` it has, and the restore
+   is rehearsed once (`deployment.md`, "Backups").
+4. **Rehearsal:** restore last night's MySQL backup to a scratch schema, run release B on an
+   empty PostgreSQL to create `V3.0`, copy, verify (3.5), start the application against it, walk
+   the checklist. Time it. Fix what fails and rehearse again until nothing does.
+
+**The night (expect the rehearsal's time plus half).**
+1. Announce; stop the service (`winsw stop`) — no uploads during the copy.
+2. Final MySQL backup, kept with the date in its name.
+3. Empty the PostgreSQL database (`DROP SCHEMA public CASCADE; CREATE SCHEMA public;` — on the
+   scratch database from the rehearsal, never on anything else), start release B against it once
+   to run `V3.0`, stop it.
+4. Copy; set the sequences; run the verification script on both sides; diff.
+5. Point `FILEMANAGEMENT_DB_URL` at PostgreSQL in the environment file; start the service.
+6. Walk the checklist in 3.5; watch the log for `SQLGrammarException` for the first hour; the
+   PL/SQL clients download one file each.
+7. MySQL stays up, **read-only** (`FLUSH TABLES WITH READ LOCK` is not persistent — revoke the
+   application user's `INSERT, UPDATE, DELETE` instead), for the rollback window.
+
+**Rollback** (any time in the window): stop the service, point the URL back at MySQL, start.
+Anything created on PostgreSQL in between is lost — which is why the window is short (two
+weeks) and announced. After the window: release C, the MySQL grants and service go, the backup
+job drops `mysqldump`, and `deployment.md` describes PostgreSQL only.
+
+**Done when:** release C is in production, the suite runs against PostgreSQL only, the copied
+data has been verified with the script, `schema.md` is generated from PostgreSQL, and the MySQL
+service is decommissioned.
 
 ---
 
