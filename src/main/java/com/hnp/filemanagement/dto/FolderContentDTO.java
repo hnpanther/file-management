@@ -92,9 +92,15 @@ public record FolderContentDTO(
      *            behind it is a 32-bit {@code Integer} and overflows past 2 GiB
      *            ({@code docs/issues.md}, issue 6), and summing several of them in an {@code int}
      *            would add a second way to overflow on top of the first
+     * @param latestFileDetailsId the one revision "download the latest" means: of the latest
+     *            version, the format uploaded last (by {@code created_at}, then id). The
+     *            explorer links it to the download endpoint without a visit to the file page.
+     *            Null only for a file with no stored revision, which the model does not allow
+     * @param latestFormat that revision's extension, so the button can say what it hands out
      */
     public record FileEntry(int id, String name, String title, int lastVersion,
-                            List<String> formats, long size, LocalDateTime createdAt) {}
+                            List<String> formats, long size, LocalDateTime createdAt,
+                            Integer latestFileDetailsId, String latestFormat) {}
 
     /** Which page of {@link FolderContentDTO#files} came back. */
     public record PageInfo(int number, int size, int totalPages, long totalElements) {}

@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -489,6 +490,11 @@ public class FolderContentService {
                 .mapToLong(details -> details.getFileSize() == null ? 0L : details.getFileSize())
                 .sum();
 
+        // "The latest" when a version has several formats: the one uploaded last. By the
+        // creation time first, so that a format added later to an existing version wins over one
+        // that happens to have a larger id, and by id when two share a timestamp.
+        FileDetails latest = latestVersion.stream().max(LATEST_UPLOADED).orElse(null);
+
         return new FileEntry(
                 file.getId(),
                 file.getFileName(),
@@ -496,8 +502,15 @@ public class FolderContentService {
                 file.getLastVersion() == null ? 0 : file.getLastVersion(),
                 formats,
                 size,
-                file.getCreatedAt());
+                file.getCreatedAt(),
+                latest == null ? null : latest.getId(),
+                latest == null ? null : latest.getFileExtension());
     }
+
+    /** Which of a version's formats was uploaded last: creation time, then id for a tie. */
+    private static final Comparator<FileDetails> LATEST_UPLOADED =
+            Comparator.comparing(FileDetails::getCreatedAt, Comparator.nullsFirst(Comparator.naturalOrder()))
+                    .thenComparing(FileDetails::getId);
 
     // ------------------------------------------------------------------ small shared pieces
 

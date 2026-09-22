@@ -3,12 +3,14 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.dto.FolderContentDTO;
 import com.hnp.filemanagement.dto.FolderDetailsDTO;
 import com.hnp.filemanagement.dto.FolderSearchDTO;
+import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.FolderPermission;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.entity.UserFolderGrant;
 import com.hnp.filemanagement.exception.InvalidDataException;
+import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
@@ -24,7 +26,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.TestPropertySource;
+import jakarta.persistence.EntityManager;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -52,6 +56,10 @@ class FolderContentServiceTest extends MySqlSupport {
     private FolderRepository folderRepository;
     @Autowired
     private FileInfoRepository fileInfoRepository;
+    @Autowired
+    private FileDetailsRepository fileDetailsRepository;
+    @Autowired
+    private EntityManager entityManager;
     @Autowired
     private RoleRepository roleRepository;
     @Autowired
@@ -161,6 +169,49 @@ class FolderContentServiceTest extends MySqlSupport {
                     .containsExactly("docx", "pdf");
             assertThat(file.size()).as("both formats of version 2, summed").isEqualTo(2048L);
         });
+    }
+
+    /**
+     * "Download the latest" has to name one revision. Of the latest version's formats it is the
+     * one uploaded last - by {@code created_at}, which is when it was stored, and by id only when
+     * two share the instant. The fixture stores both formats of version 2 in one transaction, so
+     * their timestamps agree and the id decides; then the docx is made the later upload by
+     * moving its timestamp, and it must win despite the smaller id.
+     */
+    @Test
+    @DisplayName("a file's latest revision is the format of the latest version uploaded last - by creation time, then id")
+    void theLatestRevisionIsTheFormatUploadedLast() {
+        entityManager.flush();
+        List<FileDetails> versionTwo = fileDetailsRepository.findAll().stream()
+                .filter(row -> row.getFileInfo().getFileName().equals(fileName) && row.getVersion() == 2)
+                .toList();
+        assertThat(versionTwo).hasSize(2);
+        FileDetails docx = versionTwo.stream().filter(row -> row.getFileExtension().equals("docx")).findFirst().orElseThrow();
+        FileDetails pdf = versionTwo.stream().filter(row -> row.getFileExtension().equals("pdf")).findFirst().orElseThrow();
+        assertThat(docx.getId()).as("the fixture stores the docx first").isLessThan(pdf.getId());
+        LocalDateTime sameInstant = docx.getCreatedAt();
+        entityManager.createNativeQuery("UPDATE file_details SET created_at = ?1 WHERE id IN (?2, ?3)")
+                .setParameter(1, sameInstant).setParameter(2, docx.getId()).setParameter(3, pdf.getId())
+                .executeUpdate();
+        entityManager.clear();
+
+        FolderContentDTO.FileEntry tied = folderContentService.contentOf(tagId, 0, 100, adminId).files().getFirst();
+        assertThat(tied.latestFileDetailsId()).as("same instant: the larger id").isEqualTo(pdf.getId());
+        assertThat(tied.latestFormat()).isEqualTo("pdf");
+
+        entityManager.createNativeQuery("UPDATE file_details SET created_at = ?1 WHERE id = ?2")
+                .setParameter(1, sameInstant.plusMinutes(5)).setParameter(2, docx.getId())
+                .executeUpdate();
+        entityManager.clear();
+
+        FolderContentDTO.FileEntry later = folderContentService.contentOf(tagId, 0, 100, adminId).files().getFirst();
+        assertThat(later.latestFileDetailsId()).as("uploaded later wins over the larger id").isEqualTo(docx.getId());
+        assertThat(later.latestFormat()).isEqualTo("docx");
+        assertThat(later.formats()).as("the listing still shows every format of the version").containsExactly("docx", "pdf");
+
+        FolderSearchDTO found = folderContentService.search(fileName, null, 0, 25, adminId);
+        assertThat(found.hits().getFirst().file().latestFileDetailsId())
+                .as("a search hit is the same entry, so it carries the same revision").isEqualTo(docx.getId());
     }
 
     // ---------------------------------------------------------------- access

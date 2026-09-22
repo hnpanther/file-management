@@ -18,7 +18,7 @@ working, and to depend only on what came before.
 | 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | **done** (`V2.8` 1.3.0, `V2.9` 1.4.0): the taxonomy is gone, the folder is the structure at any depth up to a limit, and it is created, renamed, moved and deleted from the explorer |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
-| 10 | After 1.4.0: sharded storage, download from the explorer, recursive delete, `Profiles` with a quota, share links | 7, 9 | in that order; 10.1 **done** (1.5.0) |
+| 10 | After 1.4.0: sharded storage, download from the explorer, recursive delete, `Profiles` with a quota, share links | 7, 9 | in that order; 10.1 and 10.2 **done** (1.5.0) |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -1625,7 +1625,7 @@ migration where the schema changes, tests, `docs/arch.md` and `docs/deployment.m
 | Step | What | Schema | Size |
 |---|---|---|---|
 | 10.1 | Shard the id-based storage layout | none | **done** (1.5.0) |
-| 10.2 | Download the latest version from the explorer | none | small |
+| 10.2 | Download the latest version from the explorer | none | **done** (1.5.0) |
 | 10.3 | Delete a folder with everything in it | none | medium |
 | 10.4 | `Profiles`: a home folder per user, with a quota | `V2.11` | large; needs 10.3 |
 | 10.5 | Temporary share links | `V2.12` | large; independent |
@@ -1677,7 +1677,11 @@ shape; `StorageKeyTest` gains the three-layout case.
 `deployment.md` saying which release began sharding, so an operator reading a disk knows what
 they are looking at.
 
-### 10.2 Download the latest version from the explorer
+### 10.2 Download the latest version from the explorer — **done** (1.5.0)
+
+> Shipped as planned: `latestFileDetailsId` / `latestFormat` on the content read, chosen by
+> creation time then id; a download action on every file row and search hit, and the primary
+> button of the details pane; the file page's own link, `DOWNLOAD_FILE`, nothing new on the server.
 
 **Why.** Today a download from the explorer means opening the file page first. The details pane
 already knows the file's last version and its formats; it lacks only the id to link to.

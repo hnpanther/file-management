@@ -330,9 +330,14 @@ class FolderManagementTest extends MySqlSupport {
         mockMvc.perform(get("/files/explorer")
                         .with(user(principal(adminId, PermissionEnum.FILE_EXPLORER_PAGE, PermissionEnum.REST_CREATE_FOLDER,
                                 PermissionEnum.REST_RENAME_FOLDER, PermissionEnum.REST_DELETE_FOLDER,
-                                PermissionEnum.REST_MOVE_FOLDER, PermissionEnum.REST_MOVE_FILE_INFO)))
+                                PermissionEnum.REST_MOVE_FOLDER, PermissionEnum.REST_MOVE_FILE_INFO,
+                                PermissionEnum.DOWNLOAD_FILE)))
                         .accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk())
+                // The download of the latest revision: on the row, on a search hit, and in the details pane.
+                .andExpect(content().string(Matchers.containsString(":href=\"downloadHref(entry)\"")))
+                .andExpect(content().string(Matchers.containsString(":href=\"downloadHref(hit.file)\"")))
+                .andExpect(content().string(Matchers.containsString(":href=\"downloadHref(selectedFile)\"")))
                 .andExpect(content().string(Matchers.containsString("@click=\"openManage('create')\"")))
                 .andExpect(content().string(Matchers.containsString("@click=\"openManage('rename')\"")))
                 .andExpect(content().string(Matchers.containsString("@click=\"deleteFolder()\"")))
@@ -348,6 +353,8 @@ class FolderManagementTest extends MySqlSupport {
                         .accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk())
                 // The script still defines the functions; the buttons that call them are what sec:authorize removes.
+                .andExpect(content().string(Matchers.not(Matchers.containsString(":href=\"downloadHref("))))
+                .andExpect(content().string(Matchers.containsString("EX.filePage + selectedFile.id")))
                 .andExpect(content().string(Matchers.not(Matchers.containsString("@click=\"openManage('create')\""))))
                 .andExpect(content().string(Matchers.not(Matchers.containsString("@click=\"openManage('rename')\""))))
                 .andExpect(content().string(Matchers.not(Matchers.containsString("@click=\"deleteFolder()\""))));
