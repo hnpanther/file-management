@@ -18,6 +18,7 @@ working, and to depend only on what came before.
 | 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | **done** (`V2.8` 1.3.0, `V2.9` 1.4.0): the taxonomy is gone, the folder is the structure at any depth up to a limit, and it is created, renamed, moved and deleted from the explorer |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
+| 10 | After 1.4.0: sharded storage, download from the explorer, recursive delete, `Profiles` with a quota, share links | 7, 9 | planned, in that order |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -1520,6 +1521,216 @@ is shown once and never again; it reaches exactly the folders it was scoped to a
 v2 operations work against a bucket with the version in the key; uploading is refused where the
 grant is read-only; `/actuator/health` reflects the database; and the API documents itself at a URL
 that can be switched off without a rebuild.
+
+---
+
+## Phase 10 — After 1.4.0: five bounded additions
+
+Five things asked for once 1.4.0 was in use, none of them a redesign, each sized to ship on its
+own. They are listed in the order to build them: the first two are small and independent, the
+third is what the fourth needs, and the fifth stands alone. Every one carries the usual four: a
+migration where the schema changes, tests, `docs/arch.md` and `docs/deployment.md`.
+
+| Step | What | Schema | Size |
+|---|---|---|---|
+| 10.1 | Shard the id-based storage layout | none | small — **do first**, before production stores files under `files/{id}` |
+| 10.2 | Download the latest version from the explorer | none | small |
+| 10.3 | Delete a folder with everything in it | none | medium |
+| 10.4 | `Profiles`: a home folder per user, with a quota | `V2.11` | large; needs 10.3 |
+| 10.5 | Temporary share links | `V2.12` | large; independent |
+
+### 10.1 Shard the id-based storage layout
+
+**Why.** Since `V2.9` every new file is stored under `files/{file id}/…`
+([arch.md](arch.md#5-physical-storage-layout)). The application never lists `files/` — every read and write
+goes straight to a key — and NTFS finds one entry among a million without trouble. Everything
+around the application does not: Explorer, `dir`, backups, virus scanners and `robocopy` all crawl
+or stall on a directory with a million children. This is the standard operational problem with
+flat id layouts and has the standard answer.
+
+**What.** One level of thousands between `files/` and the file:
+
+```
+files/000/123/report/v1/report.pdf        id 123      -> 123 / 1000 = 0
+files/001/1234/report/v1/report.pdf       id 1234     -> 1
+files/999/999999/...                      id 999999   -> 999
+files/1000/1000000/...                    id 1000000  -> 1000 (the width grows; nothing pads it away)
+```
+
+A million files become a thousand directories of at most a thousand each. The shard is
+`id / 1000`, zero-padded to three digits so a listing sorts numerically.
+
+**Where.** `FileService.directoryFor(FileInfo)` is the only place that writes the layout; it
+becomes `files/{id/1000 padded}/{id}`. Nothing else changes, because nothing else assumes the
+shape:
+
+* a revision's place is read back from `file_details.storage_key`, never rebuilt
+  (`directoryOf` climbs three segments from the key, which holds for any prefix depth);
+* `files` stays the one reserved top-level folder name — the shard sits under it;
+* files already stored as `files/{id}` (any installation that ran 1.4.0 before this) keep their
+  keys and keep working: three layouts coexist exactly as two do today. **No migration** moves
+  them; the key is the record.
+
+**Tests.** A unit test pinning the mapping for ids 1, 999, 1000, 999999 and 1000000; the fixtures
+in `TestData.fileDetails` and the storage-layout assertions in `FileServiceTest` follow the new
+shape; `StorageKeyTest` gains the three-layout case.
+
+**Docs.** The layout section and the "What each operation touches" table in `arch.md`; a line in
+`deployment.md` saying which release began sharding, so an operator reading a disk knows what
+they are looking at.
+
+### 10.2 Download the latest version from the explorer
+
+**Why.** Today a download from the explorer means opening the file page first. The details pane
+already knows the file's last version and its formats; it lacks only the id to link to.
+
+**What.** `FolderContentDTO.FileEntry` gains `latestFileDetailsId`: the format of the last
+version that was **uploaded last** — ordered by `file_details.created_at`, then id — so a version
+with several formats resolves to the one added most recently. The pane gets a "download latest
+version" button beside "open the file page", and each row a download action; both point at the
+existing `GET /files/file-info/{fileInfoId}/file-details/{fileDetailsId}/download`
+(`DOWNLOAD_FILE`, READ on the folder). No new endpoint, no new permission: the file page's link
+and this one are the same link.
+
+**How.** One extra query per page of files — the latest revision id for a set of file ids — not
+one per row. The button is hidden when the caller lacks `DOWNLOAD_FILE`, as the page's other
+controls are.
+
+**Tests.** `FolderContentServiceTest`: two versions, the second with two formats uploaded in a
+known order, resolves to the last one; the page test checks the control renders.
+
+### 10.3 Delete a folder with everything in it
+
+**Why today refuses.** `FolderService.delete` deletes an *empty* folder only, and the explorer
+shows the button only on one: a deliberate first step, because a recursive delete removes bytes
+that nothing brings back, and the folder tree shipped without a way to say how much would go.
+The folder details pane now shows the direct and total counts, which is that way.
+
+**What.** `DELETE /resource/folders/{id}?recursive=true` under a permission of its own,
+`REST_DELETE_FOLDER_TREE`, kept separate so that the right to prune empty folders does not imply
+the right to erase a subtree. The explorer's delete button appears on a non-empty folder for a
+holder of it, and its confirmation names the totals from the details pane ("this deletes 12
+folders and 340 files").
+
+**Rules.** In one transaction:
+
+1. the folder must not be `ROOT` or `USER_HOME` (a home goes only with its user — 10.4);
+2. WRITE on the folder; grants are path prefixes, so WRITE on it covers everything below;
+3. the subtree is loaded by path prefix (`findSubtree`), its files counted by
+   `countBySubtree` — and refused above `filemanagement.folders.max-delete-files` (default
+   `1000`) with a 409 that names the count, so one request cannot hold a transaction over a
+   million rows; larger trees are deleted in parts;
+4. every file goes through the existing whole-file delete (rows, then its directory on disk),
+   which already writes an `ActionHistory` row per file;
+5. folders are deleted bottom-up (deepest first; grants cascade in the schema), one
+   `ActionHistory` row for the tree with its totals.
+
+Old-layout files leave their `{category}/{subCategory}` parent directories behind on disk when
+the last file under them goes, as a single delete does today; empty directories are harmless and
+a later sweep can remove them.
+
+**Tests.** `FolderServiceTest`: a three-level tree with files at each level is gone, bytes
+included, tags and grants with it; the cap refuses; `USER_HOME` refuses; a holder of
+`REST_DELETE_FOLDER` alone gets 403 on `recursive=true`.
+
+### 10.4 `Profiles`: a home folder per user, with a quota
+
+The `USER_HOME` kind and `folder.owner_user_id` have waited for this since `V1.4`
+([6.7](#67-home-per-user-folders-and-the-two-system-roles)); this is that step, with a quota.
+
+**Schema (`V2.11`).**
+
+* A top-level folder `Profiles` (kind `FOLDER`, its own tag group), created by the migration if
+  no folder of that name exists at depth 1.
+* `folder.quota_bytes BIGINT NULL`: a cap on the total size of every revision of every file in
+  the subtree; `NULL` means none. On any folder, not only a home — the check is general and
+  costs nothing when no ancestor carries one.
+* Permissions `CREATE_USER_HOME`, `SET_FOLDER_QUOTA`.
+* No `used_bytes` column: usage is `SUM(file_details.file_size)` over the subtree, summed as a
+  `long` (the column is a 32-bit `int`, issue 6), computed when needed. A maintained counter would
+  have to follow every upload, delete, move and format change, and a drifted counter is worse
+  than a slower query.
+
+**`UserHomeService.ensureHome(userId, principalId)`**, idempotent: returns the home if it
+exists; otherwise creates `Profiles/{username}` (kind `USER_HOME`, `owner_user_id`, display
+name = the user's full name), grants that user WRITE on it directly (so it works with
+folder-access on and no role grant), applies `filemanagement.profiles.default-quota-mb`
+(`0` = none), and writes an `ActionHistory` row.
+
+**Entry points.**
+
+* The new-user form: a checkbox "create a personal folder" (default ticked), acted on in the
+  same transaction as the user, so a half-provisioned user cannot exist.
+* The user page: if the user has no home, a "create personal folder" button for the holder of
+  `CREATE_USER_HOME`; the home's path, its usage and its quota otherwise, and a field to set or
+  change the quota (`SET_FOLDER_QUOTA`) — up or down; lowering it below current usage is allowed
+  and simply blocks further uploads until something is removed.
+* After login, `/` sends a user who has a home to `/files/explorer?folder={home id}`; a user
+  without one lands where they land today.
+* Optional, off by default: `filemanagement.profiles.auto-create-on-login=false` — for AD users
+  who are never created through the form.
+
+**Quota enforcement.** In `FileService`, before any insert, for a new file, a new version and a
+new format: the nearest ancestor of the target folder with a quota — `Profiles/{user}` in the
+common case — must have `usage + incoming size <= quota`, else 409 with both numbers. A move of
+a file or a folder into a quota-bearing subtree checks the same, with the subtree's size as the
+incoming size; a move out never checks. The explorer's folder details show `used / quota` for a
+folder that has one.
+
+**Rules for a home.** Name = username, never renamed by hand (display name may be); moved by no
+one; deleted only with its user. User deletion (which does not exist today — users are disabled)
+stays out of scope; a disabled user's home stays, and an administrator may empty it with 10.3.
+Nobody but the migration creates folders directly under `Profiles`: give no one WRITE on it.
+
+**Tests.** `ensureHome` twice is one folder; the grant works with folder-access on; the quota
+refuses the byte that crosses it for each of the three upload paths and for a move in; lowering
+below usage; the login redirect with and without a home; a home refuses rename, move and delete.
+
+### 10.5 Temporary share links
+
+A link to one **version** of a file, valid for a number of minutes, optionally behind a password,
+downloadable **without signing in** and outside folder access: the link is the access. Chosen
+over a link to the logical file so that a link hands out what its maker saw, not a version
+uploaded later. Independent of the `public-files.anonymous` switch, which closes the public
+library; this is not the library.
+
+**Schema (`V2.12`).** `file_share_link`: `token` (32 random bytes, base64url, unique — the
+whole address; no file id in the URL), `file_details_id` (cascade delete), `expires_at`,
+`password_hash` (BCrypt via the application's encoder, or `NULL`), `revoked_at`,
+`failed_attempts`, `locked_until`, `created_by`, `created_at`. Permissions `CREATE_SHARE_LINK`,
+`SHARE_LINKS_PAGE`, `REVOKE_SHARE_LINK`.
+
+**Properties.** `filemanagement.share-links.max-minutes=1440`, `default-minutes=60`,
+`password=OPTIONAL|REQUIRED`. A request above the cap is **silently clamped** to it and the
+response returns the real `expires_at`.
+
+**Endpoints.**
+
+* `POST /resource/files/file-details/{id}/share-links` — `CREATE_SHARE_LINK` and READ on the
+  file's folder; body `{minutes, password?}`; returns the full URL once (the password is never
+  shown again).
+* `DELETE /resource/share-links/{id}` — the maker, or `REVOKE_SHARE_LINK` for anyone's.
+* `GET /share/{token}` — anonymous, on the public chain. Unknown, expired and revoked are one
+  identical 404 page, so a token cannot be probed. With a password: a POST form (CSRF), five
+  failures lock the link for fifteen minutes. The download uses the public download's headers
+  (`nosniff`, CSP, `inline` only for safe kinds).
+* `/files/share-links` — the caller's links (all of them for `REVOKE_SHARE_LINK`), state,
+  revoke.
+
+**Audit.** Creation, revocation and every successful download in `action_history`, the download
+attributed to the maker with the token's id, since the downloader has no principal.
+
+**UI.** A "temporary link" button in the explorer's file pane and on the file page: version,
+minutes (the cap shown), password per the property, then the URL with a copy button.
+
+**Tests.** Expiry with an injected `Clock`; clamping; right, wrong and locked password; revoke;
+the version's deletion takes the link; anonymous download; an unknown token is the same 404 as
+an expired one.
+
+**Left for later, if asked:** a maximum number of downloads per link; links from the v1 API.
+
+**Done when:** each step's tests are green, the four docs are true, and — for 10.1 — the release
+that began sharding is named in `deployment.md`.
 
 ---
 
