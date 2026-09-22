@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.support;
 
+import com.hnp.filemanagement.service.StorageLayout;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.Folder;
@@ -188,9 +189,9 @@ public final class TestData {
         fileDetails.setFileExtension(extension);
         fileDetails.setContentType("application/octet-stream");
         fileDetails.setDescription(fileName + " description");
-        // The key as FileService writes it since V2.9: a directory per file id, the file, the version.
-        // A file with no id yet (unsaved) gets a placeholder; nothing reads the bytes of a fixture.
-        String storageKey = "files/" + (fileInfo.getId() == null ? "0" : fileInfo.getId())
+        // The key as FileService writes it: the file's own directory (StorageLayout), the file, the
+        // version. A file with no id yet (unsaved) gets id 0; nothing reads the bytes of a fixture.
+        String storageKey = StorageLayout.directoryFor(fileInfo.getId() == null ? 0 : fileInfo.getId())
                 + "/" + fileInfo.getFileName() + "/v" + version + "/" + fileName;
         fileDetails.setStorageKey(storageKey);
         fileDetails.setFileSize(1024);

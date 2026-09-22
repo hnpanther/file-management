@@ -1229,17 +1229,20 @@ checks passed a key they should have refused. Found by `ObjectStoreApiTest` in t
 
 ## Found while removing the three fixed levels (1.4.0)
 
-### 81. `base-dir` now holds two layouts side by side — **S3** (by design, recorded)
+### 81. `base-dir` holds three layouts side by side — **S3** (by design, recorded)
 
-Files stored before `V2.9` sit at `{category}/{subCategory}/{name}/v{n}/`, files stored after at
-`files/{file id}/{name}/v{n}/`. Both are read through `file_details.storage_key`, so nothing
-is wrong - but a person browsing `base-dir` by hand sees old files under names that may no
-longer exist in the tree (renamed since) and new files under numbers. Nothing migrates the old
-files, on purpose: moving bytes is the one thing every step of Phase 7 was designed not to do.
+Files stored before `V2.9` sit at `{category}/{subCategory}/{name}/v{n}/`, files stored by
+1.4.0 at `files/{file id}/{name}/v{n}/`, and files stored since 1.5.0 at
+`files/{shard}/{file id}/{name}/v{n}/` (roadmap 10.1: a thousand ids per shard directory, so
+that no directory ever holds a million children). All are read through
+`file_details.storage_key`, so nothing is wrong - but a person browsing `base-dir` by hand sees
+old files under names that may no longer exist in the tree (renamed since) and newer files
+under numbers, flat or sharded by when they were stored. Nothing migrates the older files, on
+purpose: moving bytes is the one thing every step of Phase 7 was designed not to do.
 
-> A one-off "relocate" that moves an old file's directory under `files/{id}/` and rewrites its
+> A one-off "relocate" that moves a file's directory under its sharded place and rewrites its
 > keys in one transaction would be safe and would leave one layout. Worth doing before Phase 4
-> (S3), where one key shape is simpler than two; not before.
+> (S3), where one key shape is simpler than three; not before.
 
 ### 82. The tree page and the explorer are two views of one thing — **S3**
 

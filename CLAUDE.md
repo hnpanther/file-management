@@ -44,10 +44,11 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   `folder.tag_group_id`. Do not treat a tag group as a place. A chain of any depth cannot be
   fetch-joined: load a page's ancestors with `FolderService.ancestryOf`, off the materialised
   path, never by walking `getParent()` per row.
-* **New files are stored by their own id** (`files/{file id}/…`); old ones by the names of the
-  folders above them as they stood. Neither is ever rebuilt from the tree, and `files` is a
-  reserved top-level name. Do not move bytes on a rename or a move — what each operation may
-  touch (tree, keys, bytes, tags) is tabulated in
+* **New files are stored by their own id** (`files/{shard}/{file id}/…`, `StorageLayout` —
+  the one place the shape is written); 1.4.0 stored them flat under `files/{file id}/`, and
+  older ones sit under the names of the folders above them as they stood. None is ever rebuilt
+  from the tree, and `files` is a reserved top-level name. Do not move bytes on a rename or a
+  move — what each operation may touch (tree, keys, bytes, tags) is tabulated in
   [docs/arch.md](docs/arch.md#what-each-operation-touches); keep it true.
 * **Adding a field to `ModelConverterUtil` can add joins to every list page**, because every
   `@ManyToOne` is `EAGER`.

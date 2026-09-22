@@ -610,6 +610,26 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 1.4.0 to 1.5.0 — sharded storage
+
+A jar swap with no migration and no check. Nothing to do before, nothing to do after; the
+backup is taken as always.
+
+**What changes:** a file uploaded from 1.5.0 on is stored under
+`{base-dir}/files/{shard}/{file id}/…`, the shard being `s` and the id divided by a thousand
+(`files/s000/123/`, `files/s001/1234/`, `files/s999/999999/`, `files/s1000/1000000/`), instead of
+flat under `files/{file id}/`. The application never lists that directory, so this is not for
+it: it is so that Explorer, `dir`, the backup job and a virus scanner never meet a directory
+with a million children. Files stored by 1.4.0 flat under `files/{id}/`, and files stored
+before 1.4.0 under folder names, stay exactly where they are and keep working — a version's
+`storage_key` is what is read, never a shape. A `base-dir` that saw all three releases holds
+three layouts side by side; reading one by hand, `files/s000/…` is 1.5.0, `files/123/…` is
+1.4.0, anything else is older. Also from 1.5.0, deleting a file stored under `files/` removes
+its whole id directory, not only the `{name}/` directory inside it.
+
+**Rollback** is the 1.4.0 jar: no schema changed, and 1.4.0 reads a sharded key like any other.
+Files uploaded on 1.5.0 stay readable and deletable on 1.4.0; new ones go flat again.
+
 ### Upgrading from 1.3.0 to 1.4.0 — folders of any depth
 
 A jar swap with two migrations (`V2.9`, `V2.10`). Take the database backup first, as always.
@@ -644,9 +664,10 @@ folder of that name has to be renamed first (from the explorer, on 1.3.0).
    refused is what a file system refuses (`/ \ < > : " | ? *`, a trailing dot or space, `CON`
    and its kin), and a file still needs an extension of letters and digits.
 
-2. **New files are stored under `{base-dir}/files/{file id}/…`.** Files stored before stay
-   where they are and keep working — a version's `storage_key` is what is read, never a name.
-   A backup of `base-dir` now has two layouts side by side; that is expected. Renaming or
+2. **New files are stored under `{base-dir}/files/{file id}/…`** (1.5.0 adds a shard
+   directory between the two). Files stored before stay where they are and keep working — a
+   version's `storage_key` is what is read, never a name. A backup of `base-dir` now has two
+   layouts side by side; that is expected. Renaming or
    moving a folder, or moving a file, changes **nothing** on disk and no stored key, only
    `folder` / `file_info` rows and the derived tags; the exact effect of every operation on the tree, the keys and the
    bytes is tabulated in [arch.md](arch.md#what-each-operation-touches). The consequence for a

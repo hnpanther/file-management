@@ -69,7 +69,7 @@ import java.util.stream.Collectors;
 @Service
 public class FolderService {
 
-    /** The top-level directory of the id-based storage layout ({@code files/{file id}}); no top-level folder may take it. */
+    /** The top-level directory of the id-based storage layouts ({@link StorageLayout}); no top-level folder may take it. */
     public static final String RESERVED_TOP_LEVEL_NAME = "files";
 
     private static final int STATE_ACTIVE = 0;

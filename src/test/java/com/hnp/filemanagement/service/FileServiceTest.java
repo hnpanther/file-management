@@ -28,6 +28,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -117,7 +118,7 @@ class FileServiceTest extends MySqlSupport {
     }
 
     /**
-     * The bytes live at {@code files/{file id}/{name}/...} since V2.9, so a name is unique per
+     * The bytes live under the file's own directory ({@link StorageLayout}), so a name is unique per
      * folder in fact as well as in the index: the same name under a sibling folder is another
      * file, in another directory.
      */
@@ -137,7 +138,7 @@ class FileServiceTest extends MySqlSupport {
         underSibling.setFolderId(sibling.getId());
         FileDetailsDTO stored = underTest.createNewFile(underSibling, principalId, 1);
         assertThat(fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey())
-                .isEqualTo("files/" + stored.getFileInfoId() + "/report/v1/report.txt");
+                .isEqualTo(StorageLayout.directoryFor(stored.getFileInfoId()) + "/report/v1/report.txt");
     }
 
     @Test
@@ -158,7 +159,7 @@ class FileServiceTest extends MySqlSupport {
         onTopLevel.setFolderId(chain.categoryId());
         FileDetailsDTO stored = underTest.createNewFile(onTopLevel, principalId, 1);
         assertThat(fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey())
-                .isEqualTo("files/" + stored.getFileInfoId() + "/report/v1/report.txt");
+                .isEqualTo(StorageLayout.directoryFor(stored.getFileInfoId()) + "/report/v1/report.txt");
         assertThat(fileInfoRepository.findById(stored.getFileInfoId()).orElseThrow().getTags())
                 .extracting(com.hnp.filemanagement.entity.Tag::getName)
                 .containsExactly(chain.category().getName());
@@ -326,10 +327,11 @@ class FileServiceTest extends MySqlSupport {
     // ---------------------------------------------------------------- deletion
 
     @Test
-    @DisplayName("deleting a file removes every version with it")
+    @DisplayName("deleting a file removes every version with it, and its whole directory on disk - the shard stays")
     void deletesAFileAndItsVersions() {
         int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
         underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
+        assertThat(storedFile(fileInfoId, "report", 2, "txt")).exists();
 
         underTest.deleteCompleteFileById(fileInfoId, principalId);
         entityManager.flush();
@@ -337,6 +339,69 @@ class FileServiceTest extends MySqlSupport {
 
         assertThat(fileInfoRepository.findById(fileInfoId)).isEmpty();
         assertThat(fileDetailsRepository.findMaxVersion(fileInfoId)).isNull();
+        // The id directory is the file's alone, so it goes with the file: a million deleted files
+        // must not leave a million empty directories. The shard directory is shared and stays.
+        assertThat(fileDirectory(fileInfoId)).doesNotExist();
+        assertThat(fileDirectory(fileInfoId).getParent()).exists();
+    }
+
+    /**
+     * A file stored by 1.4.0 lives flat at {@code files/{id}/{name}/v{n}/...}. Its id directory
+     * is its own, exactly as a sharded one is, so the whole of it goes - and since no shard is
+     * spelled like a bare id ({@link StorageLayoutTest}), nothing else can be under it.
+     */
+    @Test
+    @DisplayName("deleting a file stored flat by 1.4.0 removes its whole id directory")
+    void deletesAFlatLayoutFileWithItsIdDirectory() throws IOException {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+        Path flat = Paths.get(baseDir, "files", String.valueOf(fileInfoId));
+        Path own = flat.resolve(Paths.get("report", "v1", "report.txt"));
+        Files.createDirectories(own.getParent());
+        Files.writeString(own, "flat");
+        FileDetails revision = fileDetailsRepository.findAll().stream()
+                .filter(row -> row.getFileInfo().getId().equals(fileInfoId)).findFirst().orElseThrow();
+        revision.setStorageKey("files/" + fileInfoId + "/report/v1/report.txt");
+        fileDetailsRepository.saveAndFlush(revision);
+        entityManager.clear();
+
+        underTest.deleteCompleteFileById(fileInfoId, principalId);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(fileInfoRepository.findById(fileInfoId)).isEmpty();
+        assertThat(flat).as("the flat id directory, whole").doesNotExist();
+        assertThat(flat.getParent()).as("files/ itself").exists();
+    }
+
+    /**
+     * A file stored before V2.9 lives at {@code {category}/{subCategory}/{name}/v{n}/...}, a
+     * directory shared with every other file of that sub-category. Deleting it removes its own
+     * {@code {name}} directory and nothing beside it - the layout is read off the stored key.
+     */
+    @Test
+    @DisplayName("deleting a file stored under the old name-based layout removes its own directory and leaves its neighbours")
+    void deletesAnOldLayoutFileWithoutTouchingItsNeighbours() throws IOException {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+        Path shared = Paths.get(baseDir, "OldCat" + TestData.nextSequence(), "OldSub");
+        Path own = shared.resolve(Paths.get("report", "v1", "report.txt"));
+        Path neighbour = shared.resolve(Paths.get("other", "v1", "other.txt"));
+        Files.createDirectories(own.getParent());
+        Files.createDirectories(neighbour.getParent());
+        Files.writeString(own, "old");
+        Files.writeString(neighbour, "neighbour");
+        FileDetails revision = fileDetailsRepository.findAll().stream()
+                .filter(row -> row.getFileInfo().getId().equals(fileInfoId)).findFirst().orElseThrow();
+        revision.setStorageKey(Paths.get(baseDir).relativize(own).toString().replace('\\', '/'));
+        fileDetailsRepository.saveAndFlush(revision);
+        entityManager.clear();
+
+        underTest.deleteCompleteFileById(fileInfoId, principalId);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(fileInfoRepository.findById(fileInfoId)).isEmpty();
+        assertThat(own.getParent().getParent()).as("the file's own directory").doesNotExist();
+        assertThat(neighbour).as("a neighbour under the shared directory").exists();
     }
 
     @Test
@@ -429,7 +494,7 @@ class FileServiceTest extends MySqlSupport {
         FileInfo fileInfo = fileInfoRepository.findByIdAndFetchFileDetails(stored.getFileInfoId()).orElseThrow();
         assertThat(fileInfo.getFolder().getId()).isEqualTo(tagFolderId);
         assertThat(fileInfo.getFileDetailsList().getFirst().getStorageKey())
-                .isEqualTo("files/" + stored.getFileInfoId() + "/report/v1/report.txt");
+                .isEqualTo(StorageLayout.directoryFor(stored.getFileInfoId()) + "/report/v1/report.txt");
         assertThat(fileInfo.getTags()).extracting(com.hnp.filemanagement.entity.Tag::getName)
                 .containsExactlyInAnyOrder(categoryName, subCategoryName, chain.tag().getName());
         assertThat(fileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders()).isEmpty();
@@ -523,13 +588,17 @@ class FileServiceTest extends MySqlSupport {
     }
 
     /**
-     * Where the storage layer puts a revision: {@code <base>/files/<file id>/<name>/v<n>/<name>.<ext>}.
+     * Where the storage layer puts a revision: {@code <base>/<StorageLayout directory>/<name>/v<n>/<name>.<ext>}.
      *
      * <p>The version is a directory, not a suffix on the file name — which is why two formats of
      * one version sit side by side in the same {@code v<n>} directory.
      */
     private Path storedFile(int fileInfoId, String name, int version, String extension) {
-        return Paths.get(baseDir, "files", String.valueOf(fileInfoId), name, "v" + version,
-                name + "." + extension);
+        return fileDirectory(fileInfoId).resolve(Paths.get(name, "v" + version, name + "." + extension));
+    }
+
+    /** The directory that is this file's alone on disk: {@code <base>/files/<shard>/<file id>}. */
+    private Path fileDirectory(int fileInfoId) {
+        return Paths.get(baseDir).resolve(StorageLayout.directoryFor(fileInfoId));
     }
 }

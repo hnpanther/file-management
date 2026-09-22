@@ -18,7 +18,7 @@ working, and to depend only on what came before.
 | 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | **done** (`V2.8` 1.3.0, `V2.9` 1.4.0): the taxonomy is gone, the folder is the structure at any depth up to a limit, and it is created, renamed, moved and deleted from the explorer |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
-| 10 | After 1.4.0: sharded storage, download from the explorer, recursive delete, `Profiles` with a quota, share links | 7, 9 | planned, in that order |
+| 10 | After 1.4.0: sharded storage, download from the explorer, recursive delete, `Profiles` with a quota, share links | 7, 9 | in that order; 10.1 **done** (1.5.0) |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -1624,13 +1624,18 @@ migration where the schema changes, tests, `docs/arch.md` and `docs/deployment.m
 
 | Step | What | Schema | Size |
 |---|---|---|---|
-| 10.1 | Shard the id-based storage layout | none | small — **do first**, before production stores files under `files/{id}` |
+| 10.1 | Shard the id-based storage layout | none | **done** (1.5.0) |
 | 10.2 | Download the latest version from the explorer | none | small |
 | 10.3 | Delete a folder with everything in it | none | medium |
 | 10.4 | `Profiles`: a home folder per user, with a quota | `V2.11` | large; needs 10.3 |
 | 10.5 | Temporary share links | `V2.12` | large; independent |
 
-### 10.1 Shard the id-based storage layout
+### 10.1 Shard the id-based storage layout — **done** (1.5.0)
+
+> Shipped as `StorageLayout`: `files/{shard}/{file id}`, the shard `s` and three digits at
+> least - the letter so that no shard is ever spelled like a 1.4.0 flat id directory. The
+> whole-file delete also learned to remove the id directory itself under either id-based layout,
+> so a deleted file leaves no empty directory behind. No migration; the older layouts stay.
 
 **Why.** Since `V2.9` every new file is stored under `files/{file id}/…`
 ([arch.md](arch.md#5-physical-storage-layout)). The application never lists `files/` — every read and write
@@ -1642,14 +1647,16 @@ flat id layouts and has the standard answer.
 **What.** One level of thousands between `files/` and the file:
 
 ```
-files/000/123/report/v1/report.pdf        id 123      -> 123 / 1000 = 0
-files/001/1234/report/v1/report.pdf       id 1234     -> 1
-files/999/999999/...                      id 999999   -> 999
-files/1000/1000000/...                    id 1000000  -> 1000 (the width grows; nothing pads it away)
+files/s000/123/report/v1/report.pdf        id 123      -> 123 / 1000 = 0
+files/s001/1234/report/v1/report.pdf       id 1234     -> 1
+files/s999/999999/...                      id 999999   -> 999
+files/s1000/1000000/...                    id 1000000  -> 1000 (the width grows; nothing pads it away)
 ```
 
 A million files become a thousand directories of at most a thousand each. The shard is
-`id / 1000`, zero-padded to three digits so a listing sorts numerically.
+`id / 1000`, zero-padded to three digits so a listing sorts numerically, behind an `s` so that
+it can never be spelled like a flat 1.4.0 id directory (`files/123/` is file 123's, and goes
+with it).
 
 **Where.** `FileService.directoryFor(FileInfo)` is the only place that writes the layout; it
 becomes `files/{id/1000 padded}/{id}`. Nothing else changes, because nothing else assumes the
