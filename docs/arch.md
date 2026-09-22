@@ -130,6 +130,19 @@ an empty folder only (409 while it holds folders or files) and its grants go wit
 (`ON DELETE CASCADE`). The root and a `USER_HOME` are neither renamed, moved nor deleted. The
 explorer is the screen for all four (section 6).
 
+**Deleting a folder with everything in it** (roadmap 10.3) is `FolderTreeDeleteService`, a
+class of its own behind a permission of its own (`REST_DELETE_FOLDER_TREE`, on
+`DELETE /resource/folders/{id}?recursive=true`), so that pruning empty folders never implies
+erasing a subtree. One transaction: every file's rows through `FileService.deleteFileRows`
+(each with its own audit row, its bytes' address kept back), then the folders deepest first
+(grants cascade), then one audit row for the tree with its totals, and only then the bytes —
+so a database failure anywhere rolls back with the disk untouched. `WRITE` on the parent, as
+for the empty delete (grants are path prefixes, so that covers the tree). The cap
+`filemanagement.folders.max-delete-files` (default 1000) refuses a larger tree with a 409 that
+names the count: a bound on one transaction and one pass over the disk, not a quota; a larger
+tree is deleted in parts. The explorer's confirmation names the totals from the folder's
+details (`totalFolders`, `totalFiles`).
+
 ### How the entities are mapped
 
 Four rules hold across every entity, and each replaced something that was actively wrong.
@@ -311,6 +324,7 @@ none of the three.
 | **Move a folder** (`move`) | the folder's `parent_id`; `depth` and `path` **rewritten for the whole subtree** (`/1/5/412/…` → `/1/9/412/…`) in one transaction; `tag_group_id` set to the former top-level folder's group when the target is the root, cleared when a top-level folder goes below another | **nothing** | **nothing** | re-derived for every file beneath (the chain of names changed, and possibly the group) |
 | **Move a file** (`FileService.moveFile`) | — (the file's `folder_id` changes) | **nothing** | **nothing** — the file's directory is its own id, wherever it is filed | re-derived for the file |
 | **Delete a folder** (`delete`; empty only) | that row gone; its grants cascade | — | **nothing** — a folder never had a directory of its own since `V2.9` | — |
+| **Delete a folder with everything in it** (`FolderTreeDeleteService.deleteTree`; `?recursive=true`) | every row of the subtree gone, deepest first; grants cascade | every key of every file beneath gone | each file's own directory removed, exactly as a single whole-file delete would, and **last** — after every row; the shard directories and the old layout's shared `{category}/{sub}/` stay | rows cascade with the files |
 | **Change a tag group's name or title** (`/settings/tag-groups`) | — | — | — | — (tags hang off the group's id) |
 
 What follows from the table:
@@ -446,6 +460,7 @@ document, so a browser navigation still lands on a page.
 | PUT | `/resource/folders/{id}` `{name, displayName, tagGroupId?}` (`REST_RENAME_FOLDER`; the group only at the top level) |
 | PUT | `/resource/folders/{id}/move` `{parentId}` (`REST_MOVE_FOLDER`; 400 into itself, past the depth limit; 409 on a taken name) |
 | DELETE | `/resource/folders/{id}` → `{"outcome":"DELETED","resource":"folder"}`, 409 while not empty (`REST_DELETE_FOLDER`) |
+| DELETE | `/resource/folders/{id}?recursive=true` → the same, with every folder, file and byte beneath; 409 above `filemanagement.folders.max-delete-files`, 400 for the root or a home (`REST_DELETE_FOLDER_TREE`) |
 | DELETE, PUT | `/resource/files/file-info/{id}`, `.../change-state`, `.../move` `{folderId}` (`REST_MOVE_FILE_INFO`: 400 into the root, 403 without write on both folders, 409 on a taken name) |
 | DELETE, PUT | `/resource/files/file-info/{id}/file-details/{fdId}`, `.../change-state/{newState}` |
 | PUT | `/resource/users/{userId}/change-enabled`, `.../change-login-type/{type}` |
@@ -784,6 +799,7 @@ schema at startup but never modifies it.
 | `spring.servlet.multipart.max-file-size` / `max-request-size` | `20MB` | |
 | `filemanagement.default.page-size` / `element-size` | `30` | injected per-controller with `@Value` |
 | `filemanagement.folders.max-depth` | `6` | `FolderService`: how deep the tree may go below `Home`; a create or a move past it is a 400 |
+| `filemanagement.folders.max-delete-files` | `1000` | `FolderTreeDeleteService`: the most files one recursive delete may remove; a larger tree is a 409 naming the count |
 | `filemanagement.auth.ldap.activedirectory.enabled` / `.domain` / `.url` | `false`, `hnp.local`, `ldap://172.29.76.9` | |
 
 Note the two different prefixes (`file.management.*` and `filemanagement.*`) and that no

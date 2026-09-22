@@ -220,6 +220,7 @@ public class FolderContentService {
                 folderCount,
                 fileCount,
                 fileInfoRepository.countBySubtree(folder.getPath()),
+                folderRepository.countSubtree(folder.getPath()) - 1,
                 folder.getCreatedAt(),
                 folder.getCreatedBy() == null ? null : folder.getCreatedBy().getUsername(),
                 folder.getUpdatedAt(),

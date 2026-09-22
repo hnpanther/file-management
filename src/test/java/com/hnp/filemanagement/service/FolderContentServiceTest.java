@@ -417,6 +417,7 @@ class FolderContentServiceTest extends MySqlSupport {
         assertThat(details.folderCount()).as("two sub-categories").isEqualTo(2);
         assertThat(details.fileCount()).as("no file directly in it").isZero();
         assertThat(details.totalFiles()).as("the one file three levels down").isEqualTo(1);
+        assertThat(details.totalFolders()).as("two sub-categories and the tag, itself excluded").isEqualTo(3);
         assertThat(details.createdAt()).isNotNull();
         assertThat(details.createdBy()).isNotBlank();
 

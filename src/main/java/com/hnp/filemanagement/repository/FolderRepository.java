@@ -160,6 +160,10 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
             """)
     List<Folder> findSubtree(@Param("pathPrefix") String pathPrefix);
 
+    /** How many folders sit at or below a path prefix, the folder itself included. */
+    @Query("SELECT COUNT(f) FROM Folder f WHERE f.path LIKE CONCAT(:pathPrefix, '%')")
+    long countSubtree(@Param("pathPrefix") String pathPrefix);
+
     /**
      * Folders granted to this person directly, with what each one allows. Returns paths rather than
      * entities because that is all an access decision needs, and it keeps the per-request resolution

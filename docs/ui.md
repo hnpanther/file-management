@@ -435,8 +435,13 @@ each rendered only for a permission (`sec:authorize` on `REST_CREATE_FOLDER`,
 `REST_RENAME_FOLDER`, `REST_MOVE_FOLDER`, `REST_DELETE_FOLDER`) and shown only when the folder
 on screen reports `manageable` (the caller holds `WRITE` on it) and the operation applies:
 *new folder* while `canHoldFolders` (the depth limit is not reached), *rename* and *move* on
-anything but the root, *delete* on an empty folder that is not the root. No disabled buttons
-stand in for what a person cannot do. Move opens a panel with the folder chooser and one
+anything but the root, *delete* on an empty folder that is not the root, and - for a holder of
+`REST_DELETE_FOLDER_TREE` - *delete with contents* on a full one (roadmap 10.3). No disabled
+buttons stand in for what a person cannot do. The tree delete first reads the folder's details
+and asks with the totals in the question - "this folder with N folders and M files inside it
+will be deleted for good" (`explorer.manage.confirmDeleteTree`) - then sends
+`DELETE …?recursive=true` and opens the parent; a 409 from the server's cap is shown with its
+own detail, which names the count. Move opens a panel with the folder chooser and one
 button, active while the chooser has a target on screen; the same panel moves the file selected
 in the details pane (`openMoveFile`, `REST_MOVE_FILE_INFO`, no root). After either move the
 target folder is opened - where the moved thing now is - rather than the folder the person was
@@ -446,8 +451,8 @@ in, so the move is visible.
 `.explorer-row-action` info button at the end of the row (or the "folder details" button in
 the toolbar, for the folder on screen) selects it - `showFolder(id)` reads
 `/resource/folders/{id}` and the details pane shows the folder instead of a file: label, id and
-name, the trail, depth, the tag group, direct contents, total files beneath, created and last
-changed by whom, and an "open" button. `selectedFile` and `selectedFolder` are exclusive; Escape
+name, the trail, depth, the tag group, direct contents, total files and total folders beneath,
+created and last changed by whom, and an "open" button. `selectedFile` and `selectedFolder` are exclusive; Escape
 and the overlay clear both.
 
 **Downloading from the explorer** (roadmap 10.2) needs no visit to the file page. Every file

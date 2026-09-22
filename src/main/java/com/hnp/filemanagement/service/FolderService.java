@@ -60,7 +60,8 @@ import java.util.stream.Collectors;
  * level carries one.
  *
  * <p><b>Deleting</b> is refused while anything is inside: the foreign keys say so
- * ({@code RESTRICT}), and this says it first with a message.
+ * ({@code RESTRICT}), and this says it first with a message. Deleting a folder <em>with</em>
+ * what is inside is {@link FolderTreeDeleteService}, behind a permission of its own.
  *
  * <p><b>Access.</b> Creating or deleting a child is a write into the parent; renaming is a write
  * into the folder itself; moving is a write into both parents. Judged like an upload, on the

@@ -176,6 +176,18 @@
                         <i class="bi bi-trash" aria-hidden="true"></i>
                         <span th:text="#{explorer.manage.delete}">حذف پوشه</span>
                     </button>
+                    <!--
+                      A full folder: a different button, a different permission, and a confirmation
+                      that names the totals read from the folder's details - so nobody erases a
+                      subtree without being told what is in it.
+                    -->
+                    <button type="button" class="btn btn-secondary btn-sm" x-cloak
+                            x-show="manageable && folder && folder.kind !== 'ROOT' && folder.kind !== 'USER_HOME' && (folders.length > 0 || files.length > 0)"
+                            @click="deleteTree()"
+                            sec:authorize="hasAuthority('REST_DELETE_FOLDER_TREE') || hasAuthority('ADMIN')">
+                        <i class="bi bi-trash" aria-hidden="true"></i>
+                        <span th:text="#{explorer.manage.deleteTree}">حذف پوشه با محتویات</span>
+                    </button>
                     <span class="explorer-cell-muted" x-show="page && page.totalPages > 1" x-cloak
                           x-text="pagePosition()"></span>
                     <button type="button" class="btn btn-secondary btn-sm"
@@ -528,6 +540,9 @@
                         <p class="explorer-detail-term" th:text="#{explorer.details.totalFiles}">مجموع فایل‌ها در زیرشاخه‌ها</p>
                         <p class="explorer-detail-value" x-text="number(selectedFolder.totalFiles)"></p>
 
+                        <p class="explorer-detail-term" th:text="#{explorer.details.totalFolders}">مجموع پوشه‌ها در زیرشاخه‌ها</p>
+                        <p class="explorer-detail-value" x-text="number(selectedFolder.totalFolders)"></p>
+
                         <template x-if="selectedFolder.createdAt">
                             <div>
                                 <p class="explorer-detail-term" th:text="#{explorer.details.created}">تاریخ ایجاد</p>
@@ -626,6 +641,7 @@
         foldersUrl:        [[@{/resource/folders}]],
         manageFailed:      [[#{explorer.manage.failed}]],
         confirmDelete:     [[#{explorer.manage.confirmDelete}]],
+        confirmDeleteTree: [[#{explorer.manage.confirmDeleteTree}]],
         deleteRefused:     [[#{explorer.manage.deleteRefused}]],
         nameTaken:         [[#{explorer.manage.nameTaken}]],
         newTagGroup:       [[#{explorer.manage.newTagGroup}]],
@@ -1135,6 +1151,36 @@
             downloadTitle(file) {
                 return EX.downloadLatest.replace("{0}", "v" + this.number(file.lastVersion))
                         .replace("{1}", file.latestFormat || "");
+            },
+
+            /**
+             * The folder on screen with everything in it. The totals come from the folder's
+             * details - the same read the pane makes - so the confirmation says what goes:
+             * "N folders and M files". One DELETE with recursive=true; a tree above the server's
+             * cap is a 409 whose detail names the count, shown as it is.
+             */
+            async deleteTree() {
+                let totals;
+                try {
+                    totals = await readJson(EX.foldersUrl + "/" + this.folder.id);
+                } catch (e) {
+                    this.fail(e, EX.manageFailed);
+                    return;
+                }
+                const question = EX.confirmDeleteTree
+                    .replace("{0}", this.number(totals.totalFolders))
+                    .replace("{1}", this.number(totals.totalFiles));
+                if (!window.confirm(question)) {
+                    return;
+                }
+                const parentId = this.breadcrumb.length ? this.breadcrumb[this.breadcrumb.length - 1].id : null;
+                try {
+                    await writeJson(EX.foldersUrl + "/" + this.folder.id + "?recursive=true", "DELETE", null);
+                    this.treeRows = [];
+                    await this.navigate(parentId);
+                } catch (e) {
+                    this.error = e.detail || EX.manageFailed;
+                }
             },
 
             /** The upload form, opened on the folder on screen. */

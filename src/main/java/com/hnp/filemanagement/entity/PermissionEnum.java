@@ -156,6 +156,9 @@ public enum PermissionEnum {
     //@DeleteMapping("{folderId}") - delete an empty folder
     REST_DELETE_FOLDER,
 
+    //@DeleteMapping("{folderId}", params = "recursive=true") - delete a folder with every folder, file and byte beneath it (roadmap 10.3)
+    REST_DELETE_FOLDER_TREE,
+
     //@PutMapping("{folderId}/move") - move a folder, with everything beneath it, under another parent
     REST_MOVE_FOLDER,
 

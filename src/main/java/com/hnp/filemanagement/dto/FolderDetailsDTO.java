@@ -17,6 +17,8 @@ import java.util.List;
  * @param folderCount  folders directly inside it
  * @param fileCount    files directly inside it
  * @param totalFiles   files anywhere beneath it, itself included
+ * @param totalFolders folders anywhere beneath it, itself excluded - with {@code totalFiles}, what
+ *                     a delete of the whole tree would remove
  * @param createdAt    when the row was created; null for the root, which a migration made
  * @param createdBy    who created it, or null (a migration)
  * @param updatedAt    when it was last renamed or moved, or null
@@ -30,6 +32,7 @@ public record FolderDetailsDTO(
         long folderCount,
         long fileCount,
         long totalFiles,
+        long totalFolders,
         LocalDateTime createdAt,
         String createdBy,
         LocalDateTime updatedAt,
