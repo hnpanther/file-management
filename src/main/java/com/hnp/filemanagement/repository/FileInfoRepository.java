@@ -135,6 +135,10 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     @Query("SELECT COUNT(f) FROM FileInfo f WHERE f.folder.path LIKE CONCAT(:pathPrefix, '%')")
     long countBySubtree(@Param("pathPrefix") String pathPrefix);
 
+    /** The ids of every file under a folder, itself included - what a tree delete removes one by one. */
+    @Query("SELECT f.id FROM FileInfo f WHERE f.folder.path LIKE CONCAT(:pathPrefix, '%') ORDER BY f.id")
+    List<Integer> findIdsBySubtree(@Param("pathPrefix") String pathPrefix);
+
     @Query("SELECT f.lastVersion FROM FileInfo f WHERE f.id = :fileInfoId")
     Integer getLastVersionNumberOfFile(@Param("fileInfoId") int fileInfoId);
 

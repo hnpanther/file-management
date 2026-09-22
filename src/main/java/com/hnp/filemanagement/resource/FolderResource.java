@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.http.HttpStatus;
 import com.hnp.filemanagement.service.FolderService;
+import com.hnp.filemanagement.service.FolderTreeDeleteService;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.dto.TagGroupDTO;
 import com.hnp.filemanagement.dto.FolderDTO;
@@ -62,13 +63,16 @@ public class FolderResource {
     private final GlobalGeneralLogging globalGeneralLogging;
     private final FolderContentService folderContentService;
     private final FolderService folderService;
+    private final FolderTreeDeleteService folderTreeDeleteService;
 
     public FolderResource(GlobalGeneralLogging globalGeneralLogging,
                           FolderContentService folderContentService,
-                          FolderService folderService) {
+                          FolderService folderService,
+                          FolderTreeDeleteService folderTreeDeleteService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.folderContentService = folderContentService;
         this.folderService = folderService;
+        this.folderTreeDeleteService = folderTreeDeleteService;
     }
 
     /**
@@ -214,6 +218,23 @@ public class FolderResource {
         globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
                 "delete folder id=" + folderId);
         folderService.delete(folderId, userDetails.getId());
+        return ApiResult.deleted("folder", folderId);
+    }
+
+    /**
+     * Deletes a folder with everything beneath it - folders, files, bytes. A permission of its
+     * own, separate from the empty delete's: 409 when the tree holds more files than one call may
+     * remove ({@code filemanagement.folders.max-delete-files}), 400 for the root or a home.
+     */
+    //REST_DELETE_FOLDER_TREE
+    @PreAuthorize("hasAuthority('REST_DELETE_FOLDER_TREE') || hasAuthority('ADMIN')")
+    @DeleteMapping(value = "{folderId}", params = "recursive=true")
+    public ApiResult deleteFolderTree(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                      @PathVariable("folderId") int folderId,
+                                      HttpServletRequest request) {
+        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
+                "delete folder tree id=" + folderId);
+        folderTreeDeleteService.deleteTree(folderId, userDetails.getId());
         return ApiResult.deleted("folder", folderId);
     }
 }

@@ -286,6 +286,52 @@ class FolderManagementTest extends MySqlSupport {
     }
 
     @Test
+    @DisplayName("a full folder goes with recursive=true under its own permission: the empty delete's permission is 403 on it, and the root is 400")
+    void aFullFolderIsDeletedRecursivelyUnderItsOwnPermission() throws Exception {
+        int fileId = fileInfoRepository.saveAndFlush(TestData.fileInfo(admin, chain.tag(), "gone" + TestData.nextSequence())).getId();
+        Folder deeper = FolderFixture.tag(folderRepository, chain.subCategory(), admin, "Deeper" + TestData.nextSequence());
+
+        // The permission that prunes empty folders does not erase a tree, whatever the parameter says.
+        mockMvc.perform(delete("/resource/folders/{id}", chain.subCategoryId()).param("recursive", "true")
+                        .with(user(principal(adminId, PermissionEnum.REST_DELETE_FOLDER))).with(csrf())
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+        // And the tree permission does not stand in for the empty delete's on the plain route.
+        mockMvc.perform(delete("/resource/folders/{id}", deeper.getId())
+                        .with(user(principal(adminId, PermissionEnum.REST_DELETE_FOLDER_TREE))).with(csrf())
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+        assertThat(folderRepository.findById(chain.subCategoryId())).isPresent();
+
+        mockMvc.perform(delete("/resource/folders/{id}", rootId).param("recursive", "true")
+                        .with(user(principal(adminId, PermissionEnum.REST_DELETE_FOLDER_TREE))).with(csrf())
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(delete("/resource/folders/{id}", chain.subCategoryId()).param("recursive", "true")
+                        .with(user(principal(adminId, PermissionEnum.REST_DELETE_FOLDER_TREE))).with(csrf())
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outcome").value("DELETED"))
+                .andExpect(jsonPath("$.id").value(chain.subCategoryId()));
+        assertThat(folderRepository.findById(chain.subCategoryId())).isEmpty();
+        assertThat(folderRepository.findById(chain.tagId())).isEmpty();
+        assertThat(folderRepository.findById(deeper.getId())).isEmpty();
+        assertThat(fileInfoRepository.findById(fileId)).isEmpty();
+        assertThat(folderRepository.findById(chain.categoryId())).isPresent();
+
+        // A folder's details name what a tree delete would remove.
+        Folder again = FolderFixture.subCategory(folderRepository, chain.category(), admin, "Again" + TestData.nextSequence());
+        FolderFixture.tag(folderRepository, again, admin, "Leaf" + TestData.nextSequence());
+        mockMvc.perform(get("/resource/folders/{id}", chain.categoryId())
+                        .with(user(principal(adminId, PermissionEnum.FILE_EXPLORER_PAGE)))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalFolders").value(2))
+                .andExpect(jsonPath("$.totalFiles").value(0));
+    }
+
+    @Test
     @DisplayName("a file is moved by one PUT under its own permission: 403 outside the write grants, 400 into the root")
     void aFileIsMovedByOnePut() throws Exception {
         int fileId = fileInfoRepository.saveAndFlush(TestData.fileInfo(admin, chain.tag(), "movable" + TestData.nextSequence())).getId();
@@ -331,9 +377,10 @@ class FolderManagementTest extends MySqlSupport {
                         .with(user(principal(adminId, PermissionEnum.FILE_EXPLORER_PAGE, PermissionEnum.REST_CREATE_FOLDER,
                                 PermissionEnum.REST_RENAME_FOLDER, PermissionEnum.REST_DELETE_FOLDER,
                                 PermissionEnum.REST_MOVE_FOLDER, PermissionEnum.REST_MOVE_FILE_INFO,
-                                PermissionEnum.DOWNLOAD_FILE)))
+                                PermissionEnum.DOWNLOAD_FILE, PermissionEnum.REST_DELETE_FOLDER_TREE)))
                         .accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString("@click=\"deleteTree()\"")))
                 // The download of the latest revision: on the row, on a search hit, and in the details pane.
                 .andExpect(content().string(Matchers.containsString(":href=\"downloadHref(entry)\"")))
                 .andExpect(content().string(Matchers.containsString(":href=\"downloadHref(hit.file)\"")))
@@ -357,7 +404,16 @@ class FolderManagementTest extends MySqlSupport {
                 .andExpect(content().string(Matchers.containsString("EX.filePage + selectedFile.id")))
                 .andExpect(content().string(Matchers.not(Matchers.containsString("@click=\"openManage('create')\""))))
                 .andExpect(content().string(Matchers.not(Matchers.containsString("@click=\"openManage('rename')\""))))
-                .andExpect(content().string(Matchers.not(Matchers.containsString("@click=\"deleteFolder()\""))));
+                .andExpect(content().string(Matchers.not(Matchers.containsString("@click=\"deleteFolder()\""))))
+                .andExpect(content().string(Matchers.not(Matchers.containsString("@click=\"deleteTree()\""))));
+
+        // The empty delete's permission renders its button and not the tree's.
+        mockMvc.perform(get("/files/explorer")
+                        .with(user(principal(adminId, PermissionEnum.FILE_EXPLORER_PAGE, PermissionEnum.REST_DELETE_FOLDER)))
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString("@click=\"deleteFolder()\"")))
+                .andExpect(content().string(Matchers.not(Matchers.containsString("@click=\"deleteTree()\""))));
     }
 
     // ---------------------------------------------------------------- helpers

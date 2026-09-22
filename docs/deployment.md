@@ -610,25 +610,42 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
-### Upgrading from 1.4.0 to 1.5.0 — sharded storage
+### Upgrading from 1.4.0 to 1.5.0 — sharded storage, downloads and deletes in the explorer
 
-A jar swap with no migration and no check. Nothing to do before, nothing to do after; the
-backup is taken as always.
+A jar swap with no migration and no check. Nothing to do before; the backup is taken as
+always. On the first start the log says `seeded 1 new permission(s): [REST_DELETE_FOLDER_TREE]`
+- a permission nobody holds until an administrator grants it (below).
 
-**What changes:** a file uploaded from 1.5.0 on is stored under
-`{base-dir}/files/{shard}/{file id}/…`, the shard being `s` and the id divided by a thousand
-(`files/s000/123/`, `files/s001/1234/`, `files/s999/999999/`, `files/s1000/1000000/`), instead of
-flat under `files/{file id}/`. The application never lists that directory, so this is not for
-it: it is so that Explorer, `dir`, the backup job and a virus scanner never meet a directory
-with a million children. Files stored by 1.4.0 flat under `files/{id}/`, and files stored
-before 1.4.0 under folder names, stay exactly where they are and keep working — a version's
-`storage_key` is what is read, never a shape. A `base-dir` that saw all three releases holds
-three layouts side by side; reading one by hand, `files/s000/…` is 1.5.0, `files/123/…` is
-1.4.0, anything else is older. Also from 1.5.0, deleting a file stored under `files/` removes
-its whole id directory, not only the `{name}/` directory inside it.
+**What changes:**
+
+1. **Storage is sharded.** A file uploaded from 1.5.0 on is stored under
+   `{base-dir}/files/{shard}/{file id}/…`, the shard being `s` and the id divided by a thousand
+   (`files/s000/123/`, `files/s001/1234/`, `files/s999/999999/`, `files/s1000/1000000/`), instead of
+   flat under `files/{file id}/`. The application never lists that directory, so this is not for
+   it: it is so that Explorer, `dir`, the backup job and a virus scanner never meet a directory
+   with a million children. Files stored by 1.4.0 flat under `files/{id}/`, and files stored
+   before 1.4.0 under folder names, stay exactly where they are and keep working — a version's
+   `storage_key` is what is read, never a shape. A `base-dir` that saw all three releases holds
+   three layouts side by side; reading one by hand, `files/s000/…` is 1.5.0, `files/123/…` is
+   1.4.0, anything else is older. Also from 1.5.0, deleting a file stored under `files/` removes
+   its whole id directory, not only the `{name}/` directory inside it.
+
+2. **The explorer downloads.** Every file row, every search hit and the details pane offer the
+   file's latest revision - the format of the latest version uploaded last - through the same
+   download the file page has, under `DOWNLOAD_FILE`. Nothing to configure.
+
+3. **A folder can be deleted with everything in it.** A new permission,
+   `REST_DELETE_FOLDER_TREE`, separate from `REST_DELETE_FOLDER` (empty folders only) on
+   purpose: grant it to the roles that should be able to erase a subtree, and to no other. The
+   explorer shows "delete with contents" on a full folder to a holder, asks with the counts,
+   and removes rows first and bytes last. One call is bounded by
+   `filemanagement.folders.max-delete-files` (default `1000`; `FILEMANAGEMENT_FOLDERS_MAX_DELETE_FILES`):
+   a larger tree is refused with the count and is deleted in parts. Raise it only knowing that
+   one request then holds one transaction and one pass over the disk for that many files.
 
 **Rollback** is the 1.4.0 jar: no schema changed, and 1.4.0 reads a sharded key like any other.
-Files uploaded on 1.5.0 stay readable and deletable on 1.4.0; new ones go flat again.
+Files uploaded on 1.5.0 stay readable and deletable on 1.4.0; new ones go flat again. The
+seeded permission row stays and is harmless.
 
 ### Upgrading from 1.3.0 to 1.4.0 — folders of any depth
 

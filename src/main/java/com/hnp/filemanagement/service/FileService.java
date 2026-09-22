@@ -478,6 +478,25 @@ public class FileService {
     /** Removes the file, every version of it, and the directory holding the bytes. */
     @Transactional
     public void deleteCompleteFileById(int id, int principalId) {
+        String address = deleteFileRows(id, principalId);
+        if (address != null) {
+            fileStorageService.delete(address, "", 1, "", false);
+        }
+    }
+
+    /**
+     * The database half of a whole-file delete: the file's rows, every version's, the tags, and
+     * the audit row - and the answer to where its bytes are, for the caller to remove once it is
+     * ready to. {@link #deleteCompleteFileById} removes them at once; a tree delete
+     * ({@link FolderTreeDeleteService}) removes every file's rows and every folder first and the
+     * bytes of all of them last, so that a failure in the database leaves the disk untouched.
+     *
+     * @return the directory on disk that is this file's alone, relative to {@code base-dir}; null
+     *         for a file with no stored revision, which has nothing on disk (the model does not
+     *         produce one, but a row left half-written must not make its folder undeletable)
+     */
+    @Transactional
+    public String deleteFileRows(int id, int principalId) {
 
         FileInfo fileInfo = getFileInfoWithFileDetails(id);
         // The directory on disk that is this file's alone, read from a stored key, not rebuilt
@@ -485,17 +504,19 @@ public class FileService {
         // directory itself (files/.../{id}), so nothing of the file stays behind; under the old
         // one the id-less {category}/{subCategory} directory is shared, and only the file's own
         // {name} directory beneath it goes.
-        String directory = directoryOf(fileInfo);
-        String address = StorageLayout.isIdBased(fileInfo.getFileDetailsList().getFirst().getStorageKey())
-                ? directory
-                : directory + "/" + fileInfo.getFileName();
+        String address = null;
+        if (!fileInfo.getFileDetailsList().isEmpty()) {
+            String directory = directoryOf(fileInfo);
+            address = StorageLayout.isIdBased(fileInfo.getFileDetailsList().getFirst().getStorageKey())
+                    ? directory
+                    : directory + "/" + fileInfo.getFileName();
+        }
 
         fileInfoRepository.delete(fileInfo);
 
         actionHistoryService.saveActionHistory(EntityEnum.FileInfo, id, ActionEnum.DELETE, principalId,
                 "DELETE FILE_INFO", "Delete Complete File_Info");
-
-        fileStorageService.delete(address, "", 1, "", false);
+        return address;
     }
 
     /**
