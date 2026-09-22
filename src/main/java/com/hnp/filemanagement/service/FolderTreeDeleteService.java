@@ -36,6 +36,14 @@ import java.util.List;
  * still fail, the bytes. A database failure anywhere before that point rolls back with every
  * byte still on disk.
  *
+ * <p><b>The bytes never fail the delete.</b> Once the rows are gone the decision is made, and a
+ * directory that cannot be removed - locked by a scanner, or already missing - must not undo it:
+ * an exception there would roll the rows back after the bytes of the files before it were
+ * already erased, leaving rows without bytes and a subtree that can never be deleted. So each
+ * directory is removed on its own, a missing one is nothing to remove, a failure is logged with
+ * its address and counted, and the audit row names the count. What is left behind is an orphan
+ * directory nothing refers to, harmless and removable by hand.
+ *
  * <p><b>The cap.</b> {@code filemanagement.folders.max-delete-files} (default 1000) bounds one
  * request: a tree above it is refused with a 409 that names the count, so that one call cannot
  * hold a transaction over a million rows or spend minutes on disk. A larger tree is deleted in
@@ -122,16 +130,37 @@ public class FolderTreeDeleteService {
         }
         folderRepository.flush();
 
+        // Last, once nothing can fail in the database any more - and nothing here fails it.
+        List<String> leftBehind = removeBytes(addresses);
+
         long folders = subtree.size() - 1;
         actionHistoryService.saveActionHistory(EntityEnum.Folder, folderId, ActionEnum.DELETE, principalId,
                 "DELETE FOLDER TREE", "DELETE folder id=" + folderId + " (" + name + ") with " + folders
-                        + " folder(s) and " + files + " file(s) beneath");
-
-        // Last, once nothing can fail in the database any more.
-        for (String address : addresses) {
-            fileStorageService.delete(address, "", 1, "", false);
-        }
-        logger.info("deleted folder tree id={} ({}): {} folder(s), {} file(s)", folderId, name, folders, files);
+                        + " folder(s) and " + files + " file(s) beneath"
+                        + (leftBehind.isEmpty() ? "" : "; " + leftBehind.size() + " director(ies) could not be removed: " + leftBehind));
+        logger.info("deleted folder tree id={} ({}): {} folder(s), {} file(s), {} director(ies) left behind",
+                folderId, name, folders, files, leftBehind.size());
         return new DeletedTree(folderId, folders, files);
+    }
+
+    /**
+     * Removes each file's directory on its own: a missing one is nothing to remove, a failure is
+     * logged and returned, never thrown.
+     *
+     * @return the addresses that could not be removed, relative to {@code base-dir}
+     */
+    private List<String> removeBytes(List<String> addresses) {
+        List<String> leftBehind = new ArrayList<>();
+        for (String address : addresses) {
+            try {
+                fileStorageService.delete(address, "", 1, "", false);
+            } catch (ResourceNotFoundException alreadyGone) {
+                logger.info("tree delete: nothing on disk at {}", address);
+            } catch (RuntimeException e) {
+                logger.error("tree delete: could not remove {} - left behind, remove it by hand: {}", address, e.getMessage());
+                leftBehind.add(address);
+            }
+        }
+        return leftBehind;
     }
 }

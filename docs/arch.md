@@ -138,8 +138,12 @@ class of its own behind a permission of its own (`REST_DELETE_FOLDER_TREE`, on
 `DELETE /resource/folders/{id}?recursive=true`), so that pruning empty folders never implies
 erasing a subtree. One transaction: every file's rows through `FileService.deleteFileRows`
 (each with its own audit row, its bytes' address kept back), then the folders deepest first
-(grants cascade), then one audit row for the tree with its totals, and only then the bytes —
-so a database failure anywhere rolls back with the disk untouched. `WRITE` on the parent, as
+(grants cascade), then the bytes, then one audit row for the tree with its totals — so a
+database failure anywhere rolls back with the disk untouched, and the bytes are removed
+best-effort once the rows are gone: a missing directory is nothing to remove, a failure is
+logged, counted in the audit row and left as an orphan directory, never thrown, because an
+exception there would restore rows whose bytes were already erased. The single-file delete
+follows the same rule for a directory that is already gone. `WRITE` on the parent, as
 for the empty delete (grants are path prefixes, so that covers the tree). The cap
 `filemanagement.folders.max-delete-files` (default 1000) refuses a larger tree with a 409 that
 names the count: a bound on one transaction and one pass over the disk, not a quota; a larger
@@ -321,13 +325,13 @@ none of the three.
 | **Upload a new file** (`FileService.createNewFile`; web form, v1, v2 `PUT`) | — | one new key, `files/{shard}/{file id}/{name}/v1/{name}.{ext}` (`StorageLayout`) | one file written at that path; `saveByKey` creates the directories and refuses an existing path | derived: one tag per folder from the top level down, in the top-level folder's group |
 | **New version / new format of a file** (`createNewFileDetails`) | — | one new key **beside the first version's**: the directory is read off that key (`directoryOf`), so a file stored under the old `{category}/{sub}` layout keeps growing there, one stored flat under `files/{id}` there, one under a shard there | one file written; nothing else moves | — |
 | **Delete one version or format** (`deleteFileDetails`) | — | that row's key gone | that file removed; when it was the last format of its version, the `v{n}` directory too | — |
-| **Delete a file** (`deleteCompleteFileById`, or deleting its last version) | — | every key of the file gone | read off a stored key: under an id-based layout the file's own id directory (`files/{shard}/{id}/` or `files/{id}/`) removed whole, the shard directory left; under the old layout the file's `…/{name}/` directory removed and the shared `{category}/{sub}/` left, possibly empty | rows cascade |
+| **Delete a file** (`deleteCompleteFileById`, or deleting its last version) | — | every key of the file gone | read off a stored key: under an id-based layout the file's own id directory (`files/{shard}/{id}/` or `files/{id}/`) removed whole, the shard directory left; under the old layout the file's `…/{name}/` directory removed and the shared `{category}/{sub}/` left, possibly empty; a directory already gone is nothing to remove, not a refusal | rows cascade |
 | **Create a folder** (`FolderService.create`) | one row: `parent_id`, `depth = parent + 1`, `path = parent.path + id + "/"` | — | **nothing** — a folder has no directory until its first upload | — |
 | **Rename a folder** (`rename`: name, label, or at the top level the group) | that row's `name` / `display_name` / `tag_group_id`; `path` and `depth` unchanged (they are ids) | **nothing** | **nothing** — a file stored under the old layout keeps its old directory name; one stored under `files/` never had a folder name in it | re-derived for every file beneath, when the name or the group changed |
 | **Move a folder** (`move`) | the folder's `parent_id`; `depth` and `path` **rewritten for the whole subtree** (`/1/5/412/…` → `/1/9/412/…`) in one transaction; `tag_group_id` set to the former top-level folder's group when the target is the root, cleared when a top-level folder goes below another | **nothing** | **nothing** | re-derived for every file beneath (the chain of names changed, and possibly the group) |
 | **Move a file** (`FileService.moveFile`) | — (the file's `folder_id` changes) | **nothing** | **nothing** — the file's directory is its own id, wherever it is filed | re-derived for the file |
 | **Delete a folder** (`delete`; empty only) | that row gone; its grants cascade | — | **nothing** — a folder never had a directory of its own since `V2.9` | — |
-| **Delete a folder with everything in it** (`FolderTreeDeleteService.deleteTree`; `?recursive=true`) | every row of the subtree gone, deepest first; grants cascade | every key of every file beneath gone | each file's own directory removed, exactly as a single whole-file delete would, and **last** — after every row; the shard directories and the old layout's shared `{category}/{sub}/` stay | rows cascade with the files |
+| **Delete a folder with everything in it** (`FolderTreeDeleteService.deleteTree`; `?recursive=true`) | every row of the subtree gone, deepest first; grants cascade | every key of every file beneath gone | each file's own directory removed, exactly as a single whole-file delete would, and **last** — after every row, best-effort (a directory that cannot be removed is logged and left, never a rollback); the shard directories and the old layout's shared `{category}/{sub}/` stay | rows cascade with the files |
 | **Change a tag group's name or title** (`/settings/tag-groups`) | — | — | — | — (tags hang off the group's id) |
 
 What follows from the table:
@@ -795,7 +799,7 @@ migrations themselves, in `src/main/resources/db/migration`:
 | `V2.6__Add_Upload_Policy.sql` | `upload_policy` (one system-wide row, `role_id` null; one per role that has its own), `upload_policy_rule` (extension → `max_size_bytes`); the system-wide row seeded with the nine default kinds at 20 MB |
 | `V2.7__Add_Content_Kind.sql` | `content_kind`: the custom half of the content catalogue - extension, media type, and a byte signature at an offset or "text only"; empty until an administrator adds one |
 | `V2.10__Add_App_Setting.sql` | `app_setting` (name → value, audited), seeded with `public-files.anonymous = true`, the behaviour there always was; `GENERAL_SETTINGS_PAGE` and `SAVE_GENERAL_SETTINGS` |
-| `V2.11__Profiles_And_Quota.sql` | `folder.quota_bytes`; `uq_folder_owner_user` (one home per user); the `Profiles` top-level folder (kind `PROFILES`, in a `profiles` tag group), created — or adopted, if a top-level folder of that name exists; `CREATE_USER_HOME` and `SET_FOLDER_QUOTA` |
+| `V2.11__Profiles_And_Quota.sql` | `folder.quota_bytes`; `uq_folder_owner_user` (one home per user); the `Profiles` top-level folder (kind `PROFILES`, in a `profiles` tag group), created — or adopted, if a top-level folder of that name exists and holds no files directly (refused otherwise, fail-fast); `CREATE_USER_HOME` and `SET_FOLDER_QUOTA` |
 | `V2.9__Folders_Any_Depth.sql` | Folders of any depth: refuses to run where a top-level folder or a stored key is named `files`; `CATEGORY` / `SUB_CATEGORY` / `TAG` become `FOLDER`; `REST_MOVE_FOLDER` (mapped onto the roles that may rename) and the three `TAG_GROUP` page permissions |
 | `V2.8__Remove_Taxonomy.sql` | Phase 7 step 4. Fails fast first: `file_info.folder_id NOT NULL`, `uq_file_info_name_per_folder`, `folder.tag_group_id` backfilled from each category's general tag and required on every `CATEGORY` row. Then the four `REST_*_FOLDER` / `REST_GET_TAG_GROUPS` permissions, mapped onto the roles that held the taxonomy ones; the 27 taxonomy permissions deleted; `file_info` / `file_details` lose `file_path`, `relative_path`, `file_sub_category_id`, `main_tag_file_id`; `folder` loses `general_tag_id`, `source_type`, `source_id`; `main_tag_file`, `file_sub_category`, `file_category`, `general_tag` dropped. Not reversible without the backup |
 

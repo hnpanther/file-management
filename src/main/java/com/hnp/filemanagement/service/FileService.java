@@ -28,6 +28,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -83,6 +85,8 @@ import java.util.UUID;
 public class FileService {
 
     /** A file is active at 0 and disabled at -1; nothing else is a valid state. */
+    private static final Logger logger = LoggerFactory.getLogger(FileService.class);
+
     private static final int STATE_ACTIVE = 0;
     private static final int STATE_DISABLED = -1;
 
@@ -485,12 +489,20 @@ public class FileService {
                 principalId, "CHANGE STATE FILE_DETAILS", "Change state from " + oldState + " to " + newState);
     }
 
-    /** Removes the file, every version of it, and the directory holding the bytes. */
+    /**
+     * Removes the file, every version of it, and the directory holding the bytes. A directory
+     * that is already gone is nothing to remove: a file whose bytes were lost must still be
+     * deletable, or its rows stay forever (the same rule the tree delete follows).
+     */
     @Transactional
     public void deleteCompleteFileById(int id, int principalId) {
         String address = deleteFileRows(id, principalId);
         if (address != null) {
-            fileStorageService.delete(address, "", 1, "", false);
+            try {
+                fileStorageService.delete(address, "", 1, "", false);
+            } catch (ResourceNotFoundException alreadyGone) {
+                logger.warn("delete of file id={}: nothing on disk at {}", id, address);
+            }
         }
     }
 

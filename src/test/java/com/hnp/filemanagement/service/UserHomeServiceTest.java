@@ -177,6 +177,13 @@ class UserHomeServiceTest extends MySqlSupport {
         entityManager.flush();
         entityManager.clear();
         assertThat(folderRepository.findById(home.getId()).orElseThrow().getName()).startsWith("renamed");
+        // A username the home cannot follow - a folder of that name already under Profiles - is a
+        // 409 said up front, not the sibling index's 500 at flush; renaming to its own name is fine.
+        Folder taken = TestData.folder(admin, underTest.profiles(), "taken" + TestData.nextSequence(), null);
+        folderRepository.saveAndFlush(TestData.placed(folderRepository.save(taken)));
+        assertThatThrownBy(() -> underTest.renameHomeOf(personId, taken.getName().toUpperCase(), adminId))
+                .isInstanceOf(DuplicateResourceException.class).hasMessageContaining("under Profiles");
+        underTest.renameHomeOf(personId, folderRepository.findById(home.getId()).orElseThrow().getName(), adminId);
         // Inside it, the user does as in any folder: a sub-folder, down to the limit.
         assertThat(folderService.create(home.getId(), "notes", null, null, null, personId).parentId()).isEqualTo(home.getId());
     }
