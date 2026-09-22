@@ -216,10 +216,13 @@ registered as `@Service("fileSystem") @Primary` and takes `${file.management.bas
 ```
 {base-dir}/
 ├── files/                              every file uploaded since V2.9 (saveByKey creates parents)
-│   └── {file id}/
-│       └── {fileNameWithoutExtension}/
-│           └── v{version}/
-│               └── {fileName}.{ext}
+│   ├── {shard}/                        since 1.5.0: "s" + file id / 1000, three digits at least
+│   │   └── {file id}/                     files/s000/123, files/s001/1234, files/s999/999999,
+│   │       └── {fileNameWithoutExtension}/  files/s1000/1000000 - the width grows past a million
+│   │           └── v{version}/
+│   │               └── {fileName}.{ext}
+│   └── {file id}/                      1.4.0: the same, without the shard
+│       └── {fileNameWithoutExtension}/v{version}/{fileName}.{ext}
 └── {category name}/                    files stored before V2.9, under the names of the two
     └── {sub-category name}/            folders above them as they stood when written
         └── {fileNameWithoutExtension}/
@@ -229,11 +232,20 @@ registered as `@Service("fileSystem") @Primary` and takes `${file.management.bas
 
 By the file's *own id* so that nothing above it — a folder renamed or moved, the file itself
 moved — changes anything on disk, and a file that leaves a folder leaves nothing behind for a
-namesake to collide with; the old layout stays where it is, because a key records where the
-bytes went and nothing rebuilds it. A later version of a file goes beside its first version
-whichever layout wrote that (`FileService.directoryOf`, read off the existing key). The two
+namesake to collide with; the older layouts stay where they are, because a key records where
+the bytes went and nothing rebuilds it. A later version of a file goes beside its first version
+whichever layout wrote that (`FileService.directoryOf`, read off the existing key). The
 layouts share one root, which is why no top-level folder may be named `files`: `FolderService`
 refuses the name and `V2.9` refuses to run where one exists.
+
+The shard (`StorageLayout`, roadmap 10.1) is for what surrounds the application, not for it:
+no code lists `files/`, and NTFS finds one entry among a million without trouble — but
+Explorer, `dir`, a backup job and a virus scanner all crawl on a directory with a million
+children. A thousand directories of at most a thousand is what they can walk. `StorageLayout`
+is the one place the shape is written; it is never read back, so files stored flat by 1.4.0
+keep their keys and their place. The `s` on the shard is what keeps the two id-based layouts
+apart on disk: a flat directory is a bare id, so a shard named `123` would *be* file 123's
+directory, and deleting that file would take the shard — a thousand other files — with it.
 
 The interface now has two halves, and which one a caller uses is not a matter of taste.
 
@@ -290,12 +302,12 @@ none of the three.
 
 | Operation | Tree (`folder` rows) | Keys (`storage_key`) | Bytes on disk | Tags (`file_tag`) |
 |---|---|---|---|---|
-| **Upload a new file** (`FileService.createNewFile`; web form, v1, v2 `PUT`) | — | one new key, `files/{file id}/{name}/v1/{name}.{ext}` | one file written at that path; `saveByKey` creates the directories and refuses an existing path | derived: one tag per folder from the top level down, in the top-level folder's group |
-| **New version / new format of a file** (`createNewFileDetails`) | — | one new key **beside the first version's**: the directory is read off that key (`directoryOf`), so a file stored under the old `{category}/{sub}` layout keeps growing there, one stored under `files/{id}` there | one file written; nothing else moves | — |
+| **Upload a new file** (`FileService.createNewFile`; web form, v1, v2 `PUT`) | — | one new key, `files/{shard}/{file id}/{name}/v1/{name}.{ext}` (`StorageLayout`) | one file written at that path; `saveByKey` creates the directories and refuses an existing path | derived: one tag per folder from the top level down, in the top-level folder's group |
+| **New version / new format of a file** (`createNewFileDetails`) | — | one new key **beside the first version's**: the directory is read off that key (`directoryOf`), so a file stored under the old `{category}/{sub}` layout keeps growing there, one stored flat under `files/{id}` there, one under a shard there | one file written; nothing else moves | — |
 | **Delete one version or format** (`deleteFileDetails`) | — | that row's key gone | that file removed; when it was the last format of its version, the `v{n}` directory too | — |
-| **Delete a file** (`deleteCompleteFileById`, or deleting its last version) | — | every key of the file gone | the file's whole directory (`…/{name}/`) removed, read off a stored key; the directory above (`files/{id}/` or `{category}/{sub}/`) stays, possibly empty | rows cascade |
+| **Delete a file** (`deleteCompleteFileById`, or deleting its last version) | — | every key of the file gone | read off a stored key: under an id-based layout the file's own id directory (`files/{shard}/{id}/` or `files/{id}/`) removed whole, the shard directory left; under the old layout the file's `…/{name}/` directory removed and the shared `{category}/{sub}/` left, possibly empty | rows cascade |
 | **Create a folder** (`FolderService.create`) | one row: `parent_id`, `depth = parent + 1`, `path = parent.path + id + "/"` | — | **nothing** — a folder has no directory until its first upload | — |
-| **Rename a folder** (`rename`: name, label, or at the top level the group) | that row's `name` / `display_name` / `tag_group_id`; `path` and `depth` unchanged (they are ids) | **nothing** | **nothing** — a file stored under the old layout keeps its old directory name; one stored under `files/{id}` never had a folder name in it | re-derived for every file beneath, when the name or the group changed |
+| **Rename a folder** (`rename`: name, label, or at the top level the group) | that row's `name` / `display_name` / `tag_group_id`; `path` and `depth` unchanged (they are ids) | **nothing** | **nothing** — a file stored under the old layout keeps its old directory name; one stored under `files/` never had a folder name in it | re-derived for every file beneath, when the name or the group changed |
 | **Move a folder** (`move`) | the folder's `parent_id`; `depth` and `path` **rewritten for the whole subtree** (`/1/5/412/…` → `/1/9/412/…`) in one transaction; `tag_group_id` set to the former top-level folder's group when the target is the root, cleared when a top-level folder goes below another | **nothing** | **nothing** | re-derived for every file beneath (the chain of names changed, and possibly the group) |
 | **Move a file** (`FileService.moveFile`) | — (the file's `folder_id` changes) | **nothing** | **nothing** — the file's directory is its own id, wherever it is filed | re-derived for the file |
 | **Delete a folder** (`delete`; empty only) | that row gone; its grants cascade | — | **nothing** — a folder never had a directory of its own since `V2.9` | — |
@@ -309,19 +321,23 @@ What follows from the table:
   I/O.
 * **The directory tree under `base-dir` is not a mirror of the folder tree**, and it stops being
   one the first time a folder is renamed or moved. For files stored since `V2.9` it never was:
-  `files/9081/` says nothing about where file 9081 is filed. The database is the only source of a
+  `files/s009/9081/` says nothing about where file 9081 is filed. The database is the only source of a
   file's place; a backup is the database **and** `base-dir` together
   ([deployment.md](deployment.md)).
-* **Old layout, new layout, one root.** A file stored before `V2.9` lives under the names its
-  two upper folders had when it was written and stays there through every rename and move;
-  every later version of it goes beside it. A file stored since lives under its own id. The
-  only place the two could meet is a top-level folder literally named `files`, which
-  `FolderService` refuses and `V2.9` checks for. Nothing relocates the old files
-  ([issue 81](issues.md#81-base-dir-now-holds-two-layouts-side-by-side--s3-by-design-recorded)).
-* **Deleting removes the file's own directory and nothing above it.** An emptied
-  `files/{id}/` or `{category}/{sub}/` is left on disk. That is deliberate: the directory is
-  cheap, and removing a parent would mean deciding whether it is "ours", which the old layout
-  cannot answer safely.
+* **Three layouts, one root.** A file stored before `V2.9` lives under the names its two
+  upper folders had when it was written and stays there through every rename and move; every
+  later version of it goes beside it. A file stored by 1.4.0 lives flat under its own id, one
+  stored since 1.5.0 under a shard and its id. The only place they could meet is a top-level
+  folder literally named `files`, which `FolderService` refuses and `V2.9` checks for. Nothing
+  relocates the old files
+  ([issue 81](issues.md#81-base-dir-holds-three-layouts-side-by-side--s3-by-design-recorded)).
+* **Deleting removes what is the file's own and nothing above it.** Under an id-based layout
+  that is the id directory, so a deleted file leaves no empty directory behind — a million
+  deletions must not leave a million of them — and the shard directory, which is shared, stays.
+  Under the old layout it is the file's `{name}/` directory, and the shared
+  `{category}/{sub}/` above it is left, possibly empty: removing it would mean deciding whether
+  it is "ours", which that layout cannot answer safely. Which case applies is read off the
+  stored key (`StorageLayout.isIdBased`).
 * **Tags are derived, never stored independently.** Every operation that changes a file's chain
   of folder names re-derives `file_tag` for the files beneath, and
   `FileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders` is empty after each

@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.web;
 
+import com.hnp.filemanagement.service.StorageLayout;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.User;
@@ -89,8 +90,8 @@ class FileApiDeleteTest extends MySqlSupport {
         int[] ids = uploadThroughV1("report.txt");
         int fileInfoId = ids[0];
         int fileDetailsId = ids[1];
-        Path fileDirectory = Paths.get(baseDir, "files", String.valueOf(fileInfoId), "report");
-        assertThat(fileDirectory).exists();
+        Path fileDirectory = Paths.get(baseDir).resolve(StorageLayout.directoryFor(fileInfoId));
+        assertThat(fileDirectory.resolve("report")).exists();
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM file_tag WHERE file_info_id = ?", Integer.class, fileInfoId))
                 .as("the upload tagged it").isEqualTo(3);
 
@@ -105,7 +106,7 @@ class FileApiDeleteTest extends MySqlSupport {
         assertThat(fileDetailsRepository.findById(fileDetailsId)).isEmpty();
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM file_tag WHERE file_info_id = ?", Integer.class, fileInfoId))
                 .isZero();
-        assertThat(fileDirectory).as("the file's directory on disk is gone with it").doesNotExist();
+        assertThat(fileDirectory).as("the file's whole directory on disk is gone with it").doesNotExist();
 
         mockMvc.perform(delete("/api/v1/files/file-info/{f}/file-details/{d}", fileInfoId, fileDetailsId)
                         .with(user(machine()))
@@ -141,8 +142,9 @@ class FileApiDeleteTest extends MySqlSupport {
         assertThat(fileInfoRepository.findById(fileInfoId)).isPresent();
         assertThat(fileDetailsRepository.findById(first[1])).isPresent();
         assertThat(fileDetailsRepository.findById(v2DetailsId)).isEmpty();
-        assertThat(Paths.get(baseDir, "files", String.valueOf(fileInfoId), "manual", "v1", "manual.txt")).exists();
-        assertThat(Paths.get(baseDir, "files", String.valueOf(fileInfoId), "manual", "v2")).doesNotExist();
+        Path fileDirectory = Paths.get(baseDir).resolve(StorageLayout.directoryFor(fileInfoId));
+        assertThat(fileDirectory.resolve(Paths.get("manual", "v1", "manual.txt"))).exists();
+        assertThat(fileDirectory.resolve(Paths.get("manual", "v2"))).doesNotExist();
         assertThat(fileInfoRepository.findById(fileInfoId).orElseThrow().getLastVersion()).isEqualTo(1);
     }
 

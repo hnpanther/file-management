@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.web;
 
+import com.hnp.filemanagement.service.StorageLayout;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.Folder;
@@ -115,7 +116,7 @@ class FileUploadAddressingTest extends MySqlSupport {
         FileInfo file = stored(body);
         assertThat(file.getFolder().getId()).isEqualTo(tagFolderId);
         assertThat(file.getFileDetailsList().getFirst().getStorageKey())
-                .isEqualTo("files/" + file.getId() + "/byfolder/v1/byfolder.txt");
+                .isEqualTo(StorageLayout.directoryFor(file.getId()) + "/byfolder/v1/byfolder.txt");
         assertThat(file.getTags()).extracting(Tag::getName)
                 .containsExactlyInAnyOrder(chain.category().getName(), chain.subCategory().getName(), chain.tag().getName());
         assertThat(file.getTags()).extracting(t -> t.getGroup().getId())
@@ -160,7 +161,7 @@ class FileUploadAddressingTest extends MySqlSupport {
     void namesAreUniquePerFolder() throws Exception {
         upload("same.txt", Map.of("folderId", tagFolderId)).andExpect(status().isOk());
         upload("same.txt", Map.of("folderId", tagFolderId)).andExpect(status().isConflict());
-        // The bytes go to files/{file id}/{name}, so a namesake elsewhere has a directory of its own.
+        // The bytes go to the file's own directory (StorageLayout), so a namesake elsewhere has one of its own.
         upload("same.txt", Map.of("folderId", otherTagFolderId)).andExpect(status().isOk());
 
         assertThat(fileInfoRepository.findAll()).filteredOn(f -> f.getFileName().equals("same")).hasSize(2);
