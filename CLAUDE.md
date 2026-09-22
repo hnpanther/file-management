@@ -38,7 +38,9 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   one (`address`, `version`, `extension`) is what remains for directory-level deletes. Do not add
   a path-shaped method, and do not rebuild a location from folder names — `file_details.storage_key`
   is the only record of where the bytes are, and folders are renamed without moving them.
-* **A general tag is not a folder.** `Folder` kinds are `ROOT`, `FOLDER` and `USER_HOME`; the
+* **A general tag is not a folder.** `Folder` kinds are `ROOT`, `FOLDER`, `PROFILES` (the one
+  folder the personal folders sit under; takes nothing by hand) and `USER_HOME` (a user's own,
+  renamed only with the user, moved and deleted by nobody, usually carrying `quota_bytes`); the
   tree goes to `filemanagement.folders.max-depth`, every folder below the root holds folders and
   files, and only a top-level folder carries a `TagGroup` (the old general tag) in
   `folder.tag_group_id`. Do not treat a tag group as a place. A chain of any depth cannot be

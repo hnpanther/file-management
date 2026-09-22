@@ -4,6 +4,7 @@ import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
+import com.hnp.filemanagement.exception.QuotaExceededException;
 import com.hnp.filemanagement.exception.UploadRefusedException;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.service.UploadPolicyService;
@@ -76,6 +77,14 @@ public class FileController {
         model.addAttribute("uploadLimits", limitsMb);
         model.addAttribute("uploadAccept", limitsMb.keySet().stream().map(e -> "." + e)
                 .collect(java.util.stream.Collectors.joining(",")));
+    }
+
+    /** A quota refusal in the page's language, with the numbers it carries (roadmap 10.4). */
+    private static String quotaExceededMessage(QuotaExceededException e) {
+        return "سهمیهٔ پوشهٔ «" + e.getFolderName() + "» " + UploadPolicyService.megabytesOf(e.getQuotaBytes())
+                + " مگابایت است و " + UploadPolicyService.megabytesOf(e.getUsedBytes())
+                + " مگابایت آن استفاده شده؛ این فایل (" + UploadPolicyService.megabytesOf(e.getIncomingBytes())
+                + " مگابایت) در آن جا نمی‌گیرد";
     }
 
     /** The refusal in the page's language, with the facts the exception carries. */
@@ -179,6 +188,11 @@ public class FileController {
                 FileDetailsDTO fileDetailsDTO = fileService.createNewFile(fileInfoDTO, principalId, 1);
                 valid = true;
                 message = "اطلاعات با موفقیت ذخیره شد";
+            } catch (QuotaExceededException e) {
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "FileController.class",
+                        "QuotaExceededException:" + e.getMessage());
+                message = quotaExceededMessage(e);
             } catch (UploadRefusedException e) {
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,
                         request.getMethod() + " " + path, "FileController.class",
@@ -471,6 +485,12 @@ public class FileController {
             try {
                 fileService.createNewFileDetails(fileUploadDTO, principalId);
                 valid = true;
+            } catch (QuotaExceededException e) {
+                fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
+                globalGeneralLogging.controllerLogging(principalId, principalUsername,
+                        request.getMethod() + " " + path, "FileController.class",
+                        "QuotaExceededException:" + e.getMessage());
+                message = quotaExceededMessage(e);
             } catch (UploadRefusedException e) {
                 fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
                 globalGeneralLogging.controllerLogging(principalId, principalUsername,

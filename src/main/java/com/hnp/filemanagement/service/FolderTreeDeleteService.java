@@ -3,7 +3,6 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.entity.ActionEnum;
 import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.Folder;
-import com.hnp.filemanagement.entity.FolderKind;
 import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -44,8 +43,8 @@ import java.util.List;
  *
  * <p><b>Access.</b> Removing a folder is a write into its parent, exactly as for the empty
  * delete; and since grants are path prefixes, write on the parent is write on everything
- * beneath, so nothing inside the tree needs asking separately. The root and a home folder are
- * never deleted this way (a home goes only with its user).
+ * beneath, so nothing inside the tree needs asking separately. The root, the Profiles folder
+ * and a home are never deleted this way (a home goes only with its user).
  */
 @Service
 public class FolderTreeDeleteService {
@@ -93,7 +92,7 @@ public class FolderTreeDeleteService {
     public DeletedTree deleteTree(int folderId, int principalId) {
         Folder folder = folderRepository.findById(folderId)
                 .orElseThrow(() -> new ResourceNotFoundException("folder not found, id=" + folderId));
-        if (folder.getKind() == FolderKind.ROOT || folder.getKind() == FolderKind.USER_HOME) {
+        if (FolderService.isSystemFolder(folder)) {
             throw new InvalidDataException("a " + folder.getKind() + " folder cannot be deleted: id=" + folderId);
         }
         folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), folder.getParent());

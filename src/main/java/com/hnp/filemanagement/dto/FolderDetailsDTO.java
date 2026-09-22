@@ -19,6 +19,9 @@ import java.util.List;
  * @param totalFiles   files anywhere beneath it, itself included
  * @param totalFolders folders anywhere beneath it, itself excluded - with {@code totalFiles}, what
  *                     a delete of the whole tree would remove
+ * @param quotaBytes   the folder's own quota, or null (roadmap 10.4)
+ * @param usedBytes    every revision of every file beneath it, summed; read only when there is a
+ *                     quota to compare it with, zero otherwise
  * @param createdAt    when the row was created; null for the root, which a migration made
  * @param createdBy    who created it, or null (a migration)
  * @param updatedAt    when it was last renamed or moved, or null
@@ -33,6 +36,8 @@ public record FolderDetailsDTO(
         long fileCount,
         long totalFiles,
         long totalFolders,
+        Long quotaBytes,
+        long usedBytes,
         LocalDateTime createdAt,
         String createdBy,
         LocalDateTime updatedAt,

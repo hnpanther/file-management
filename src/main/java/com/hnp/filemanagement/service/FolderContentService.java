@@ -78,17 +78,20 @@ public class FolderContentService {
     private final FileDetailsRepository fileDetailsRepository;
     private final FolderAccessService folderAccessService;
     private final FolderService folderService;
+    private final FolderQuotaService folderQuotaService;
 
     public FolderContentService(FolderRepository folderRepository,
                                 FileInfoRepository fileInfoRepository,
                                 FileDetailsRepository fileDetailsRepository,
                                 FolderAccessService folderAccessService,
-                                FolderService folderService) {
+                                FolderService folderService,
+                                FolderQuotaService folderQuotaService) {
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.folderAccessService = folderAccessService;
         this.folderService = folderService;
+        this.folderQuotaService = folderQuotaService;
     }
 
     /**
@@ -221,6 +224,8 @@ public class FolderContentService {
                 fileCount,
                 fileInfoRepository.countBySubtree(folder.getPath()),
                 folderRepository.countSubtree(folder.getPath()) - 1,
+                folder.getQuotaBytes(),
+                folder.getQuotaBytes() == null ? 0L : folderQuotaService.usageOf(folder),
                 folder.getCreatedAt(),
                 folder.getCreatedBy() == null ? null : folder.getCreatedBy().getUsername(),
                 folder.getUpdatedAt(),

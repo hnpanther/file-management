@@ -455,6 +455,11 @@ name, the trail, depth, the tag group, direct contents, total files and total fo
 created and last changed by whom, and an "open" button. `selectedFile` and `selectedFolder` are exclusive; Escape
 and the overlay clear both.
 
+**System folders in the explorer** (roadmap 10.4): `Profiles` (kind `PROFILES`, a people icon)
+and a personal folder (`USER_HOME`, a person icon) get no rename, move or delete button
+(`isSystemFolder`), `Profiles` gets no "new folder" or "upload here" either, and a folder with
+a quota shows `used / quota` in its details pane (`explorer.details.quota`).
+
 **Downloading from the explorer** (roadmap 10.2) needs no visit to the file page. Every file
 row, every file hit in a search, and the details pane carry a download of the file's *latest
 revision*: of the latest version, the format uploaded last (`latestFileDetailsId` and
@@ -507,3 +512,17 @@ a real Tailwind spacing utility (25rem), not Bootstrap's `width: 100%` helper.
 - Existing validation and CSRF behavior remains intact.
 - Source comments and documentation are in English.
 - `./mvnw verify` passes before the change is considered complete.
+
+### The personal folder on the user pages
+
+The new-user form (`user/save-user.html`) carries a checkbox, `createHome`, ticked by default
+and bound with `th:field` so that an unticked box posts `false` through the hidden
+`_createHome`; the hint under it says what a home is (roadmap 10.4). The user's page
+(`user/user-profile.html`) has a "personal folder" card: with a home, the folder as a link into
+the explorer (`/files/explorer?folder=`), used and quota in megabytes with a percentage, and -
+for `SET_FOLDER_QUOTA` - a one-field form posting `quotaMb` (a positive integer, or blank for
+none) to `/users/{id}/home/quota`; without one, a sentence and - for `CREATE_USER_HOME` - a
+button posting to `/users/{id}/home`. Both posts redirect back with a flash message
+(`homeMessage`, `homeValid`) the card renders as a success or warning alert. Neither is
+automatic: whether a person gets a folder is decided by an administrator, on one of these two
+screens.

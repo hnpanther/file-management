@@ -95,6 +95,7 @@ public class FileService {
     private final UploadPolicyService uploadPolicyService;
     private final TagMirrorService tagMirrorService;
     private final FolderService folderService;
+    private final FolderQuotaService folderQuotaService;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileDetailsRepository fileDetailsRepository,
@@ -104,7 +105,8 @@ public class FileService {
                        FolderAccessService folderAccessService,
                        TagMirrorService tagMirrorService,
                        UploadPolicyService uploadPolicyService,
-                       FolderService folderService) {
+                       FolderService folderService,
+                       FolderQuotaService folderQuotaService) {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
@@ -114,6 +116,7 @@ public class FileService {
         this.uploadPolicyService = uploadPolicyService;
         this.folderService = folderService;
         this.tagMirrorService = tagMirrorService;
+        this.folderQuotaService = folderQuotaService;
     }
 
     // ------------------------------------------------------------------ upload
@@ -168,6 +171,7 @@ public class FileService {
         // refusal would stay visible after it.)
         uploadPolicyService.requireAllowed(principalId, multipartFile);
         ContentTypes.detect(multipartFile);
+        folderQuotaService.requireRoom(folder, multipartFile.getSize());
 
         // The parent first, on its own: its id names the directory the revisions live under
         // (StorageLayout), and IDENTITY assigns it only at insert. Transient here, so this is a persist.
@@ -261,6 +265,9 @@ public class FileService {
         if (originalFilename == null || !ValidationUtil.checkCorrectFileName(originalFilename)) {
             throw new InvalidDataException("invalid file name (a separator, a forbidden character, or no extension)=" + originalFilename);
         }
+        // A new version or format adds its bytes under the file's folder: any quota above must
+        // have room, asked before anything is written (roadmap 10.4).
+        folderQuotaService.requireRoom(fileInfo.getFolder(), multipartFile.getSize());
 
         String name = ModelConverterUtil.getFileNameWithoutExtension(originalFilename);
         String extension = getFileExtension(originalFilename);
@@ -435,6 +442,9 @@ public class FileService {
             throw new DuplicateResourceException("file with name=" + fileInfo.getFileName()
                     + " already exists in folder id=" + target.getId());
         }
+        // Every revision's bytes arrive under the target: a quota above it that does not already
+        // hold the file must have room (roadmap 10.4). Nothing on disk moves.
+        folderQuotaService.requireRoom(target, fileDetailsRepository.sumSizeOf(fileInfoId), fileInfo.getFolder().getPath());
 
         int from = fileInfo.getFolder().getId();
         fileInfo.setFolder(target);

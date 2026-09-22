@@ -156,21 +156,21 @@
                         <span th:text="#{explorer.manage.newFolder}">پوشهٔ جدید</span>
                     </button>
                     <button type="button" class="btn btn-secondary btn-sm" x-cloak
-                            x-show="manageable && folder && folder.kind !== 'ROOT' && folder.kind !== 'USER_HOME'"
+                            x-show="manageable && folder && !isSystemFolder(folder)"
                             @click="openManage('rename')"
                             sec:authorize="hasAuthority('REST_RENAME_FOLDER') || hasAuthority('ADMIN')">
                         <i class="bi bi-pencil" aria-hidden="true"></i>
                         <span th:text="#{explorer.manage.rename}">تغییر نام</span>
                     </button>
                     <button type="button" class="btn btn-secondary btn-sm" x-cloak
-                            x-show="manageable && folder && folder.kind !== 'ROOT' && folder.kind !== 'USER_HOME'"
+                            x-show="manageable && folder && !isSystemFolder(folder)"
                             @click="openMove()"
                             sec:authorize="hasAuthority('REST_MOVE_FOLDER') || hasAuthority('ADMIN')">
                         <i class="bi bi-arrows-move" aria-hidden="true"></i>
                         <span th:text="#{explorer.manage.move}">انتقال</span>
                     </button>
                     <button type="button" class="btn btn-secondary btn-sm" x-cloak
-                            x-show="manageable && folder && folder.kind !== 'ROOT' && folder.kind !== 'USER_HOME' && folders.length === 0 && files.length === 0"
+                            x-show="manageable && folder && !isSystemFolder(folder) && folders.length === 0 && files.length === 0"
                             @click="deleteFolder()"
                             sec:authorize="hasAuthority('REST_DELETE_FOLDER') || hasAuthority('ADMIN')">
                         <i class="bi bi-trash" aria-hidden="true"></i>
@@ -182,7 +182,7 @@
                       subtree without being told what is in it.
                     -->
                     <button type="button" class="btn btn-secondary btn-sm" x-cloak
-                            x-show="manageable && folder && folder.kind !== 'ROOT' && folder.kind !== 'USER_HOME' && (folders.length > 0 || files.length > 0)"
+                            x-show="manageable && folder && !isSystemFolder(folder) && (folders.length > 0 || files.length > 0)"
                             @click="deleteTree()"
                             sec:authorize="hasAuthority('REST_DELETE_FOLDER_TREE') || hasAuthority('ADMIN')">
                         <i class="bi bi-trash" aria-hidden="true"></i>
@@ -525,6 +525,14 @@
 
                         <p class="explorer-detail-term" th:text="#{explorer.details.depth}">عمق</p>
                         <p class="explorer-detail-value" x-text="number(selectedFolder.depth)"></p>
+
+                        <template x-if="selectedFolder.quotaBytes">
+                            <div>
+                                <p class="explorer-detail-term" th:text="#{explorer.details.quota}">سهمیه</p>
+                                <p class="explorer-detail-value"
+                                   x-text="size(selectedFolder.usedBytes) + ' / ' + size(selectedFolder.quotaBytes)"></p>
+                            </div>
+                        </template>
 
                         <template x-if="selectedFolder.tagGroup">
                             <div>
@@ -1011,7 +1019,18 @@
             },
 
             iconFor(entry) {
+                if (entry.kind === "PROFILES") {
+                    return "bi-people-fill";
+                }
+                if (entry.kind === "USER_HOME") {
+                    return "bi-person-fill";
+                }
                 return entry.folderCount > 0 ? "bi-folder-fill" : "bi-folder2";
+            },
+
+            /** The kinds nobody renames, moves or deletes by hand: the root, Profiles, a personal folder. */
+            isSystemFolder(folder) {
+                return folder.kind === "ROOT" || folder.kind === "PROFILES" || folder.kind === "USER_HOME";
             },
 
             /** Whether the form on screen is about a top-level folder, which is what carries a tag group. */

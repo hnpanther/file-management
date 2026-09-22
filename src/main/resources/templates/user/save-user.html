@@ -60,6 +60,18 @@
                         <input id="password" th:field="*{password}" class="form-control technical"
                                dir="ltr" type="password" autocomplete="new-password" required>
                     </div>
+                    <!--
+                      The personal folder (roadmap 10.4): Profiles/{username}, with a WRITE grant for the user
+                      and the installation's default quota. Ticked by default; the administrator decides.
+                      th:field on a Boolean renders the hidden "_createHome" too, so unticked posts false.
+                    -->
+                    <div th:if="${#strings.equals(pageType, 'create')}" class="form-group md:col-span-2">
+                        <label class="flex items-center gap-2 text-sm">
+                            <input type="checkbox" th:field="*{createHome}">
+                            <span th:text="#{user.create.createHome}">پوشهٔ شخصی برای این کاربر ساخته شود (Profiles/نام کاربری)</span>
+                        </label>
+                        <p class="field-hint" th:text="#{user.create.createHomeHint}">کاربر روی پوشهٔ شخصی خود دسترسی نوشتن دارد؛ سهمیهٔ آن بعداً از صفحهٔ کاربر قابل تنظیم است.</p>
+                    </div>
                 </div>
 
                 <div th:if="${showMessage && valid}" class="alert alert-success" role="status"

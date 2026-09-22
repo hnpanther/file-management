@@ -68,10 +68,13 @@ Folder(ROOT "Home")
 * **Folder** — one table, one tree, `parent_id` for structure and `path` as a derived index: a
   materialised path of ids with a leading and trailing slash (`/1/5/26/`), built from ids so a
   rename or a move costs nothing, and carrying the trailing slash so `/1/7/` cannot match
-  `/1/70/`. `kind` is `ROOT` (one row, `Home`), `FOLDER` for everything below it, or `USER_HOME`
-  (reserved for Phase 8); `depth` is the level, and the only thing that varies with it. Every
+  `/1/70/`. `kind` is `ROOT` (one row, `Home`), `FOLDER` for everything below it, `PROFILES`
+  (one row, `Home/Profiles`, `V2.11`) or `USER_HOME` (a user's own folder under it, carrying
+  `owner_user_id`); `depth` is the level, and the only thing that varies with it. Every
   folder below the root holds folders and files alike, down to
-  `filemanagement.folders.max-depth` — a limit for people, not for the code. `name` is a safe
+  `filemanagement.folders.max-depth` — a limit for people, not for the code — except
+  `Profiles`, which holds homes and nothing else. `quota_bytes` (`V2.11`) caps the bytes of
+  every revision beneath the folder, null for none — see "Personal folders and quotas". `name` is a safe
   path segment (`ValidationUtil`: no separator, none of `<>:"|?*`, no control character, not a
   dot-name, no trailing dot or space, not a Windows-reserved name — spaces, dots and Persian
   are fine), at most 100 characters, unique among siblings case-insensitively, and one name is
@@ -445,7 +448,7 @@ document, so a browser navigation still lands on a page.
 | GET | `/files/file-info`, `/files/file-info/{id}` | `GET_ALL_FILE_INFO_PAGE`, `FILE_INFO_PAGE` |
 | GET | `/files/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `DOWNLOAD_FILE` |
 | GET / POST | `/files/file-info/{fileInfoId}/file-details/create`, `.../file-details` | `SAVE_NEW_FILE_DETAILS_PAGE`, `SAVE_NEW_FILE_DETAILS` |
-| GET / POST | `/users/**`, `/roles/**` | one permission per handler |
+| GET / POST | `/users/**`, `/roles/**` | one permission per handler; `POST /users/{id}/home` creates the user's personal folder (`CREATE_USER_HOME`), `POST /users/{id}/home/quota` sets or clears its quota in megabytes (`SET_FOLDER_QUOTA`) |
 
 </details>
 
@@ -613,6 +616,39 @@ off, `accessFor` answers "unrestricted" for everyone.
 With the flag off, holding `DOWNLOAD_FILE` still grants download of every file, private ones
 included (issue 14) — the endpoint permission is then the only check there is.
 
+### Personal folders and quotas
+
+A user may have one folder of their own, `Home/Profiles/{username}` (kind `USER_HOME`,
+`V2.11`, roadmap 10.4), made by `UserHomeService.ensureHome`: the folder under `Profiles`
+(kind `PROFILES`, one row, created or adopted by the migration), named after the user and
+labelled with their name; a `WRITE` grant in `user_folder` for that user directly, so that
+with folder access on they reach it without any role; and the quota
+`filemanagement.profiles.default-quota-mb` gives a new home (`0` for none). Idempotent, one
+transaction, one `action_history` row. It is asked for by the new-user form (a box ticked by
+default) and by the user's page (`POST /users/{id}/home`, `CREATE_USER_HOME`) — an
+administrator's decision each time, never on a sign-in. After signing in, a user who has a
+home and may open the explorer lands in it (`HomeController`); everyone else lands where they
+always did. A home is renamed only with its user (`UserService.updateUser` →
+`renameHomeOf`), moved by nobody, deleted by nobody — `FolderService` and the tree delete
+refuse all three for `ROOT`, `PROFILES` and `USER_HOME` alike (`isSystemFolder`) — and
+nothing is created under `Profiles` by hand (`canHoldFolders` and `canHoldFiles` say no).
+
+**The quota** is a column on `folder`, not on the user, so the check is one and general:
+`FolderQuotaService.requireRoom(target, bytes)` walks the target's path, and every folder on
+it carrying `quota_bytes` must satisfy `used + incoming <= quota`, `used` being
+`SUM(file_details.file_size)` over that folder's subtree, computed each time (a maintained
+counter would drift; the sum runs over the index on `path`). It is asked before anything is
+inserted on every path that adds bytes: `createNewFile`, `createNewFileDetails` (version and
+format alike), `moveFile` (with the file's revisions as the incoming size) and
+`FolderService.move` (the subtree's), the last two skipping any quota folder the source
+already sits under — a move within a quota adds nothing to it, a move out asks nothing. A
+refusal is `QuotaExceededException`, a 409 that names the folder, its quota, its usage and
+the size; the upload forms say it in Persian, the JSON layers return it as problem detail. A
+home's quota is set, changed or cleared on the user's page (`POST /users/{id}/home/quota`,
+megabytes or blank, `SET_FOLDER_QUOTA`); lowering it below what is stored is allowed and
+simply stops the next upload. The explorer's folder details show `usedBytes / quotaBytes` on a
+folder that carries one.
+
 ### Run-time settings
 
 `app_setting` (`V2.10`) holds the switches an administrator flips without a restart, one row per
@@ -759,6 +795,7 @@ migrations themselves, in `src/main/resources/db/migration`:
 | `V2.6__Add_Upload_Policy.sql` | `upload_policy` (one system-wide row, `role_id` null; one per role that has its own), `upload_policy_rule` (extension → `max_size_bytes`); the system-wide row seeded with the nine default kinds at 20 MB |
 | `V2.7__Add_Content_Kind.sql` | `content_kind`: the custom half of the content catalogue - extension, media type, and a byte signature at an offset or "text only"; empty until an administrator adds one |
 | `V2.10__Add_App_Setting.sql` | `app_setting` (name → value, audited), seeded with `public-files.anonymous = true`, the behaviour there always was; `GENERAL_SETTINGS_PAGE` and `SAVE_GENERAL_SETTINGS` |
+| `V2.11__Profiles_And_Quota.sql` | `folder.quota_bytes`; `uq_folder_owner_user` (one home per user); the `Profiles` top-level folder (kind `PROFILES`, in a `profiles` tag group), created — or adopted, if a top-level folder of that name exists; `CREATE_USER_HOME` and `SET_FOLDER_QUOTA` |
 | `V2.9__Folders_Any_Depth.sql` | Folders of any depth: refuses to run where a top-level folder or a stored key is named `files`; `CATEGORY` / `SUB_CATEGORY` / `TAG` become `FOLDER`; `REST_MOVE_FOLDER` (mapped onto the roles that may rename) and the three `TAG_GROUP` page permissions |
 | `V2.8__Remove_Taxonomy.sql` | Phase 7 step 4. Fails fast first: `file_info.folder_id NOT NULL`, `uq_file_info_name_per_folder`, `folder.tag_group_id` backfilled from each category's general tag and required on every `CATEGORY` row. Then the four `REST_*_FOLDER` / `REST_GET_TAG_GROUPS` permissions, mapped onto the roles that held the taxonomy ones; the 27 taxonomy permissions deleted; `file_info` / `file_details` lose `file_path`, `relative_path`, `file_sub_category_id`, `main_tag_file_id`; `folder` loses `general_tag_id`, `source_type`, `source_id`; `main_tag_file`, `file_sub_category`, `file_category`, `general_tag` dropped. Not reversible without the backup |
 
@@ -800,6 +837,7 @@ schema at startup but never modifies it.
 | `filemanagement.default.page-size` / `element-size` | `30` | injected per-controller with `@Value` |
 | `filemanagement.folders.max-depth` | `6` | `FolderService`: how deep the tree may go below `Home`; a create or a move past it is a 400 |
 | `filemanagement.folders.max-delete-files` | `1000` | `FolderTreeDeleteService`: the most files one recursive delete may remove; a larger tree is a 409 naming the count |
+| `filemanagement.profiles.default-quota-mb` | `0` | `UserHomeService`: the quota a new personal folder is created with, in megabytes; `0` for none. Changed per user on the user's page afterwards |
 | `filemanagement.auth.ldap.activedirectory.enabled` / `.domain` / `.url` | `false`, `hnp.local`, `ldap://172.29.76.9` | |
 
 Note the two different prefixes (`file.management.*` and `filemanagement.*`) and that no

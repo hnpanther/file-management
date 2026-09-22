@@ -159,6 +159,12 @@ public enum PermissionEnum {
     //@DeleteMapping("{folderId}", params = "recursive=true") - delete a folder with every folder, file and byte beneath it (roadmap 10.3)
     REST_DELETE_FOLDER_TREE,
 
+    //@PostMapping("{userId}/home") - create a user's personal folder under Profiles (UserController, roadmap 10.4)
+    CREATE_USER_HOME,
+
+    //@PostMapping("{userId}/home/quota") - set or clear the quota of a user's personal folder (UserController, roadmap 10.4)
+    SET_FOLDER_QUOTA,
+
     //@PutMapping("{folderId}/move") - move a folder, with everything beneath it, under another parent
     REST_MOVE_FOLDER,
 
