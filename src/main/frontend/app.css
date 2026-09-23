@@ -606,6 +606,12 @@
     .folder-chooser-note    { @apply px-2 py-2 text-xs text-ink-500; }
     .folder-chooser-actions { @apply flex flex-wrap items-center gap-3 border-t border-ink-100 px-2 py-2; }
     .folder-chooser-chosen  { @apply flex min-w-0 items-center gap-1.5 text-sm text-ink-700; }
+    /* The share-link panel (fragments.html :: share-link-panel): the form, then the URL once made. */
+    .share-link-panel       { @apply mt-2 flex flex-col gap-3 rounded-md border border-ink-200 bg-ink-50 p-3; }
+    .share-link-head        { @apply flex items-start justify-between gap-2; }
+    .share-link-form        { @apply flex flex-col gap-3; }
+    .share-link-result      { @apply flex flex-col gap-2; }
+    .share-link-url         { @apply flex items-center gap-2; }
     /* The folders above a file on its page, each a link into the explorer. */
     .folder-path            { @apply flex flex-wrap items-center gap-1 rounded-md border border-ink-200 bg-ink-50 px-3 py-2 text-sm; }
     .folder-path-link       { @apply rounded-[var(--radius-control)] px-1 py-0.5 text-ink-700 hover:bg-ink-100 hover:text-ink-900; }

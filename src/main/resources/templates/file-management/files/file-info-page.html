@@ -173,6 +173,14 @@
 
 
         <div class="col">
+            <!--
+              The share-link panel (roadmap 10.5), one for the page: a revision row dispatches
+              `share-link` with its id and label, and the panel opens for that revision.
+            -->
+            <div class="mb-3 px-3" x-data="shareLinkPanel(SHARE_LINK)" @share-link.window="start($event.detail.id, $event.detail.label)"
+                 sec:authorize="hasAuthority('CREATE_SHARE_LINK') || hasAuthority('ADMIN')">
+                <div th:replace="~{fragments.html :: share-link-panel}"></div>
+            </div>
             <div class="e-tabs mb-3 px-3">
                 <ul class="nav nav-tabs">
                     <li class="nav-item"><a class="nav-link active" href="#" th:text="#{file.versionsAndFormats}">نسخه‌ها و فرمت‌ها</a></li>
@@ -230,6 +238,11 @@
 
                                                     <a sec:authorize="hasAuthority('REST_CHANGE_STATE_FILE_DETAILS') || hasAuthority('ADMIN')"
                                                        class="btn btn-sm btn-outline-secondary badge" th:onclick="changeFileDetailsState(/*[[${fd.getId()}]]*/, /*[[${fd.getState}]]*/)" type="button" th:text="${fd.getState() == 0} ? #{state.public} : #{state.private}"></a>
+                                                    <a sec:authorize="hasAuthority('CREATE_SHARE_LINK') || hasAuthority('ADMIN')"
+                                                       class="btn btn-sm btn-outline-secondary badge" type="button"
+                                                       th:attr="data-file-details-id=${fd.getId()},data-label=${fd.getFileName() + ' v' + fd.getVersion()}"
+                                                       onclick="window.dispatchEvent(new CustomEvent('share-link', { detail: { id: Number(this.dataset.fileDetailsId), label: this.dataset.label } }))"
+                                                       th:text="#{shareLink.button.short}">لینک موقت</a>
 
                                                 </div>
                                             </td>
@@ -266,6 +279,13 @@
 <th:block th:replace="~{fragments.html :: scripts}"></th:block>
 
 <script th:inline="javascript">
+    const SHARE_LINK = {
+        createUrl:        /*[[@{/resource/files/file-details/{id}/share-links}]]*/ "/resource/files/file-details/{id}/share-links",
+        maxMinutes:       /*[[${shareLinkRules.maxMinutes()}]]*/ 1440,
+        defaultMinutes:   /*[[${shareLinkRules.defaultMinutes()}]]*/ 60,
+        passwordRequired: /*[[${shareLinkRules.passwordRequired()}]]*/ false,
+        copy: { failed: /*[[#{shareLink.failed}]]*/ "failed" }
+    };
 
     function deleteFileInfo() {
         if(confirm([[#{js.confirmDeleteFile}]])) {

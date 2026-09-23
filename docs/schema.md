@@ -121,7 +121,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V2.11`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
+_As of migration `V2.12`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
 
 ### `action_history`
 
@@ -274,6 +274,30 @@ _As of migration `V2.11`. Types and defaults are MySQL's own; every table is Inn
 * **index** `ix_file_info_created_at` (`created_at`)
 * **index** `ix_file_info_folder` (`folder_id`)
 * **index** `ix_file_info_state` (`state`)
+
+### `file_share_link`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `token_hash` | `varchar(64)` | no |  |  |
+| `file_details_id` | `int` | no |  |  |
+| `expires_at` | `datetime` | no |  |  |
+| `password_hash` | `varchar(100)` | yes |  |  |
+| `max_downloads` | `int` | yes |  |  |
+| `download_count` | `int` | no | `0` |  |
+| `failed_attempts` | `int` | no | `0` |  |
+| `locked_until` | `datetime` | yes |  |  |
+| `revoked_at` | `datetime` | yes |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `created_by` | `int` | no |  |  |
+
+* **primary key** `id`
+* **unique** `uq_file_share_link_token` (`token_hash`)
+* **foreign key** `fk_file_share_link_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_file_share_link_file_details` `file_details_id` → `file_details` (`id`), on delete cascade
+* **index** `ix_file_share_link_created_by` (`created_by`)
+* **index** `ix_file_share_link_file_details` (`file_details_id`)
 
 ### `file_tag`
 

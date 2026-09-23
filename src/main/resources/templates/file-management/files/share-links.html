@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{shareLinks.pageTitle}">لینک‌های موقت | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The share links a person has made (roadmap 10.5) - every link, for a holder of
+  REVOKE_SHARE_LINK - with what each is for, its state, and a revoke. The token is never shown
+  here: it was shown once, when the link was made. Revoking is one DELETE from the row.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content" x-data="shareLinksPage()">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{nav.section.files}">مدیریت فایل‌ها</div>
+        <h1 th:text="#{shareLinks.heading}">لینک‌های موقت</h1>
+        <p class="page-description" th:text="${allLinks} ? #{shareLinks.descriptionAll} : #{shareLinks.descriptionMine}">
+            لینک‌هایی که ساخته‌اید. هر لینک به یک نسخهٔ مشخص اشاره می‌کند و پس از پایان اعتبار، لغو یا رسیدن به سقف دانلود کار نمی‌کند.
+        </p>
+    </header>
+
+    <div class="alert alert-warning mb-5" role="alert" x-show="error" x-cloak x-text="error"></div>
+
+    <section class="card">
+        <div class="card-body">
+            <p class="text-ink-500" th:if="${#lists.isEmpty(links)}" th:text="#{shareLinks.empty}">هنوز لینکی ساخته نشده است.</p>
+
+            <div class="table-responsive" th:unless="${#lists.isEmpty(links)}">
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th th:text="#{shareLinks.column.file}">فایل</th>
+                        <th th:text="#{shareLinks.column.version}">نسخه</th>
+                        <th th:if="${allLinks}" th:text="#{shareLinks.column.createdBy}">سازنده</th>
+                        <th th:text="#{shareLinks.column.created}">ساخته‌شده</th>
+                        <th th:text="#{shareLinks.column.expires}">اعتبار تا</th>
+                        <th th:text="#{shareLinks.column.downloads}">دانلود</th>
+                        <th th:text="#{shareLinks.column.password}">رمز</th>
+                        <th th:text="#{shareLinks.column.status}">وضعیت</th>
+                        <th class="w-10"><span class="sr-only" th:text="#{explorer.column.actions}">عملیات</span></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="link : ${links}" th:id="'share-link-' + ${link.id()}"
+                        th:attr="x-show='!revoked.has(' + ${link.id()} + ')'">
+                        <td class="technical align-middle" dir="ltr">
+                            <a th:href="@{'/files/file-info/' + ${link.fileInfoId()}}" th:text="${link.fileName()}">report.pdf</a>
+                        </td>
+                        <td class="technical align-middle" dir="ltr" th:text="'v' + ${link.version()}">v1</td>
+                        <td th:if="${allLinks}" class="technical align-middle" dir="ltr" th:text="${link.createdBy()}">user</td>
+                        <td class="align-middle" dir="ltr" th:text="${@jalali.format(link.createdAt())}"></td>
+                        <td class="align-middle" dir="ltr" th:text="${@jalali.format(link.expiresAt())}"></td>
+                        <td class="technical align-middle" dir="ltr"
+                            th:text="${link.downloadCount()} + (${link.maxDownloads()} != null ? ' / ' + ${link.maxDownloads()} : '')">0</td>
+                        <td class="align-middle" th:text="${link.passwordProtected()} ? #{shareLinks.password.yes} : #{shareLinks.password.no}">—</td>
+                        <td class="align-middle">
+                            <span class="badge badge-secondary" th:switch="${link.status().name()}">
+                                <span th:case="'ACTIVE'" th:text="#{shareLinks.status.active}">فعال</span>
+                                <span th:case="'EXPIRED'" th:text="#{shareLinks.status.expired}">منقضی</span>
+                                <span th:case="'REVOKED'" th:text="#{shareLinks.status.revoked}">لغوشده</span>
+                                <span th:case="'EXHAUSTED'" th:text="#{shareLinks.status.exhausted}">تمام‌شده</span>
+                            </span>
+                        </td>
+                        <td class="align-middle">
+                            <button type="button" class="btn btn-secondary btn-sm"
+                                    th:if="${link.status().name() == 'ACTIVE'}"
+                                    th:attr="data-link-id=${link.id()}"
+                                    @click="revoke($el.dataset.linkId)"
+                                    th:text="#{shareLinks.revoke}">لغو</button>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+<script th:inline="javascript">
+    /*<![CDATA[*/
+    const SL = {
+        revokeUrl: /*[[@{/resource/share-links/}]]*/ "/resource/share-links/",
+        confirmRevoke: /*[[#{shareLinks.confirmRevoke}]]*/ "revoke?",
+        failed: /*[[#{shareLinks.revokeFailed}]]*/ "failed"
+    };
+
+    function shareLinksPage() {
+        return {
+            error: "",
+            revoked: new Set(),
+
+            async revoke(id) {
+                if (!window.confirm(SL.confirmRevoke)) {
+                    return;
+                }
+                const csrf = window.appCsrf();
+                const headers = { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" };
+                if (csrf.header) {
+                    headers[csrf.header] = csrf.token;
+                }
+                try {
+                    const response = await fetch(SL.revokeUrl + encodeURIComponent(id), { method: "DELETE", headers: headers });
+                    if (response.status === 401) {
+                        window.appSessionExpired();
+                        return;
+                    }
+                    if (!response.ok) {
+                        throw new Error(String(response.status));
+                    }
+                    // Gone from the list rather than re-labelled: what matters is that it no longer works.
+                    this.revoked = new Set([...this.revoked, Number(id)]);
+                } catch (e) {
+                    this.error = SL.failed;
+                }
+            }
+        };
+    }
+    /*]]>*/
+</script>
+</body>
+</html>

@@ -112,6 +112,21 @@
                     </a>
                 </li>
                 <!--
+                  One's own folder (roadmap 10.4), for whoever has one and may open the explorer:
+                  a place to go, not a landing page - signing in lands where it always did.
+                -->
+                <!-- th:with on a block of its own: th:if is evaluated before th:with on one element. -->
+                <th:block th:with="myHomeFolderId=${@userHomeNavigation.folderIdOf(#authentication)}">
+                    <li th:if="${myHomeFolderId != null}">
+                        <a id="nav-my-folder" th:href="@{/files/explorer(folder=${myHomeFolderId})}" target="_blank" rel="noopener"
+                           class="app-nav-link" th:title="#{nav.files.explorer.newTab}">
+                            <i class="bi bi-person-fill app-nav-icon" aria-hidden="true"></i>
+                            <span th:text="#{nav.files.myFolder}">پوشهٔ شخصی من</span>
+                            <i class="bi bi-box-arrow-up-left ms-auto text-[0.7rem] text-ink-400" aria-hidden="true"></i>
+                        </a>
+                    </li>
+                </th:block>
+                <!--
                   The explorer is a workspace rather than a page of this shell - it fills its own
                   tab and carries its own top bar - so it sits here, above the sections, and opens
                   in a new tab. The arrow says so before the click rather than after it.
@@ -127,7 +142,7 @@
                 </li>
             </ul>
 
-            <section sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('CREATE_FILE_PAGE') || hasAuthority('FILE_TREE_PAGE') || hasAuthority('ADMIN')"
+            <section sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('CREATE_FILE_PAGE') || hasAuthority('FILE_TREE_PAGE') || hasAuthority('SHARE_LINKS_PAGE') || hasAuthority('ADMIN')"
                      class="flex flex-col gap-0.5">
                 <h3 class="app-nav-heading" th:text="#{nav.section.files}">مدیریت فایل‌ها</h3>
                 <a sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('ADMIN')"
@@ -144,6 +159,11 @@
                    th:href="@{/files/create}" class="app-nav-link">
                     <i class="bi bi-cloud-arrow-up app-nav-icon" aria-hidden="true"></i>
                     <span th:text="#{nav.files.upload}">بارگذاری فایل جدید</span>
+                </a>
+                <a sec:authorize="hasAuthority('SHARE_LINKS_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/files/share-links}" class="app-nav-link">
+                    <i class="bi bi-link-45deg app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.files.shareLinks}">لینک‌های موقت</span>
                 </a>
             </section>
 

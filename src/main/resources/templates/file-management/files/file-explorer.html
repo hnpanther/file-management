@@ -615,6 +615,20 @@
                             <i class="bi bi-arrows-move" aria-hidden="true"></i>
                             <span th:text="#{explorer.manage.moveFile}">انتقال فایل به پوشهٔ دیگر</span>
                         </button>
+                        <!--
+                          A temporary link to the file's latest revision (roadmap 10.5): the panel is its
+                          own Alpine scope, opened with the revision the row already names.
+                        -->
+                        <div class="mt-2" x-show="selectedFile.latestFileDetailsId" x-cloak
+                             sec:authorize="hasAuthority('CREATE_SHARE_LINK') || hasAuthority('ADMIN')"
+                             x-data="shareLinkPanel(SHARE_LINK)">
+                            <button type="button" class="btn btn-secondary btn-sm w-full"
+                                    @click="start(selectedFile.latestFileDetailsId, selectedFile.name + ' v' + selectedFile.lastVersion + ' (' + (selectedFile.latestFormat || '') + ')')">
+                                <i class="bi bi-link-45deg" aria-hidden="true"></i>
+                                <span th:text="#{shareLink.button}">لینک موقت برای آخرین نسخه</span>
+                            </button>
+                            <div th:replace="~{fragments.html :: share-link-panel}"></div>
+                        </div>
                     </div>
                 </template>
             </div>
@@ -660,6 +674,13 @@
     };
 
     const INITIAL_FOLDER_ID = /*[[${initialFolderId}]]*/ null;
+    const SHARE_LINK = {
+        createUrl:        /*[[@{/resource/files/file-details/{id}/share-links}]]*/ "/resource/files/file-details/{id}/share-links",
+        maxMinutes:       /*[[${shareLinkRules.maxMinutes()}]]*/ 1440,
+        defaultMinutes:   /*[[${shareLinkRules.defaultMinutes()}]]*/ 60,
+        passwordRequired: /*[[${shareLinkRules.passwordRequired()}]]*/ false,
+        copy: { failed: /*[[#{shareLink.failed}]]*/ "failed" }
+    };
 
     /** Carries the status through, so a refusal reads differently from a failure. */
     class ExplorerError extends Error {

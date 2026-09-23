@@ -17,6 +17,7 @@ import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
+import com.hnp.filemanagement.repository.FileShareLinkRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import com.hnp.filemanagement.util.SearchTerms;
@@ -100,6 +101,7 @@ public class FileService {
     private final TagMirrorService tagMirrorService;
     private final FolderService folderService;
     private final FolderQuotaService folderQuotaService;
+    private final FileShareLinkRepository fileShareLinkRepository;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileDetailsRepository fileDetailsRepository,
@@ -110,7 +112,8 @@ public class FileService {
                        TagMirrorService tagMirrorService,
                        UploadPolicyService uploadPolicyService,
                        FolderService folderService,
-                       FolderQuotaService folderQuotaService) {
+                       FolderQuotaService folderQuotaService,
+                       FileShareLinkRepository fileShareLinkRepository) {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
@@ -121,6 +124,7 @@ public class FileService {
         this.folderService = folderService;
         this.tagMirrorService = tagMirrorService;
         this.folderQuotaService = folderQuotaService;
+        this.fileShareLinkRepository = fileShareLinkRepository;
     }
 
     // ------------------------------------------------------------------ upload
@@ -534,6 +538,8 @@ public class FileService {
                     : directory + "/" + fileInfo.getFileName();
         }
 
+        // Share links to any of its revisions first (roadmap 10.5), then the file and its revisions.
+        fileShareLinkRepository.deleteAll(fileShareLinkRepository.findByFileDetailsFileInfoId(id));
         fileInfoRepository.delete(fileInfo);
 
         actionHistoryService.saveActionHistory(EntityEnum.FileInfo, id, ActionEnum.DELETE, principalId,
@@ -598,6 +604,10 @@ public class FileService {
         boolean lastFormatOfItsVersion = fileDetailsRepository.countByFileInfoIdAndVersion(fileInfoId, version) == 1;
         String storageKey = fileDetails.getStorageKey();
 
+        // A share link to this revision goes with it - said here, not left to the schema's
+        // cascade, so that a link already in the persistence context cannot outlive its target.
+        fileShareLinkRepository.deleteAll(fileShareLinkRepository.findByFileDetailsId(fileDetailsId));
+
         fileInfo.removeFileDetails(fileDetails);
         fileInfoRepository.recalculateLastVersion(fileInfoId);
 
@@ -630,6 +640,18 @@ public class FileService {
     public FileDownloadDTO downloadPublicFile(int fileDetailsId) {
         FileDetails fileDetails = fileDetailsRepository.findPublicFile(fileDetailsId).orElseThrow(
                 () -> new ResourceNotFoundException("public fileDetails with id=" + fileDetailsId + " not exists")
+        );
+        return toDownload(fileDetails);
+    }
+
+    /**
+     * The bytes of a revision a share link names - <b>no access check</b>, because the link is the
+     * access: {@link ShareLinkService} has verified the token, the expiry, the count and the
+     * password before asking, and nothing else may call this. A revision that is gone is a 404.
+     */
+    public FileDownloadDTO downloadViaShareLink(int fileDetailsId) {
+        FileDetails fileDetails = fileDetailsRepository.findByIdWithFileInfo(fileDetailsId).orElseThrow(
+                () -> new ResourceNotFoundException("fileDetails with id=" + fileDetailsId + " not exists")
         );
         return toDownload(fileDetails);
     }

@@ -525,4 +525,32 @@ none) to `/users/{id}/home/quota`; without one, a sentence and - for `CREATE_USE
 button posting to `/users/{id}/home`. Both posts redirect back with a flash message
 (`homeMessage`, `homeValid`) the card renders as a success or warning alert. Neither is
 automatic: whether a person gets a folder is decided by an administrator, on one of these two
-screens.
+screens. Having one changes nothing about where a person lands after signing in - it adds an
+entry to the navigation, "my folder" (`nav-my-folder`), opening the explorer at that folder in a
+new tab, rendered only for somebody who has one and may open the explorer
+(`UserHomeNavigation.folderIdOf`, asked from the navbar fragment through a `th:with` on a block
+of its own, since `th:if` is evaluated before `th:with` on one element).
+
+### Temporary share links
+
+Three screens (roadmap 10.5). **The panel** (`fragments.html :: share-link-panel`, an Alpine
+component `shareLinkPanel(config)` in `app.js`) asks for the validity in minutes (the cap shown,
+a larger number clamped by the server), a password (optional, or required when the installation
+says so - the field turns `required`) and an optional number of downloads; posts once; and shows
+the URL in a read-only field with a copy button - the one time the token is ever shown. The
+explorer's file pane opens it for the file's latest revision (the one the download button names)
+and the file page's revision rows open it for that revision (a plain `CustomEvent` on `window`,
+since the rows sit outside the panel's scope); both only for `CREATE_SHARE_LINK`, and both read
+the cap, the default and the password rule from `shareLinkRules`, put on the model by
+`ShareLinkRulesAdvice`.
+
+**The landing page** (`share/download.html`) is public and uses the login page's shell: the
+file's name, version and size, when the link ends, downloads left when capped, a password field
+when the link has one, and one button. It never downloads on the `GET`; the `POST` does, or
+renders the page again with the reason - a wrong password, or a lock with the time it ends and
+the form disabled. A dead link is the ordinary 404 page, the same for every reason.
+
+**The share-links page** (`file-management/files/share-links.html`, `/files/share-links`)
+lists one's own links - or every link, for `REVOKE_SHARE_LINK` - with the file, version,
+maker, dates, downloads over the cap, whether there is a password, the state as a badge, and a
+revoke button on active ones that DELETEs and hides the row.

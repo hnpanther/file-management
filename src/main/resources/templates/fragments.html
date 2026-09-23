@@ -95,6 +95,81 @@
 </div>
 
 <!--
+  The share-link panel (roadmap 10.5): the form and, once made, the URL. Rendered inside an
+  element whose x-data is `shareLinkPanel(...)`; a page opens it with start(fileDetailsId, label).
+-->
+<div th:fragment="share-link-panel" class="share-link-panel" x-show="open" x-cloak
+     @keydown.escape.window="close()">
+    <div class="share-link-head">
+        <p class="text-sm text-ink-700">
+            <span th:text="#{shareLink.title}">لینک موقت برای</span>
+            <strong class="technical" dir="ltr" x-text="subject ? subject.label : ''"></strong>
+        </p>
+        <button type="button" class="explorer-row-action" @click="close()" th:title="#{explorer.tree.close}">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+    </div>
+
+    <form class="share-link-form" x-show="!result" @submit.prevent="submit()">
+        <div class="form-group">
+            <label th:text="#{shareLink.minutes}">مدت اعتبار (دقیقه)</label>
+            <input type="number" min="1" :max="maxMinutes" step="1" class="form-control technical" dir="ltr" x-model="minutes" required>
+            <p class="field-hint">
+                <span th:text="#{shareLink.minutesHint}">حداکثر</span>
+                <span class="technical" dir="ltr" x-text="maxMinutes"></span>
+                <span th:text="#{shareLink.minutesUnit}">دقیقه؛ عدد بزرگ‌تر به همین سقف کاهش می‌یابد.</span>
+            </p>
+        </div>
+        <div class="form-group">
+            <label>
+                <span th:text="#{shareLink.password}">رمز لینک</span>
+                <span class="text-ink-400" x-show="!passwordRequired" th:text="#{shareLink.optional}">(اختیاری)</span>
+            </label>
+            <input type="password" class="form-control technical" dir="ltr" x-model="password" autocomplete="new-password"
+                   maxlength="72" :required="passwordRequired">
+        </div>
+        <div class="form-group">
+            <label>
+                <span th:text="#{shareLink.maxDownloads}">حداکثر تعداد دانلود</span>
+                <span class="text-ink-400" th:text="#{shareLink.optional}">(اختیاری)</span>
+            </label>
+            <input type="number" min="1" step="1" class="form-control technical" dir="ltr" x-model="maxDownloads"
+                   th:placeholder="#{shareLink.unlimited}">
+        </div>
+        <p class="text-sm text-red-600" x-show="error" x-cloak x-text="error"></p>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-sm" :disabled="busy">
+                <i class="bi bi-link-45deg" aria-hidden="true"></i>
+                <span th:text="#{shareLink.create}">ساخت لینک</span>
+            </button>
+        </div>
+    </form>
+
+    <div class="share-link-result" x-show="result" x-cloak>
+        <p class="text-sm text-ink-700" th:text="#{shareLink.created}">لینک ساخته شد. این آدرس فقط همین یک بار نمایش داده می‌شود:</p>
+        <div class="share-link-url">
+            <input type="text" class="form-control technical" dir="ltr" readonly :value="result ? result.url : ''"
+                   @focus="$el.select()">
+            <button type="button" class="btn btn-secondary btn-sm" @click="copy()">
+                <i class="bi" :class="copied ? 'bi-clipboard-check' : 'bi-clipboard'" aria-hidden="true"></i>
+                <span x-show="!copied" th:text="#{shareLink.copy}">کپی</span>
+                <span x-show="copied" x-cloak th:text="#{shareLink.copied}">کپی شد</span>
+            </button>
+        </div>
+        <p class="field-hint">
+            <span th:text="#{shareLink.expires}">اعتبار تا</span>
+            <span class="technical" dir="ltr" x-text="result ? result.expiresAt.replace('T', ' ').substring(0, 16) : ''"></span>
+            <span x-show="result && result.passwordProtected" th:text="#{shareLink.withPassword}">· با رمز</span>
+            <span x-show="result && result.maxDownloads">
+                <span>·</span>
+                <span class="technical" dir="ltr" x-text="result ? result.maxDownloads : ''"></span>
+                <span th:text="#{shareLink.downloads}">دانلود</span>
+            </span>
+        </p>
+    </div>
+</div>
+
+<!--
   The rules table. One row per catalogued kind: a checkbox that allows it, and its limit in whole
   megabytes. On the role page the whole table follows a mode radio and is disabled while the
   role is governed by the system-wide policy: the Alpine scope that owns `mode` is the role

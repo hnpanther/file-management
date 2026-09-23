@@ -74,6 +74,8 @@ class FileServiceUnitTest {
     private UploadPolicyService uploadPolicyService;
     @Mock
     private FolderQuotaService folderQuotaService;
+    @Mock
+    private com.hnp.filemanagement.repository.FileShareLinkRepository fileShareLinkRepository;
 
     @InjectMocks
     private FileService underTest;
