@@ -202,6 +202,9 @@ database **and** `base-dir` together.
 | `filemanagement.share-links.max-minutes` | `1440` | the longest a share link may live; a longer request is clamped to it |
 | `filemanagement.share-links.default-minutes` | `60` | its validity when the maker does not say |
 | `filemanagement.share-links.password` | `OPTIONAL` | `REQUIRED` refuses a link without a password |
+| `filemanagement.storage.sweep-enabled` | `true` | whether the scheduled sweep of unfinished byte writes runs |
+| `filemanagement.storage.sweep-every-minutes` | `15` | how often it runs |
+| `filemanagement.storage.unfinished-after-minutes` | `60` | how old a byte write must be before it is treated as abandoned |
 | `filemanagement.auth.ldap.activedirectory.enabled` | `false` | |
 
 The full list, including the share links' lock settings, is in

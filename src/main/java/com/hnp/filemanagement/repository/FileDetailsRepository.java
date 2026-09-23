@@ -126,4 +126,11 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
      */
     @Query("SELECT fd FROM FileDetails fd WHERE fd.fileInfo.id IN :fileInfoIds")
     List<FileDetails> findByFileInfoIdIn(@Param("fileInfoIds") Collection<Integer> fileInfoIds);
+
+    /**
+     * Whether any revision claims this storage key - what the sweeper asks before deleting the
+     * bytes of a write nobody finished (roadmap 2.3). It is the whole question: a key that no row
+     * names is a key nothing can ever read.
+     */
+    boolean existsByStorageKey(String storageKey);
 }

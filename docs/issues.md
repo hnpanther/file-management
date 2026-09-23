@@ -76,6 +76,33 @@ Fix: write to storage **before** the commit under a staged/temporary key, and re
 `TransactionSynchronization` that promotes on commit and deletes on rollback; for deletes, mark the
 row deleted first and let an asynchronous sweeper remove the bytes.
 
+> **Fixed for the write path** (roadmap 2.3, `V2.13`, 1.6.1), and not by a staged key.
+>
+> `StorageWriter` is the only way into `BlobStore.put`. It commits a note in
+> `file_storage_write` - in a transaction of its own, so the note survives the one whose outcome
+> is in doubt - then writes the bytes at their final key, then registers a
+> `TransactionSynchronization`: a rollback deletes the bytes, a commit does not, and either way
+> the note is cleared. So the first two bullets are gone: a commit that fails after the write
+> takes the bytes with it. A refused write - a key already taken - registers nothing, because
+> deleting a key one did not write is the one way this mechanism could destroy a stored file
+> (`StorageWriterTest`).
+>
+> The reconciliation job the last paragraph asks for is `StorageSweeper`, the application's only
+> scheduled one. What is left in `file_storage_write` is exactly the writes nobody was alive to
+> settle, and each note older than `filemanagement.storage.unfinished-after-minutes` is settled
+> against `file_details.storage_key`: a key a revision claims keeps its bytes, a key nothing
+> claims loses them. It reads notes, not the storage root, so a million stored files cost it
+> nothing (`StorageSweeperTest`).
+>
+> **The delete path stays as it is, deliberately**: every row change is flushed before a byte is
+> touched, the bytes go last, and one that cannot be removed is logged and counted into the audit
+> row rather than thrown - because undoing the rows after earlier files had already lost their
+> bytes makes every retry erase more. Removing the bytes after the commit, as suggested above,
+> cannot report what it failed to remove to the operation that asked for it, and cannot be
+> observed by a test that rolls back. What remains is a commit that fails after the bytes are
+> gone; `docs/arch.md` §5 records the trade, and the flush is what narrows it to the commit
+> itself.
+
 ### 4. `FileStorageFileSystemService.load` has a broken guard — **S1** (latent)
 
 ```java

@@ -306,6 +306,44 @@ needs it, since copying bytes between two stores is only verifiable with it (iss
 `put` refuses, what a missing key answers, what a directory delete takes with it, which keys are
 refused. A second store — the S3 adapter of Phase 4 — is finished when it passes that class.
 
+### Writing bytes inside a transaction
+
+An upload is one transaction for the database and no transaction at all for the disk. Nothing
+makes those two agree by itself, so the agreement is arranged, in `StorageWriter` — the only way
+into `put` (roadmap 2.3, [issue 3](issues.md#3-storage-writes-are-not-atomic-with-the-database--s1)):
+
+```
+StorageWriteJournal.begin(key)   ← its own transaction: commits before the bytes exist
+BlobStore.put(key, bytes)        ← the final key, not a staging one
+registerSynchronization(...)     ← afterCompletion:
+                                     rolled back → delete the bytes, clear the note
+                                     committed   → clear the note
+                                     unknown     → leave both; the sweeper decides
+```
+
+`file_storage_write` (`V2.13`) is that note, and it is the one record that outlives the
+transaction whose outcome is in doubt. What stays in it is what nobody was alive to clear — the
+process was killed between the write and the commit — and `StorageSweeper` settles each note
+older than `unfinished-after-minutes` against `file_details.storage_key`: a key a revision claims
+keeps its bytes, a key nothing claims loses them. It is the application's only scheduled job
+(`SchedulingConfig`), and it reads notes rather than walking the storage root, so its cost is the
+number of uploads in flight and not the number of files stored.
+
+**The bytes go to their final key**, not to a staging key promoted on commit. A promotion has a
+window of its own, between the rename and the commit, so it moves the problem rather than
+removing it; it would make a stored file unreadable until its transaction committed; and the
+failure it is meant to cover is the one the journal covers anyway. The window that remains is a
+commit that fails after `afterCompletion` could not run at all — a killed process — which is
+exactly what the sweeper is for.
+
+**Deletes are not deferred.** A whole-file delete, a revision delete and a tree delete all send
+every row change to the database first (`flush`), and only then remove bytes, best effort: a byte
+that cannot be removed is logged and counted into the audit row, never thrown, because undoing
+the rows after earlier files had already lost their bytes would make every retry erase more. What
+that leaves is a commit failing after the bytes are gone; the alternative — removing bytes after
+the commit — cannot report what it failed to remove to the operation that asked for it, and cannot
+be observed by any test that rolls back. The trade is recorded here on purpose.
+
 ### What each operation touches
 
 Three things describe where a file is, and they are deliberately independent: the **tree**
@@ -814,11 +852,15 @@ POST /files (multipart)
             │                        then hashId = random UUID, storageKey, content_type = ContentTypes.detect
             ├─ fileInfoRepository.save(fileInfo)          ← cascades to FileDetails
             ├─ actionHistoryService.saveActionHistory × 2
-            └─ blobStore.put(StorageKey.of(fileDetails.storageKey), bytes)  ← disk write, LAST
+            └─ storageWriter.write(fileDetails.storageKey, bytes)          ← disk write, LAST
+                 ├─ StorageWriteJournal.begin(key)   ← committed in its own transaction
+                 ├─ blobStore.put(key, bytes)
+                 └─ registerSynchronization → rolled back? delete the bytes; either way clear the note
 ```
 
-The disk write happens inside the transaction but is not part of it — see
-[issues.md](issues.md#3-storage-writes-are-not-atomic-with-the-database--s1).
+The disk write is still not part of the transaction — nothing can put it there — but it no longer
+outlives one that does not commit (§5, "Writing bytes inside a transaction",
+[issue 3](issues.md#3-storage-writes-are-not-atomic-with-the-database--s1)).
 
 ## 10. Database schema
 
@@ -883,7 +925,7 @@ schema at startup but never modifies it.
 | `spring.flyway.baseline-on-migrate` | `true` | |
 | `file.management.base-dir` | `./TempFiles/files/main/` | `FilesystemBlobStore` |
 | `spring.servlet.multipart.max-file-size` / `max-request-size` | `20MB` | |
-| `filemanagement.default.page-size` / `element-size` | `30` | injected per-controller with `@Value` |
+| `filemanagement.default.page-size` / `element-size` | `30` | rows per list page and items per dropdown, read from `FileManagementProperties` |
 | `filemanagement.folders.max-depth` | `6` | `FolderService`: how deep the tree may go below `Home`; a create or a move past it is a 400 |
 | `filemanagement.folders.max-delete-files` | `1000` | `FolderTreeDeleteService`: the most files one recursive delete may remove; a larger tree is a 409 naming the count |
 | `filemanagement.profiles.default-quota-mb` | `0` | `UserHomeService`: the quota a new personal folder is created with, in megabytes; `0` for none. Changed per user on the user's page afterwards |
@@ -892,14 +934,20 @@ schema at startup but never modifies it.
 | `filemanagement.share-links.password` | `OPTIONAL` | `REQUIRED` refuses a link without a password |
 | `filemanagement.share-links.max-failed-attempts` | `5` | wrong passwords before a link locks |
 | `filemanagement.share-links.lock-minutes` | `15` | how long it stays locked |
+| `filemanagement.storage.sweep-enabled` | `true` | `StorageSweeper`: whether the scheduled sweep of unfinished byte writes runs. Off leaves the notes for an operator to settle by hand |
+| `filemanagement.storage.sweep-every-minutes` | `15` | how often it runs. Read by the `@Scheduled` annotation from the raw property, because an annotation is resolved before any binding happens |
+| `filemanagement.storage.unfinished-after-minutes` | `60` | how old a byte write must be before it is treated as abandoned; longer than any upload could possibly take |
+| `filemanagement.storage.sweep-batch-size` | `200` | notes settled per read |
 | `filemanagement.auth.ldap.activedirectory.enabled` / `.domain` / `.url` | `false`, `hnp.local`, `ldap://172.29.76.9` | |
 
-Note the two different prefixes (`file.management.*` and `filemanagement.*`) and that no
-`@ConfigurationProperties` type exists — everything is `@Value`-injected at five call sites.
+Note the two different prefixes: `filemanagement.*` is the application's own settings, bound and
+validated once in `FileManagementProperties` (roadmap 2.1), while `file.management.base-dir` keeps
+the spelling it has always had — renaming a published setting silently changes behaviour on every
+installation that sets it.
 
 ## 12. Tests
 
-`./mvnw test` runs 285 tests and needs only a working Docker daemon: `MySqlSupport` starts one
+`./mvnw test` runs 642 tests and needs only a working Docker daemon: `MySqlSupport` starts one
 MySQL 8.0.36 container per JVM, and `StorageRootSupport` gives each test a clean storage root.
 
 Four kinds, and the kind is the point — each answers something the others cannot.
@@ -961,10 +1009,11 @@ Catalogued in full in [issues.md](issues.md). The ones that shape the architectu
 2. ~~`FileStorageService`'s directory half is filesystem-shaped~~ — gone (roadmap 2.2): the port
    is `BlobStore`, one key names one object, and `BlobStoreContractTest` is what a second
    implementation has to satisfy.
-3. Storage and database mutations are not atomic in either direction. Where the order matters the
-   code picks one deliberately: a delete writes the rows first and the bytes last, and a byte that
-   cannot be removed is logged and left rather than undoing the rows (§4, "What each operation
-   touches").
+3. Storage and database mutations are still not one transaction — nothing can make them one — but
+   a write no longer outlives a transaction that does not commit: `StorageWriter` undoes it, and
+   `StorageSweeper` settles what a killed process left (§5, roadmap 2.3). A delete keeps the order
+   it had: rows first, bytes last, a byte that cannot be removed logged and left rather than
+   undoing the rows (§4, "What each operation touches").
 4. `@Table(name = "user")` — a reserved word in PostgreSQL.
 5. Every `@ManyToOne` is `EAGER`; `ModelConverterUtil` walks the full graph on every list page.
 6. Authorization is per-endpoint **and** per-folder since Phase 6 (§7), but never per-file: a grant

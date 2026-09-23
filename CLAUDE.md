@@ -33,6 +33,11 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 * **Never put a JPA entity in a log statement or a string concatenation.** `FileInfo` ↔
   `FileDetails` are bidirectional and both are `@Data`, so `toString()` recurses until the stack
   overflows ([issue 2](docs/issues.md#2-data-on-bidirectional-jpa-entities--s1)).
+* **Bytes are written through `StorageWriter`, never through `BlobStore.put` directly.** It is
+  what makes a write disappear with a transaction that does not commit, and what records it in
+  `file_storage_write` so `StorageSweeper` can settle what a killed process left (roadmap 2.3,
+  [issue 3](docs/issues.md#3-storage-writes-are-not-atomic-with-the-database--s1)). Reads and
+  deletes go straight to the port.
 * **Bytes go through `BlobStore`** (`put`, `open`, `exists`, `delete`, `deleteDirectory`), whose
   only implementation today is `FilesystemBlobStore`. One opaque `StorageKey` names one object;
   do not add a method that takes a directory, a version and an extension, and do not rebuild a

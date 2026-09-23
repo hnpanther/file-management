@@ -8,6 +8,7 @@ import com.hnp.filemanagement.dto.PageResponse;
 import java.io.IOException;
 import com.hnp.filemanagement.storage.BlobStore;
 import com.hnp.filemanagement.storage.StorageKey;
+import com.hnp.filemanagement.storage.StorageWriter;
 import com.hnp.filemanagement.dto.PublicFileDetailsDTO;
 import com.hnp.filemanagement.dto.FileUploadDTO;
 import com.hnp.filemanagement.entity.ActionEnum;
@@ -99,6 +100,7 @@ public class FileService {
     private final FileDetailsRepository fileDetailsRepository;
     private final UserRepository userRepository;
     private final BlobStore blobStore;
+    private final StorageWriter storageWriter;
     private final ActionHistoryService actionHistoryService;
     private final FolderAccessService folderAccessService;
     private final UploadPolicyService uploadPolicyService;
@@ -111,6 +113,7 @@ public class FileService {
                        FileDetailsRepository fileDetailsRepository,
                        UserRepository userRepository,
                        BlobStore blobStore,
+                       StorageWriter storageWriter,
                        ActionHistoryService actionHistoryService,
                        FolderAccessService folderAccessService,
                        TagMirrorService tagMirrorService,
@@ -122,6 +125,7 @@ public class FileService {
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
         this.blobStore = blobStore;
+        this.storageWriter = storageWriter;
         this.actionHistoryService = actionHistoryService;
         this.folderAccessService = folderAccessService;
         this.uploadPolicyService = uploadPolicyService;
@@ -505,6 +509,11 @@ public class FileService {
     @Transactional
     public void deleteCompleteFileById(int id, int principalId) {
         String address = deleteFileRows(id, principalId);
+        // The rows go to the database before a byte is touched, so that anything the database
+        // would refuse - a foreign key, a deadlock - is refused while the file is still whole.
+        // What is left after this is the commit itself; the tree delete flushes for the same
+        // reason (roadmap 2.3, issue 3).
+        fileInfoRepository.flush();
         if (address != null) {
             try {
                 blobStore.deleteDirectory(address);
@@ -617,6 +626,10 @@ public class FileService {
 
         actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetailsId, ActionEnum.DELETE, principalId,
                 "DELETE FILE_DETAILS", "Delete version " + version + " of file id=" + fileInfoId);
+
+        // As in a whole-file delete: everything the database could refuse is sent before any
+        // byte is removed, so a refusal leaves the revision whole rather than rowed but empty.
+        fileDetailsRepository.flush();
 
         // The last format of a version leaves an empty version directory behind; anything else is
         // one file inside a directory that still holds others.
@@ -775,13 +788,15 @@ public class FileService {
     }
 
     /**
-     * Writes the bytes of one revision. The store computes the size and the digest of what it
-     * actually wrote; neither has a column yet ({@code StoredBlob}), so what is kept here is the
-     * one thing the row already holds - and the write itself, which is what matters.
+     * Writes the bytes of one revision, through {@link StorageWriter} so that they cannot survive
+     * a transaction that does not commit (roadmap 2.3, issue 3). The store computes the size and
+     * the digest of what it actually wrote; neither has a column yet ({@code StoredBlob}), so what
+     * is kept here is the one thing the row already holds - and the write itself, which is what
+     * matters.
      */
     private void store(String storageKey, MultipartFile file) {
         try {
-            blobStore.put(StorageKey.of(storageKey), file.getInputStream());
+            storageWriter.write(storageKey, file.getInputStream());
         } catch (IOException e) {
             logger.error("could not read the uploaded file for key=" + storageKey, e);
             throw new BusinessException("error in saving file, check logs");

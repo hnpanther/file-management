@@ -220,15 +220,42 @@ only subject until Phase 4 adds a second one.
 > the same refusals. Every `storage_key` in the production-shaped database was checked against
 > the new key rule before the change shipped - 1370 of them, none refused.
 
-### 2.3 Domain restructuring
+### 2.3 Domain restructuring — two-phase write **done** (1.6.1)
 
 * Re-slice packages by feature (`catalog/`, `file/`, `identity/`, `storage/`, `audit/`, `shared/`).
 * Collapse `controller/` + `resource/` + `api/` into a Thymeleaf surface and a single versioned REST
   surface (issue 18). The `/resource/**` endpoints become part of `/api/v1`, called by the pages with
   the session cookie.
-* Introduce the two-phase write with `TransactionSynchronization` (issue 3). This requires the
-  `status` column, so it lands with the Phase 3 migration if Phase 3 goes first — either order works,
-  but the column and the code must ship together.
+* ~~Introduce the two-phase write with `TransactionSynchronization` (issue 3)~~ — **done**
+  (1.6.1, `V2.13`).
+
+  > **What shipped.** `StorageWriter` is now the only way into `BlobStore.put`: it commits a note
+  > in `file_storage_write` in a transaction of its own *before* the bytes are written, writes
+  > them, and registers a `TransactionSynchronization` that removes them again if the transaction
+  > rolls back and clears the note whichever way it ended. `StorageSweeper` — the application's
+  > one scheduled job — settles the notes nobody was alive to clear against
+  > `file_details.storage_key`: bytes a revision claims stay, bytes nothing claims go.
+  >
+  > **Two deviations from what this line asked for**, both deliberate.
+  >
+  > *No `status` column on `file_details`.* A status would only ever be observable if the
+  > promotion to `ACTIVE` happened in a transaction of its own, after the commit - which opens a
+  > window of its own (committed row, unpromoted status) and makes a stored file invisible to
+  > every read until a second transaction succeeds. The note is the same knowledge held where it
+  > belongs: a row about a write in flight, in a table whose rows all are, rather than a column on
+  > a table of files that is `ACTIVE` in every row but the broken ones. It also needs no filter on
+  > any read query, which was the other half of that column's cost.
+  >
+  > *No staging key.* The bytes go to their final key. A staged key promoted on commit has a
+  > window between the rename and the commit, so it moves the failure rather than removing it, and
+  > it would hide every freshly uploaded file from everything until its transaction committed -
+  > including from the request that uploaded it.
+  >
+  > **The delete path was left as it is**: rows flushed first, bytes removed last, best effort, a
+  > failure logged and counted into the audit row. Deferring the removal to after the commit is
+  > what issue 3 suggests, and it cannot report what it failed to remove to the operation that
+  > asked for it - the tree delete's audit row says how many directories were left behind - nor be
+  > observed by a test that rolls back. `docs/arch.md` §5 records the trade.
 * `@ManyToOne` → `LAZY` with explicit `@EntityGraph`s, and projection DTOs for the list pages
   (issue 20). Replace `ModelConverterUtil` with per-feature mappers (issue 29).
 

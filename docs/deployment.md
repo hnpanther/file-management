@@ -610,6 +610,47 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 1.6.0 to 1.6.1 — bytes that cannot outlive their row
+
+A jar swap with **one migration** (`V2.13`) and no change to anything an operator can see. Take
+the database backup first, as always; watch the start for `Successfully applied 1 migration`.
+
+* **`file_storage_write` is a new table**, and it is empty except while an upload is running. A
+  row is written just before an upload's bytes are and removed as soon as its transaction ends,
+  so a row that is still there after a minute is a write whose request never finished - which
+  until now was invisible. Nothing else reads it.
+* **What it fixes**: an upload whose commit failed used to leave its bytes on disk with no row
+  pointing at them, and the key stayed taken, so re-uploading that same version was refused as a
+  duplicate of something nothing could read. Now the bytes go with the transaction
+  ([issue 3](issues.md#3-storage-writes-are-not-atomic-with-the-database--s1)).
+* **One scheduled job now runs**, every fifteen minutes, and it is the application's only one. It
+  settles writes older than an hour against the file table: bytes a revision claims are kept,
+  bytes nothing claims are removed. In the log:
+
+  ```
+  removed orphaned bytes at key=files/s000/9081/report/v1/report.pdf: no revision claims them
+  ```
+
+  That line is the recovery working, not a fault - but it names a file that was lost before this
+  release, so it is worth reading the ones that appear in the first days. `storage sweep failed`
+  is a fault, and the job comes back in fifteen minutes regardless.
+* **To switch it off** - to watch it before it deletes anything - set
+  `filemanagement.storage.sweep-enabled=false` in the external `application.properties`. The
+  notes then accumulate and can be read with
+  `SELECT * FROM file_storage_write ORDER BY created_at;`. Nothing else changes behaviour;
+  `filemanagement.storage.unfinished-after-minutes` (default 60) is how old a write must be
+  before the job considers it abandoned.
+
+* **The connection pool is now twenty**, up from Hikari's default of ten
+  (`spring.datasource.hikari.maximum-pool-size`, or `FILEMANAGEMENT_DB_POOL_SIZE`). An upload
+  holds its own connection while the bytes are written and needs a second one for a moment to
+  write the note; ten simultaneous uploads could otherwise each hold one and wait for the other
+  until the wait timed out. Twenty idle MySQL connections cost nothing, but the account must be
+  allowed them - `max_connections` on the server is 151 by default, which is ample.
+
+**Rollback** is the 1.6.0 jar: it ignores `file_storage_write` entirely, so the table can stay
+where it is. It is the older behaviour that comes back, not a data change.
+
 ### Upgrading from 1.5.0 to 1.6.0 — the same application, rebuilt inside
 
 A jar swap with **no migration, no new permission and no change to anything an operator can
