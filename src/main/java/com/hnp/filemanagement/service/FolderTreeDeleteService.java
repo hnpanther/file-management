@@ -8,6 +8,7 @@ import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
+import com.hnp.filemanagement.storage.BlobStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.hnp.filemanagement.config.FileManagementProperties;
@@ -66,20 +67,20 @@ public class FolderTreeDeleteService {
     private final FileInfoRepository fileInfoRepository;
     private final FileService fileService;
     private final FolderAccessService folderAccessService;
-    private final FileStorageService fileStorageService;
+    private final BlobStore blobStore;
     private final ActionHistoryService actionHistoryService;
 
     private final long maxDeleteFiles;
 
     public FolderTreeDeleteService(FolderRepository folderRepository, FileInfoRepository fileInfoRepository,
                                    FileService fileService, FolderAccessService folderAccessService,
-                                   FileStorageService fileStorageService, ActionHistoryService actionHistoryService,
+                                   BlobStore blobStore, ActionHistoryService actionHistoryService,
                                    FileManagementProperties properties) {
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.fileService = fileService;
         this.folderAccessService = folderAccessService;
-        this.fileStorageService = fileStorageService;
+        this.blobStore = blobStore;
         this.actionHistoryService = actionHistoryService;
         this.maxDeleteFiles = properties.folders().maxDeleteFiles();
     }
@@ -154,7 +155,7 @@ public class FolderTreeDeleteService {
         List<String> leftBehind = new ArrayList<>();
         for (String address : addresses) {
             try {
-                fileStorageService.delete(address, "", 1, "", false);
+                blobStore.deleteDirectory(address);
             } catch (ResourceNotFoundException alreadyGone) {
                 logger.info("tree delete: nothing on disk at {}", address);
             } catch (RuntimeException e) {

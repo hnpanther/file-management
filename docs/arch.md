@@ -42,7 +42,8 @@ com.hnp.filemanagement
 │                                  ActiveDirectoryCustomAuthenticationProvider, SecurityController
 ├── controller/                    Thymeleaf page controllers (return view names)
 ├── resource/                      REST endpoints consumed by the pages' own jQuery (session auth)
-├── service/                       business logic + the FileStorageService abstraction
+├── service/                       business logic
+├── storage/                       the BlobStore port and its filesystem adapter
 ├── repository/                    Spring Data JPA interfaces + two hand-written JdbcClient DAOs
 ├── entity/                        JPA entities and the ActionEnum/EntityEnum/PermissionEnum enums
 ├── dto/                           form-binding, paging and response DTOs
@@ -232,8 +233,8 @@ A file is publicly downloadable only when **both** `FileDetails.state = 0` **and
 
 ## 5. Physical storage layout
 
-`FileStorageFileSystemService` is the only implementation of `FileStorageService`. It is
-registered as `@Service("fileSystem") @Primary` and takes `${file.management.base-dir}`.
+`FilesystemBlobStore` is the only implementation of `BlobStore` (roadmap 2.2). It takes the
+storage root from `FileManagementProperties` and resolves every key against it.
 
 ```
 {base-dir}/
@@ -269,47 +270,41 @@ keep their keys and their place. The `s` on the shard is what keeps the two id-b
 apart on disk: a flat directory is a bare id, so a shard named `123` would *be* file 123's
 directory, and deleting that file would take the shard — a thousand other files — with it.
 
-The interface now has two halves, and which one a caller uses is not a matter of taste.
+### The storage port
 
-**Key-shaped, for one stored object** (roadmap 7.1). The whole location is a single opaque
-string — the value in `file_details.storage_key`:
-
-```java
-void     saveByKey(String storageKey, MultipartFile file);
-Resource loadByKey(String storageKey);
-void     deleteByKey(String storageKey);
-```
-
-Every read and write of a single file goes through these, so **where the bytes are is what was
-recorded when they were written**, not something rebuilt from the folder names at read time. That
-is what lets a folder be renamed without moving a byte or orphaning a file (`StorageKeyTest`).
-
-**One boundary for both halves.** Every method, key-shaped or path-shaped, turns its relative
-input into an absolute path through `within(relative)`: the root is resolved to an absolute,
-normalised path, the relative part is resolved beneath it and normalised (which folds `..`), and
-the result must still start with the root and must not *be* the root. Anything else is refused
-before a filesystem call, whatever the caller spelled (issues 4 and 16). The spelling rules below
-still apply on top, per segment.
-
-**Path-shaped, for directories.** What is left on these is directory work — creating a
-category's folder, removing an emptied one — which is genuinely path-shaped:
+One interface, one shape, and it is the shape an object store can also take (roadmap 2.2):
 
 ```java
-void     save(String address, MultipartFile file, int version, String extension);
-Resource load(String address, String fileName, int version, String extension);
-void     delete(String address, String fileName, int version, String extension, boolean isFile);
-void     createDirectory(String title, boolean isSubDirectory);
+StoredBlob put(StorageKey key, InputStream data);   // never overwrites; returns size + SHA-256
+Resource   open(StorageKey key);
+boolean    exists(StorageKey key);
+void       delete(StorageKey key);
+void       deleteDirectory(String prefix);          // everything under a prefix
 ```
 
-`address` is the directory of a file or of one of its versions, and it is **derived from a stored
-key** (`FileService.directoryOf`: the grandparent directory of the first revision's key), never
-from the folder names. Because the signature bakes in "directory + version + extension", it
-cannot express an object-store key without change — this is the first thing the S3 work has to
-fix.
+A `StorageKey` is the whole location as one opaque string — the value in
+`file_details.storage_key` — and it is written once, when the bytes are stored, never rebuilt
+from the folder names at read time. That is what lets a folder be renamed or moved, and a file
+be moved between folders, without touching a byte (`StorageKeyTest`). The key's own rule is the
+one every backend shares: a relative path, no leading slash, no backslash, no empty segment, no
+`.` or `..`. Two spellings of one object would otherwise exist, and on a filesystem some of
+them would name somewhere else entirely.
 
-Name rules enforced at the storage boundary: directory names must contain **zero** of `.`, ` `, `/`,
-applied to every segment of an address; file names must contain **exactly one** `.` and zero of
-` `, `/`.
+**The boundary.** `FilesystemBlobStore.within(relative)` turns a key into an absolute path: the
+root is resolved and normalised, the key is resolved beneath it and normalised (which folds
+`..`), and the result must still start with the root and must not *be* the root. Anything else
+is refused before a filesystem call, whatever the caller spelled (issues 4 and 16). The key rule
+and this one both stay: a key can be well formed and still name somewhere it may not.
+
+**`StoredBlob`** is what the store actually wrote — the byte count and the SHA-256 of the bytes
+that streamed past, computed during the write rather than taken from the caller. The digest has
+nowhere to live yet (`file_details.hash_id` is a random UUID with a unique index, so identical
+files would collide there); the column arrives with the PostgreSQL baseline, and Phase 4 is what
+needs it, since copying bytes between two stores is only verifiable with it (issues 6 and 7).
+
+**The contract** every implementation keeps is written once, in `BlobStoreContractTest`: what
+`put` refuses, what a missing key answers, what a directory delete takes with it, which keys are
+refused. A second store — the S3 adapter of Phase 4 — is finished when it passes that class.
 
 ### What each operation touches
 
@@ -324,7 +319,7 @@ none of the three.
 
 | Operation | Tree (`folder` rows) | Keys (`storage_key`) | Bytes on disk | Tags (`file_tag`) |
 |---|---|---|---|---|
-| **Upload a new file** (`FileService.createNewFile`; web form, v1, v2 `PUT`) | — | one new key, `files/{shard}/{file id}/{name}/v1/{name}.{ext}` (`StorageLayout`) | one file written at that path; `saveByKey` creates the directories and refuses an existing path | derived: one tag per folder from the top level down, in the top-level folder's group |
+| **Upload a new file** (`FileService.createNewFile`; web form, v1, v2 `PUT`) | — | one new key, `files/{shard}/{file id}/{name}/v1/{name}.{ext}` (`StorageLayout`) | one file written at that path; `put` creates the directories and refuses an existing key | derived: one tag per folder from the top level down, in the top-level folder's group |
 | **New version / new format of a file** (`createNewFileDetails`) | — | one new key **beside the first version's**: the directory is read off that key (`directoryOf`), so a file stored under the old `{category}/{sub}` layout keeps growing there, one stored flat under `files/{id}` there, one under a shard there | one file written; nothing else moves | — |
 | **Delete one version or format** (`deleteFileDetails`) | — | that row's key gone | that file removed; when it was the last format of its version, the `v{n}` directory too | — |
 | **Delete a file** (`deleteCompleteFileById`, or deleting its last version) | — | every key of the file gone | read off a stored key: under an id-based layout the file's own id directory (`files/{shard}/{id}/` or `files/{id}/`) removed whole, the shard directory left; under the old layout the file's `…/{name}/` directory removed and the shared `{category}/{sub}/` left, possibly empty; a directory already gone is nothing to remove, not a refusal | rows cascade |
@@ -819,7 +814,7 @@ POST /files (multipart)
             │                        then hashId = random UUID, storageKey, content_type = ContentTypes.detect
             ├─ fileInfoRepository.save(fileInfo)          ← cascades to FileDetails
             ├─ actionHistoryService.saveActionHistory × 2
-            └─ fileStorageService.saveByKey(fileDetails.storageKey, multipartFile)  ← disk write, LAST
+            └─ blobStore.put(StorageKey.of(fileDetails.storageKey), bytes)  ← disk write, LAST
 ```
 
 The disk write happens inside the transaction but is not part of it — see
@@ -886,7 +881,7 @@ schema at startup but never modifies it.
 | `spring.datasource.*` | `jdbc:mysql://localhost:3306/file_management`, user/pass `file_management` | |
 | `spring.jpa.hibernate.ddl-auto` | `validate` | |
 | `spring.flyway.baseline-on-migrate` | `true` | |
-| `file.management.base-dir` | `./TempFiles/files/main/` | `FileStorageFileSystemService` |
+| `file.management.base-dir` | `./TempFiles/files/main/` | `FilesystemBlobStore` |
 | `spring.servlet.multipart.max-file-size` / `max-request-size` | `20MB` | |
 | `filemanagement.default.page-size` / `element-size` | `30` | injected per-controller with `@Value` |
 | `filemanagement.folders.max-depth` | `6` | `FolderService`: how deep the tree may go below `Home`; a create or a move past it is a 400 |
@@ -963,8 +958,9 @@ Catalogued in full in [issues.md](issues.md). The ones that shape the architectu
 
 1. Three HTTP layers over one service layer. The two JSON layers now share one contract (§6); the
    Thymeleaf layer deliberately does not, because it re-renders forms rather than returning statuses.
-2. `FileStorageService`'s directory half is filesystem-shaped; its key half (roadmap 7.1) is
-   the part an object store can implement.
+2. ~~`FileStorageService`'s directory half is filesystem-shaped~~ — gone (roadmap 2.2): the port
+   is `BlobStore`, one key names one object, and `BlobStoreContractTest` is what a second
+   implementation has to satisfy.
 3. Storage and database mutations are not atomic in either direction. Where the order matters the
    code picks one deliberately: a delete writes the rows first and the bytes last, and a byte that
    cannot be removed is logged and left rather than undoing the rows (§4, "What each operation

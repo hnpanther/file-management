@@ -610,6 +610,34 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 1.5.0 to 1.6.0 — the same application, rebuilt inside
+
+A jar swap with **no migration, no new permission and no change to anything an operator can
+see**: the same bytes at the same paths, the same URLs, the same answers. What changed is
+internal (roadmap 2.1 and 2.2) and two small things on the screen:
+
+* **Every setting this application owns is now declared in one place** and validated at start
+  (`FileManagementProperties`). No name changed - `filemanagement.default.page-size` and
+  `file.management.base-dir` are still spelled exactly as they were, and an external
+  `application.properties` that sets them keeps working. What is new is that a nonsensical value
+  (a page size of 0, a depth of 0, a share-link cap of 0) now **stops the start** with a message
+  naming the setting, rather than being carried into the hundredth request.
+* **The storage layer is one port** (`BlobStore` / `FilesystemBlobStore`). Keys, paths, bytes and
+  refusals are unchanged; every key in a production-shaped database was checked against the new
+  key rule before this shipped. A root written with or without a trailing separator has meant the
+  same directory since 1.1.0 and now cannot mean anything else - nothing concatenates a path any
+  more.
+* **The request log is one line per request** (`--> POST /resource/folders … to FolderResource#createFolder`
+  and `<-- … 201`), instead of the handler's own line plus a duplicate from the interceptor. A
+  grep for the old `[GlobalGeneralLogging-Controller]` prefix finds the handler's *detail* lines
+  only; the request line is now `-->` / `<--`. Nothing but `DEBUG` logging changes.
+* **On the screen:** the users list shows each account's state and offers enable/disable in the
+  row (`REST_CHANGE_USER_ENABLED`, the permission that already existed), and **disabling an
+  account now ends the sessions it already has** rather than only refusing the next sign-in. The
+  upload form fills in the file title from the chosen file's name while the field is untouched.
+
+**Rollback** is the 1.5.0 jar, with nothing to undo: no schema change, no data change.
+
 ### Upgrading from 1.4.0 to 1.5.0 — sharded storage, explorer downloads and deletes, personal folders, share links
 
 A jar swap with two migrations (`V2.11`, `V2.12`). **Take the database backup first**, as

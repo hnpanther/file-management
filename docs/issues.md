@@ -92,12 +92,17 @@ never runs. The operator should be `||`, and the directory check should be appli
 Not currently exploitable — `address` is derived from DB rows written through validated services —
 but it is a dead guard on the file-read path, and the new storage layer must not inherit it.
 
-> **Fixed.** The two checks are separate statements, each a refusal on its own, and the directory
-> rule is applied per segment of the address (`requireCorrectAddress`) on `save`, `load`, both
-> deletes and `createDirectory` - the sub-directory form of which had skipped the spelling check
-> entirely. Behind both spelling rules now stands the containment check of
+> **Fixed.** The two checks became separate statements, each a refusal on its own, and the
+> directory rule was applied per segment of the address (`requireCorrectAddress`) on `save`,
+> `load`, both deletes and `createDirectory` - the sub-directory form of which had skipped the
+> spelling check entirely. Behind both spelling rules stands the containment check of
 > [issue 16](#16-no-path-containment-check-at-the-storage-boundary--s2), which is what the guard
-> was for. `StorageContainmentTest`.
+> was for.
+>
+> **And then removed** (roadmap 2.2, 1.6.0): the method the guard was in is gone with the rest of
+> the path-shaped half. What a key may be is now `StorageKey`'s own rule, what it may name is
+> `FilesystemBlobStore.within`, and both are in `BlobStoreContractTest` - so the next
+> implementation cannot inherit the guard either.
 
 ### 5. `FileDAO.isDuplicateNewFile` contains SQL that cannot execute — **S2**
 
@@ -317,19 +322,24 @@ future caller and `../../` is a character-counting helper.
 > an upload with `base-dir=E:\…\files\main` landed correctly in `main\IMS\…` while the
 > whole-file delete, still concatenating, looked in `mainIMS/…` and answered 404 - which is how
 > the first 1.1.0 deployment found it. The constructor now normalises the separator
-> (`withTrailingSeparator`; `StorageRootSeparatorTest` replays the sequence on both spellings).
+> (`FilesystemBlobStoreTest` replays the sequence on both spellings; since roadmap 2.2 the root is resolved rather than concatenated, so the convention is no longer load-bearing at all).
 > The containment check itself is still this issue, and still Phase 2.
 
 Fix: resolve against a canonical base and assert containment, in one place, unconditionally.
 
-> **Fixed.** `FileStorageFileSystemService.within(relative)` is the one place a relative path
-> becomes an absolute one: the root is made absolute and normalised, the relative part is
-> resolved beneath it and normalised, and the result must still start with the root and must not
-> *be* the root - which an empty address used to concatenate to, in front of a recursive delete.
-> Every method of both halves goes through it before a filesystem call; `resolveKey` is now a
-> name for it. The string-built paths in the log messages are gone with the concatenation.
-> `StorageContainmentTest` tries every method with `..`, a sub-directory title that climbs, an
-> empty address and a lone `/`, against a root that has a sibling to land in.
+> **Fixed.** `within(relative)` is the one place a relative path becomes an absolute one: the
+> root is made absolute and normalised, the relative part is resolved beneath it and normalised,
+> and the result must still start with the root and must not *be* the root - which an empty
+> address used to concatenate to, in front of a recursive delete. Every method goes through it
+> before a filesystem call, and the string-built paths in the log messages are gone with the
+> concatenation.
+>
+> Since roadmap 2.2 (1.6.0) it lives in `FilesystemBlobStore`, with a second, earlier refusal in
+> front of it: `StorageKey` rejects the spellings themselves - a leading slash, a backslash, an
+> empty or relative segment - so a key that could name two things never reaches a store at all.
+> Both are in `BlobStoreContractTest`, which every implementation has to pass, plus
+> `FilesystemBlobStoreTest` for what only a filesystem can get wrong (writing outside the root,
+> deleting the root, the root's trailing separator).
 
 ### 17. No transport security configuration — **S2**
 
@@ -565,7 +575,7 @@ empty method body. There is no smoke test. A broken bean graph reaches productio
 `@AutoConfigureTestDatabase(replace = NONE)` plus `src/test/resources/application.properties`
 hardcoding `jdbc:mysql://localhost:3306/file_management_test` and
 `file.management.base-dir=D:/files/test/`. The suite cannot run on CI, on Linux, or on a second
-developer's machine. `FileStorageFileSystemServiceTest.setUp()` calls `Files.createDirectory(baseDir)`
+developer's machine. `FileStorageFileSystemServiceTest.setUp()` called `Files.createDirectory(baseDir)`
 unconditionally and fails if a previous run left the directory behind.
 
 Fix: Testcontainers for PostgreSQL, `@TempDir` for the filesystem, MinIO in a container for S3.

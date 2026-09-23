@@ -33,11 +33,12 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 * **Never put a JPA entity in a log statement or a string concatenation.** `FileInfo` ↔
   `FileDetails` are bidirectional and both are `@Data`, so `toString()` recurses until the stack
   overflows ([issue 2](docs/issues.md#2-data-on-bidirectional-jpa-entities--s1)).
-* **`FileStorageService` has two halves.** The key-shaped one (`saveByKey`, `loadByKey`,
-  `deleteByKey`) is what every read and write of a stored object goes through; the path-shaped
-  one (`address`, `version`, `extension`) is what remains for directory-level deletes. Do not add
-  a path-shaped method, and do not rebuild a location from folder names — `file_details.storage_key`
-  is the only record of where the bytes are, and folders are renamed without moving them.
+* **Bytes go through `BlobStore`** (`put`, `open`, `exists`, `delete`, `deleteDirectory`), whose
+  only implementation today is `FilesystemBlobStore`. One opaque `StorageKey` names one object;
+  do not add a method that takes a directory, a version and an extension, and do not rebuild a
+  location from folder names — `file_details.storage_key` is the only record of where the bytes
+  are, and folders are renamed without moving them. Anything the port promises is written in
+  `BlobStoreContractTest`, which every implementation must pass.
 * **A general tag is not a folder.** `Folder` kinds are `ROOT`, `FOLDER`, `PROFILES` (the one
   folder the personal folders sit under; takes nothing by hand) and `USER_HOME` (a user's own,
   renamed only with the user, moved and deleted by nobody, usually carrying `quota_bytes`); the
@@ -59,10 +60,10 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   recreate it, and never suggest a `DROP DATABASE` against anything but a throw-away local
   database — the one place the reset is written down, with that warning, is
   [docs/schema.md](docs/schema.md#a-throw-away-developer-database).
-* **Every storage path is resolved by `FileStorageFileSystemService.within`** against the
-  absolute, normalised `base-dir`, and refused if it lands outside it or on the root itself. Do
-  not build a `Path` from `baseDir` anywhere else. The constructor appends a separator when the
-  value lacks one, so both spellings name the same root.
+* **Every storage path is resolved by `FilesystemBlobStore.within`** against the absolute,
+  normalised `base-dir`, and refused if it lands outside it or on the root itself. Do not build a
+  `Path` from `baseDir` anywhere else. The root is resolved, never concatenated, so it means the
+  same directory with or without a trailing separator.
 
 ## When adding an endpoint
 

@@ -143,7 +143,7 @@ Pages just insert it and need no wrapper; `app.css` offsets `<body>` via `body:h
 Primary navigation belongs in the sidebar, not the top bar.
 
 **Naming.** A folder or file name is a safe path segment (`ValidationUtil`): no separator, none of `<>:"|?*`, no control character, not `.`/`..`, no trailing dot or space, not a Windows-reserved name. Spaces, dots and Persian are fine. A file name also needs an extension of letters and digits.
-`FileStorageFileSystemService` delegates to the same two predicates, so there is one copy;
+`FilesystemBlobStore` refuses the same spellings a `StorageKey` already refuses, so there is one rule;
 the traversal cases in `ValidationUtilTest` are the ones never to relax.
 
 ## Things that will bite you
@@ -158,7 +158,7 @@ the traversal cases in `ValidationUtilTest` are the ones never to relax.
 * **Everything is `FetchType.EAGER`.** Loading one `FileDetails` pulls the entire ancestry plus two
   `User` rows per level. Adding a field to a mapper can quietly add joins to every list page.
 * **`hash_id` is a random UUID, not a hash.** Nothing verifies file integrity.
-* **Every storage path goes through `FileStorageFileSystemService.within`**, which resolves it
+* **Every storage path goes through `FilesystemBlobStore.within`**, which resolves it
   under the absolute, normalised root and refuses anything that lands outside it or on the root
   itself. Do not build a `Path` from `baseDir` anywhere else. The constructor also appends a
   trailing separator when the configured value lacks one (it did not always: 1.1.0's first

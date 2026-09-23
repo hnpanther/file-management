@@ -9,7 +9,7 @@ import java.util.Set;
  * became one, and the storage layer built paths by concatenation. Since {@code V2.9} a folder's
  * name is not on disk at all, a file's name still is - as the directory holding its versions
  * and as the stored file - and every path is resolved and contained by
- * {@code FileStorageFileSystemService.within}. What is left to refuse is what a file system
+ * {@code FilesystemBlobStore.within}. What is left to refuse is what a file system
  * itself refuses, or what would leave the directory the name was meant for: separators, the
  * two dot-names, control characters, the characters Windows forbids, a trailing dot or space
  * (which Windows strips, making two names one), and the names Windows reserves. Spaces, dots
