@@ -692,6 +692,16 @@ revocation and every download are `action_history` rows — the download on the 
 visitor has no principal. The clock is a bean (`ClockConfig`) so that expiry and locks are tested
 without waiting.
 
+### Enabling and disabling an account
+
+`user.enabled` is asked by Spring Security when it authenticates (`UserDetailsImpl.isEnabled`),
+which stops the next sign-in but not a session that already exists - so
+`UserService.changeEnabled(userId, 0, …)` also ends them, through `ActiveUserSessions` and the
+`SessionRegistry` the browser chain registers into (`SessionRegistryConfig`, a configuration of
+its own because `SecurityConfig` would close a bean cycle). The count of ended sessions is part
+of the `action_history` row. The switch is on the user's page and on the users list, both behind
+`REST_CHANGE_USER_ENABLED`.
+
 ### Run-time settings
 
 `app_setting` (`V2.10`) holds the switches an administrator flips without a restart, one row per

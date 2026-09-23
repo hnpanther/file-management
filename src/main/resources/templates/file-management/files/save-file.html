@@ -126,8 +126,21 @@
 
     $(function () {
         $("#multipartFile").on("change", function () {
-            const selectedName = this.files && this.files.length ? this.files[0].name : [[#{file.upload.none}]];
-            $("#selectedFileName").text(selectedName);
+            const chosen = this.files && this.files.length ? this.files[0] : null;
+            $("#selectedFileName").text(chosen ? chosen.name : [[#{file.upload.none}]]);
+
+            // The title is nearly always the file's own name, so offer it - but only into an
+            // empty field, and only until the person types: what they wrote is theirs, and a
+            // second look at the file picker must not overwrite it.
+            const title = document.getElementById("fileName");
+            if (chosen && title && !title.value.trim() && !title.dataset.editedByHand) {
+                title.value = chosen.name.replace(/\.[^.]+$/, "");
+            }
+        });
+
+        // From the first keystroke the field belongs to the person, not to the file picker.
+        $("#fileName").on("input", function () {
+            this.dataset.editedByHand = "true";
         });
     });
 

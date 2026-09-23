@@ -554,3 +554,23 @@ the form disabled. A dead link is the ordinary 404 page, the same for every reas
 lists one's own links - or every link, for `REVOKE_SHARE_LINK` - with the file, version,
 maker, dates, downloads over the cap, whether there is a password, the state as a badge, and a
 revoke button on active ones that DELETEs and hides the row.
+
+### Enabling and disabling an account
+
+The users list shows each account's state as a badge and, for a holder of
+`REST_CHANGE_USER_ENABLED`, offers the switch in the row: one `PUT` to
+`/resource/users/{id}/change-enabled` - the same endpoint the profile page's button uses - and
+the page reloads, so the badge and the label always say what the database says. Without the
+permission the state is still shown; it is a fact about the account, not an action.
+
+**Disabling ends the sessions the account already has** (`ActiveUserSessions`): Spring asks
+`isEnabled()` when it authenticates, not on every request, so without that a person already
+signed in would keep working until their session expired by itself. The next request from that
+browser lands on the login page.
+
+### The upload form fills in the title
+
+Choosing a file puts its name - without the extension - into the empty "file title" field, and
+stops doing so from the first keystroke the person makes in it (`editedByHand`). It never
+overwrites what somebody typed, and picking a different file afterwards does not undo their
+wording.
