@@ -5,7 +5,6 @@ import com.hnp.filemanagement.dto.TreeNodeDTO;
 import com.hnp.filemanagement.dto.TreeSearchHitDTO;
 import com.hnp.filemanagement.service.FileTreeService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -49,11 +48,9 @@ public class FileTreeResource {
     @GetMapping("children")
     public ResponseEntity<List<TreeNodeDTO>> getChildren(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                                          @RequestParam("type") TreeNodeDTO.NodeType type,
-                                                         @RequestParam("id") int id,
-                                                         HttpServletRequest request) {
+                                                         @RequestParam("id") int id) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileTreeResource.class,
-                "list tree children of type=" + type + ", id=" + id);
+        globalGeneralLogging.detail("list tree children of type=" + type + ", id=" + id);
 
         return ResponseEntity.ok(fileTreeService.getChildren(type, id, userDetails.getId()));
     }
@@ -62,11 +59,9 @@ public class FileTreeResource {
     @PreAuthorize("hasAuthority('REST_SEARCH_FILE_TREE') || hasAuthority('FILE_TREE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("search")
     public ResponseEntity<List<TreeSearchHitDTO>> search(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                                          @RequestParam("query") String query,
-                                                          HttpServletRequest request) {
+                                                          @RequestParam("query") String query) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileTreeResource.class,
-                "search tree for query=" + query);
+        globalGeneralLogging.detail("search tree for query=" + query);
 
         return ResponseEntity.ok(fileTreeService.search(query, userDetails.getId()));
     }

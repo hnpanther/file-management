@@ -1,7 +1,6 @@
 package com.hnp.filemanagement.config.security;
 
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
@@ -35,14 +34,10 @@ public class SecurityController {
 
 
     @GetMapping("/login")
-    public String loginPage(@AuthenticationPrincipal UserDetailsImpl userDetails, HttpServletRequest request) {
+    public String loginPage(@AuthenticationPrincipal UserDetailsImpl userDetails) {
 
         int principalId = userDetails == null ? 0 : userDetails.getId();
-        String principalUsername = userDetails == null ? "None" : userDetails.getUsername();
-        String logMessage = "request login page";
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "LoginController.class", logMessage);
+        globalGeneralLogging.detail("login page");
 
         // Someone who is already signed in has no business on the login form; send them to the
         // landing page, which knows where they belong.
@@ -58,13 +53,10 @@ public class SecurityController {
      * such as a missing CSRF token; @PreAuthorize denials are handled by GlobalExceptionHandler.
      */
     @RequestMapping("/access-denied")
-    public ModelAndView accessDenied(@AuthenticationPrincipal UserDetailsImpl userDetails, HttpServletRequest request) {
+    public ModelAndView accessDenied(@AuthenticationPrincipal UserDetailsImpl userDetails) {
 
         int principalId = userDetails == null ? 0 : userDetails.getId();
-        String principalUsername = userDetails == null ? "None" : userDetails.getUsername();
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "LoginController.class", "access denied");
+        globalGeneralLogging.detail("access denied");
 
         ModelAndView modelAndView = new ModelAndView();
         modelAndView.addObject("message", messageSource.getMessage("error.accessDenied", null, LocaleContextHolder.getLocale()));

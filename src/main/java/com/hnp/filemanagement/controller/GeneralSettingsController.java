@@ -3,7 +3,7 @@ package com.hnp.filemanagement.controller;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.service.AppSettingService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
+import com.hnp.filemanagement.util.UiMessages;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -26,22 +26,21 @@ public class GeneralSettingsController {
     private final GlobalGeneralLogging globalGeneralLogging;
     private final AppSettingService appSettingService;
 
-    public GeneralSettingsController(GlobalGeneralLogging globalGeneralLogging, AppSettingService appSettingService) {
+    private final UiMessages messages;
+
+    public GeneralSettingsController(GlobalGeneralLogging globalGeneralLogging, AppSettingService appSettingService,
+                                     UiMessages messages) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.appSettingService = appSettingService;
+        this.messages = messages;
     }
 
     //GENERAL_SETTINGS_PAGE
     @PreAuthorize("hasAuthority('GENERAL_SETTINGS_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
-    public String generalSettingsPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
+    public String generalSettingsPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model) {
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get general settings page";
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "GeneralSettingsController.class", logMessage);
+        globalGeneralLogging.detail("general settings page");
 
         fill(model, false, false, "");
         return VIEW;
@@ -53,18 +52,14 @@ public class GeneralSettingsController {
     @PostMapping
     public String saveGeneralSettings(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                       @RequestParam(value = "publicFilesAnonymous", required = false) String publicFilesAnonymous,
-                                      Model model, HttpServletRequest request) {
+                                      Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
         boolean anonymous = publicFilesAnonymous != null;
-        String logMessage = "request to save general settings, publicFilesAnonymous=" + anonymous;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "GeneralSettingsController.class", logMessage);
+        globalGeneralLogging.detail("save general settings, publicFilesAnonymous=" + anonymous);
 
         appSettingService.setPublicFilesAnonymous(anonymous, principalId);
-        fill(model, true, true, "اطلاعات با موفقیت ذخیره شد");
+        fill(model, true, true, messages.get("form.saved"));
         return VIEW;
     }
 

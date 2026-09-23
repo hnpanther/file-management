@@ -13,7 +13,7 @@ import com.hnp.filemanagement.repository.FileShareLinkRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -67,9 +67,6 @@ public class ShareLinkService {
     private static final int TOKEN_BYTES = 32;
     private static final int MAX_PASSWORD_LENGTH = 72;
 
-    /** Whether a link may, must, or may not carry a password. */
-    public enum PasswordPolicy { OPTIONAL, REQUIRED }
-
     /** What a download attempt with a token comes to. */
     public enum Outcome { DOWNLOAD, PASSWORD_REQUIRED, WRONG_PASSWORD, LOCKED }
 
@@ -92,21 +89,12 @@ public class ShareLinkService {
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
 
-    @Value("${filemanagement.share-links.max-minutes:1440}")
-    private long maxMinutes;
-    @Value("${filemanagement.share-links.default-minutes:60}")
-    private long defaultMinutes;
-    @Value("${filemanagement.share-links.password:OPTIONAL}")
-    private PasswordPolicy passwordPolicy;
-    @Value("${filemanagement.share-links.max-failed-attempts:5}")
-    private int maxFailedAttempts;
-    @Value("${filemanagement.share-links.lock-minutes:15}")
-    private long lockMinutes;
+    private final FileManagementProperties.ShareLinks settings;
 
     public ShareLinkService(FileShareLinkRepository shareLinkRepository, FileDetailsRepository fileDetailsRepository,
                             UserRepository userRepository, FileService fileService,
                             FolderAccessService folderAccessService, ActionHistoryService actionHistoryService,
-                            PasswordEncoder passwordEncoder, Clock clock) {
+                            PasswordEncoder passwordEncoder, Clock clock, FileManagementProperties properties) {
         this.shareLinkRepository = shareLinkRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
@@ -115,20 +103,21 @@ public class ShareLinkService {
         this.actionHistoryService = actionHistoryService;
         this.passwordEncoder = passwordEncoder;
         this.clock = clock;
+        this.settings = properties.shareLinks();
     }
 
     // ------------------------------------------------------------------ the rules, for the pages
 
     public long maxMinutes() {
-        return maxMinutes;
+        return settings.maxMinutes();
     }
 
     public long defaultMinutes() {
-        return defaultMinutes;
+        return settings.defaultMinutes();
     }
 
-    public PasswordPolicy passwordPolicy() {
-        return passwordPolicy;
+    public boolean passwordRequired() {
+        return settings.passwordRequired();
     }
 
     // ------------------------------------------------------------------ making and revoking
@@ -150,16 +139,16 @@ public class ShareLinkService {
                 .orElseThrow(() -> new ResourceNotFoundException("fileDetails with id=" + fileDetailsId + " not exists"));
         folderAccessService.requireReadAccess(folderAccessService.accessFor(principalId), revision.getFileInfo());
 
-        long validMinutes = minutes == null ? defaultMinutes : minutes;
+        long validMinutes = minutes == null ? settings.defaultMinutes() : minutes;
         if (validMinutes < 1) {
             throw new InvalidDataException("a share link lives at least one minute: " + minutes);
         }
-        validMinutes = Math.min(validMinutes, maxMinutes);
+        validMinutes = Math.min(validMinutes, settings.maxMinutes());
         if (maxDownloads != null && maxDownloads < 1) {
             throw new InvalidDataException("a share link allows at least one download, or has no cap: " + maxDownloads);
         }
         String secret = password == null || password.isBlank() ? null : password;
-        if (secret == null && passwordPolicy == PasswordPolicy.REQUIRED) {
+        if (secret == null && settings.passwordRequired()) {
             throw new InvalidDataException("a share link needs a password on this installation");
         }
         if (secret != null && secret.length() > MAX_PASSWORD_LENGTH) {
@@ -256,11 +245,11 @@ public class ShareLinkService {
             }
             if (!passwordEncoder.matches(password, link.getPasswordHash())) {
                 link.setFailedAttempts(link.getFailedAttempts() + 1);
-                if (link.getFailedAttempts() >= maxFailedAttempts) {
-                    link.setLockedUntil(now.plusMinutes(lockMinutes));
+                if (link.getFailedAttempts() >= settings.maxFailedAttempts()) {
+                    link.setLockedUntil(now.plusMinutes(settings.lockMinutes()));
                     link.setFailedAttempts(0);
                     shareLinkRepository.save(link);
-                    logger.info("share link id={} locked until {} after {} wrong passwords", link.getId(), link.getLockedUntil(), maxFailedAttempts);
+                    logger.info("share link id={} locked until {} after {} wrong passwords", link.getId(), link.getLockedUntil(), settings.maxFailedAttempts());
                     return new Attempt(Outcome.LOCKED, null, link.getLockedUntil());
                 }
                 shareLinkRepository.save(link);

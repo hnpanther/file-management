@@ -2,7 +2,6 @@ package com.hnp.filemanagement.controller;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -45,10 +44,9 @@ public class FileExplorerController {
     @GetMapping("explorer")
     public String getFileExplorerPage(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                       @RequestParam(value = "folder", required = false) Integer folderId,
-                                      Model model, HttpServletRequest request) {
+                                      Model model) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileExplorerController.class,
-                "request to get file explorer page, folder=" + folderId);
+        globalGeneralLogging.detail("file explorer page, folder=" + folderId);
 
         model.addAttribute("initialFolderId", folderId);
 

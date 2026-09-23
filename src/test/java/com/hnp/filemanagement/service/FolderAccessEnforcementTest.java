@@ -225,17 +225,17 @@ class FolderAccessEnforcementTest extends MySqlSupport {
     @Test
     @DisplayName("the file list shows only files inside the granted folders, and pages on that count")
     void theFileListIsFilteredInTheQuery() {
-        assertThat(fileService.getPageFileInfo(50, 0, null, restrictedId).getFileInfoDTOList())
+        assertThat(fileService.getPageFileInfo(50, 0, null, restrictedId).content())
                 .as("no grant, no files")
                 .isEmpty();
 
-        assertThat(fileService.getPageFileInfo(50, 0, null, adminId).getFileInfoDTOList())
+        assertThat(fileService.getPageFileInfo(50, 0, null, adminId).content())
                 .as("an administrator still sees everything")
                 .isNotEmpty();
 
         grantDirectly(restrictedId, subCategoryId);
 
-        assertThat(fileService.getPageFileInfo(50, 0, null, restrictedId).getFileInfoDTOList())
+        assertThat(fileService.getPageFileInfo(50, 0, null, restrictedId).content())
                 .extracting(dto -> dto.getFileName())
                 .contains(fileName);
     }

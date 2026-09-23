@@ -24,6 +24,6 @@ public class ShareLinkRulesAdvice {
     @ModelAttribute("shareLinkRules")
     public ShareLinkRules shareLinkRules() {
         return new ShareLinkRules(shareLinkService.maxMinutes(), shareLinkService.defaultMinutes(),
-                shareLinkService.passwordPolicy() == ShareLinkService.PasswordPolicy.REQUIRED);
+                shareLinkService.passwordRequired());
     }
 }

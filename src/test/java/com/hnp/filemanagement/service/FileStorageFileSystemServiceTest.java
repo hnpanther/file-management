@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.config.FileManagementProperties;
 import com.hnp.filemanagement.support.StorageRootSupport;
 
 import com.hnp.filemanagement.exception.BusinessException;
@@ -47,7 +48,7 @@ class FileStorageFileSystemServiceTest extends StorageRootSupport {
     @BeforeEach
     void setUp() throws IOException {
 
-        underTest = new FileStorageFileSystemService(baseDir);
+        underTest = new FileStorageFileSystemService(FileManagementProperties.defaults(baseDir));
 
         // The storage root already exists - StorageRootSupport clears and recreates it before every
         // test, because the code under test creates directories one level at a time and cannot make

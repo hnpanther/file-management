@@ -9,7 +9,7 @@ import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,17 +65,18 @@ public class DataInitializer {
     private final PermissionRepository permissionRepository;
     private final BCryptPasswordEncoder passwordEncoder;
 
-    @Value("${filemanagement.bootstrap.admin-password:}")
-    private String configuredAdminPassword;
+    private final String configuredAdminPassword;
 
     public DataInitializer(UserRepository userRepository,
                            RoleRepository roleRepository,
                            PermissionRepository permissionRepository,
-                           BCryptPasswordEncoder passwordEncoder) {
+                           BCryptPasswordEncoder passwordEncoder,
+                           FileManagementProperties properties) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
         this.passwordEncoder = passwordEncoder;
+        this.configuredAdminPassword = properties.bootstrap().adminPassword();
     }
 
     @Transactional

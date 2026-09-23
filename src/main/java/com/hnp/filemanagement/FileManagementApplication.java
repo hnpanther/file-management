@@ -2,6 +2,7 @@ package com.hnp.filemanagement;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
@@ -20,6 +21,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
  * it available to the {@code @DataJpaTest} slices, which filter out {@code @Configuration} classes.
  */
 @SpringBootApplication
+@ConfigurationPropertiesScan
 public class FileManagementApplication {
 
 	public static void main(String[] args) {

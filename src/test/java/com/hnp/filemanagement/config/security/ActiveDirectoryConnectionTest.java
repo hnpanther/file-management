@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.config.security;
 
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -181,17 +182,26 @@ class ActiveDirectoryConnectionTest {
 
     // ---------------------------------------------------------------- helpers
 
-    private static ActiveDirectoryCustomAuthenticationProvider provider(Map<String, Object> fields) {
-        ActiveDirectoryCustomAuthenticationProvider provider = new ActiveDirectoryCustomAuthenticationProvider(null, null);
-        ReflectionTestUtils.setField(provider, "enabled", true);
-        ReflectionTestUtils.setField(provider, "domain", "site.test");
-        ReflectionTestUtils.setField(provider, "url", "ldaps://dc1.site.test:636");
-        ReflectionTestUtils.setField(provider, "connectTimeoutMs", 5000);
-        ReflectionTestUtils.setField(provider, "readTimeoutMs", 10000);
-        ReflectionTestUtils.setField(provider, "trustStoreType", "PKCS12");
-        ReflectionTestUtils.setField(provider, "verifyHostname", true);
-        ReflectionTestUtils.setField(provider, "verifyCertificate", true);
-        fields.forEach((name, value) -> ReflectionTestUtils.setField(provider, name, value));
-        return provider;
+    /**
+     * A provider configured as an installation would configure it: the settings go in through
+     * {@link FileManagementProperties}, the way they do in production, rather than being poked
+     * into fields (roadmap 2.1 - the fields are final now).
+     *
+     * @param overrides what this test varies: the timeouts, {@code trustStore},
+     *                  {@code trustStorePassword}, {@code trustStoreType}, {@code verifyHostname}
+     *                  and {@code verifyCertificate}
+     */
+    private static ActiveDirectoryCustomAuthenticationProvider provider(Map<String, Object> overrides) {
+        FileManagementProperties.ActiveDirectory settings = new FileManagementProperties.ActiveDirectory(
+                true, "site.test", "ldaps://dc1.site.test:636",
+                (Integer) overrides.getOrDefault("connectTimeoutMs", 5000),
+                (Integer) overrides.getOrDefault("readTimeoutMs", 10000),
+                (String) overrides.getOrDefault("trustStore", ""),
+                (String) overrides.getOrDefault("trustStorePassword", ""),
+                (String) overrides.getOrDefault("trustStoreType", "PKCS12"),
+                (Boolean) overrides.getOrDefault("verifyHostname", true),
+                (Boolean) overrides.getOrDefault("verifyCertificate", true));
+        return new ActiveDirectoryCustomAuthenticationProvider(null, null,
+                FileManagementProperties.defaults("D:/files/").withActiveDirectory(settings));
     }
 }

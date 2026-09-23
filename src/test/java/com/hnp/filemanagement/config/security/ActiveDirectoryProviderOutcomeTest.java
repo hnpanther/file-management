@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.config.security;
 
+import com.hnp.filemanagement.config.FileManagementProperties;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.UserService;
@@ -43,8 +44,10 @@ class ActiveDirectoryProviderOutcomeTest {
     @BeforeEach
     void setUp() {
         userService = mock(UserService.class);
-        provider = new ActiveDirectoryCustomAuthenticationProvider(null, userService);
-        ReflectionTestUtils.setField(provider, "enabled", true);
+        provider = new ActiveDirectoryCustomAuthenticationProvider(null, userService,
+                FileManagementProperties.defaults("D:/files/").withActiveDirectory(
+                        new FileManagementProperties.ActiveDirectory(true, "site.test", "ldaps://dc1.site.test:636",
+                                null, null, null, null, null, null, null)));
         provider.useDelegate(directoryThatAccepts());
     }
 

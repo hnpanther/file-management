@@ -4,9 +4,9 @@ import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileDownloadDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FolderAccess;
-import com.hnp.filemanagement.dto.FileInfoPageDTO;
+import com.hnp.filemanagement.dto.PageResponse;
+import com.hnp.filemanagement.dto.PublicFileDetailsDTO;
 import com.hnp.filemanagement.dto.FileUploadDTO;
-import com.hnp.filemanagement.dto.PublicFileDetailsPageDTO;
 import com.hnp.filemanagement.entity.ActionEnum;
 import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.FileDetails;
@@ -682,7 +682,7 @@ public class FileService {
      * both come from the database, so filtering afterwards would leave the pager counting rows the
      * caller cannot see.
      */
-    public FileInfoPageDTO getPageFileInfo(int pageSize, int pageNumber, String search, int principalId) {
+    public PageResponse<FileInfoDTO> getPageFileInfo(int pageSize, int pageNumber, String search, int principalId) {
 
         Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
         // The folders this person may read, applied inside the query against each file's own
@@ -702,34 +702,26 @@ public class FileService {
                     SearchTerms.blankToNull(search), readableFolders.get(), pageable);
         }
 
-        FileInfoPageDTO pageDTO = new FileInfoPageDTO();
+        // The ancestors of every folder on the page in one query, so the conversion below adds no
+        // query per row - which is why the rows are converted as a list rather than one by one.
         Map<Integer, List<Folder>> ancestry = folderService.ancestryOf(
                 page.getContent().stream().map(FileInfo::getFolder).toList());
-        pageDTO.setFileInfoDTOList(page.getContent().stream()
+        return PageResponse.of(page, page.getContent().stream()
                 .map(f -> ModelConverterUtil.convertFileInfoToFileInfoDTO(f, ancestry.get(f.getFolder().getId())))
                 .toList());
-        pageDTO.setTotalPages(page.getTotalPages());
-        pageDTO.setPageSize(page.getSize());
-        pageDTO.setNumberOfElement(page.getNumberOfElements());
-        return pageDTO;
     }
 
-    public PublicFileDetailsPageDTO getPagePublicFiles(int pageSize, int pageNumber, String search) {
+    public PageResponse<PublicFileDetailsDTO> getPagePublicFiles(int pageSize, int pageNumber, String search) {
 
         Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
         Page<FileDetails> page = fileDetailsRepository.searchPublicFiles(SearchTerms.blankToNull(search), pageable);
 
-        PublicFileDetailsPageDTO pageDTO = new PublicFileDetailsPageDTO();
         Map<Integer, List<Folder>> ancestry = folderService.ancestryOf(
                 page.getContent().stream().map(d -> d.getFileInfo().getFolder()).toList());
-        pageDTO.setPublicFileDetailsDTOList(page.getContent().stream()
+        return PageResponse.of(page, page.getContent().stream()
                 .map(d -> ModelConverterUtil.convertFileDetailsToPublicFileDetailsDTO(
                         d, ancestry.get(d.getFileInfo().getFolder().getId())))
                 .toList());
-        pageDTO.setTotalPages(page.getTotalPages());
-        pageDTO.setPageSize(page.getSize());
-        pageDTO.setNumberOfElement(page.getNumberOfElements());
-        return pageDTO;
     }
 
     /** Whether a file of this name already exists in this folder. */

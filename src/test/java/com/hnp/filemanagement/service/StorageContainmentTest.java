@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.config.FileManagementProperties;
 import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,7 +37,7 @@ class StorageContainmentTest {
         root = Files.createDirectories(temp.resolve("root"));
         outside = Files.createDirectories(temp.resolve("outside"));
         Files.writeString(outside.resolve("secret.txt"), "not yours");
-        storage = new FileStorageFileSystemService(root.toString());
+        storage = new FileStorageFileSystemService(FileManagementProperties.defaults(root.toString()));
     }
 
     private static MockMultipartFile pdf(String name) {

@@ -7,7 +7,6 @@ import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.ShareLinkService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -47,9 +46,8 @@ public class ShareLinkController {
 
     /** The landing page: what the link is for, and the button (and password) that downloads it. */
     @GetMapping("/share/{token}")
-    public String landing(@PathVariable("token") String token, Model model, HttpServletRequest request) {
-        globalGeneralLogging.controllerLogging(0, "None", "GET /share/{token}", "ShareLinkController.class",
-                "request share link landing page");
+    public String landing(@PathVariable("token") String token, Model model) {
+        globalGeneralLogging.detail("share link landing page");
         FileShareLink link = shareLinkService.usable(token)
                 .orElseThrow(() -> new ResourceNotFoundException("no such share link"));
         describe(model, link, token);
@@ -61,9 +59,8 @@ public class ShareLinkController {
     @PostMapping("/share/{token}")
     public Object download(@PathVariable("token") String token,
                            @RequestParam(value = "password", required = false) String password,
-                           Model model, HttpServletRequest request) {
-        globalGeneralLogging.controllerLogging(0, "None", "POST /share/{token}", "ShareLinkController.class",
-                "request download via share link");
+                           Model model) {
+        globalGeneralLogging.detail("download via share link");
         ShareLinkService.Attempt attempt = shareLinkService.download(token, password == null ? "" : password);
         if (attempt.outcome() == ShareLinkService.Outcome.DOWNLOAD) {
             return attachment(attempt.file());
@@ -104,8 +101,8 @@ public class ShareLinkController {
     //SHARE_LINKS_PAGE
     @PreAuthorize("hasAuthority('SHARE_LINKS_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("/files/share-links")
-    public String shareLinksPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
-        globalGeneralLogging.controllerLogging(userDetails, request, ShareLinkController.class, "request share links page");
+    public String shareLinksPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model) {
+        globalGeneralLogging.detail("share links page");
         boolean all = holds(userDetails, PermissionEnum.REVOKE_SHARE_LINK);
         model.addAttribute("links", all ? shareLinkService.listAll() : shareLinkService.listMine(userDetails.getId()));
         model.addAttribute("allLinks", all);

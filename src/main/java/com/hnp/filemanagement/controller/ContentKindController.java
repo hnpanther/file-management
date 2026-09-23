@@ -8,8 +8,8 @@ import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.ContentKindService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
+import com.hnp.filemanagement.util.UiMessages;
 import com.hnp.filemanagement.validation.ContentTypes;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -35,22 +35,21 @@ public class ContentKindController {
     private final GlobalGeneralLogging globalGeneralLogging;
     private final ContentKindService contentKindService;
 
-    public ContentKindController(GlobalGeneralLogging globalGeneralLogging, ContentKindService contentKindService) {
+    private final UiMessages messages;
+
+    public ContentKindController(GlobalGeneralLogging globalGeneralLogging, ContentKindService contentKindService,
+                                 UiMessages messages) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.contentKindService = contentKindService;
+        this.messages = messages;
     }
 
     //CONTENT_KIND_PAGE
     @PreAuthorize("hasAuthority('CONTENT_KIND_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
-    public String contentKindsPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
+    public String contentKindsPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model) {
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get content kinds page";
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "ContentKindController.class", logMessage);
+        globalGeneralLogging.detail("content kinds page");
 
         fill(model, new ContentKindForm(), null, false, false, "");
         return VIEW;
@@ -65,17 +64,12 @@ public class ContentKindController {
     @PostMapping("/probe")
     public String probe(@AuthenticationPrincipal UserDetailsImpl userDetails,
                         @RequestParam("sample") MultipartFile sample,
-                        Model model, HttpServletRequest request) {
+                        Model model) {
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to probe a sample, name=" + sample.getOriginalFilename() + ", size=" + sample.getSize();
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "ContentKindController.class", logMessage);
+        globalGeneralLogging.detail("probe a sample, name=" + sample.getOriginalFilename() + ", size=" + sample.getSize());
 
         if (sample.isEmpty()) {
-            fill(model, new ContentKindForm(), null, true, false, "فایلی برای بررسی انتخاب نشده است");
+            fill(model, new ContentKindForm(), null, true, false, messages.get("contentKind.noSample"));
             return VIEW;
         }
         ContentProbeDTO probe = contentKindService.probe(sample);
@@ -96,26 +90,20 @@ public class ContentKindController {
     @PostMapping
     public String addContentKind(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                  @ModelAttribute ContentKindForm form,
-                                 Model model, HttpServletRequest request) {
+                                 Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to add content kind ." + form.getExtension() + " as " + form.getMediaType();
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "ContentKindController.class", logMessage);
+        globalGeneralLogging.detail("add content kind ." + form.getExtension() + " as " + form.getMediaType());
 
         try {
             contentKindService.add(form, principalId);
-            fill(model, new ContentKindForm(), null, true, true, "اطلاعات با موفقیت ذخیره شد");
+            fill(model, new ContentKindForm(), null, true, true, messages.get("form.saved"));
         } catch (InvalidDataException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "ContentKindController.class", "InvalidDataException:" + e.getMessage());
-            fill(model, form, null, true, false, "اطلاعات صحیح نمیباشد: " + e.getMessage());
+            globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
+            fill(model, form, null, true, false, messages.get("form.invalidWithReason", e.getMessage()));
         } catch (DuplicateResourceException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "ContentKindController.class", "DuplicateResourceException:" + e.getMessage());
-            fill(model, form, null, true, false, "این پسوند قبلاً تعریف شده است");
+            globalGeneralLogging.detail("DuplicateResourceException:" + e.getMessage());
+            fill(model, form, null, true, false, messages.get("contentKind.duplicate"));
         }
         return VIEW;
     }
@@ -125,22 +113,17 @@ public class ContentKindController {
     @PostMapping("/{extension}/delete")
     public String deleteContentKind(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                     @PathVariable("extension") String extension,
-                                    Model model, HttpServletRequest request) {
+                                    Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to delete content kind ." + extension;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "ContentKindController.class", logMessage);
+        globalGeneralLogging.detail("delete content kind ." + extension);
 
         try {
             contentKindService.delete(extension, principalId);
-            fill(model, new ContentKindForm(), null, true, true, "نوع فایل حذف شد");
+            fill(model, new ContentKindForm(), null, true, true, messages.get("contentKind.deleted"));
         } catch (ResourceNotFoundException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "ContentKindController.class", "ResourceNotFoundException:" + e.getMessage());
-            fill(model, new ContentKindForm(), null, true, false, "اطلاعات صحیح نمیباشد");
+            globalGeneralLogging.detail("ResourceNotFoundException:" + e.getMessage());
+            fill(model, new ContentKindForm(), null, true, false, messages.get("form.invalidShort"));
         }
         return VIEW;
     }

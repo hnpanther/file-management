@@ -10,14 +10,14 @@ import com.hnp.filemanagement.service.FolderQuotaService;
 import com.hnp.filemanagement.service.UserHomeService;
 import com.hnp.filemanagement.service.UserService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
+import com.hnp.filemanagement.util.UiMessages;
 import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.validation.UpdatePasswordValidation;
 import com.hnp.filemanagement.validation.UpdateValidation;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -50,30 +50,30 @@ public class UserController {
     private final UserHomeService userHomeService;
     private final FolderQuotaService folderQuotaService;
 
-    @Value("${filemanagement.default.page-size:50}")
-    private int defaultPageSize;
-    @Value("${filemanagement.default.element-size:50}")
-    private int defaultElementSize;
+    private final int defaultPageSize;
+    private final int defaultElementSize;
+
+    private final UiMessages messages;
 
     public UserController(GlobalGeneralLogging globalGeneralLogging, UserService userService,
-                          UserHomeService userHomeService, FolderQuotaService folderQuotaService) {
+                          UserHomeService userHomeService, FolderQuotaService folderQuotaService,
+                          FileManagementProperties properties,
+                          UiMessages messages) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.userService = userService;
         this.userHomeService = userHomeService;
         this.folderQuotaService = folderQuotaService;
+        this.defaultPageSize = properties.defaults().pageSize();
+        this.defaultElementSize = properties.defaults().elementSize();
+        this.messages = messages;
     }
 
 
     //CREATE_NEW_USER_PAGE
     @PreAuthorize("hasAuthority('CREATE_NEW_USER_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("/create")
-    public String createUser(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request create user page";
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UserController.class", logMessage);
+    public String createUser(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model) {
+        globalGeneralLogging.detail("create user page");
 
 
         UserDTO userDTO = new UserDTO();
@@ -93,39 +93,29 @@ public class UserController {
     @PreAuthorize("hasAuthority('SAVE_NEW_USER') || hasAuthority('ADMIN')")
     @PostMapping
     public String saveUser(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) UserDTO userDTO, BindingResult bindingResult,
-                           Model model, HttpServletRequest request) {
+                           Model model) {
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to save new user=" + userDTO;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UserController.class", logMessage);
+        globalGeneralLogging.detail("save new user=" + userDTO);
 
         boolean showMessage = true;
         boolean valid = false;
         String message = "";
 
         if(bindingResult.hasErrors()) {
-            message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "UserController.class",
-                    "ValidationError:" + bindingResult);
+            message = messages.get("form.invalid");
+            globalGeneralLogging.detail("ValidationError:" + bindingResult);
         } else {
             try {
                 userService.createUser(userDTO, principalId);
                 valid = true;
-                message = "اطلاعات با موفقیت ذخیره شد";
+                message = messages.get("form.saved");
             } catch (ResourceNotFoundException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "UserController.class",
-                        "ResourceNotFoundException(probably user role can not found):" + e.getMessage());
-                message = "مشکلی پیش آمده. مجددا تلاش کنید. در صورت تکرار این مشکل با مدیر سیستم تماس بگیرید";
+                globalGeneralLogging.detail("ResourceNotFoundException(probably user role can not found):" + e.getMessage());
+                message = messages.get("form.unexpected");
 
             } catch (DuplicateResourceException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "UserController.class",
-                        "DuplicateResourceException:" + e.getMessage());
-                message = "کاربری با این مشخصات در سیستم وجود دارد";
+                globalGeneralLogging.detail("DuplicateResourceException:" + e.getMessage());
+                message = messages.get("user.duplicate");
             }
         }
 
@@ -144,13 +134,8 @@ public class UserController {
     //UPDATE_USER_PAGE
     @PreAuthorize("hasAuthority('UPDATE_USER_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{userId}/edit")
-    public String viewEditUserPage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get edit user page with id=" + userId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UserController.class", logMessage);
+    public String viewEditUserPage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model) {
+        globalGeneralLogging.detail("edit user page with id=" + userId);
 
 
         UserDTO userDTO = userService.getUserDtoById(userId);
@@ -167,13 +152,8 @@ public class UserController {
     //VIEW_USER_PROFILE
     @PreAuthorize("hasAuthority('VIEW_USER_PROFILE') || hasAuthority('ADMIN') || #userId == authentication.principal.id")
     @GetMapping("{userId}")
-    public String viewUserProfile(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get user profile page with id=" + userId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UserController.class", logMessage);
+    public String viewUserProfile(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model) {
+        globalGeneralLogging.detail("user profile page with id=" + userId);
 
 
         UserDTO userDTO = userService.getUserDtoById(userId);
@@ -198,23 +178,19 @@ public class UserController {
     @PreAuthorize("hasAuthority('CREATE_USER_HOME') || hasAuthority('ADMIN')")
     @PostMapping("{userId}/home")
     public String createUserHome(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId,
-                                 RedirectAttributes redirectAttributes, HttpServletRequest request) {
+                                 RedirectAttributes redirectAttributes) {
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UserController.class", "request to create home folder for user id=" + userId);
+        globalGeneralLogging.detail("create home folder for user id=" + userId);
 
         try {
             userHomeService.ensureHome(userId, principalId);
-            redirectAttributes.addFlashAttribute("homeMessage", "پوشهٔ شخصی ساخته شد");
+            redirectAttributes.addFlashAttribute("homeMessage", messages.get("user.home.created"));
             redirectAttributes.addFlashAttribute("homeValid", true);
         } catch (InvalidDataException | DuplicateResourceException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "UserController.class", e.getClass().getSimpleName() + ":" + e.getMessage());
+            globalGeneralLogging.detail(e.getClass().getSimpleName() + ":" + e.getMessage());
             redirectAttributes.addFlashAttribute("homeMessage", e instanceof DuplicateResourceException
-                    ? "پوشه‌ای با نام این کاربر از قبل زیر Profiles وجود دارد"
-                    : "نام کاربری نمی‌تواند نام یک پوشه باشد");
+                    ? messages.get("user.home.nameTaken")
+                    : messages.get("user.home.badUsername"));
             redirectAttributes.addFlashAttribute("homeValid", false);
         }
         return "redirect:/users/" + userId;
@@ -229,25 +205,20 @@ public class UserController {
     @PostMapping("{userId}/home/quota")
     public String setUserHomeQuota(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId,
                                    @RequestParam(value = "quotaMb", required = false) String quotaMb,
-                                   RedirectAttributes redirectAttributes, HttpServletRequest request) {
+                                   RedirectAttributes redirectAttributes) {
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UserController.class",
-                "request to set home quota for user id=" + userId + " to " + quotaMb + " MB");
+        globalGeneralLogging.detail("set home quota for user id=" + userId + " to " + quotaMb + " MB");
 
         Folder home = userHomeService.homeOf(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("user id=" + userId + " has no home folder"));
         try {
             Long bytes = parseMegabytes(quotaMb);
             userHomeService.setQuota(home.getId(), bytes, principalId);
-            redirectAttributes.addFlashAttribute("homeMessage", "سهمیه ذخیره شد");
+            redirectAttributes.addFlashAttribute("homeMessage", messages.get("user.home.quotaSaved"));
             redirectAttributes.addFlashAttribute("homeValid", true);
         } catch (InvalidDataException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "UserController.class", "InvalidDataException:" + e.getMessage());
-            redirectAttributes.addFlashAttribute("homeMessage", "سهمیه باید یک عدد مثبت به مگابایت باشد، یا خالی برای بدون سقف");
+            globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
+            redirectAttributes.addFlashAttribute("homeMessage", messages.get("user.home.quotaInvalid"));
             redirectAttributes.addFlashAttribute("homeValid", false);
         }
         return "redirect:/users/" + userId;
@@ -272,13 +243,8 @@ public class UserController {
     //CHANGE_USER_PASSWORD_PAGE
     @PreAuthorize("hasAuthority('CHANGE_USER_PASSWORD_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{userId}/change-password")
-    public String changePasswordPage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get user change password page with id=" + userId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UserController.class", logMessage);
+    public String changePasswordPage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model) {
+        globalGeneralLogging.detail("user change password page with id=" + userId);
 
 
         UserDTO userDTO = userService.getUserDtoById(userId);
@@ -293,33 +259,25 @@ public class UserController {
     @PreAuthorize("hasAuthority('CHANGE_USER_PASSWORD') || hasAuthority('ADMIN')")
     @PostMapping("{userId}/change-password")
     public String changeUserPassword(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(UpdatePasswordValidation.class) UserDTO userDTO, BindingResult bindingResult,
-                                     @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
+                                     @PathVariable("userId") int userId, Model model) {
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get user change password page with id=" + userId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UserController.class", logMessage);
+        globalGeneralLogging.detail("user change password page with id=" + userId);
 
         boolean showMessage = true;
         boolean valid = false;
         String message = "";
 
         if(bindingResult.hasErrors() || !userDTO.getId().equals(userId)) {
-            message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "UserController.class",
-                    "ValidationError:" + bindingResult);
+            message = messages.get("form.invalid");
+            globalGeneralLogging.detail("ValidationError:" + bindingResult);
         } else {
             try {
                 userService.changePassword(userDTO, principalId);
                 valid = true;
-                message = "اطلاعات با موفقیت ذخیره شد";
+                message = messages.get("form.saved");
             } catch (ResourceNotFoundException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "UserController.class",
-                        "ResourceNotFoundException(probably user id not correct):" + e.getMessage());
-                message = "مشکلی پیش آمده. مجددا تلاش کنید. در صورت تکرار این مشکل با مدیر سیستم تماس بگیرید";
+                globalGeneralLogging.detail("ResourceNotFoundException(probably user id not correct):" + e.getMessage());
+                message = messages.get("form.unexpected");
 
             }
         }
@@ -338,41 +296,31 @@ public class UserController {
     @PreAuthorize("hasAuthority('SAVE_UPDATED_USER') || hasAuthority('ADMIN')")
     @PostMapping("{userId}")
     public String saveupdatedUser(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(UpdateValidation.class) UserDTO userDTO, BindingResult bindingResult,
-                                  Model model, HttpServletRequest request) {
+                                  Model model) {
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to save updated user=" + userDTO;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UserController.class", logMessage);
+        globalGeneralLogging.detail("save updated user=" + userDTO);
 
         boolean showMessage = true;
         boolean valid = false;
         String message = "";
 
         if(bindingResult.hasErrors()) {
-            message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "UserController.class",
-                    "ValidationError:" + bindingResult);
+            message = messages.get("form.invalid");
+            globalGeneralLogging.detail("ValidationError:" + bindingResult);
         } else {
             try {
                 userService.updateUser(userDTO, principalId);
                 valid = true;
-                message = "اطلاعات با موفقیت ذخیره شد";
+                message = messages.get("form.saved");
             } catch (ResourceNotFoundException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "UserController.class",
-                        "ResourceNotFoundException(probably user id not correct):" + e.getMessage());
-                message = "مشکلی پیش آمده. مجددا تلاش کنید. در صورت تکرار این مشکل با مدیر سیستم تماس بگیرید";
+                globalGeneralLogging.detail("ResourceNotFoundException(probably user id not correct):" + e.getMessage());
+                message = messages.get("form.unexpected");
 
             } catch (DuplicateResourceException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "UserController.class",
-                        "DuplicateResourceException:" + e.getMessage());
+                globalGeneralLogging.detail("DuplicateResourceException:" + e.getMessage());
                 message = e.getMessage().contains("under Profiles")
-                        ? "پوشه‌ای با این نام کاربری از قبل زیر Profiles وجود دارد؛ پوشهٔ شخصی نمی‌تواند نام جدید را بگیرد"
-                        : "کاربری با این مشخصات در سیستم وجود دارد";
+                        ? messages.get("user.home.renameTaken")
+                        : messages.get("user.duplicate");
             }
         }
 
@@ -390,14 +338,9 @@ public class UserController {
     //USER_ROLE_PAGE
     @PreAuthorize("hasAuthority('USER_ROLE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{userId}/roles")
-    public String viewRoleOfUsers(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model, HttpServletRequest request) {
+    public String viewRoleOfUsers(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, Model model) {
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get user role page with userId=" + userId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UserController.class", logMessage);
+        globalGeneralLogging.detail("user role page with userId=" + userId);
 
 
         UserDTO userDTO = userService.getUserDtoById(userId);
@@ -416,39 +359,29 @@ public class UserController {
     @PreAuthorize("hasAuthority('SAVE_UPDATED_USER_ROLE') || hasAuthority('ADMIN')")
     @PostMapping("{userId}/roles")
     public String saveUpdatedUserRoles(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("userId") int userId, @ModelAttribute @Valid UserRoleDTO userRoleDTO, BindingResult bindingResult,
-                                       Model model, HttpServletRequest request) {
+                                       Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to save user roles for user with id=" + userId + " user roles=" + userRoleDTO;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UserController.class", logMessage);
+        globalGeneralLogging.detail("save user roles for user with id=" + userId + " user roles=" + userRoleDTO);
 
         boolean showMessage = true;
         boolean valid = false;
         String message = "";
 
         if(bindingResult.hasErrors()) {
-            message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "UserController.class",
-                    "ValidationError:" + bindingResult);
+            message = messages.get("form.invalid");
+            globalGeneralLogging.detail("ValidationError:" + bindingResult);
         } else {
             try {
                 userService.updateUserRoles(userId, userRoleDTO.getRolesIds(), principalId);
                 valid = true;
-                message = "اطلاعات با موفقیت ذخیره شد";
+                message = messages.get("form.saved");
             } catch (ResourceNotFoundException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "UserController.class",
-                        "ResourceNotFoundException:" + e.getMessage());
-                message = "اطلاعات صحیح نمیباشد";
+                globalGeneralLogging.detail("ResourceNotFoundException:" + e.getMessage());
+                message = messages.get("form.invalidShort");
             } catch (InvalidDataException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "UserController.class",
-                        "InvalidDataException:" + e.getMessage());
-                message = "اطلاعات صحیح نمیباشد";
+                globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
+                message = messages.get("form.invalidShort");
             }
         }
 
@@ -467,16 +400,11 @@ public class UserController {
     //GET_ALL_USER_PAGE
     @PreAuthorize("hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
-    public String viewAllUserPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request,
+    public String viewAllUserPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model,
                                   @RequestParam(name = "search", required = false) String search,
                                   @RequestParam(name = "page-size", required = false) Integer pageSize,
                                   @RequestParam(name = "page-number", required = false) Integer pageNumber) {
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get page of all user, search=" + search + ",pageSize=" + pageSize + ",pageNumber=" + pageNumber;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UserController.class", logMessage);
+        globalGeneralLogging.detail("page of all user, search=" + search + ",pageSize=" + pageSize + ",pageNumber=" + pageNumber);
 
 
         if(pageSize == null) {

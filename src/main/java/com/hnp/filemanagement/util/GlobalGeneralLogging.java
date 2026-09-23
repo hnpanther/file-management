@@ -4,16 +4,31 @@ import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
- * The one place that formats the "who did what, where" line every handler writes.
+ * What a handler adds to the line every request already writes.
  *
- * <p>Handlers used to rebuild the principal id, the username and the request path inline - six
- * lines repeated in roughly sixty methods. {@link #controllerLogging(UserDetailsImpl,
- * HttpServletRequest, Class, String)} does that once. The older signature is kept for the
- * Thymeleaf controllers that have not been converted yet; prefer the request-aware one in anything
- * new.
+ * <p><b>The "who did what, where" line is not written here any more</b> (roadmap 2.1,
+ * {@code docs/issues.md} issue 25). It was: every handler rebuilt the principal id, the username
+ * and the request path and passed them in - six lines repeated in a hundred and twenty methods,
+ * every one of them able to drift, and all of them saying what
+ * {@code LoggingInterceptor} already says for every request, handler and all. The interceptor is
+ * now the one writer of that line, so a handler writes only the part the interceptor cannot know:
+ * <em>which</em> folder, <em>which</em> user, <em>which</em> id.
+ *
+ * <pre>
+ *     globalGeneralLogging.detail("create folder " + name + " under folderId=" + parentId);
+ * </pre>
+ *
+ * <p>The principal and the path come from the request in progress, so there is nothing to pass and
+ * nothing to get wrong. Outside a request (a scheduled task, a test) the line is still written,
+ * with what is known.
  *
  * <p>Never pass a JPA entity as {@code message}: {@code FileInfo} and {@code FileDetails} are
  * bidirectional and both are {@code @Data}, so {@code toString()} recurses until the stack
@@ -25,28 +40,21 @@ public class GlobalGeneralLogging {
     private static final Logger logger = LoggerFactory.getLogger(GlobalGeneralLogging.class);
 
     /**
-     * Writes the audit-style debug line for a request.
+     * Writes what this handler is about to do, against the request in progress.
      *
-     * @param principal the signed-in user, or {@code null} for an anonymous request
-     * @param request   the current request; supplies method, URI and query string
-     * @param source    the handler class, used only to label the line
-     * @param message   what the handler is about to do - an id, never an entity
+     * @param message an id, a name, a decision - never an entity
      */
-    public void controllerLogging(UserDetailsImpl principal, HttpServletRequest request,
-                                  Class<?> source, String message) {
-        controllerLogging(
-                principal == null ? 0 : principal.getId(),
+    public void detail(String message) {
+        HttpServletRequest request = currentRequest();
+        UserDetailsImpl principal = currentPrincipal();
+        logger.debug("[detail][username={}][userId={}][path={}]: {}",
                 principal == null ? "anonymous" : principal.getUsername(),
-                request.getMethod() + " " + fullPath(request),
-                source.getSimpleName(),
+                principal == null ? 0 : principal.getId(),
+                request == null ? "-" : request.getMethod() + " " + fullPath(request),
                 message);
     }
 
-    public void controllerLogging(int principalId, String principalUsername, String path, String className, String message) {
-        logger.debug("[GlobalGeneralLogging-Controller][class={}][username={}][userId={}][path={}]: {}",
-                className, principalUsername, principalId, path, message);
-    }
-
+    /** What a service says about itself; the request line is the interceptor's. */
     public void serviceLogging(String methodName, String className, String message) {
         logger.debug("[GlobalGeneralLogging-Service][class={}][method={}]: {}", className, methodName, message);
     }
@@ -76,5 +84,19 @@ public class GlobalGeneralLogging {
             end++;
         }
         return end == start ? path : path.substring(0, start) + "***" + path.substring(end);
+    }
+
+    /** The signed-in user of the request in progress, or null - anonymous, or no request at all. */
+    public static UserDetailsImpl currentPrincipal() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getPrincipal() instanceof UserDetailsImpl principal
+                ? principal
+                : null;
+    }
+
+    /** The request in progress, or null outside one. */
+    private static HttpServletRequest currentRequest() {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        return attributes instanceof ServletRequestAttributes servlet ? servlet.getRequest() : null;
     }
 }

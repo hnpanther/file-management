@@ -65,6 +65,10 @@ public class UploadPolicyService {
     private final UserRepository userRepository;
     private final ActionHistoryService actionHistoryService;
 
+    /**
+     * Spring's own multipart cap - not ours to rename, so it stays an {@code @Value} rather than
+     * moving into {@code FileManagementProperties} (roadmap 2.1). Every limit sits under it.
+     */
     @Value("${spring.servlet.multipart.max-file-size:20MB}")
     private DataSize serverCap;
 

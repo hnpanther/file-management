@@ -10,7 +10,7 @@ import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -69,18 +69,19 @@ public class FolderTreeDeleteService {
     private final FileStorageService fileStorageService;
     private final ActionHistoryService actionHistoryService;
 
-    @Value("${filemanagement.folders.max-delete-files:1000}")
-    private long maxDeleteFiles;
+    private final long maxDeleteFiles;
 
     public FolderTreeDeleteService(FolderRepository folderRepository, FileInfoRepository fileInfoRepository,
                                    FileService fileService, FolderAccessService folderAccessService,
-                                   FileStorageService fileStorageService, ActionHistoryService actionHistoryService) {
+                                   FileStorageService fileStorageService, ActionHistoryService actionHistoryService,
+                                   FileManagementProperties properties) {
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.fileService = fileService;
         this.folderAccessService = folderAccessService;
         this.fileStorageService = fileStorageService;
         this.actionHistoryService = actionHistoryService;
+        this.maxDeleteFiles = properties.folders().maxDeleteFiles();
     }
 
     /** The most files one call may remove; a tree holding more is refused. */
