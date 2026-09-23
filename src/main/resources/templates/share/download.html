@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{share.pageTitle(#{app.name})}">دریافت فایل | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The landing page of a temporary share link (roadmap 10.5). Public: whoever holds the link sees
+  the file's name and size, when the link ends, and a button that downloads - behind a password
+  field when the link has one. Nothing is downloaded on the GET that renders this, so a link
+  previewer or a prefetch never spends one of a capped link's downloads.
+-->
+<body class="auth-page">
+<main class="auth-shell">
+    <section class="auth-form-panel" aria-labelledby="share-title">
+        <div class="auth-form-inner">
+            <div class="auth-form-heading">
+                <span class="auth-eyebrow" th:text="#{share.eyebrow}">لینک موقت</span>
+                <h1 id="share-title" class="auth-title" th:text="#{share.title}">دریافت فایل</h1>
+                <p class="auth-subtitle" th:text="#{share.subtitle}">این لینک برای مدت محدودی معتبر است.</p>
+            </div>
+
+            <dl class="mb-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                <dt class="text-ink-500" th:text="#{share.file}">فایل</dt>
+                <dd class="technical break-all" dir="ltr" th:text="${fileName}">report.pdf</dd>
+                <dt class="text-ink-500" th:text="#{share.version}">نسخه</dt>
+                <dd class="technical" dir="ltr" th:text="'v' + ${version}">v1</dd>
+                <dt class="text-ink-500" th:text="#{share.size}">حجم</dt>
+                <dd class="technical" dir="ltr" th:text="${sizeKb} + ' KB'">12 KB</dd>
+                <dt class="text-ink-500" th:text="#{share.expires}">اعتبار تا</dt>
+                <dd dir="ltr" th:text="${@jalali.format(expiresAt)}">1405/01/01 12:00</dd>
+                <th:block th:if="${downloadsLeft != null}">
+                    <dt class="text-ink-500" th:text="#{share.downloadsLeft}">دانلود باقی‌مانده</dt>
+                    <dd class="technical" dir="ltr" th:text="${downloadsLeft}">3</dd>
+                </th:block>
+            </dl>
+
+            <div th:if="${outcome == 'WRONG_PASSWORD'}" class="alert alert-warning" role="alert"
+                 th:text="#{share.wrongPassword}">رمز درست نیست.</div>
+            <div th:if="${outcome == 'LOCKED'}" class="alert alert-warning" role="alert">
+                <span th:text="#{share.locked}">به‌خاطر چند رمز اشتباه، این لینک موقتاً قفل شده است. تا</span>
+                <span dir="ltr" th:text="${@jalali.format(lockedUntil)}">12:15</span>
+                <span th:text="#{share.lockedSuffix}">دوباره تلاش کنید.</span>
+            </div>
+
+            <form class="auth-form" th:action="@{'/share/' + ${token}}" method="post">
+                <div class="form-group" th:if="${passwordProtected}">
+                    <label for="password" th:text="#{share.password}">رمز لینک</label>
+                    <input type="password" name="password" id="password" class="form-control" dir="ltr"
+                           autocomplete="off" th:attr="disabled=${outcome == 'LOCKED'} ? 'disabled' : null" autofocus required>
+                </div>
+                <button type="submit" class="btn btn-primary" th:attr="disabled=${outcome == 'LOCKED'} ? 'disabled' : null">
+                    <i class="bi bi-download" aria-hidden="true"></i>
+                    <span th:text="#{share.download}">دانلود</span>
+                </button>
+            </form>
+        </div>
+    </section>
+
+    <aside class="auth-intro" th:aria-label="#{share.intro.aria}">
+        <div class="auth-brand">
+            <span class="brand-mark" aria-hidden="true"><i class="bi bi-folder-fill"></i></span>
+            <div>
+                <strong th:text="#{app.name}">سامانه مدیریت اسناد</strong>
+                <div th:text="#{share.intro.subtitle}">فایلی که با شما به اشتراک گذاشته شده است</div>
+            </div>
+        </div>
+        <div class="auth-intro-copy">
+            <p th:text="#{share.intro.note}">این لینک را کسی که به فایل دسترسی داشته برای شما ساخته است. پس از پایان اعتبار یا لغو، دیگر کار نمی‌کند.</p>
+        </div>
+    </aside>
+</main>
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

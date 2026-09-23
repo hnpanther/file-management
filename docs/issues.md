@@ -1271,4 +1271,11 @@ form, whatever a role is granted; the `POST /users` behind it correctly asks for
 Found writing `UserHomeWebTest`, which had to sign in as `ADMIN` to reach the page. The fix is one
 word in the annotation (and a look for other handlers whose string drifted from the enum - a
 test that reads every `@PreAuthorize` and checks the name against `PermissionEnum` would end the
-class of defect); not done here because it changes who may open a page, which is a decision.
+class of defect).
+
+> **Fixed** in 1.5.0, while the access levels were being gone over: the annotation names
+> `CREATE_NEW_USER_PAGE`, which is what the enum and the permission table have, so the page can
+> now be granted to a role instead of being administrator-only by accident.
+> `PermissionNamesTest` reads every `hasAuthority('X')` in the Java sources **and** the
+> templates and checks each against `PermissionEnum`, so this class of drift fails the build
+> from now on. It found nothing else.

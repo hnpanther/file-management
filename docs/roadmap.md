@@ -18,7 +18,7 @@ working, and to depend only on what came before.
 | 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | **done** (`V2.8` 1.3.0, `V2.9` 1.4.0): the taxonomy is gone, the folder is the structure at any depth up to a limit, and it is created, renamed, moved and deleted from the explorer |
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
-| 10 | After 1.4.0: sharded storage, download from the explorer, recursive delete, `Profiles` with a quota, share links | 7, 9 | in that order; 10.1–10.4 **done** (1.5.0) |
+| 10 | After 1.4.0: sharded storage, download from the explorer, recursive delete, `Profiles` with a quota, share links | 7, 9 | **done** (1.5.0) |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -1628,7 +1628,7 @@ migration where the schema changes, tests, `docs/arch.md` and `docs/deployment.m
 | 10.2 | Download the latest version from the explorer | none | **done** (1.5.0) |
 | 10.3 | Delete a folder with everything in it | none | **done** (1.5.0) |
 | 10.4 | `Profiles`: a home folder per user, with a quota | `V2.11` | **done** (1.5.0) |
-| 10.5 | Temporary share links | `V2.12` | large; independent |
+| 10.5 | Temporary share links | `V2.12` | **done** (1.5.0) |
 
 ### 10.1 Shard the id-based storage layout — **done** (1.5.0)
 
@@ -1746,7 +1746,9 @@ included, tags and grants with it; the cap refuses; `USER_HOME` refuses; a holde
 > rather than a plain folder, so that the tree refuses to rename, move, delete or fill it by
 > hand without special-casing a name; and there is no automatic creation on a sign-in — the
 > box on the new-user form (ticked by default) and the button on the user's page are the two
-> ways, both an administrator's decision. `UserHomeService`, `FolderQuotaService`,
+> ways, both an administrator's decision - and a personal folder is a link in the navigation
+> rather than a landing page, so signing in ends where it always did. `UserHomeService`,
+> `FolderQuotaService`,
 > `QuotaExceededException`; `arch.md`, "Personal folders and quotas".
 
 The `USER_HOME` kind and `folder.owner_user_id` have waited for this since `V1.4`
@@ -1780,7 +1782,8 @@ folder-access on and no role grant), applies `filemanagement.profiles.default-qu
   change the quota (`SET_FOLDER_QUOTA`) — up or down; lowering it below current usage is allowed
   and simply blocks further uploads until something is removed.
 * After login, `/` sends a user who has a home to `/files/explorer?folder={home id}`; a user
-  without one lands where they land today.
+  without one lands where they land today. *(Shipped differently, on the user's word: the
+  landing page is unchanged for everybody, and the home is an entry in the navigation instead.)*
 * Optional, off by default: `filemanagement.profiles.auto-create-on-login=false` — for AD users
   who are never created through the form.
 
@@ -1800,7 +1803,13 @@ Nobody but the migration creates folders directly under `Profiles`: give no one 
 refuses the byte that crosses it for each of the three upload paths and for a move in; lowering
 below usage; the login redirect with and without a home; a home refuses rename, move and delete.
 
-### 10.5 Temporary share links
+### 10.5 Temporary share links — **done** (1.5.0)
+
+> Shipped as planned, plus the optional download cap (`maxDownloads`) that was left for later,
+> and one refinement: the visitor's `GET` is a landing page and the `POST` is the download, so
+> that a link previewer or a prefetch never spends a capped link's download.
+> `ShareLinkService`, `ShareLinkController`, `ShareLinkResource`; `arch.md`, "Temporary share
+> links".
 
 A link to one **version** of a file, valid for a number of minutes, optionally behind a password,
 downloadable **without signing in** and outside folder access: the link is the access. Chosen

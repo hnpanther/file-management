@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.config.logging;
 
+import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -23,16 +24,16 @@ public class LoggingInterceptor implements HandlerInterceptor {
             String userInformation = "{id=" + userDetails.getId() + ", username=" + userDetails.getUsername() + " ,permission=" + userDetails.getPermissions() +
                     " ,enabled=" + userDetails.getEnabled() + ", state=" + userDetails.getState() + "}";
 
-            logger.debug("Received request: {} {} from {} and user={}", request.getMethod(), request.getRequestURI(), request.getRemoteAddr(), userInformation);
+            logger.debug("Received request: {} {} from {} and user={}", request.getMethod(), GlobalGeneralLogging.maskSecrets(request.getRequestURI()), request.getRemoteAddr(), userInformation);
 //            logger.debug("Received request: {} {} from {} and user={}", request.getMethod(), request.getRequestURI(), request.getRemoteAddr(), userDetails);
         }
-        logger.debug("Received request: {} {} from {}", request.getMethod(), request.getRequestURI(), request.getRemoteAddr());
+        logger.debug("Received request: {} {} from {}", request.getMethod(), GlobalGeneralLogging.maskSecrets(request.getRequestURI()), request.getRemoteAddr());
         return true;
     }
 
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
         // Log response details
-        logger.debug("Sent response: {} {} with status {} and exception {}", request.getMethod(), request.getRequestURI(), response.getStatus(), ex);
+        logger.debug("Sent response: {} {} with status {} and exception {}", request.getMethod(), GlobalGeneralLogging.maskSecrets(request.getRequestURI()), response.getStatus(), ex);
     }
 }

@@ -64,8 +64,8 @@ public class UserController {
     }
 
 
-    //CREATE_NEW_USER
-    @PreAuthorize("hasAuthority('CREATE_NEW_USER') || hasAuthority('ADMIN')")
+    //CREATE_NEW_USER_PAGE
+    @PreAuthorize("hasAuthority('CREATE_NEW_USER_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("/create")
     public String createUser(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
         int principalId = userDetails.getId();

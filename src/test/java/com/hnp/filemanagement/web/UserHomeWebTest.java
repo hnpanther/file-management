@@ -160,25 +160,53 @@ class UserHomeWebTest extends MySqlSupport {
     }
 
     @Test
-    @DisplayName("after signing in, a user with a home lands in it - when they may open the explorer - and one without lands where they always did")
-    void landing() throws Exception {
+    @DisplayName("a personal folder changes nothing about where a user lands: the landing page is what it always was, with or without one")
+    void landingIsUnchanged() throws Exception {
         mockMvc.perform(get("/").with(user(principal(personId, PermissionEnum.FILE_EXPLORER_PAGE, PermissionEnum.GET_ALL_FILE_INFO_PAGE)))
                         .accept(MediaType.TEXT_HTML))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/files/file-info"));
+
+        userHomeService.ensureHome(personId, adminId);
+
+        mockMvc.perform(get("/").with(user(principal(personId, PermissionEnum.FILE_EXPLORER_PAGE, PermissionEnum.GET_ALL_FILE_INFO_PAGE)))
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/files/file-info"));
+        mockMvc.perform(get("/").with(user(principal(personId, PermissionEnum.PUBLIC_FILE_PAGE)))
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/files/public-files"));
+    }
+
+    @Test
+    @DisplayName("the menu offers one's own folder to whoever has one and may open the explorer, and to nobody else")
+    void theMenuEntry() throws Exception {
+        // No folder yet: no entry, for anyone.
+        mockMvc.perform(get("/files/file-info").with(user(principal(personId, PermissionEnum.GET_ALL_FILE_INFO_PAGE, PermissionEnum.FILE_EXPLORER_PAGE)))
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.not(Matchers.containsString("nav-my-folder"))));
 
         Folder home = userHomeService.ensureHome(personId, adminId);
+        String link = "/files/explorer?folder=" + home.getId();
 
-        mockMvc.perform(get("/").with(user(principal(personId, PermissionEnum.FILE_EXPLORER_PAGE, PermissionEnum.GET_ALL_FILE_INFO_PAGE)))
+        mockMvc.perform(get("/files/file-info").with(user(principal(personId, PermissionEnum.GET_ALL_FILE_INFO_PAGE, PermissionEnum.FILE_EXPLORER_PAGE)))
                         .accept(MediaType.TEXT_HTML))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/files/explorer?folder=" + home.getId()));
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString(link)));
 
-        // Without the explorer permission the home is not a place they can be sent.
-        mockMvc.perform(get("/").with(user(principal(personId, PermissionEnum.GET_ALL_FILE_INFO_PAGE)))
+        // Without the explorer permission the link would only lead to a 403, so it is not offered.
+        mockMvc.perform(get("/files/file-info").with(user(principal(personId, PermissionEnum.GET_ALL_FILE_INFO_PAGE)))
                         .accept(MediaType.TEXT_HTML))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/files/file-info"));
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.not(Matchers.containsString(link))));
+
+        // And nobody else's menu names it.
+        mockMvc.perform(get("/files/file-info").with(user(principal(adminId, PermissionEnum.GET_ALL_FILE_INFO_PAGE, PermissionEnum.FILE_EXPLORER_PAGE)))
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.not(Matchers.containsString(link))));
     }
 
     // ---------------------------------------------------------------- helpers

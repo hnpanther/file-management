@@ -143,6 +143,9 @@ public class SecurityConfig {
                             auth.requestMatchers("/files/public-files/**", "/files/public-download/**")
                                     .access(publicFilesAccess);
                             auth.requestMatchers("/").permitAll();
+                            // A temporary share link is the access (roadmap 10.5): public,
+                            // whatever the public-files switch says; the token decides.
+                            auth.requestMatchers("/share/**").permitAll();
                             auth.requestMatchers("/favicon.ico").permitAll();
                             auth.requestMatchers("/webjars/**").permitAll();
                             auth.requestMatchers("/css/**").permitAll();

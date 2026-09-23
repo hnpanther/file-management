@@ -610,13 +610,13 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
-### Upgrading from 1.4.0 to 1.5.0 — sharded storage, explorer downloads and deletes, personal folders
+### Upgrading from 1.4.0 to 1.5.0 — sharded storage, explorer downloads and deletes, personal folders, share links
 
-A jar swap with one migration (`V2.11`). **Take the database backup first**, as always: this
-release is not rolled back by putting the old jar back (below). Watch the log for
-`Successfully applied 1 migration` and, on the same start,
-`seeded 1 new permission(s): [REST_DELETE_FOLDER_TREE]` - the two other new permissions come
-from the migration itself. None of the three is held by anyone until an administrator grants
+A jar swap with two migrations (`V2.11`, `V2.12`). **Take the database backup first**, as
+always: this release is not rolled back by putting the old jar back (below). Watch the log for
+`Successfully applied 2 migrations` and, on the same start,
+`seeded 1 new permission(s): [REST_DELETE_FOLDER_TREE]` - the five other new permissions come
+from the migrations themselves. None of the six is held by anyone until an administrator grants
 it.
 
 **Before:** one look, which changes nothing if it comes back empty:
@@ -669,8 +669,9 @@ the folder first.
    whatever their roles and whether or not folder access is switched on; the user's page has
    a button for a user made without one, and a field for the folder's quota (megabytes, blank
    for none), which can be raised or lowered at any time. Nothing is created on a sign-in:
-   whether a person gets a folder is decided on one of those two screens. A user who has one
-   lands in it after signing in (if they may open the explorer). Grant `CREATE_USER_HOME` and
+   whether a person gets a folder is decided on one of those two screens. Signing in still
+   lands where it always did; a user who has a folder gets a "my folder" entry in the menu
+   (when they may open the explorer). Grant `CREATE_USER_HOME` and
    `SET_FOLDER_QUOTA` to the roles that manage users. `filemanagement.profiles.default-quota-mb`
    (`FILEMANAGEMENT_PROFILES_DEFAULT_QUOTA_MB`, default `0` = none) is the quota a new folder
    starts with; a quota caps every revision of every file anywhere beneath the folder, on
@@ -678,6 +679,21 @@ the folder first.
    the forms in Persian, on the APIs as a 409. Homes are never renamed by hand (they follow
    the username), moved or deleted; a disabled user's home stays, to be emptied with "delete
    with contents" if wanted.
+
+5. **Temporary share links.** A person who may read a file can hand out a link to one of its
+   revisions - `/share/{token}` - that downloads **without a sign-in**, whatever the
+   public-files switch says and whatever the visitor may otherwise see: the link is the access.
+   Grant `CREATE_SHARE_LINK` (make one, revoke one's own; the button is in the explorer's file
+   pane and on the file page's revision rows), `SHARE_LINKS_PAGE` (one's own links, with a
+   revoke) and `REVOKE_SHARE_LINK` (every link) deliberately. The installation's limits are
+   properties: `filemanagement.share-links.max-minutes` (default `1440`; a longer request is
+   clamped to it), `default-minutes` (`60`), `password` (`OPTIONAL`, or `REQUIRED` to refuse a
+   link without one), `max-failed-attempts` (`5`) and `lock-minutes` (`15`) - each with a
+   `FILEMANAGEMENT_SHARE_LINKS_*` environment name. The URL a maker is shown is built from the
+   request that made it: behind a reverse proxy, make sure the proxy forwards the public scheme
+   and host (`X-Forwarded-*`, `server.forward-headers-strategy`), or the link will name the
+   internal address. Only a hash of the token is stored; a lost link cannot be recovered, only
+   revoked and remade. Every download is an `action_history` row on the maker.
 
 **Rollback** is the pre-upgrade backup plus the 1.4.0 jar, not the jar alone: `V2.11` adds a
 column 1.4.0 does not know (harmless) and a folder of a kind it does not know (`PROFILES`),

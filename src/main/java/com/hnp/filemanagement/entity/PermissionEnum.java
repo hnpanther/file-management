@@ -165,6 +165,15 @@ public enum PermissionEnum {
     //@PostMapping("{userId}/home/quota") - set or clear the quota of a user's personal folder (UserController, roadmap 10.4)
     SET_FOLDER_QUOTA,
 
+    // ShareLinkResource @RequestMapping("/resource") and ShareLinkController @RequestMapping("/files") (roadmap 10.5) =====
+
+    //@PostMapping("files/file-details/{id}/share-links") - make a temporary link to a revision one may read; @DeleteMapping("share-links/{id}") - revoke one's own
+    CREATE_SHARE_LINK,
+    //@GetMapping("share-links") - the share links page: one's own
+    SHARE_LINKS_PAGE,
+    //@DeleteMapping("share-links/{id}") - revoke anyone's link, and see every link on the page
+    REVOKE_SHARE_LINK,
+
     //@PutMapping("{folderId}/move") - move a folder, with everything beneath it, under another parent
     REST_MOVE_FOLDER,
 

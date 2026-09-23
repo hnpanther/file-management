@@ -54,6 +54,27 @@ public class GlobalGeneralLogging {
     /** Request URI with its query string, which is what makes a logged path reproducible. */
     public static String fullPath(HttpServletRequest request) {
         String query = request.getQueryString();
-        return query == null ? request.getRequestURI() : request.getRequestURI() + "?" + query;
+        return maskSecrets(query == null ? request.getRequestURI() : request.getRequestURI() + "?" + query);
+    }
+
+    /**
+     * A path as it may be written down. A share link's token is the whole access to a file
+     * (roadmap 10.5) and travels in the path, so it is never logged or echoed: {@code /share/…}
+     * loses its last segment here, and nothing that logs a request bypasses this.
+     */
+    public static String maskSecrets(String path) {
+        if (path == null) {
+            return null;
+        }
+        int at = path.indexOf("/share/");
+        if (at < 0) {
+            return path;
+        }
+        int start = at + "/share/".length();
+        int end = start;
+        while (end < path.length() && path.charAt(end) != '/' && path.charAt(end) != '?') {
+            end++;
+        }
+        return end == start ? path : path.substring(0, start) + "***" + path.substring(end);
     }
 }

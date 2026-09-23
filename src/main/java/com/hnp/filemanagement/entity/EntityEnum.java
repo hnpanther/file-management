@@ -25,7 +25,8 @@ public enum EntityEnum {
     ContentKind("content_kind"),
     Folder("folder"),
     TagGroup("tag_group"),
-    AppSetting("app_setting")
+    AppSetting("app_setting"),
+    FileShareLink("file_share_link")
     ;
 
 

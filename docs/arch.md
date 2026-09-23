@@ -453,6 +453,8 @@ document, so a browser navigation still lands on a page.
 | GET | `/files/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `DOWNLOAD_FILE` |
 | GET / POST | `/files/file-info/{fileInfoId}/file-details/create`, `.../file-details` | `SAVE_NEW_FILE_DETAILS_PAGE`, `SAVE_NEW_FILE_DETAILS` |
 | GET / POST | `/users/**`, `/roles/**` | one permission per handler; `POST /users/{id}/home` creates the user's personal folder (`CREATE_USER_HOME`), `POST /users/{id}/home/quota` sets or clears its quota in megabytes (`SET_FOLDER_QUOTA`) |
+| GET / POST | `/share/{token}` | permitAll — the landing page, and the download (a `POST`, with the password when the link has one); unknown, expired, revoked and used-up tokens are one 404 |
+| GET | `/files/share-links` | `SHARE_LINKS_PAGE` (one's own links; every link with `REVOKE_SHARE_LINK`) |
 
 </details>
 
@@ -471,6 +473,8 @@ document, so a browser navigation still lands on a page.
 | DELETE, PUT | `/resource/files/file-info/{id}`, `.../change-state`, `.../move` `{folderId}` (`REST_MOVE_FILE_INFO`: 400 into the root, 403 without write on both folders, 409 on a taken name) |
 | DELETE, PUT | `/resource/files/file-info/{id}/file-details/{fdId}`, `.../change-state/{newState}` |
 | PUT | `/resource/users/{userId}/change-enabled`, `.../change-login-type/{type}` |
+| POST | `/resource/files/file-details/{id}/share-links` `{minutes?, password?, maxDownloads?}` → 201 `{link, url}`, the token shown this once (`CREATE_SHARE_LINK` and `READ` on the folder; 400 below one minute or download, or without a password under `REQUIRED`) |
+| DELETE | `/resource/share-links/{id}` (`CREATE_SHARE_LINK` for one's own, `REVOKE_SHARE_LINK` for anyone's; 403 otherwise) |
 | GET | `/resource/files/tree/children?type=&id=` |
 
 </details>
@@ -630,9 +634,11 @@ with folder access on they reach it without any role; and the quota
 `filemanagement.profiles.default-quota-mb` gives a new home (`0` for none). Idempotent, one
 transaction, one `action_history` row. It is asked for by the new-user form (a box ticked by
 default) and by the user's page (`POST /users/{id}/home`, `CREATE_USER_HOME`) — an
-administrator's decision each time, never on a sign-in. After signing in, a user who has a
-home and may open the explorer lands in it (`HomeController`); everyone else lands where they
-always did. A home is renamed only with its user (`UserService.updateUser` →
+administrator's decision each time, never on a sign-in. A personal folder does **not** change
+where anyone lands after signing in - the landing page is what it always was; it is one more
+place to go, a link in the navigation offered to whoever has one and may open the explorer
+(`UserHomeNavigation.folderIdOf`, asked by the navbar fragment, so the lookup happens on the
+pages that render a menu and nowhere else). A home is renamed only with its user (`UserService.updateUser` →
 `renameHomeOf`), moved by nobody, deleted by nobody — `FolderService` and the tree delete
 refuse all three for `ROOT`, `PROFILES` and `USER_HOME` alike (`isSystemFolder`) — and
 nothing is created under `Profiles` by hand (`canHoldFolders` and `canHoldFiles` say no).
@@ -652,6 +658,37 @@ home's quota is set, changed or cleared on the user's page (`POST /users/{id}/ho
 megabytes or blank, `SET_FOLDER_QUOTA`); lowering it below what is stored is allowed and
 simply stops the next upload. The explorer's folder details show `usedBytes / quotaBytes` on a
 folder that carries one.
+
+### Temporary share links
+
+A share link (`file_share_link`, `V2.12`, roadmap 10.5) is a link to one stored **revision**,
+valid for a number of minutes, optionally behind a password, optionally for a number of
+downloads, that anyone holding it may download at `/share/{token}` **without signing in** and
+outside folder access — the link is the access. Which is why making one needs the access:
+`CREATE_SHARE_LINK` and `READ` on the file's folder (`ShareLinkService.create`), the same test
+as downloading the file oneself. The validity is clamped to
+`filemanagement.share-links.max-minutes` silently (the answer names the real expiry), defaults
+to `default-minutes`, and `password=REQUIRED` makes a password mandatory for the installation.
+
+The token is 32 random bytes, base64url; only its SHA-256 is stored, as for an API key, so the
+table never holds a working link, and the token is shown once — in the answer to the creation —
+and never again. The revision, not the logical file, so that a link hands out what its maker
+saw and not a version uploaded later; deleting the revision or the file removes its links
+(`FileService`, entity by entity, not left to the schema's cascade). A visitor sees a landing
+page on `GET` — the file, its size, when the link ends, a password field if there is one — and
+the `POST` is the download, so that a link previewer or a prefetch never spends one of a capped
+link's downloads. Unknown, expired, revoked and exhausted tokens are one identical 404
+(`ShareLinkService.usable`), so the token space cannot be probed; a wrong password
+`max-failed-attempts` times locks the link for `lock-minutes`, and BCrypt checks it in constant
+time. A download reads the row **locked** (`findByTokenHashForUpdate`), because it writes the
+count: without it two downloads arriving together would both pass a cap of one. The token
+travels in the path, so every place that writes a path down masks it
+(`GlobalGeneralLogging.maskSecrets`: `/share/***`) - the access log, the exception log and the
+problem JSON's `path` alike. Revoking is the maker's (`CREATE_SHARE_LINK`) or anyone's under `REVOKE_SHARE_LINK`, which
+also shows every link on `/files/share-links` (`SHARE_LINKS_PAGE` shows one's own). Creation,
+revocation and every download are `action_history` rows — the download on the maker, since the
+visitor has no principal. The clock is a bean (`ClockConfig`) so that expiry and locks are tested
+without waiting.
 
 ### Run-time settings
 
@@ -800,6 +837,7 @@ migrations themselves, in `src/main/resources/db/migration`:
 | `V2.7__Add_Content_Kind.sql` | `content_kind`: the custom half of the content catalogue - extension, media type, and a byte signature at an offset or "text only"; empty until an administrator adds one |
 | `V2.10__Add_App_Setting.sql` | `app_setting` (name → value, audited), seeded with `public-files.anonymous = true`, the behaviour there always was; `GENERAL_SETTINGS_PAGE` and `SAVE_GENERAL_SETTINGS` |
 | `V2.11__Profiles_And_Quota.sql` | `folder.quota_bytes`; `uq_folder_owner_user` (one home per user); the `Profiles` top-level folder (kind `PROFILES`, in a `profiles` tag group), created — or adopted, if a top-level folder of that name exists and holds no files directly (refused otherwise, fail-fast); `CREATE_USER_HOME` and `SET_FOLDER_QUOTA` |
+| `V2.12__Add_File_Share_Link.sql` | `file_share_link` (token hash, revision, expiry, optional password hash and download cap, counts, lock, revocation, maker); `CREATE_SHARE_LINK`, `SHARE_LINKS_PAGE`, `REVOKE_SHARE_LINK` |
 | `V2.9__Folders_Any_Depth.sql` | Folders of any depth: refuses to run where a top-level folder or a stored key is named `files`; `CATEGORY` / `SUB_CATEGORY` / `TAG` become `FOLDER`; `REST_MOVE_FOLDER` (mapped onto the roles that may rename) and the three `TAG_GROUP` page permissions |
 | `V2.8__Remove_Taxonomy.sql` | Phase 7 step 4. Fails fast first: `file_info.folder_id NOT NULL`, `uq_file_info_name_per_folder`, `folder.tag_group_id` backfilled from each category's general tag and required on every `CATEGORY` row. Then the four `REST_*_FOLDER` / `REST_GET_TAG_GROUPS` permissions, mapped onto the roles that held the taxonomy ones; the 27 taxonomy permissions deleted; `file_info` / `file_details` lose `file_path`, `relative_path`, `file_sub_category_id`, `main_tag_file_id`; `folder` loses `general_tag_id`, `source_type`, `source_id`; `main_tag_file`, `file_sub_category`, `file_category`, `general_tag` dropped. Not reversible without the backup |
 
@@ -842,6 +880,11 @@ schema at startup but never modifies it.
 | `filemanagement.folders.max-depth` | `6` | `FolderService`: how deep the tree may go below `Home`; a create or a move past it is a 400 |
 | `filemanagement.folders.max-delete-files` | `1000` | `FolderTreeDeleteService`: the most files one recursive delete may remove; a larger tree is a 409 naming the count |
 | `filemanagement.profiles.default-quota-mb` | `0` | `UserHomeService`: the quota a new personal folder is created with, in megabytes; `0` for none. Changed per user on the user's page afterwards |
+| `filemanagement.share-links.max-minutes` | `1440` | `ShareLinkService`: the longest a share link may live; a longer request is clamped to it, silently |
+| `filemanagement.share-links.default-minutes` | `60` | the validity when the maker does not say |
+| `filemanagement.share-links.password` | `OPTIONAL` | `REQUIRED` refuses a link without a password |
+| `filemanagement.share-links.max-failed-attempts` | `5` | wrong passwords before a link locks |
+| `filemanagement.share-links.lock-minutes` | `15` | how long it stays locked |
 | `filemanagement.auth.ldap.activedirectory.enabled` / `.domain` / `.url` | `false`, `hnp.local`, `ldap://172.29.76.9` | |
 
 Note the two different prefixes (`file.management.*` and `filemanagement.*`) and that no
@@ -860,6 +903,14 @@ Four kinds, and the kind is the point — each answers something the others cann
 | **Repository** | `@DataJpaTest` + real MySQL | that a fetch plan actually resolved (`Hibernate.isInitialized`), that a bulk update reached the database, that a cascade removed what it should, and that the schema enforces its constraints |
 | **Service** | `@ServiceIntegrationTest` — `@SpringBootTest` + `@Transactional` | that the whole path works through the real Spring beans, so the transaction annotations are live |
 | **Web** | `@SpringBootTest` + MockMvc | status codes, response shapes, redirects and authorization, through the real security chain |
+
+**Source-reading tests** are a fourth kind, needing neither Spring nor Docker: they read the
+repository's own files and assert a rule the compiler cannot. `PermissionNamesTest` checks every
+`hasAuthority('X')` in the Java sources and the templates against `PermissionEnum` - a drifted
+name compiles and then silently locks an endpoint or a control to administrators
+([issue 84](issues.md#84-the-new-user-page-asks-for-a-permission-that-does-not-exist--s3)).
+`MessageBundleTest` checks that the externalised templates hold no Persian, `DependencyPinTest`
+that the build targets the Java version it says.
 
 Two things about the service tests are deliberate corrections of how they used to work.
 

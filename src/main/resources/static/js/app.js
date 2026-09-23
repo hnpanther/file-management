@@ -186,6 +186,106 @@
         };
     };
 
+    /**
+     * A share-link panel (roadmap 10.5): one Alpine component, opened from the explorer's file
+     * pane and from the file page's revision rows. It asks for the validity in minutes (the cap
+     * shown, a larger number clamped by the server), an optional or required password, and an
+     * optional number of downloads; posts once; and shows the URL - the one time the token is
+     * ever shown - with a copy button.
+     *
+     * config: { createUrl: "/resource/files/file-details/{id}/share-links", maxMinutes,
+     *           defaultMinutes, passwordRequired, copy: {failed, copied} }
+     */
+    window.shareLinkPanel = function (config) {
+        return {
+            open: false,
+            subject: null,      // {fileDetailsId, label}
+            minutes: config.defaultMinutes,
+            password: "",
+            maxDownloads: "",
+            busy: false,
+            error: "",
+            result: null,       // {url, expiresAt, maxDownloads, passwordProtected}
+            copied: false,
+
+            maxMinutes: config.maxMinutes,
+            passwordRequired: !!config.passwordRequired,
+
+            start: function (fileDetailsId, label) {
+                this.subject = { fileDetailsId: fileDetailsId, label: label };
+                this.minutes = config.defaultMinutes;
+                this.password = "";
+                this.maxDownloads = "";
+                this.error = "";
+                this.result = null;
+                this.copied = false;
+                this.open = true;
+            },
+
+            close: function () {
+                this.open = false;
+                this.result = null;
+            },
+
+            submit: async function () {
+                if (!this.subject || this.busy) {
+                    return;
+                }
+                this.busy = true;
+                this.error = "";
+                var csrf = window.appCsrf();
+                var headers = { "Accept": "application/json", "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" };
+                if (csrf.header) {
+                    headers[csrf.header] = csrf.token;
+                }
+                var body = {
+                    minutes: this.minutes === "" ? null : Number(this.minutes),
+                    password: this.password === "" ? null : this.password,
+                    maxDownloads: this.maxDownloads === "" ? null : Number(this.maxDownloads)
+                };
+                try {
+                    var response = await fetch(config.createUrl.replace("{id}", encodeURIComponent(this.subject.fileDetailsId)),
+                        { method: "POST", headers: headers, body: JSON.stringify(body) });
+                    if (response.status === 401) {
+                        window.appSessionExpired();
+                        return;
+                    }
+                    if (!response.ok) {
+                        var problem = null;
+                        try { problem = await response.json(); } catch (ignored) { }
+                        this.error = (problem && problem.detail) || config.copy.failed;
+                        return;
+                    }
+                    var created = await response.json();
+                    this.result = {
+                        url: created.url,
+                        expiresAt: created.link.expiresAt,
+                        maxDownloads: created.link.maxDownloads,
+                        passwordProtected: created.link.passwordProtected
+                    };
+                    this.password = "";
+                } catch (e) {
+                    this.error = config.copy.failed;
+                } finally {
+                    this.busy = false;
+                }
+            },
+
+            copy: async function () {
+                if (!this.result) {
+                    return;
+                }
+                try {
+                    await navigator.clipboard.writeText(this.result.url);
+                    this.copied = true;
+                } catch (e) {
+                    // No clipboard (an http origin, an old browser): the field is selectable.
+                    this.copied = false;
+                }
+            }
+        };
+    };
+
     document.addEventListener("DOMContentLoaded", function () {
         markActiveNavigation();
         enableKeyboardSearch();
