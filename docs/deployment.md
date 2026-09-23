@@ -121,7 +121,7 @@ find it again.
 | Path | Holds | Back up? |
 |---|---|---|
 | `FILEMANAGEMENT_LOG_PATH` | `app_log.log` and `archived/` | No — rotated daily / 10 MB, 10 kept |
-| `FILEMANAGEMENT_BASE_DIR` | every uploaded file, as `{Category}/{SubCategory}/{FileName}/v{n}/{file}.{ext}` | **Yes, with the database** |
+| `FILEMANAGEMENT_BASE_DIR` | every uploaded file, as `files/s{id ÷ 1000}/{file id}/{FileName}/v{n}/{file}.{ext}` since 1.5.0 (older files keep their own layout) | **Yes, with the database** |
 
 > **The file directory and the database must be backed up together.** The rows and the bytes are
 > only meaningful as a pair: `file_info` and `file_details` hold the paths, never the content. A
@@ -1186,9 +1186,12 @@ first boot. Nothing else is run by hand.
 
 The data lives in **two places and neither is complete without the other**: the rows in MySQL, and
 the uploaded files under `FILEMANAGEMENT_BASE_DIR`, laid out as
-`{Category}/{SubCategory}/{FileName}/v{n}/{file}.{ext}`. `file_details` holds the *path*, never the
-content. A backup of the database alone restores a system in which every download is a broken
-reference; a backup of the files alone is a pile of anonymous bytes.
+`files/s{id ÷ 1000}/{file id}/{FileName}/v{n}/{file}.{ext}` since 1.5.0 - and, for older files,
+`files/{file id}/…` (1.4.0) or `{Category}/{SubCategory}/…` before it. `file_details.storage_key`
+holds the *path*, never the content, and it is the only record of where a file's bytes are: the
+directory tree says nothing about where a file is filed. A backup of the database alone restores
+a system in which every download is a broken reference; a backup of the files alone is a pile of
+anonymous bytes that nothing can place.
 
 **Both halves, one run, restored as the pair they were taken as.**
 

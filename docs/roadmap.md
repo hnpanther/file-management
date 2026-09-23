@@ -66,8 +66,11 @@ automated verification at all (issues 36–38). Doing it first is what made the 
    `D:/files/test/` are gone.
 3. **`compose.yaml`** — MySQL for local runs, with `--lower-case-table-names=0` so identifier-casing
    bugs surface on Windows too. PostgreSQL and MinIO join it in Phases 3 and 4.
-4. **CI.** `.github/workflows/build.yml` runs `./mvnw verify` on JDK 21 **and** 25 and adds
-   `dependency-review-action` on pull requests; `.github/dependabot.yml` schedules weekly updates.
+4. **CI.** `.github/workflows/build.yml` ran `./mvnw verify` on JDK 21 **and** 25 and added
+   `dependency-review-action` on pull requests; `.github/dependabot.yml` scheduled weekly updates.
+   **Both are gone** - removed by commit `d07fa86` and never replaced, so nothing builds or scans
+   on push today ([issue 83](issues.md#83-the-docs-describe-a-ci-workflow-that-was-removed--s3)).
+   Restoring a workflow is one JDK's worth of work now that the build targets 25 only.
 5. **Footguns deleted.** `schema-db/` (issue 32) and `FileDAO` (issue 5).
 6. **Secrets out of the repository** (issue 11). `application.properties` reads every value from the
    environment, `FILEMANAGEMENT_DB_PASSWORD` deliberately has no default, the LDAP host is gone, and
@@ -905,7 +908,7 @@ Each is independently shippable, and only the fourth cannot be undone.
 | 3 | **Reads move to the folder**: tree, upload, file list, search — **done**, one reader per commit: 1 API v2, 2 explorer, 3 folder access on download / file page / list / new version, 4 tree, 5 upload by `folderId` alongside the triple | — | revert the code |
 | 4 | `folder_id` `NOT NULL`; drop the old foreign keys, the four taxonomy tables, and `folder.source_type` / `source_id` — **done** | `V2.8` (`V2.5` went to the content-type fix, `V2.6` to the upload policy, `V2.7` to custom content kinds) | ⚠️ **none** |
 | 5 | Folder operations: **done** — uploading into a folder from the explorer (5a), create (5b), rename and delete (5c), move (5d, with any depth) | — with step 4; `V2.9` for 5d | — |
-| 6 | **Any depth** (`V2.9`, 1.4.0): the three fixed levels become one kind of folder, every folder holds folders and files, a configurable depth limit, files stored by folder id — **done** | `V2.9` | ⚠️ the kinds could be restored from `depth`; files stored since cannot be moved back under names |
+| 6 | **Any depth** (`V2.9`, 1.4.0): the three fixed levels become one kind of folder, every folder holds folders and files, a configurable depth limit, files stored by their own id (sharded since 1.5.0) — **done** | `V2.9` | ⚠️ the kinds could be restored from `depth`; files stored since cannot be moved back under names |
 
 > **Step 1 done.** `FileInfo.folder` is set from `FolderMirrorService.folderOf(mainTag)` on every
 > upload — get-or-create, so an upload into a tag that was never mirrored heals the mirror rather
@@ -1615,12 +1618,17 @@ that can be switched off without a rebuild.
 
 ---
 
-## Phase 10 — After 1.4.0: five bounded additions
+## Phase 10 — After 1.4.0: five bounded additions — **done** (1.5.0)
 
 Five things asked for once 1.4.0 was in use, none of them a redesign, each sized to ship on its
-own. They are listed in the order to build them: the first two are small and independent, the
-third is what the fourth needs, and the fifth stands alone. Every one carries the usual four: a
-migration where the schema changes, tests, `docs/arch.md` and `docs/deployment.md`.
+own. They were built in the order below: the first two small and independent, the third what the
+fourth needed, the fifth on its own. Every one carried the usual four: a migration where the
+schema changed, tests, `docs/arch.md` and `docs/deployment.md`.
+
+**All five shipped in 1.5.0**, with two migrations (`V2.11`, `V2.12`) and six new permissions -
+`REST_DELETE_FOLDER_TREE`, `CREATE_USER_HOME`, `SET_FOLDER_QUOTA`, `CREATE_SHARE_LINK`,
+`SHARE_LINKS_PAGE`, `REVOKE_SHARE_LINK` - none of them held by anyone until an administrator
+grants it. The upgrade is one section of [deployment.md](deployment.md#upgrading-from-140-to-150--sharded-storage-explorer-downloads-and-deletes-personal-folders-share-links).
 
 | Step | What | Schema | Size |
 |---|---|---|---|

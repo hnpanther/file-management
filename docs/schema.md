@@ -89,11 +89,14 @@ the reset is documented; they are not shipped as a script on purpose. Developers
                                      folder  ◄───────────────────────────┴──── (folder)
                                        │        one tree, any depth up to a limit:
                                        │        Home > FOLDER > FOLDER > ... (V2.9)
-                                       │        (a depth-1 row carries a tag_group_id)
+                                       │        (a depth-1 row carries a tag_group_id;
+                                       │         Home > Profiles > {username} is a
+                                       │         user's own, owner_user_id + quota_bytes)
                               folder_id│
                                        ▼
-                                   file_info ──< file_details
-                                       │
+                                   file_info ──< file_details ──< file_share_link
+                                       │                          (a temporary link to
+                                       │                           one revision, V2.12)
                                        └──< file_tag >── tag >── tag_group
                                             (a file's tags: every folder name on its
                                              chain, in the top-level folder's group)
@@ -107,8 +110,9 @@ Two groups:
 | Group | Tables | State |
 |---|---|---|
 | **Identity and permissions** | `user`, `role`, `user_role`, `permission`, `permission_role`, `api_key`, `api_key_folder`, `upload_policy`, `upload_policy_rule`, `content_kind`, `app_setting` | stable |
-| **Where a file is** | `folder`, `role_folder`, `user_folder`, `file_info.folder_id` | authoritative since `V2.8` (Phase 7 step 4); any depth since `V2.9`; `folder_id` is `NOT NULL` and names any folder but the root |
+| **Where a file is** | `folder`, `role_folder`, `user_folder`, `file_info.folder_id` | authoritative since `V2.8` (Phase 7 step 4); any depth since `V2.9`; `folder_id` is `NOT NULL` and names any folder but the root or `Profiles`. `folder.kind` is `ROOT`, `FOLDER`, `PROFILES` or `USER_HOME`; `owner_user_id` names a personal folder's user (unique) and `quota_bytes` caps what may be stored beneath any folder (`V2.11`) |
 | **What a file is, and about** | `file_info`, `file_details`, `tag_group`, `tag`, `file_tag` | stable; a file's tags are derived from its folder chain, `tag_group` is the label group a category carries |
+| **Who may have it without signing in** | `file_share_link` | `V2.12`: one row per temporary link - the token's SHA-256, the revision it names (cascade), expiry, optional password hash and download cap, the counters and the revocation |
 
 The taxonomy tables (`general_tag`, `file_category`, `file_sub_category`, `main_tag_file`) and the
 columns that pointed at them (`file_info.file_sub_category_id` / `main_tag_file_id`,

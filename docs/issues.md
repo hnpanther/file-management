@@ -572,7 +572,10 @@ Fix: Testcontainers for PostgreSQL, `@TempDir` for the filesystem, MinIO in a co
 
 ### 38. No CI — **S1**
 
-> **Resolved in Phase 0.** `.github/workflows/build.yml` builds and tests on JDK 21 and 25, plus `dependency-review-action` on pull requests and `.github/dependabot.yml` for weekly updates.
+> **Resolved in Phase 0**, then **undone**: `.github/workflows/build.yml` built and tested on JDK
+> 21 and 25, with `dependency-review-action` on pull requests and `.github/dependabot.yml` for
+> weekly updates - all removed by commit `d07fa86` and not replaced. This issue is open again;
+> see [issue 83](#83-the-docs-describe-a-ci-workflow-that-was-removed--s3).
 
 No `.github/workflows`, no pipeline of any kind. Nothing builds, tests, or scans dependencies on
 push. Given issue 1, that is exactly how a version upgrade disappears without anyone noticing.
@@ -1254,11 +1257,15 @@ until the drag-and-drop of Phase 5.2 decides which page it lives on, then remove
 
 ### 83. The docs describe a CI workflow that was removed — **S3**
 
-`README.md` (the layout tree), `docs/roadmap.md` (Phase 0 item 4) and issue 36's resolution say
+`README.md` (the layout tree), `docs/roadmap.md` (Phase 0 item 4) and issue 38's resolution said
 `.github/workflows/build.yml` runs `./mvnw verify` on JDK 21 and 25. Commit `d07fa86` removed the
-workflow and nothing replaced it; the three mentions are stale, and since 1.4.0 the build targets
-Java 25 only. Either restore a workflow (one JDK now) or strike the mentions - not done here,
-because whether this repository has CI is a decision, not a doc fix.
+workflow and nothing replaced it; and since 1.4.0 the build targets Java 25 only.
+
+> **The documentation is fixed** (1.5.0): the README's tree no longer lists a workflow directory,
+> and roadmap Phase 0 and issue 38 now say the CI was removed. **The gap itself is open** - nothing
+> builds, tests or scans dependencies on push, which is how issue 1 happened. Restoring a workflow
+> is a decision, not a doc fix: one JDK, `./mvnw verify`, and a Docker daemon for the
+> Testcontainers suite.
 
 ## Found while adding personal folders (1.5.0)
 

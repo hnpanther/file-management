@@ -15,10 +15,13 @@ Read this together with:
 
 Spring Boot MVC application. Thymeleaf UI plus a REST API. Files go on the local filesystem, metadata
 in MySQL. One folder tree of any depth up to a limit (`Folder`, one `ROOT`), with files
-(`FileInfo → FileDetails`) in any folder below the root, stored on disk by folder id; a top-level
-folder carries a `TagGroup` (the old "general tag", which is a label group and **not** a folder).
-Authorities are fine-grained per-endpoint permissions, not roles. Package root
-`com.hnp.filemanagement`.
+(`FileInfo → FileDetails`) in any folder below the root, stored on disk **by the file's own id**
+(`StorageLayout`, sharded); a top-level folder carries a `TagGroup` (the old "general tag", which
+is a label group and **not** a folder), and `Home/Profiles/{username}` is a user's own folder,
+optionally with a quota. Authorities are fine-grained per-endpoint permissions, not roles - and a
+permission's *name* in a `@PreAuthorize` is checked against `PermissionEnum` by
+`PermissionNamesTest`, because a drifted string silently locks an endpoint to administrators.
+Package root `com.hnp.filemanagement`.
 
 ## Commands
 
@@ -243,7 +246,10 @@ Four kinds, and the choice is not stylistic — each answers something the other
   assertions like "a rejected upload never reaches storage". No Spring, no Docker;
 * **repository** (`@DataJpaTest`) — fetch plans, cascades, bulk updates, schema constraints;
 * **service** (`@ServiceIntegrationTest`) — the whole path through the real Spring beans;
-* **web** (`@SpringBootTest` + MockMvc) — statuses, shapes, redirects, authorization.
+* **web** (`@SpringBootTest` + MockMvc) — statuses, shapes, redirects, authorization;
+* **source-reading** (plain JUnit over the repository's own files) — rules the compiler cannot
+  check: `PermissionNamesTest` (every `hasAuthority` names a real permission, in Java *and* in the
+  templates), `MessageBundleTest` (no Persian in an externalised template), `DependencyPinTest`.
 
 Rules for new tests:
 
@@ -256,6 +262,9 @@ Rules for new tests:
   unique ones; override only what the test is about.
 * **Name what the test proves**, not the method it calls: `refusesToDeleteATagInUse`, not
   `deleteFolderTest`. Add `@DisplayName` in a sentence.
+* **Anything time-dependent takes the clock as a bean.** `ClockConfig` provides it and
+  `support/MutableClock` replaces it (`@Import(MutableClock.Config.class)`), so expiry and locks
+  are tested by moving time, never by sleeping.
 
 ## Definition of done
 
