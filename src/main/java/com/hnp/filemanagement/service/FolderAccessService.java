@@ -9,7 +9,7 @@ import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.GrantedPath;
 import com.hnp.filemanagement.repository.RoleRepository;
-import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -53,7 +53,8 @@ public class FolderAccessService {
 
     public FolderAccessService(FolderRepository folderRepository,
                                RoleRepository roleRepository,
-                               @Value("${filemanagement.folder-access.enabled:false}") boolean enforced) {
+                               FileManagementProperties properties) {
+        boolean enforced = properties.folderAccess().enabled();
         this.folderRepository = folderRepository;
         this.roleRepository = roleRepository;
         this.enforced = enforced;

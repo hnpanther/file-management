@@ -2,7 +2,7 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
-import com.hnp.filemanagement.dto.FileInfoPageDTO;
+import com.hnp.filemanagement.dto.PageResponse;
 import com.hnp.filemanagement.dto.FileUploadDTO;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
@@ -506,9 +506,9 @@ class FileServiceTest extends MySqlSupport {
         underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
 
         // Folder access is off in this suite, so the principal only identifies the caller here.
-        FileInfoPageDTO page = underTest.getPageFileInfo(10, 0, "report", principalId);
+        PageResponse<FileInfoDTO> page = underTest.getPageFileInfo(10, 0, "report", principalId);
 
-        assertThat(page.getFileInfoDTOList()).extracting(FileInfoDTO::getFileName).contains("report");
+        assertThat(page.content()).extracting(FileInfoDTO::getFileName).contains("report");
     }
 
     @Test
@@ -519,7 +519,7 @@ class FileServiceTest extends MySqlSupport {
         entityManager.flush();
         entityManager.clear();
 
-        var files = underTest.getPagePublicFiles(50, 0, null).getPublicFileDetailsDTOList();
+        var files = underTest.getPagePublicFiles(50, 0, null).content();
 
         assertThat(files).extracting("id").contains(shown.getId()).doesNotContain(hidden.getId());
     }

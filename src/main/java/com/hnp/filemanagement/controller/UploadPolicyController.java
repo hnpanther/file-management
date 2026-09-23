@@ -5,7 +5,7 @@ import com.hnp.filemanagement.dto.UploadPolicyForm;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.service.UploadPolicyService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
+import com.hnp.filemanagement.util.UiMessages;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -26,22 +26,21 @@ public class UploadPolicyController {
     private final GlobalGeneralLogging globalGeneralLogging;
     private final UploadPolicyService uploadPolicyService;
 
-    public UploadPolicyController(GlobalGeneralLogging globalGeneralLogging, UploadPolicyService uploadPolicyService) {
+    private final UiMessages messages;
+
+    public UploadPolicyController(GlobalGeneralLogging globalGeneralLogging, UploadPolicyService uploadPolicyService,
+                                  UiMessages messages) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.uploadPolicyService = uploadPolicyService;
+        this.messages = messages;
     }
 
     //UPLOAD_POLICY_PAGE
     @PreAuthorize("hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
-    public String uploadPolicyPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
+    public String uploadPolicyPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model) {
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get upload policy page";
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UploadPolicyController.class", logMessage);
+        globalGeneralLogging.detail("upload policy page");
 
         model.addAttribute("rows", uploadPolicyService.rowsFor(uploadPolicyService.globalLimits()));
         model.addAttribute("serverCapMb", uploadPolicyService.serverCapMb());
@@ -57,26 +56,20 @@ public class UploadPolicyController {
     @PostMapping
     public String saveUploadPolicy(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                    @ModelAttribute UploadPolicyForm form,
-                                   Model model, HttpServletRequest request) {
+                                   Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to save upload policy, allowed=" + form.getAllowed();
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "UploadPolicyController.class", logMessage);
+        globalGeneralLogging.detail("save upload policy, allowed=" + form.getAllowed());
         boolean valid = false;
         String message;
 
         try {
             uploadPolicyService.saveGlobal(UploadPolicyService.limitsFrom(form.getAllowed(), form.getMax()), principalId);
             valid = true;
-            message = "اطلاعات با موفقیت ذخیره شد";
+            message = messages.get("form.saved");
         } catch (InvalidDataException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "UploadPolicyController.class",
-                    "InvalidDataException:" + e.getMessage());
-            message = "حداکثر حجم هر نوع باید بین ۱ و " + uploadPolicyService.serverCapMb() + " مگابایت باشد";
+            globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
+            message = messages.get("uploadPolicy.sizeOutOfRange", uploadPolicyService.serverCapMb());
         }
 
         model.addAttribute("rows", uploadPolicyService.rowsFor(uploadPolicyService.globalLimits()));

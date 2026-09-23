@@ -7,7 +7,6 @@ import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.service.ApiKeyService;
 import com.hnp.filemanagement.service.RoleService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -53,10 +52,9 @@ public class ApiKeyController {
     @PreAuthorize("hasAuthority('GET_ALL_API_KEY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
     public String getAllApiKeysPage(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                    Model model, HttpServletRequest request) {
+                                    Model model) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, ApiKeyController.class,
-                "request api key list page");
+        globalGeneralLogging.detail("api key list page");
 
         model.addAttribute("apiKeys", apiKeyService.getAll());
         model.addAttribute("created", null);
@@ -67,10 +65,9 @@ public class ApiKeyController {
     @PreAuthorize("hasAuthority('CREATE_API_KEY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("create")
     public String createApiKeyPage(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                   Model model, HttpServletRequest request) {
+                                   Model model) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, ApiKeyController.class,
-                "request create api key page");
+        globalGeneralLogging.detail("create api key page");
 
         prepareForm(model, new ApiKeyDTO(), "create", false, false, "");
         return "api-key/save-api-key.html";
@@ -81,10 +78,9 @@ public class ApiKeyController {
     @PostMapping
     public String saveNewApiKey(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                 @ModelAttribute("apiKey") @Validated ApiKeyDTO apiKeyDTO,
-                                BindingResult bindingResult, Model model, HttpServletRequest request) {
+                                BindingResult bindingResult, Model model) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, ApiKeyController.class,
-                "save new api key title=" + apiKeyDTO.getTitle());
+        globalGeneralLogging.detail("save new api key title=" + apiKeyDTO.getTitle());
 
         if (bindingResult.hasErrors()) {
             prepareForm(model, apiKeyDTO, "create", true, false, "");
@@ -109,10 +105,9 @@ public class ApiKeyController {
     @PreAuthorize("hasAuthority('UPDATE_API_KEY_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{id}")
     public String updateApiKeyPage(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                   @PathVariable("id") int id, Model model, HttpServletRequest request) {
+                                   @PathVariable("id") int id, Model model) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, ApiKeyController.class,
-                "request edit api key page id=" + id);
+        globalGeneralLogging.detail("edit api key page id=" + id);
 
         prepareForm(model, apiKeyService.getByIdWithGrants(id), "update", false, false, "");
         return "api-key/save-api-key.html";
@@ -124,10 +119,9 @@ public class ApiKeyController {
     public String saveUpdatedApiKey(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                     @PathVariable("id") int id,
                                     @ModelAttribute("apiKey") @Validated ApiKeyDTO apiKeyDTO,
-                                    BindingResult bindingResult, Model model, HttpServletRequest request) {
+                                    BindingResult bindingResult, Model model) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, ApiKeyController.class,
-                "save updated api key id=" + id);
+        globalGeneralLogging.detail("save updated api key id=" + id);
 
         if (bindingResult.hasErrors()) {
             prepareForm(model, apiKeyDTO, "update", true, false, "");
@@ -146,10 +140,9 @@ public class ApiKeyController {
     public String revokeApiKey(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                @PathVariable("id") int id,
                                @RequestParam(value = "enabled", required = false) String enabled,
-                               Model model, HttpServletRequest request) {
+                               Model model) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, ApiKeyController.class,
-                "revoke or switch api key id=" + id + ", enabled=" + enabled);
+        globalGeneralLogging.detail("revoke or switch api key id=" + id + ", enabled=" + enabled);
 
         // One endpoint, because both answers are "stop accepting this key" and only one of them can
         // be undone. Which it is comes from the button, not from a second permission.

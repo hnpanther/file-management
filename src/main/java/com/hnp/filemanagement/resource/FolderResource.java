@@ -20,7 +20,6 @@ import com.hnp.filemanagement.dto.ApiResult;
 import com.hnp.filemanagement.dto.FolderSearchDTO;
 import com.hnp.filemanagement.service.FolderContentService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -87,11 +86,9 @@ public class FolderResource {
     public FolderContentDTO getFolderContent(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                              @RequestParam(value = "folderId", required = false) Integer folderId,
                                              @RequestParam(value = "page", defaultValue = "0") int page,
-                                             @RequestParam(value = "size", defaultValue = "100") int size,
-                                             HttpServletRequest request) {
+                                             @RequestParam(value = "size", defaultValue = "100") int size) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
-                "list folder content of folderId=" + folderId + ", page=" + page);
+        globalGeneralLogging.detail("list folder content of folderId=" + folderId + ", page=" + page);
 
         return folderContentService.contentOf(folderId, page, size, userDetails.getId());
     }
@@ -109,11 +106,9 @@ public class FolderResource {
                                          @RequestParam("query") String query,
                                          @RequestParam(value = "folderId", required = false) Integer folderId,
                                          @RequestParam(value = "page", defaultValue = "0") int page,
-                                         @RequestParam(value = "size", defaultValue = "25") int size,
-                                         HttpServletRequest request) {
+                                         @RequestParam(value = "size", defaultValue = "25") int size) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
-                "search folders for query=" + query + ", within folderId=" + folderId);
+        globalGeneralLogging.detail("search folders for query=" + query + ", within folderId=" + folderId);
 
         return folderContentService.search(query, folderId, page, size, userDetails.getId());
     }
@@ -123,10 +118,8 @@ public class FolderResource {
     @PreAuthorize("hasAuthority('REST_GET_FOLDER_CONTENT') || hasAuthority('FILE_EXPLORER_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{folderId}")
     public FolderDetailsDTO getFolderDetails(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                             @PathVariable("folderId") int folderId,
-                                             HttpServletRequest request) {
-        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
-                "details of folderId=" + folderId);
+                                             @PathVariable("folderId") int folderId) {
+        globalGeneralLogging.detail("details of folderId=" + folderId);
         return folderContentService.detailsOf(folderId, userDetails.getId());
     }
 
@@ -149,8 +142,8 @@ public class FolderResource {
     //REST_GET_TAG_GROUPS
     @PreAuthorize("hasAuthority('REST_GET_TAG_GROUPS') || hasAuthority('REST_CREATE_FOLDER') || hasAuthority('ADMIN')")
     @GetMapping("tag-groups")
-    public List<TagGroupDTO> tagGroups(@AuthenticationPrincipal UserDetailsImpl userDetails, HttpServletRequest request) {
-        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class, "list tag groups");
+    public List<TagGroupDTO> tagGroups(@AuthenticationPrincipal UserDetailsImpl userDetails) {
+        globalGeneralLogging.detail("list tag groups");
         return folderService.tagGroups();
     }
 
@@ -164,10 +157,8 @@ public class FolderResource {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public FolderDTO createFolder(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                  @RequestBody CreateFolderRequest body,
-                                  HttpServletRequest request) {
-        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
-                "create folder " + body.name() + " under folderId=" + body.parentId());
+                                  @RequestBody CreateFolderRequest body) {
+        globalGeneralLogging.detail("create folder " + body.name() + " under folderId=" + body.parentId());
         if (body.parentId() == null) {
             throw new InvalidDataException("parentId is required");
         }
@@ -181,10 +172,8 @@ public class FolderResource {
     @PutMapping("{folderId}")
     public FolderDTO renameFolder(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                   @PathVariable("folderId") int folderId,
-                                  @RequestBody RenameFolderRequest body,
-                                  HttpServletRequest request) {
-        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
-                "rename folder id=" + folderId + " to " + body.name());
+                                  @RequestBody RenameFolderRequest body) {
+        globalGeneralLogging.detail("rename folder id=" + folderId + " to " + body.name());
         return folderService.rename(folderId, body.name(), body.displayName(), body.tagGroupId(), userDetails.getId());
     }
 
@@ -198,10 +187,8 @@ public class FolderResource {
     @PutMapping("{folderId}/move")
     public FolderDTO moveFolder(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                 @PathVariable("folderId") int folderId,
-                                @RequestBody MoveFolderRequest body,
-                                HttpServletRequest request) {
-        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
-                "move folder id=" + folderId + " under folderId=" + body.parentId());
+                                @RequestBody MoveFolderRequest body) {
+        globalGeneralLogging.detail("move folder id=" + folderId + " under folderId=" + body.parentId());
         if (body.parentId() == null) {
             throw new InvalidDataException("parentId is required");
         }
@@ -213,10 +200,8 @@ public class FolderResource {
     @PreAuthorize("hasAuthority('REST_DELETE_FOLDER') || hasAuthority('ADMIN')")
     @DeleteMapping("{folderId}")
     public ApiResult deleteFolder(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                  @PathVariable("folderId") int folderId,
-                                  HttpServletRequest request) {
-        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
-                "delete folder id=" + folderId);
+                                  @PathVariable("folderId") int folderId) {
+        globalGeneralLogging.detail("delete folder id=" + folderId);
         folderService.delete(folderId, userDetails.getId());
         return ApiResult.deleted("folder", folderId);
     }
@@ -230,10 +215,8 @@ public class FolderResource {
     @PreAuthorize("hasAuthority('REST_DELETE_FOLDER_TREE') || hasAuthority('ADMIN')")
     @DeleteMapping(value = "{folderId}", params = "recursive=true")
     public ApiResult deleteFolderTree(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                      @PathVariable("folderId") int folderId,
-                                      HttpServletRequest request) {
-        globalGeneralLogging.controllerLogging(userDetails, request, FolderResource.class,
-                "delete folder tree id=" + folderId);
+                                      @PathVariable("folderId") int folderId) {
+        globalGeneralLogging.detail("delete folder tree id=" + folderId);
         folderTreeDeleteService.deleteTree(folderId, userDetails.getId());
         return ApiResult.deleted("folder", folderId);
     }

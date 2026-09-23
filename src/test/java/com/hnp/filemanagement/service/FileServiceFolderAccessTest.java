@@ -258,7 +258,7 @@ class FileServiceFolderAccessTest extends MySqlSupport {
     }
 
     private List<String> listedNames(int principalId, String search) {
-        return underTest.getPageFileInfo(100, 0, search, principalId).getFileInfoDTOList().stream()
+        return underTest.getPageFileInfo(100, 0, search, principalId).content().stream()
                 .map(dto -> dto.getFileName()).collect(Collectors.toList());
     }
 

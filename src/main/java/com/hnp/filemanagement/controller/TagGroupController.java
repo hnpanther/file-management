@@ -8,7 +8,7 @@ import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.TagGroupService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
+import com.hnp.filemanagement.util.UiMessages;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -32,22 +32,21 @@ public class TagGroupController {
     private final GlobalGeneralLogging globalGeneralLogging;
     private final TagGroupService tagGroupService;
 
-    public TagGroupController(GlobalGeneralLogging globalGeneralLogging, TagGroupService tagGroupService) {
+    private final UiMessages messages;
+
+    public TagGroupController(GlobalGeneralLogging globalGeneralLogging, TagGroupService tagGroupService,
+                              UiMessages messages) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.tagGroupService = tagGroupService;
+        this.messages = messages;
     }
 
     //TAG_GROUP_PAGE
     @PreAuthorize("hasAuthority('TAG_GROUP_PAGE') || hasAuthority('ADMIN')")
     @GetMapping
-    public String tagGroupsPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
+    public String tagGroupsPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model) {
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get tag groups page";
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "TagGroupController.class", logMessage);
+        globalGeneralLogging.detail("tag groups page");
 
         fill(model, new TagGroupForm(), false, false, "");
         return VIEW;
@@ -59,21 +58,15 @@ public class TagGroupController {
     @GetMapping("/{id}")
     public String editTagGroupPage(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                    @PathVariable("id") int id,
-                                   Model model, HttpServletRequest request) {
+                                   Model model) {
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get tag group edit page, id=" + id;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "TagGroupController.class", logMessage);
+        globalGeneralLogging.detail("tag group edit page, id=" + id);
 
         try {
             fill(model, tagGroupService.formOf(id), false, false, "");
         } catch (ResourceNotFoundException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "TagGroupController.class", "ResourceNotFoundException:" + e.getMessage());
-            fill(model, new TagGroupForm(), true, false, "برچسب عمومی یافت نشد");
+            globalGeneralLogging.detail("ResourceNotFoundException:" + e.getMessage());
+            fill(model, new TagGroupForm(), true, false, messages.get("tagGroup.notFound"));
         }
         return VIEW;
     }
@@ -83,14 +76,10 @@ public class TagGroupController {
     @PostMapping
     public String saveTagGroup(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                @ModelAttribute TagGroupForm form,
-                               Model model, HttpServletRequest request) {
+                               Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to save tag group id=" + form.getId() + ", name=" + form.getName();
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "TagGroupController.class", logMessage);
+        globalGeneralLogging.detail("save tag group id=" + form.getId() + ", name=" + form.getName());
 
         try {
             if (form.getId() == null) {
@@ -98,19 +87,16 @@ public class TagGroupController {
             } else {
                 tagGroupService.update(form.getId(), form, principalId);
             }
-            fill(model, new TagGroupForm(), true, true, "اطلاعات با موفقیت ذخیره شد");
+            fill(model, new TagGroupForm(), true, true, messages.get("form.saved"));
         } catch (InvalidDataException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "TagGroupController.class", "InvalidDataException:" + e.getMessage());
-            fill(model, form, true, false, "لطفا اطلاعات را بطور صحیح وارد نمایید");
+            globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
+            fill(model, form, true, false, messages.get("form.invalid"));
         } catch (DuplicateResourceException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "TagGroupController.class", "DuplicateResourceException:" + e.getMessage());
-            fill(model, form, true, false, "برچسب عمومی با این نام وجود دارد");
+            globalGeneralLogging.detail("DuplicateResourceException:" + e.getMessage());
+            fill(model, form, true, false, messages.get("tagGroup.duplicate"));
         } catch (ResourceNotFoundException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "TagGroupController.class", "ResourceNotFoundException:" + e.getMessage());
-            fill(model, new TagGroupForm(), true, false, "برچسب عمومی یافت نشد");
+            globalGeneralLogging.detail("ResourceNotFoundException:" + e.getMessage());
+            fill(model, new TagGroupForm(), true, false, messages.get("tagGroup.notFound"));
         }
         return VIEW;
     }
@@ -120,26 +106,20 @@ public class TagGroupController {
     @PostMapping("/{id}/delete")
     public String deleteTagGroup(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                  @PathVariable("id") int id,
-                                 Model model, HttpServletRequest request) {
+                                 Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to delete tag group id=" + id;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "TagGroupController.class", logMessage);
+        globalGeneralLogging.detail("delete tag group id=" + id);
 
         try {
             tagGroupService.delete(id, principalId);
-            fill(model, new TagGroupForm(), true, true, "برچسب عمومی حذف شد");
+            fill(model, new TagGroupForm(), true, true, messages.get("tagGroup.deleted"));
         } catch (ResourceNotFoundException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "TagGroupController.class", "ResourceNotFoundException:" + e.getMessage());
-            fill(model, new TagGroupForm(), true, false, "برچسب عمومی یافت نشد");
+            globalGeneralLogging.detail("ResourceNotFoundException:" + e.getMessage());
+            fill(model, new TagGroupForm(), true, false, messages.get("tagGroup.notFound"));
         } catch (DependencyResourceException e) {
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "TagGroupController.class", "DependencyResourceException:" + e.getMessage());
-            fill(model, new TagGroupForm(), true, false, "این برچسب عمومی در حال استفاده است و حذف نمی‌شود");
+            globalGeneralLogging.detail("DependencyResourceException:" + e.getMessage());
+            fill(model, new TagGroupForm(), true, false, messages.get("tagGroup.inUse"));
         }
         return VIEW;
     }

@@ -6,7 +6,6 @@ import com.hnp.filemanagement.dto.EnabledChangeRequest;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.service.UserService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,11 +40,9 @@ public class UserResource {
     @PutMapping("{userId}/change-enabled")
     public ApiResult changeUserEnabled(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                        @PathVariable("userId") int userId,
-                                       @RequestBody EnabledChangeRequest body,
-                                       HttpServletRequest request) {
+                                       @RequestBody EnabledChangeRequest body) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, UserResource.class,
-                "change enabled of user id=" + userId);
+        globalGeneralLogging.detail("change enabled of user id=" + userId);
 
         if (body == null || body.enabled() == null) {
             throw new InvalidDataException("enabled is required");
@@ -61,11 +58,9 @@ public class UserResource {
     @PutMapping("{userId}/change-login-type/{type}")
     public ApiResult changeLoginType(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                      @PathVariable("userId") int userId,
-                                     @PathVariable("type") int type,
-                                     HttpServletRequest request) {
+                                     @PathVariable("type") int type) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, UserResource.class,
-                "change login type of user id=" + userId + " to " + type);
+        globalGeneralLogging.detail("change login type of user id=" + userId + " to " + type);
 
         userService.changeLoginType(userId, type, userDetails.getId());
 

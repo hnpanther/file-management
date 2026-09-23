@@ -7,7 +7,6 @@ import com.hnp.filemanagement.dto.StateChangeRequest;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -55,11 +54,9 @@ public class FileResource {
     @PreAuthorize("hasAuthority('REST_DELETE_FILE_INFO') || hasAuthority('ADMIN')")
     @DeleteMapping("file-info/{fileInfoId}")
     public ApiResult deleteFileInfo(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                    @PathVariable("fileInfoId") int fileInfoId,
-                                    HttpServletRequest request) {
+                                    @PathVariable("fileInfoId") int fileInfoId) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileResource.class,
-                "delete file info id=" + fileInfoId);
+        globalGeneralLogging.detail("delete file info id=" + fileInfoId);
 
         fileService.deleteCompleteFileById(fileInfoId, userDetails.getId());
 
@@ -71,11 +68,9 @@ public class FileResource {
     @PutMapping("file-info/{fileInfoId}")
     public ApiResult updateFileInfoDescription(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                                @PathVariable("fileInfoId") int fileInfoId,
-                                               @RequestBody DescriptionUpdateRequest body,
-                                               HttpServletRequest request) {
+                                               @RequestBody DescriptionUpdateRequest body) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileResource.class,
-                "update description of file info id=" + fileInfoId);
+        globalGeneralLogging.detail("update description of file info id=" + fileInfoId);
 
         if (body == null || body.description() == null) {
             throw new InvalidDataException("description is required");
@@ -99,11 +94,9 @@ public class FileResource {
     @PutMapping("file-info/{fileInfoId}/move")
     public ApiResult moveFileInfo(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                   @PathVariable("fileInfoId") int fileInfoId,
-                                  @RequestBody MoveFileRequest body,
-                                  HttpServletRequest request) {
+                                  @RequestBody MoveFileRequest body) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileResource.class,
-                "move file info id=" + fileInfoId + " to folderId=" + (body == null ? null : body.folderId()));
+        globalGeneralLogging.detail("move file info id=" + fileInfoId + " to folderId=" + (body == null ? null : body.folderId()));
 
         if (body == null || body.folderId() == null) {
             throw new InvalidDataException("folderId is required");
@@ -119,11 +112,9 @@ public class FileResource {
     @PutMapping("file-info/{fileInfoId}/change-state")
     public ApiResult changeFileInfoState(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                          @PathVariable("fileInfoId") int fileInfoId,
-                                         @RequestBody StateChangeRequest body,
-                                         HttpServletRequest request) {
+                                         @RequestBody StateChangeRequest body) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileResource.class,
-                "change state of file info id=" + fileInfoId);
+        globalGeneralLogging.detail("change state of file info id=" + fileInfoId);
 
         if (body == null || body.newState() == null) {
             throw new InvalidDataException("newState is required");
@@ -142,11 +133,9 @@ public class FileResource {
     @DeleteMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}")
     public ApiResult deleteFileDetails(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                        @PathVariable("fileInfoId") int fileInfoId,
-                                       @PathVariable("fileDetailsId") int fileDetailsId,
-                                       HttpServletRequest request) {
+                                       @PathVariable("fileDetailsId") int fileDetailsId) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileResource.class,
-                "delete file details id=" + fileDetailsId + " of file info id=" + fileInfoId);
+        globalGeneralLogging.detail("delete file details id=" + fileDetailsId + " of file info id=" + fileInfoId);
 
         fileService.deleteFileDetails(fileInfoId, fileDetailsId, userDetails.getId());
 
@@ -163,11 +152,9 @@ public class FileResource {
     public ApiResult changeFileDetailsState(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                             @PathVariable("fileInfoId") int fileInfoId,
                                             @PathVariable("fileDetailsId") int fileDetailsId,
-                                            @PathVariable("newState") int newState,
-                                            HttpServletRequest request) {
+                                            @PathVariable("newState") int newState) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileResource.class,
-                "change state of file details id=" + fileDetailsId + " to " + newState);
+        globalGeneralLogging.detail("change state of file details id=" + fileDetailsId + " to " + newState);
 
         fileService.changeFileDetailsState(fileDetailsId, newState, userDetails.getId());
 

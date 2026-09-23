@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -43,7 +44,7 @@ class StorageRootSeparatorTest {
     @Test
     @DisplayName("a file stored through the key half is found by the path half, root without a separator")
     void storedByKeyDeletedByPath() throws Exception {
-        FileStorageFileSystemService storage = new FileStorageFileSystemService(temp.toString());
+        FileStorageFileSystemService storage = new FileStorageFileSystemService(FileManagementProperties.defaults(temp.toString()));
 
         storage.saveByKey("IMS/IMS_Document_System/about_crisis/v1/about_crisis.pdf",
                 new MockMultipartFile("file", "about_crisis.pdf", "application/pdf",
@@ -63,7 +64,7 @@ class StorageRootSeparatorTest {
     @Test
     @DisplayName("and the same with the separator, which is what the documentation always asked for")
     void storedByKeyDeletedByPathWithSeparator() throws Exception {
-        FileStorageFileSystemService storage = new FileStorageFileSystemService(temp + File.separator);
+        FileStorageFileSystemService storage = new FileStorageFileSystemService(FileManagementProperties.defaults(temp + File.separator));
 
         storage.saveByKey("IMS/IMS_Document_System/about_crisis/v1/about_crisis.pdf",
                 new MockMultipartFile("file", "about_crisis.pdf", "application/pdf",

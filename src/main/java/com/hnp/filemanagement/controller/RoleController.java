@@ -11,10 +11,10 @@ import com.hnp.filemanagement.service.RoleService;
 import com.hnp.filemanagement.service.UploadPolicyService;
 import com.hnp.filemanagement.service.UserService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
+import com.hnp.filemanagement.util.UiMessages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -46,29 +46,29 @@ public class RoleController {
 
     private final UserService userService;
 
-    @Value("${filemanagement.default.page-size:50}")
-    private int defaultPageSize;
-    @Value("${filemanagement.default.element-size:50}")
-    private int defaultElementSize;
+    private final int defaultPageSize;
+    private final int defaultElementSize;
 
-    public RoleController(GlobalGeneralLogging globalGeneralLogging, RoleService roleService, UserService userService, UploadPolicyService uploadPolicyService) {
+    private final UiMessages messages;
+
+    public RoleController(GlobalGeneralLogging globalGeneralLogging, RoleService roleService, UserService userService,
+                          UploadPolicyService uploadPolicyService, FileManagementProperties properties,
+                          UiMessages messages) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.roleService = roleService;
         this.uploadPolicyService = uploadPolicyService;
         this.userService = userService;
+        this.defaultPageSize = properties.defaults().pageSize();
+        this.defaultElementSize = properties.defaults().elementSize();
+        this.messages = messages;
     }
 
 
     //CREATE_ROLE_PAGE
     @PreAuthorize("hasAuthority('CREATE_ROLE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("/roles/create")
-    public String createRolePage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request create role page";
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "RoleController.class", logMessage);
+    public String createRolePage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model) {
+        globalGeneralLogging.detail("create role page");
 
 
         RoleDTO roleDTO = new RoleDTO();
@@ -86,13 +86,9 @@ public class RoleController {
     @PreAuthorize("hasAuthority('SAVE_NEW_ROLE') || hasAuthority('ADMIN')")
     @PostMapping("/roles")
     public String saveNewRole(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) RoleDTO roleDTO, BindingResult bindingResult,
-                              Model model, HttpServletRequest request) {
+                              Model model) {
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request save new role=" + roleDTO;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "RoleController.class", logMessage);
+        globalGeneralLogging.detail("save new role=" + roleDTO);
 
 
         boolean showMessage = true;
@@ -100,20 +96,16 @@ public class RoleController {
         String message = "";
 
         if(bindingResult.hasErrors()) {
-            message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "RoleController.class",
-                    "ValidationError:" + bindingResult);
+            message = messages.get("form.invalid");
+            globalGeneralLogging.detail("ValidationError:" + bindingResult);
         } else {
             try {
                 roleService.createRole(roleDTO.getRoleName(), null, principalId);
                 valid = true;
-                message = "اطلاعات با موفقیت ذخیره شد";
+                message = messages.get("form.saved");
             } catch (DuplicateResourceException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "RoleController.class",
-                        "DuplicateResourceException:" + e.getMessage());
-                message = "نقشی با این مشخصات در سیستم وجود دارد";
+                globalGeneralLogging.detail("DuplicateResourceException:" + e.getMessage());
+                message = messages.get("role.duplicate");
             }
         }
 
@@ -131,14 +123,9 @@ public class RoleController {
     //UPDATE_ROLE_PAGE
     @PreAuthorize("hasAuthority('UPDATE_ROLE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("/roles/{roleId}")
-    public String updateRolePage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("roleId") int roleId, Model model, HttpServletRequest request) {
+    public String updateRolePage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("roleId") int roleId, Model model) {
 
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get update role page with id=" + roleId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "RoleController.class", logMessage);
+        globalGeneralLogging.detail("update role page with id=" + roleId);
 
         RoleDTO roleDTO = roleService.getRoleDtoById(roleId);
         List<PermissionDTO> permissionDTOList = roleService.getAllPermissionsOfRoleWithSelected(roleId);
@@ -159,23 +146,17 @@ public class RoleController {
     @PreAuthorize("hasAuthority('SAVE_UPDATED_ROLE') || hasAuthority('ADMIN')")
     @PostMapping("/roles/{roleId}")
     public String saveUpdatedRole(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) RoleDTO roleDTO, BindingResult bindingResult,
-                                  Model model, HttpServletRequest request) {
+                                  Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to save updated role=" + roleDTO;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "RoleController.class", logMessage);
+        globalGeneralLogging.detail("save updated role=" + roleDTO);
         boolean showMessage = true;
         boolean valid = false;
         String message = "";
 
         if(bindingResult.hasErrors()) {
-            message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "RoleController.class",
-                    "ValidationError:" + bindingResult);
+            message = messages.get("form.invalid");
+            globalGeneralLogging.detail("ValidationError:" + bindingResult);
         } else {
             try {
                 roleService.updatePermissionsOfRole(roleDTO.getId(),
@@ -191,17 +172,13 @@ public class RoleController {
                             principalId);
                 }
                 valid = true;
-                message = "اطلاعات با موفقیت ذخیره شد";
+                message = messages.get("form.saved");
             } catch (ResourceNotFoundException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "RoleController.class",
-                        "ResourceNotFoundException:" + e.getMessage());
-                message = "اطلاعات صحیح نمیباشد";
+                globalGeneralLogging.detail("ResourceNotFoundException:" + e.getMessage());
+                message = messages.get("form.invalidShort");
             } catch (InvalidDataException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "RoleController.class",
-                        "InvalidDataException:" + e.getMessage());
-                message = "اطلاعات صحیح نمیباشد";
+                globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
+                message = messages.get("form.invalidShort");
             }
         }
 
@@ -240,13 +217,8 @@ public class RoleController {
     //GET_ALL_ROLE_PAGE
     @PreAuthorize("hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("/roles")
-    public String viewAllRoles(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
-        int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get view all roles";
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "RoleController.class", logMessage);
+    public String viewAllRoles(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model) {
+        globalGeneralLogging.detail("view all roles");
 
         List<RoleDTO> roleDTOList = roleService.getAllRoles();
 

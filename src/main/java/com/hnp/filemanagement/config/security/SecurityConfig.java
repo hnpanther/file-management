@@ -1,6 +1,6 @@
 package com.hnp.filemanagement.config.security;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -52,8 +52,7 @@ public class SecurityConfig {
      */
     private static final String BASIC_CHALLENGE = "Basic realm=\"file-management\", charset=\"UTF-8\"";
 
-    @Value("${filemanagement.auth.ldap.activedirectory.enabled:false}")
-    private boolean activeDirectoryEnabled;
+    private final boolean activeDirectoryEnabled;
 
 
 
@@ -63,10 +62,13 @@ public class SecurityConfig {
 
     private final ActiveDirectoryCustomAuthenticationProvider activeDirectoryCustomAuthenticationProvider;
 
-    public SecurityConfig(BCryptPasswordEncoder passwordEncoder, UserDetailsService userDetailsService, ActiveDirectoryCustomAuthenticationProvider activeDirectoryCustomAuthenticationProvider) {
+    public SecurityConfig(BCryptPasswordEncoder passwordEncoder, UserDetailsService userDetailsService,
+                          ActiveDirectoryCustomAuthenticationProvider activeDirectoryCustomAuthenticationProvider,
+                          FileManagementProperties properties) {
         this.passwordEncoder = passwordEncoder;
         this.userDetailsService = userDetailsService;
         this.activeDirectoryCustomAuthenticationProvider = activeDirectoryCustomAuthenticationProvider;
+        this.activeDirectoryEnabled = properties.auth().ldap().activedirectory().enabled();
     }
 
     @Bean

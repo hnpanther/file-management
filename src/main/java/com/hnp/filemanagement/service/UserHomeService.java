@@ -16,7 +16,7 @@ import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.validation.ValidationUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,20 +53,17 @@ public class UserHomeService {
 
     private static final Logger logger = LoggerFactory.getLogger(UserHomeService.class);
 
-    private static final long MEGABYTE = 1024L * 1024L;
-
     private final FolderRepository folderRepository;
     private final UserRepository userRepository;
     private final ActionHistoryService actionHistoryService;
-
-    @Value("${filemanagement.profiles.default-quota-mb:0}")
-    private long defaultQuotaMegabytes;
+    private final FileManagementProperties properties;
 
     public UserHomeService(FolderRepository folderRepository, UserRepository userRepository,
-                           ActionHistoryService actionHistoryService) {
+                           ActionHistoryService actionHistoryService, FileManagementProperties properties) {
         this.folderRepository = folderRepository;
         this.userRepository = userRepository;
         this.actionHistoryService = actionHistoryService;
+        this.properties = properties;
     }
 
     /** The user's home, if they have one. */
@@ -82,7 +79,7 @@ public class UserHomeService {
 
     /** The quota a new home gets, in bytes; null for none. */
     public Long defaultQuotaBytes() {
-        return defaultQuotaMegabytes <= 0 ? null : defaultQuotaMegabytes * MEGABYTE;
+        return properties.profiles().defaultQuotaBytes();
     }
 
     /**

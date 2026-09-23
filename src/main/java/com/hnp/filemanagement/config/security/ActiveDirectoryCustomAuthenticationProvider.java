@@ -3,7 +3,7 @@ package com.hnp.filemanagement.config.security;
 import com.hnp.filemanagement.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.config.FileManagementProperties;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.AuthenticationServiceException;
@@ -51,39 +51,21 @@ public class ActiveDirectoryCustomAuthenticationProvider implements Authenticati
 
     Logger logger = LoggerFactory.getLogger(ActiveDirectoryCustomAuthenticationProvider.class);
 
-    @Value("${filemanagement.auth.ldap.activedirectory.domain:}")
-    private String domain;
-
-    @Value("${filemanagement.auth.ldap.activedirectory.url:}")
-    private String url;
-
-    @Value("${filemanagement.auth.ldap.activedirectory.enabled:false}")
-    private boolean enabled;
-
-    @Value("${filemanagement.auth.ldap.activedirectory.connect-timeout-ms:5000}")
-    private int connectTimeoutMs;
-
-    @Value("${filemanagement.auth.ldap.activedirectory.read-timeout-ms:10000}")
-    private int readTimeoutMs;
-
-    @Value("${filemanagement.auth.ldap.activedirectory.truststore:}")
-    private String trustStore;
-
-    @Value("${filemanagement.auth.ldap.activedirectory.truststore-password:}")
-    private String trustStorePassword;
-
-    @Value("${filemanagement.auth.ldap.activedirectory.truststore-type:PKCS12}")
-    private String trustStoreType;
-
-    @Value("${filemanagement.auth.ldap.activedirectory.verify-hostname:true}")
-    private boolean verifyHostname;
+    private final String domain;
+    private final String url;
+    private final boolean enabled;
+    private final int connectTimeoutMs;
+    private final int readTimeoutMs;
+    private final String trustStore;
+    private final String trustStorePassword;
+    private final String trustStoreType;
+    private final boolean verifyHostname;
 
     /**
      * {@code false} accepts any certificate and any name - the {@code ssl.CERT_NONE} of the Python
      * world. Encrypted, unauthenticated. Loud in the log, because it should be a decision.
      */
-    @Value("${filemanagement.auth.ldap.activedirectory.verify-certificate:true}")
-    private boolean verifyCertificate;
+    private final boolean verifyCertificate;
 
     /** {@code user.login_type}: either backend, the local password only, or the directory only. */
     private static final int LOGIN_TYPE_ANY = 0;
@@ -105,7 +87,19 @@ public class ActiveDirectoryCustomAuthenticationProvider implements Authenticati
 
     private final UserService userService;
 
-    public ActiveDirectoryCustomAuthenticationProvider(UserDetailsService userDetailsService, UserService userService) {
+    public ActiveDirectoryCustomAuthenticationProvider(UserDetailsService userDetailsService, UserService userService,
+                                                       FileManagementProperties properties) {
+        FileManagementProperties.ActiveDirectory settings = properties.auth().ldap().activedirectory();
+        this.domain = settings.domain();
+        this.url = settings.url();
+        this.enabled = settings.enabled();
+        this.connectTimeoutMs = settings.connectTimeoutMs();
+        this.readTimeoutMs = settings.readTimeoutMs();
+        this.trustStore = settings.truststore();
+        this.trustStorePassword = settings.truststorePassword();
+        this.trustStoreType = settings.truststoreType();
+        this.verifyHostname = settings.verifyHostname();
+        this.verifyCertificate = settings.verifyCertificate();
         this.userDetailsService = userDetailsService;
         this.userService = userService;
     }

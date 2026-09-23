@@ -18,7 +18,7 @@ import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.validation.ValidationUtil;
-import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -89,10 +89,8 @@ public class FolderService {
                          TagGroupRepository tagGroupRepository, UserRepository userRepository,
                          FolderAccessService folderAccessService, TagMirrorService tagMirrorService,
                          ActionHistoryService actionHistoryService, FolderQuotaService folderQuotaService,
-                         @Value("${filemanagement.folders.max-depth:6}") int maxDepth) {
-        if (maxDepth < 1) {
-            throw new IllegalArgumentException("filemanagement.folders.max-depth must be at least 1, was " + maxDepth);
-        }
+                         FileManagementProperties properties) {
+        int maxDepth = properties.folders().maxDepth();
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.tagGroupRepository = tagGroupRepository;

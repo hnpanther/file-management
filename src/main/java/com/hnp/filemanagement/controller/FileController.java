@@ -9,12 +9,12 @@ import com.hnp.filemanagement.exception.UploadRefusedException;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.service.UploadPolicyService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
+import com.hnp.filemanagement.util.UiMessages;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import com.hnp.filemanagement.validation.InsertValidation;
-import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -52,18 +52,22 @@ public class FileController {
     private final FileService fileService;
     private final UploadPolicyService uploadPolicyService;
 
-    @Value("${filemanagement.default.page-size:50}")
-    private int defaultPageSize;
+    private final int defaultPageSize;
 
-    @Value("${filemanagement.default.element-size:50}")
-    private int defaultElementSize;
+    private final int defaultElementSize;
 
+
+    private final UiMessages messages;
 
     public FileController(GlobalGeneralLogging globalGeneralLogging, FileService fileService,
-                          UploadPolicyService uploadPolicyService) {
+                          UploadPolicyService uploadPolicyService, FileManagementProperties properties,
+                          UiMessages messages) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.fileService = fileService;
         this.uploadPolicyService = uploadPolicyService;
+        this.defaultPageSize = properties.defaults().pageSize();
+        this.defaultElementSize = properties.defaults().elementSize();
+        this.messages = messages;
     }
 
     /**
@@ -80,22 +84,22 @@ public class FileController {
     }
 
     /** A quota refusal in the page's language, with the numbers it carries (roadmap 10.4). */
-    private static String quotaExceededMessage(QuotaExceededException e) {
-        return "سهمیهٔ پوشهٔ «" + e.getFolderName() + "» " + UploadPolicyService.megabytesOf(e.getQuotaBytes())
-                + " مگابایت است و " + UploadPolicyService.megabytesOf(e.getUsedBytes())
-                + " مگابایت آن استفاده شده؛ این فایل (" + UploadPolicyService.megabytesOf(e.getIncomingBytes())
-                + " مگابایت) در آن جا نمی‌گیرد";
+    private String quotaExceededMessage(QuotaExceededException e) {
+        return messages.get("upload.refused.quota", e.getFolderName(),
+                UploadPolicyService.megabytesOf(e.getQuotaBytes()),
+                UploadPolicyService.megabytesOf(e.getUsedBytes()),
+                UploadPolicyService.megabytesOf(e.getIncomingBytes()));
     }
 
     /** The refusal in the page's language, with the facts the exception carries. */
-    private static String uploadRefusedMessage(UploadRefusedException e) {
+    private String uploadRefusedMessage(UploadRefusedException e) {
         if (e.getReason() == UploadRefusedException.Reason.TOO_LARGE) {
-            return "حجم فایل " + UploadPolicyService.megabytesOf(e.getSizeBytes()) + " مگابایت است؛ حداکثر مجاز برای ."
-                    + e.getExtension() + " " + UploadPolicyService.megabytesOf(e.getLimitBytes()) + " مگابایت است";
+            return messages.get("upload.refused.tooLarge", UploadPolicyService.megabytesOf(e.getSizeBytes()),
+                    e.getExtension(), UploadPolicyService.megabytesOf(e.getLimitBytes()));
         }
         return e.getAllowed().isEmpty()
-                ? "برای شما هیچ نوع فایلی برای بارگذاری مجاز نیست"
-                : "نوع فایل ." + e.getExtension() + " برای شما مجاز نیست؛ انواع مجاز: " + String.join(", ", e.getAllowed());
+                ? messages.get("upload.refused.nothingAllowed")
+                : messages.get("upload.refused.typeNotAllowed", e.getExtension(), String.join(", ", e.getAllowed()));
     }
 
     /**
@@ -114,14 +118,10 @@ public class FileController {
     @GetMapping("create")
     public String getCreateFilePage(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                     @RequestParam(value = "folderId", required = false) Integer folderId,
-                                    Model model, HttpServletRequest request) {
+                                    Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get create file page, folderId=" + folderId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileController.class", logMessage);
+        globalGeneralLogging.detail("create file page, folderId=" + folderId);
 
         FileInfoDTO fileInfoDTO = new FileInfoDTO();
         boolean showMessage = false;
@@ -131,11 +131,9 @@ public class FileController {
             try {
                 fileInfoDTO = fileService.uploadTargetOf(folderId, principalId);
             } catch (InvalidDataException | AccessDeniedException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "FileController.class",
-                        e.getClass().getSimpleName() + ":" + e.getMessage());
+                globalGeneralLogging.detail(e.getClass().getSimpleName() + ":" + e.getMessage());
                 showMessage = true;
-                message = "امکان بارگذاری در پوشهٔ انتخاب‌شده وجود ندارد؛ مقصد را انتخاب کنید";
+                message = messages.get("file.upload.targetUnavailable");
             }
         }
 
@@ -154,15 +152,10 @@ public class FileController {
     @PostMapping
     public String saveNewFile(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) FileInfoDTO fileInfoDTO,
                               BindingResult bindingResult,
-                              Model model,
-                              HttpServletRequest request) {
+                              Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to save new file=" + fileInfoDTO;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileController.class", logMessage);
+        globalGeneralLogging.detail("save new file=" + fileInfoDTO);
 
         logger.debug("file details for create new file===============");
         logger.debug("orig name=" +fileInfoDTO.getMultipartFile().getOriginalFilename());
@@ -178,36 +171,26 @@ public class FileController {
 
 
         if(bindingResult.hasErrors()) {
-            message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "FileController.class",
-                    "ValidationError:" + bindingResult);
+            message = messages.get("form.invalid");
+            globalGeneralLogging.detail("ValidationError:" + bindingResult);
         } else {
 
             try {
                 FileDetailsDTO fileDetailsDTO = fileService.createNewFile(fileInfoDTO, principalId, 1);
                 valid = true;
-                message = "اطلاعات با موفقیت ذخیره شد";
+                message = messages.get("form.saved");
             } catch (QuotaExceededException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "FileController.class",
-                        "QuotaExceededException:" + e.getMessage());
+                globalGeneralLogging.detail("QuotaExceededException:" + e.getMessage());
                 message = quotaExceededMessage(e);
             } catch (UploadRefusedException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "FileController.class",
-                        "UploadRefusedException:" + e.getMessage());
+                globalGeneralLogging.detail("UploadRefusedException:" + e.getMessage());
                 message = uploadRefusedMessage(e);
             } catch (InvalidDataException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "FileController.class",
-                        "InvalidDataException:" + e.getMessage());
-                message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
+                globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
+                message = messages.get("form.invalid");
             } catch (DuplicateResourceException e) {
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "FileController.class",
-                        "DuplicateResourceException:" + e.getMessage());
-                message = "فایلی با اطلاعات مشابه در سیستم وجود دارد";
+                globalGeneralLogging.detail("DuplicateResourceException:" + e.getMessage());
+                message = messages.get("file.duplicate");
             }
 
         }
@@ -238,23 +221,15 @@ public class FileController {
     //PUBLIC_FILE_PAGE
 //    @PreAuthorize("hasAuthority('PUBLIC_FILE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("public-files")
-    public String getAllPublicFile(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request,
+    public String getAllPublicFile(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model,
                                    @RequestParam(name = "page-size", required = false) Integer pageSize,
                                    @RequestParam(name = "page-number", required = false) Integer pageNumber,
                                    @RequestParam(name = "search", required = false) String search) {
 
 
-        int principalId = 0;
-        String principalUsername = "None";
-        if(userDetails != null) {
-            principalId = userDetails.getId();
-            principalUsername = userDetails.getUsername();
-        }
+        int principalId = userDetails == null ? 0 : userDetails.getId();
 
-        String logMessage = "request to get all public files, pageSize=" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileController.class", logMessage);
+        globalGeneralLogging.detail("all public files, pageSize=" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search);
 
         if(pageSize == null) {
             pageSize = defaultPageSize;
@@ -263,13 +238,12 @@ public class FileController {
             pageNumber = 0;
         }
 
-        PublicFileDetailsPageDTO publicFileDetailsPageDTO = fileService.getPagePublicFiles(pageSize, pageNumber, search);
+        PageResponse<PublicFileDetailsDTO> files = fileService.getPagePublicFiles(pageSize, pageNumber, search);
 
-
-        model.addAttribute("files", publicFileDetailsPageDTO.getPublicFileDetailsDTOList());
+        model.addAttribute("files", files.content());
         model.addAttribute("pageSize", pageSize);
         model.addAttribute("pageNumber", pageNumber + 1);
-        model.addAttribute("totalPages", publicFileDetailsPageDTO.getTotalPages());
+        model.addAttribute("totalPages", files.totalPages());
         model.addAttribute("search", search);
 
         return "file-management/files/files-public.html";
@@ -278,14 +252,10 @@ public class FileController {
     //FILE_INFO_PAGE
     @PreAuthorize("hasAuthority('FILE_INFO_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("file-info/{id}")
-    public String getFileInfoPage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int fileInfoId, Model model, HttpServletRequest request) {
+    public String getFileInfoPage(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("id") int fileInfoId, Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get fileInfo Page with id=" + fileInfoId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileController.class", logMessage);
+        globalGeneralLogging.detail("fileInfo Page with id=" + fileInfoId);
 
         FileInfoDTO fileInfoDTO = fileService.getFileInfoDtoWithFileDetails(fileInfoId, principalId);
         model.addAttribute("file", fileInfoDTO);
@@ -297,20 +267,11 @@ public class FileController {
     @GetMapping("public-download/{id}")
     public ResponseEntity<?> downloadPublicFile(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                                 @PathVariable("id") int fileDetailsId,
-                                                @RequestParam(value = "inline", required = false) String inline,
-                                                HttpServletRequest request) {
+                                                @RequestParam(value = "inline", required = false) String inline) {
 
-        int principalId = 0;
-        String principalUsername = "None";
-        if(userDetails != null) {
-            principalId = userDetails.getId();
-            principalUsername = userDetails.getUsername();
-        }
+        int principalId = userDetails == null ? 0 : userDetails.getId();
 
-        String logMessage = "request download public fileDetails with id=" + fileDetailsId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileController.class", logMessage);
+        globalGeneralLogging.detail("download public fileDetails with id=" + fileDetailsId);
 
         FileDownloadDTO fileDownloadDTO = fileService.downloadPublicFile(fileDetailsId);
         return download(fileDownloadDTO, "1".equals(inline));
@@ -320,17 +281,13 @@ public class FileController {
     //GET_ALL_FILE_INFO_PAGE
     @PreAuthorize("hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("file-info")
-    public String getAllFileInfo(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request,
+    public String getAllFileInfo(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model,
                                  @RequestParam(name = "page-size", required = false) Integer pageSize,
                                  @RequestParam(name = "page-number", required = false) Integer pageNumber,
                                  @RequestParam(name = "search", required = false) String search) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get all file info, pageSize=" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileController.class", logMessage);
+        globalGeneralLogging.detail("all file info, pageSize=" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search);
 
         if(pageSize == null) {
             pageSize = defaultPageSize;
@@ -339,12 +296,12 @@ public class FileController {
             pageNumber = 0;
         }
 
-        FileInfoPageDTO fileInfoPageDTO = fileService.getPageFileInfo(pageSize, pageNumber, search, principalId);
+        PageResponse<FileInfoDTO> files = fileService.getPageFileInfo(pageSize, pageNumber, search, principalId);
 
-        model.addAttribute("files", fileInfoPageDTO.getFileInfoDTOList());
+        model.addAttribute("files", files.content());
         model.addAttribute("pageSize", pageSize);
         model.addAttribute("pageNumber", pageNumber + 1);
-        model.addAttribute("totalPages", fileInfoPageDTO.getTotalPages());
+        model.addAttribute("totalPages", files.totalPages());
         model.addAttribute("search", search);
         return "file-management/files/file-info.html";
     }
@@ -354,15 +311,10 @@ public class FileController {
     @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
     public ResponseEntity<?> downloadFile(@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable("fileInfoId") int fileInfoId,
                                                 @PathVariable("fileDetailsId") int fileDetailsId,
-                                                @RequestParam(value = "inline", required = false) String inline,
-                                                HttpServletRequest request) {
+                                                @RequestParam(value = "inline", required = false) String inline) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request download fileDetails with id=" + fileDetailsId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileController.class", logMessage);
+        globalGeneralLogging.detail("download fileDetails with id=" + fileDetailsId);
 
         FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId, principalId);
         return download(fileDownloadDTO, "1".equals(inline));
@@ -396,14 +348,10 @@ public class FileController {
     public String createFileDetailsPage(@PathVariable("fileInfoId") int fileInfoId, @RequestParam(name = "type", required = true) String type,
                                         @RequestParam(name = "id", required = true) Integer fileDetailsId,
                                         @RequestParam(name = "version-number", required = true) Integer version,
-                                        @AuthenticationPrincipal UserDetailsImpl userDetails, Model model, HttpServletRequest request) {
+                                        @AuthenticationPrincipal UserDetailsImpl userDetails, Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request get create file details page with type=" + type + ", fileDetailsId=" + fileDetailsId;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileController.class", logMessage);
+        globalGeneralLogging.detail("create file details page with type=" + type + ", fileDetailsId=" + fileDetailsId);
 
         if(type == null || !(type.equals("format") || type.equals("version"))) {
             throw new  InvalidDataException("type not correct, type=" + type);
@@ -445,15 +393,10 @@ public class FileController {
     @PostMapping("file-info/{fileInfoId}/file-details")
     public String createNewFileDetails(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) FileUploadDTO fileUploadDTO,
                                        BindingResult bindingResult,
-                                       Model model,
-                                       HttpServletRequest request) {
+                                       Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to save new file details, upload=" + fileUploadDTO;
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileController.class", logMessage);
+        globalGeneralLogging.detail("save new file details, upload=" + fileUploadDTO);
 
         if(fileUploadDTO.getType() == null || !(fileUploadDTO.getType().equals("format") || fileUploadDTO.getType().equals("version"))) {
             throw new  InvalidDataException("type not correct, type=" + fileUploadDTO.getType());
@@ -471,44 +414,34 @@ public class FileController {
 
         boolean showMessage = true;
         boolean valid = false;
-        String message = "اطلاعات با موفقیت ذخیره شد";
+        String message = messages.get("form.saved");
 
         String fileNameWithoutExtension = ModelConverterUtil.getFileNameWithoutExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
         fileUploadDTO.setFileNameWithoutExtension(fileNameWithoutExtension);
         if(bindingResult.hasErrors() || !fileNameWithoutExtension.equals(fileUploadDTO.getFileName())) {
-            message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
+            message = messages.get("form.invalid");
             fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
-            globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                    request.getMethod() + " " + path, "FileController.class",
-                    "ValidationError:" + bindingResult);
+            globalGeneralLogging.detail("ValidationError:" + bindingResult);
         } else {
             try {
                 fileService.createNewFileDetails(fileUploadDTO, principalId);
                 valid = true;
             } catch (QuotaExceededException e) {
                 fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "FileController.class",
-                        "QuotaExceededException:" + e.getMessage());
+                globalGeneralLogging.detail("QuotaExceededException:" + e.getMessage());
                 message = quotaExceededMessage(e);
             } catch (UploadRefusedException e) {
                 fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "FileController.class",
-                        "UploadRefusedException:" + e.getMessage());
+                globalGeneralLogging.detail("UploadRefusedException:" + e.getMessage());
                 message = uploadRefusedMessage(e);
             } catch (InvalidDataException e) {
                 fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "FileController.class",
-                        "InvalidDataException:" + e.getMessage());
-                message = "لطفا اطلاعات را بطور صحیح وارد نمایید";
+                globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
+                message = messages.get("form.invalid");
             } catch (DuplicateResourceException e) {
                 fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
-                globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                        request.getMethod() + " " + path, "FileController.class",
-                        "DuplicateResourceException:" + e.getMessage());
-                message = "فایل با این مشخصات وجود دارد";
+                globalGeneralLogging.detail("DuplicateResourceException:" + e.getMessage());
+                message = messages.get("fileDetails.duplicate");
             }
 
         }

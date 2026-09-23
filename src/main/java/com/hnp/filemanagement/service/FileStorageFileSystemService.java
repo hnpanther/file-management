@@ -5,7 +5,7 @@ import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -56,7 +56,8 @@ public class FileStorageFileSystemService implements FileStorageService {
     private final String baseDir;
 
 
-    public FileStorageFileSystemService(@Value("${file.management.base-dir}") String baseDir) {
+    public FileStorageFileSystemService(FileManagementProperties properties) {
+        String baseDir = properties.baseDir();
         this.baseDir = withTrailingSeparator(baseDir);
     }
 

@@ -59,8 +59,7 @@ public class ShareLinkResource {
                                    @PathVariable("fileDetailsId") int fileDetailsId,
                                    @RequestBody CreateShareLinkRequest body,
                                    HttpServletRequest request) {
-        globalGeneralLogging.controllerLogging(userDetails, request, ShareLinkResource.class,
-                "create share link for fileDetails id=" + fileDetailsId + ", minutes=" + body.minutes()
+        globalGeneralLogging.detail("create share link for fileDetails id=" + fileDetailsId + ", minutes=" + body.minutes()
                         + ", maxDownloads=" + body.maxDownloads() + ", password=" + (body.password() == null || body.password().isBlank() ? "no" : "yes"));
         ShareLinkDTO link = shareLinkService.create(fileDetailsId, body.minutes(), body.password(),
                 body.maxDownloads(), userDetails.getId());
@@ -73,10 +72,8 @@ public class ShareLinkResource {
     @PreAuthorize("hasAuthority('CREATE_SHARE_LINK') || hasAuthority('REVOKE_SHARE_LINK') || hasAuthority('ADMIN')")
     @DeleteMapping("share-links/{linkId}")
     public ApiResult revoke(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                            @PathVariable("linkId") int linkId,
-                            HttpServletRequest request) {
-        globalGeneralLogging.controllerLogging(userDetails, request, ShareLinkResource.class,
-                "revoke share link id=" + linkId);
+                            @PathVariable("linkId") int linkId) {
+        globalGeneralLogging.detail("revoke share link id=" + linkId);
         boolean any = userDetails.getPermissions() != null && userDetails.getPermissions().stream()
                 .anyMatch(held -> held == PermissionEnum.ADMIN || held == PermissionEnum.REVOKE_SHARE_LINK);
         shareLinkService.revoke(linkId, userDetails.getId(), any);

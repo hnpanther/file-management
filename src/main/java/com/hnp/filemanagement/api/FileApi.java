@@ -11,7 +11,6 @@ import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import com.hnp.filemanagement.validation.InsertValidation;
-import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
@@ -87,11 +86,9 @@ public class FileApi {
     public FileUploadOutputDTO saveNewFile(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                            @RequestParam(value = "public-file", required = false) String publicFile,
                                            @ModelAttribute @Validated(InsertValidation.class) FileInfoDTO fileInfoDTO,
-                                           BindingResult bindingResult,
-                                           HttpServletRequest request) {
+                                           BindingResult bindingResult) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileApi.class,
-                "save new file name=" + fileInfoDTO.getFileName());
+        globalGeneralLogging.detail("save new file name=" + fileInfoDTO.getFileName());
 
         // Checked before touching the multipart: the debug block below dereferences it, and this
         // method used to log it first, so a request without a file answered 500 instead of 400.
@@ -122,11 +119,9 @@ public class FileApi {
     @DeleteMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}")
     public ApiResult deleteFileDetails(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                        @PathVariable("fileInfoId") int fileInfoId,
-                                       @PathVariable("fileDetailsId") int fileDetailsId,
-                                       HttpServletRequest request) {
+                                       @PathVariable("fileDetailsId") int fileDetailsId) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileApi.class,
-                "delete file details id=" + fileDetailsId + " of file info id=" + fileInfoId);
+        globalGeneralLogging.detail("delete file details id=" + fileDetailsId + " of file info id=" + fileInfoId);
 
         fileService.deleteFileDetails(fileInfoId, fileDetailsId, userDetails.getId());
 
@@ -142,11 +137,9 @@ public class FileApi {
     @PreAuthorize("hasAuthority('API_DELETE_FILE_DETAILS') || hasAuthority('ADMIN')")
     @DeleteMapping("file-details/{fileDetailsId}")
     public ApiResult deleteFileDetailsById(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                           @PathVariable("fileDetailsId") int fileDetailsId,
-                                           HttpServletRequest request) {
+                                           @PathVariable("fileDetailsId") int fileDetailsId) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileApi.class,
-                "delete file details id=" + fileDetailsId);
+        globalGeneralLogging.detail("delete file details id=" + fileDetailsId);
 
         fileService.deleteFileDetails(fileDetailsId, userDetails.getId());
 
@@ -162,9 +155,8 @@ public class FileApi {
     @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
     public ResponseEntity<Resource> downloadFile(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                                  @PathVariable("fileInfoId") int fileInfoId,
-                                                 @PathVariable("fileDetailsId") int fileDetailsId,
-                                                 HttpServletRequest request) {
-        return downloadFileById(userDetails, fileDetailsId, request);
+                                                 @PathVariable("fileDetailsId") int fileDetailsId) {
+        return downloadFileById(userDetails, fileDetailsId);
     }
 
     /** The same download, by the version's id alone. */
@@ -172,11 +164,9 @@ public class FileApi {
     @PreAuthorize("hasAuthority('API_DOWNLOAD_FILE') || hasAuthority('ADMIN')")
     @GetMapping("file-details/{fileDetailsId}/download")
     public ResponseEntity<Resource> downloadFileById(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                                     @PathVariable("fileDetailsId") int fileDetailsId,
-                                                     HttpServletRequest request) {
+                                                     @PathVariable("fileDetailsId") int fileDetailsId) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, FileApi.class,
-                "download file details id=" + fileDetailsId);
+        globalGeneralLogging.detail("download file details id=" + fileDetailsId);
 
         FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId, userDetails.getId());
 

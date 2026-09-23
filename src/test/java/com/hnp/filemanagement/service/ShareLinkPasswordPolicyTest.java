@@ -55,7 +55,7 @@ class ShareLinkPasswordPolicyTest extends MySqlSupport {
         request.setMultipartFile(new MockMultipartFile("guarded.txt", "guarded.txt", "text/plain", TestData.bytesFor("guarded.txt")));
         FileDetailsDTO revision = fileService.createNewFile(request, adminId, 1);
 
-        assertThat(underTest.passwordPolicy()).isEqualTo(ShareLinkService.PasswordPolicy.REQUIRED);
+        assertThat(underTest.passwordRequired()).isTrue();
         assertThatThrownBy(() -> underTest.create(revision.getId(), 5, null, null, adminId))
                 .isInstanceOf(InvalidDataException.class).hasMessageContaining("password");
         assertThatThrownBy(() -> underTest.create(revision.getId(), 5, "   ", null, adminId))

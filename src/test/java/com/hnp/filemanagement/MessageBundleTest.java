@@ -97,14 +97,15 @@ class MessageBundleTest {
     @Test
     void everyMessageKeyUsedByJavaCodeExists() throws IOException {
         Properties properties = bundle();
-        Pattern javaKey = Pattern.compile("getMessage\\(\"([A-Za-z0-9_.]+)\"|message\\(\"([A-Za-z0-9_.]+)\"");
+        Pattern javaKey = Pattern.compile("getMessage\\(\"([A-Za-z0-9_.]+)\"|messages\\.get\\(\"([A-Za-z0-9_.]+)\"|message\\(\"([A-Za-z0-9_.]+)\"");
         Set<String> missing = new TreeSet<>();
 
         try (Stream<Path> files = Files.walk(Path.of("src", "main", "java"))) {
             for (Path java : files.filter(p -> p.toString().endsWith(".java")).toList()) {
                 Matcher matcher = javaKey.matcher(Files.readString(java));
                 while (matcher.find()) {
-                    String key = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+                    String key = matcher.group(1) != null ? matcher.group(1)
+                            : matcher.group(2) != null ? matcher.group(2) : matcher.group(3);
                     if (properties.getProperty(key) == null) {
                         missing.add(key + "  (" + java + ")");
                     }
@@ -113,6 +114,29 @@ class MessageBundleTest {
         }
 
         assertThat(missing).isEmpty();
+    }
+
+    /**
+     * A sentence a person reads belongs in the bundle, not in a Java file ({@code docs/issues.md}
+     * issue 26, roadmap 2.1): a wording change should be one edit in one place, and a translator
+     * should not have to read Java. The controllers are converted; {@code JalaliDate} keeps its
+     * digits and the repositories their collation names, which are not sentences.
+     */
+    @Test
+    void controllersHoldNoPersianSentences() throws IOException {
+        Pattern persianLiteral = Pattern.compile("\"[^\"\\n]*[\\u0600-\\u06ff][^\"\\n]*\"");
+        Set<String> found = new TreeSet<>();
+
+        try (Stream<Path> files = Files.walk(Path.of("src", "main", "java", "com", "hnp", "filemanagement", "controller"))) {
+            for (Path java : files.filter(path -> path.toString().endsWith(".java")).toList()) {
+                Matcher matcher = persianLiteral.matcher(Files.readString(java));
+                while (matcher.find()) {
+                    found.add(java.getFileName() + ": " + matcher.group());
+                }
+            }
+        }
+
+        assertThat(found).isEmpty();
     }
 
     /**

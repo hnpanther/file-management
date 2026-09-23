@@ -4,7 +4,6 @@ import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.TreeNodeDTO;
 import com.hnp.filemanagement.service.FileTreeService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -33,15 +32,10 @@ public class FileTreeController {
     //FILE_TREE_PAGE
     @PreAuthorize("hasAuthority('FILE_TREE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("tree")
-    public String getFileTreePage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model,
-                                  HttpServletRequest request) {
+    public String getFileTreePage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model) {
 
         int principalId = userDetails.getId();
-        String principalUsername = userDetails.getUsername();
-        String logMessage = "request to get file tree page";
-        String path = request.getRequestURI() + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-        globalGeneralLogging.controllerLogging(principalId, principalUsername,
-                request.getMethod() + " " + path, "FileTreeController.class", logMessage);
+        globalGeneralLogging.detail("file tree page");
 
         List<TreeNodeDTO> roots = fileTreeService.getRoots(principalId);
         model.addAttribute("roots", roots);

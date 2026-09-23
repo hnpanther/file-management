@@ -14,7 +14,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -100,11 +99,9 @@ public class ObjectStoreApi {
                                         @RequestParam(value = "prefix", required = false) String prefix,
                                         @RequestParam(value = "delimiter", required = false) String delimiter,
                                         @RequestParam(value = "max-keys", required = false) Integer maxKeys,
-                                        @RequestParam(value = "continuation-token", required = false) String token,
-                                        HttpServletRequest request) {
+                                        @RequestParam(value = "continuation-token", required = false) String token) {
 
-        globalGeneralLogging.controllerLogging(userDetails, request, ObjectStoreApi.class,
-                "list objects in bucket=" + bucket + ", prefix=" + prefix);
+        globalGeneralLogging.detail("list objects in bucket=" + bucket + ", prefix=" + prefix);
 
         return objectStoreService.list(bucket, prefix, delimiter, maxKeys, token, userDetails.getId());
     }
@@ -132,12 +129,10 @@ public class ObjectStoreApi {
     @GetMapping("{bucket}/{*key}")
     public ResponseEntity<?> getObject(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                        @PathVariable("bucket") String bucket,
-                                       @Parameter(description = KEY_DESCRIPTION) @PathVariable("key") String rawKey,
-                                       HttpServletRequest request) {
+                                       @Parameter(description = KEY_DESCRIPTION) @PathVariable("key") String rawKey) {
 
         String key = keyOf(rawKey);
-        globalGeneralLogging.controllerLogging(userDetails, request, ObjectStoreApi.class,
-                "get object bucket=" + bucket + ", key=" + key);
+        globalGeneralLogging.detail("get object bucket=" + bucket + ", key=" + key);
 
         ObjectMetadataDTO metadata = objectStoreService.head(bucket, key, userDetails.getId());
         FileDownloadDTO download = objectStoreService.get(bucket, key, userDetails.getId());
@@ -173,12 +168,10 @@ public class ObjectStoreApi {
     @RequestMapping(value = "{bucket}/{*key}", method = RequestMethod.HEAD)
     public ResponseEntity<Void> headObjectHeaders(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                                   @PathVariable("bucket") String bucket,
-                                                  @Parameter(description = KEY_DESCRIPTION) @PathVariable("key") String rawKey,
-                                                  HttpServletRequest request) {
+                                                  @Parameter(description = KEY_DESCRIPTION) @PathVariable("key") String rawKey) {
 
         String key = keyOf(rawKey);
-        globalGeneralLogging.controllerLogging(userDetails, request, ObjectStoreApi.class,
-                "head object bucket=" + bucket + ", key=" + key);
+        globalGeneralLogging.detail("head object bucket=" + bucket + ", key=" + key);
 
         ObjectMetadataDTO metadata = objectStoreService.head(bucket, key, userDetails.getId());
 
@@ -206,12 +199,10 @@ public class ObjectStoreApi {
     @GetMapping(value = "{bucket}/{*key}", params = "metadata")
     public ObjectMetadataDTO headObject(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                         @PathVariable("bucket") String bucket,
-                                        @Parameter(description = KEY_DESCRIPTION) @PathVariable("key") String rawKey,
-                                        HttpServletRequest request) {
+                                        @Parameter(description = KEY_DESCRIPTION) @PathVariable("key") String rawKey) {
 
         String key = keyOf(rawKey);
-        globalGeneralLogging.controllerLogging(userDetails, request, ObjectStoreApi.class,
-                "head object bucket=" + bucket + ", key=" + key);
+        globalGeneralLogging.detail("head object bucket=" + bucket + ", key=" + key);
 
         return objectStoreService.head(bucket, key, userDetails.getId());
     }
@@ -248,12 +239,10 @@ public class ObjectStoreApi {
                                                        @Parameter(description = "Stored as the object's content type; "
                                                                + "`application/octet-stream` when absent")
                                                        @RequestHeader(value = HttpHeaders.CONTENT_TYPE,
-                                                               required = false) String contentType,
-                                                       HttpServletRequest request) {
+                                                               required = false) String contentType) {
 
         String key = keyOf(rawKey);
-        globalGeneralLogging.controllerLogging(userDetails, request, ObjectStoreApi.class,
-                "put object bucket=" + bucket + ", key=" + key + ", bytes=" + (body == null ? 0 : body.length));
+        globalGeneralLogging.detail("put object bucket=" + bucket + ", key=" + key + ", bytes=" + (body == null ? 0 : body.length));
 
         String objectName = key.substring(key.lastIndexOf('/') + 1);
         ObjectMetadataDTO stored = objectStoreService.put(bucket, key,
@@ -278,12 +267,10 @@ public class ObjectStoreApi {
     @DeleteMapping("{bucket}/{*key}")
     public ResponseEntity<Void> deleteObject(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                              @PathVariable("bucket") String bucket,
-                                             @Parameter(description = KEY_DESCRIPTION) @PathVariable("key") String rawKey,
-                                             HttpServletRequest request) {
+                                             @Parameter(description = KEY_DESCRIPTION) @PathVariable("key") String rawKey) {
 
         String key = keyOf(rawKey);
-        globalGeneralLogging.controllerLogging(userDetails, request, ObjectStoreApi.class,
-                "delete object bucket=" + bucket + ", key=" + key);
+        globalGeneralLogging.detail("delete object bucket=" + bucket + ", key=" + key);
 
         objectStoreService.delete(bucket, key, userDetails.getId());
         return ResponseEntity.noContent().build();
