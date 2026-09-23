@@ -29,6 +29,7 @@ import org.springframework.validation.annotation.Validated;
  * @param folderAccess whether a person's folder grants are enforced as well as their permissions
  * @param folders      the shape of the folder tree
  * @param profiles     personal folders
+ * @param storage      how unfinished byte writes are cleaned up
  * @param shareLinks   temporary share links
  * @param bootstrap    what the first start creates
  * @param auth         Active Directory, off by default
@@ -41,6 +42,7 @@ public record FileManagementProperties(
         @Valid FolderAccess folderAccess,
         @Valid Folders folders,
         @Valid Profiles profiles,
+        @Valid Storage storage,
         @Valid ShareLinks shareLinks,
         @Valid Bootstrap bootstrap,
         @Valid Auth auth) {
@@ -50,6 +52,7 @@ public record FileManagementProperties(
         folderAccess = folderAccess == null ? new FolderAccess(null) : folderAccess;
         folders = folders == null ? new Folders(null, null) : folders;
         profiles = profiles == null ? new Profiles(null) : profiles;
+        storage = storage == null ? new Storage(null, null, null, null) : storage;
         shareLinks = shareLinks == null ? new ShareLinks(null, null, null, null, null) : shareLinks;
         bootstrap = bootstrap == null ? new Bootstrap(null) : bootstrap;
         auth = auth == null ? new Auth(null) : auth;
@@ -57,13 +60,13 @@ public record FileManagementProperties(
 
     /** The tree with nothing set but the storage root: every other value its documented default. */
     public static FileManagementProperties defaults(String baseDir) {
-        return new FileManagementProperties(baseDir, null, null, null, null, null, null, null);
+        return new FileManagementProperties(baseDir, null, null, null, null, null, null, null, null);
     }
 
     /** The same tree with different directory settings - what a test varies. */
     public FileManagementProperties withActiveDirectory(ActiveDirectory activedirectory) {
         return new FileManagementProperties(baseDir, defaults, folderAccess, folders, profiles,
-                shareLinks, bootstrap, new Auth(new Ldap(activedirectory)));
+                storage, shareLinks, bootstrap, new Auth(new Ldap(activedirectory)));
     }
 
     /** Rows per page in a list view, and items per dropdown. */
@@ -105,6 +108,29 @@ public record FileManagementProperties(
         /** The default quota in bytes, or null for none. */
         public Long defaultQuotaBytes() {
             return defaultQuotaMb <= 0 ? null : defaultQuotaMb * 1024L * 1024L;
+        }
+    }
+
+    /**
+     * The sweeper that settles byte writes nobody finished (roadmap 2.3, {@code StorageSweeper}).
+     *
+     * @param sweepEnabled          false stops the scheduled run; the sweep can still be called
+     * @param sweepEveryMinutes     how often it runs. Read here for the record's sake - the
+     *                              schedule itself reads the property, because an annotation is
+     *                              resolved before any binding happens, so the two defaults must
+     *                              stay the same number
+     * @param unfinishedAfterMinutes how old a write must be before it is considered abandoned.
+     *                              Longer than any request could possibly take: a write still in
+     *                              flight must never be swept
+     * @param sweepBatchSize        notes settled per read
+     */
+    public record Storage(Boolean sweepEnabled, @Min(1) Integer sweepEveryMinutes,
+                          @Min(1) Integer unfinishedAfterMinutes, @Min(1) Integer sweepBatchSize) {
+        public Storage {
+            sweepEnabled = sweepEnabled == null || sweepEnabled;
+            sweepEveryMinutes = sweepEveryMinutes == null ? 15 : sweepEveryMinutes;
+            unfinishedAfterMinutes = unfinishedAfterMinutes == null ? 60 : unfinishedAfterMinutes;
+            sweepBatchSize = sweepBatchSize == null ? 200 : sweepBatchSize;
         }
     }
 

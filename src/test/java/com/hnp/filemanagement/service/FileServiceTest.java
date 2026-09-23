@@ -6,12 +6,14 @@ import com.hnp.filemanagement.dto.PageResponse;
 import com.hnp.filemanagement.dto.FileUploadDTO;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
+import com.hnp.filemanagement.entity.FileStorageWrite;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
+import com.hnp.filemanagement.repository.FileStorageWriteRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
@@ -26,6 +28,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -33,6 +38,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -63,6 +69,10 @@ class FileServiceTest extends MySqlSupport {
     private FileInfoRepository fileInfoRepository;
     @Autowired
     private FileDetailsRepository fileDetailsRepository;
+    @Autowired
+    private FileStorageWriteRepository journal;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
     @Autowired
     private UserRepository userRepository;
     @Autowired
@@ -107,6 +117,27 @@ class FileServiceTest extends MySqlSupport {
         assertThat(fileInfo.getLastVersion()).isEqualTo(1);
         assertThat(fileInfo.getFileDetailsList()).hasSize(1);
         assertThat(storedFile(stored.getFileInfoId(), "report", 1, "txt")).exists();
+    }
+
+    @Test
+    @DisplayName("the write is recorded as in flight while the upload's transaction is open")
+    void recordsTheWriteWhileItIsInFlight() {
+        FileDetailsDTO stored = underTest.createNewFile(uploadRequest("noted.txt"), principalId, 1);
+
+        // The note is committed in a transaction of its own and cleared when this one ends
+        // (StorageWriterTest), so what it pins here is that an upload goes through StorageWriter
+        // and not straight to the store - the one thing this class can see of the two-phase
+        // write (roadmap 2.3, issue 3).
+        //
+        // Read in a transaction of its own as well: this one is older than the note, and under
+        // REPEATABLE READ its snapshot was taken before the note was committed.
+        String key = fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey();
+        TransactionTemplate ownTransaction = new TransactionTemplate(transactionManager);
+        ownTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        List<String> inFlight = ownTransaction.execute(status ->
+                journal.findAll().stream().map(FileStorageWrite::getStorageKey).toList());
+
+        assertThat(inFlight).containsExactly(key);
     }
 
     @Test

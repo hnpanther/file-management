@@ -38,6 +38,10 @@ class FileManagementPropertiesTest {
         assertThat(properties.folders().maxDeleteFiles()).isEqualTo(1000);
         assertThat(properties.profiles().defaultQuotaMb()).isZero();
         assertThat(properties.profiles().defaultQuotaBytes()).as("0 megabytes is no quota at all").isNull();
+        assertThat(properties.storage().sweepEnabled()).as("a sweep nobody asked for still has to run").isTrue();
+        assertThat(properties.storage().sweepEveryMinutes()).isEqualTo(15);
+        assertThat(properties.storage().unfinishedAfterMinutes()).isEqualTo(60);
+        assertThat(properties.storage().sweepBatchSize()).isEqualTo(200);
         assertThat(properties.shareLinks().maxMinutes()).isEqualTo(1440);
         assertThat(properties.shareLinks().defaultMinutes()).isEqualTo(60);
         assertThat(properties.shareLinks().password()).isEqualTo(PasswordPolicy.OPTIONAL);
@@ -64,6 +68,10 @@ class FileManagementPropertiesTest {
                 Map.entry("filemanagement.folders.max-depth", "4"),
                 Map.entry("filemanagement.folders.max-delete-files", "50"),
                 Map.entry("filemanagement.profiles.default-quota-mb", "100"),
+                Map.entry("filemanagement.storage.sweep-enabled", "false"),
+                Map.entry("filemanagement.storage.sweep-every-minutes", "5"),
+                Map.entry("filemanagement.storage.unfinished-after-minutes", "20"),
+                Map.entry("filemanagement.storage.sweep-batch-size", "10"),
                 Map.entry("filemanagement.share-links.max-minutes", "30"),
                 Map.entry("filemanagement.share-links.default-minutes", "5"),
                 Map.entry("filemanagement.share-links.password", "REQUIRED"),
@@ -82,6 +90,10 @@ class FileManagementPropertiesTest {
         assertThat(properties.folders().maxDepth()).isEqualTo(4);
         assertThat(properties.folders().maxDeleteFiles()).isEqualTo(50);
         assertThat(properties.profiles().defaultQuotaBytes()).isEqualTo(100L * 1024 * 1024);
+        assertThat(properties.storage().sweepEnabled()).isFalse();
+        assertThat(properties.storage().sweepEveryMinutes()).isEqualTo(5);
+        assertThat(properties.storage().unfinishedAfterMinutes()).isEqualTo(20);
+        assertThat(properties.storage().sweepBatchSize()).isEqualTo(10);
         assertThat(properties.shareLinks().maxMinutes()).isEqualTo(30);
         assertThat(properties.shareLinks().defaultMinutes()).isEqualTo(5);
         assertThat(properties.shareLinks().passwordRequired()).isTrue();

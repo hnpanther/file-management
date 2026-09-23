@@ -97,6 +97,9 @@ the reset is documented; they are not shipped as a script on purpose. Developers
                                    file_info ──< file_details ──< file_share_link
                                        │                          (a temporary link to
                                        │                           one revision, V2.12)
+                                       │          file_storage_write names a storage_key
+                                       │          while it is being written (V2.13); no
+                                       │          foreign key - it outlives the transaction
                                        └──< file_tag >── tag >── tag_group
                                             (a file's tags: every folder name on its
                                              chain, in the top-level folder's group)
@@ -113,6 +116,7 @@ Two groups:
 | **Where a file is** | `folder`, `role_folder`, `user_folder`, `file_info.folder_id` | authoritative since `V2.8` (Phase 7 step 4); any depth since `V2.9`; `folder_id` is `NOT NULL` and names any folder but the root or `Profiles`. `folder.kind` is `ROOT`, `FOLDER`, `PROFILES` or `USER_HOME`; `owner_user_id` names a personal folder's user (unique) and `quota_bytes` caps what may be stored beneath any folder (`V2.11`) |
 | **What a file is, and about** | `file_info`, `file_details`, `tag_group`, `tag`, `file_tag` | stable; a file's tags are derived from its folder chain, `tag_group` is the label group a category carries |
 | **Who may have it without signing in** | `file_share_link` | `V2.12`: one row per temporary link - the token's SHA-256, the revision it names (cascade), expiry, optional password hash and download cap, the counters and the revocation |
+| **Byte writes in flight** | `file_storage_write` | `V2.13`: one row per upload while its bytes are being written, committed before the write and removed when the transaction ends. Empty except during an upload; what is left in it is what a killed process abandoned, and `StorageSweeper` settles it against `file_details.storage_key` |
 
 The taxonomy tables (`general_tag`, `file_category`, `file_sub_category`, `main_tag_file`) and the
 columns that pointed at them (`file_info.file_sub_category_id` / `main_tag_file_id`,
@@ -125,7 +129,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V2.12`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
+_As of migration `V2.13`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
 
 ### `action_history`
 
@@ -302,6 +306,17 @@ _As of migration `V2.12`. Types and defaults are MySQL's own; every table is Inn
 * **foreign key** `fk_file_share_link_file_details` `file_details_id` → `file_details` (`id`), on delete cascade
 * **index** `ix_file_share_link_created_by` (`created_by`)
 * **index** `ix_file_share_link_file_details` (`file_details_id`)
+
+### `file_storage_write`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `storage_key` | `varchar(1000)` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+
+* **primary key** `id`
+* **index** `ix_file_storage_write_created_at` (`created_at`)
 
 ### `file_tag`
 

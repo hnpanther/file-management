@@ -158,6 +158,10 @@ the traversal cases in `ValidationUtilTest` are the ones never to relax.
 * **Everything is `FetchType.EAGER`.** Loading one `FileDetails` pulls the entire ancestry plus two
   `User` rows per level. Adding a field to a mapper can quietly add joins to every list page.
 * **`hash_id` is a random UUID, not a hash.** Nothing verifies file integrity.
+* **A write goes through `StorageWriter`**, not through `BlobStore.put`: it is what removes the
+  bytes again if the transaction rolls back, and what leaves the note in `file_storage_write` that
+  `StorageSweeper` settles when a process is killed mid-upload (roadmap 2.3). Reads and deletes
+  use the port directly.
 * **Every storage path goes through `FilesystemBlobStore.within`**, which resolves it
   under the absolute, normalised root and refuses anything that lands outside it or on the root
   itself. Do not build a `Path` from `baseDir` anywhere else. The constructor also appends a
