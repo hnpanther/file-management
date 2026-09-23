@@ -16,6 +16,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import com.hnp.filemanagement.service.ApiKeyService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
@@ -122,7 +123,8 @@ public class SecurityConfig {
     @Bean
     @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity, AuthenticationManager authenticationManager,
-                                                   PublicFilesAuthorizationManager publicFilesAccess) throws Exception {
+                                                   PublicFilesAuthorizationManager publicFilesAccess,
+                                                   SessionRegistry sessionRegistry) throws Exception {
 
 //        return httpSecurity
 //                .csrf(csrf -> csrf.disable())
@@ -184,6 +186,9 @@ public class SecurityConfig {
                                 .deleteCookies("JSESSIONID")
                                 .permitAll()
                 )
+                // Registered, not limited: -1 is "as many as you like", and registering is what
+                // lets a disabled account's sessions be expired (ActiveUserSessions).
+                .sessionManagement(session -> session.maximumSessions(-1).sessionRegistry(sessionRegistry))
                 .requestCache(cache -> cache.requestCache(pageOnlyRequestCache()))
                 .exceptionHandling(ex -> ex
                         .accessDeniedPage("/access-denied")

@@ -225,6 +225,24 @@ class FileUploadAddressingTest extends MySqlSupport {
                 .doesNotContain("id=\"categoryFolder\"");
     }
 
+    /**
+     * The title of a file is nearly always the name of the file, so choosing one offers it -
+     * into an empty field, and only until the person types. The behaviour itself is the
+     * browser's; what is pinned here is that the page carries it and carries the guard.
+     */
+    @Test
+    @DisplayName("the form offers the chosen file's name as the title, into an empty field it has not been typed in")
+    void theFormOffersTheFileNameAsTheTitle() throws Exception {
+        String page = mockMvc.perform(get("/files/create").with(user(principal(adminId, PermissionEnum.ADMIN))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(page)
+                .contains("!title.value.trim() && !title.dataset.editedByHand")
+                .contains("this.dataset.editedByHand = \"true\"")
+                .contains("chosen.name.replace(");
+    }
+
     @Test
     @DisplayName("opened on a writable folder, the form starts the chooser on it with its path")
     void theFormOpenedOnAFolderFixesTheTarget() throws Exception {

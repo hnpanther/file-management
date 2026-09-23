@@ -3,6 +3,7 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.RoleDTO;
 import com.hnp.filemanagement.dto.UserDTO;
+import com.hnp.filemanagement.config.security.ActiveUserSessions;
 import com.hnp.filemanagement.entity.ActionEnum;
 import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.Permission;
@@ -72,19 +73,22 @@ public class UserService {
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
     private final ActionHistoryService actionHistoryService;
     private final UserHomeService userHomeService;
+    private final ActiveUserSessions activeUserSessions;
 
     public UserService(UserRepository userRepository,
                        PermissionRepository permissionRepository,
                        RoleService roleService,
                        BCryptPasswordEncoder bCryptPasswordEncoder,
                        ActionHistoryService actionHistoryService,
-                       UserHomeService userHomeService) {
+                       UserHomeService userHomeService,
+                       ActiveUserSessions activeUserSessions) {
         this.userRepository = userRepository;
         this.permissionRepository = permissionRepository;
         this.roleService = roleService;
         this.bCryptPasswordEncoder = bCryptPasswordEncoder;
         this.actionHistoryService = actionHistoryService;
         this.userHomeService = userHomeService;
+        this.activeUserSessions = activeUserSessions;
     }
 
     // ------------------------------------------------------------------ commands
@@ -202,6 +206,14 @@ public class UserService {
                 "CHANGE PASSWORD", "CHANGE PASSWORD");
     }
 
+    /**
+     * Enables or disables an account.
+     *
+     * <p>Disabling ends the sessions it already has as well as refusing the next sign-in: Spring
+     * asks {@code isEnabled()} when it authenticates and not on every request, so without this a
+     * person already signed in would keep working until their session expired on its own - which
+     * is not what "disable this account" is asked for.
+     */
     @Transactional
     public void changeEnabled(int userId, int enabled, int principalId) {
 
@@ -212,8 +224,11 @@ public class UserService {
         User user = getUser(userId);
         user.setEnabled(enabled);
 
+        int endedSessions = enabled == 0 ? activeUserSessions.endSessionsOf(userId, user.getUsername()) : 0;
+
         actionHistoryService.saveActionHistory(EntityEnum.User, user.getId(), ActionEnum.UPDATE_VALUES, principalId,
-                "CHANGE ENABLED", "Change enabled to " + enabled);
+                "CHANGE ENABLED", "Change enabled to " + enabled
+                        + (endedSessions > 0 ? "; " + endedSessions + " session(s) ended" : ""));
     }
 
     @Transactional

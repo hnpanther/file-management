@@ -53,6 +53,7 @@
                                             <th class="max-width" th:text="#{field.personnelCode}">کد پرسنلی</th>
                                             <th class="max-width" th:text="#{field.username}">نام کاربری</th>
                                             <th class="max-width" th:text="#{field.fullName}">نام و نام خانوادگی</th>
+                                            <th class="max-width" th:text="#{field.state}">وضعیت</th>
 <!--                                            <th class="max-width" th:text="#{field.nationalCode}">National code</th>-->
 <!--                                            <th class="max-width" th:text="#{field.phone}">Phone number</th>-->
                                             <th th:text="#{field.actions}">عملیات</th>
@@ -65,12 +66,28 @@
                                             <td class="text-nowrap align-middle" th:text="${u.getPersonelCode()}"></td>
                                             <td class="text-nowrap align-middle" th:text="${u.getUsername()}"></td>
                                             <td class="text-nowrap align-middle" th:text="${u.getFirstName() + ' ' + u.getLastName()}"></td>
+                                            <td class="text-nowrap align-middle">
+                                                <span class="badge badge-secondary"
+                                                      th:text="${u.getEnabled() == 1} ? #{state.enabled} : #{state.disabled}">فعال</span>
+                                            </td>
 <!--                                            <td class="text-nowrap align-middle" th:text="${u.getNationalCode()}"></td>-->
 <!--                                            <td class="text-nowrap align-middle" th:text="${u.getPhoneNumber()}"></td>-->
                                             <td class="text-center align-middle">
                                                 <div class="btn-group align-top">
                                                     <a class="btn btn-sm btn-outline-secondary badge" type="button"
                                                        th:href="@{'/users/' + ${u.getId}}" th:text="#{action.view}">مشاهده
+                                                    </a>
+                                                    <!--
+                                                      Enabling and disabling from the list, so that a
+                                                      person who signs in with a leaver's account can be
+                                                      stopped without opening their page first. Same
+                                                      endpoint and permission as the profile's button.
+                                                    -->
+                                                    <a sec:authorize="hasAuthority('REST_CHANGE_USER_ENABLED') || hasAuthority('ADMIN')"
+                                                       class="btn btn-sm btn-outline-secondary badge" type="button"
+                                                       th:attr="data-user-id=${u.getId()},data-enabled=${u.getEnabled()}"
+                                                       onclick="changeUserEnabled(this.dataset.userId, this.dataset.enabled)"
+                                                       th:text="${u.getEnabled() == 1} ? #{user.action.disable} : #{user.action.enable}">غیرفعال کردن
                                                     </a>
                                                 </div>
                                             </td>
@@ -158,7 +175,7 @@
 
 <th:block th:replace="~{fragments.html :: scripts}"></th:block>
 
-<script>
+<script th:inline="javascript">
 
     function search() {
 
@@ -191,6 +208,40 @@
         let loc = window.location;
         window.location = loc.protocol + "//" + loc.host + loc.pathname;
 
+    }
+
+    /**
+     * Enables or disables a user from the list. One PUT to the same endpoint the profile page
+     * uses; the row is re-read by reloading, so the badge and the button always say what the
+     * database says rather than what the page assumed.
+     */
+    function changeUserEnabled(userId, currentlyEnabled) {
+        if (!confirm([[#{js.confirmStateChange}]])) {
+            return;
+        }
+        const csrf = window.appCsrf();
+        const headers = { "X-Requested-With": "XMLHttpRequest" };
+        if (csrf.header) {
+            headers[csrf.header] = csrf.token;
+        }
+        headers["Content-Type"] = "application/json; charset=utf-8";
+        fetch([[@{/resource/users/}]] + encodeURIComponent(userId) + "/change-enabled", {
+            method: "PUT",
+            headers: headers,
+            body: JSON.stringify({ enabled: Number(currentlyEnabled) === 1 ? 0 : 1 })
+        }).then(function (response) {
+            if (response.status === 401) {
+                window.appSessionExpired();
+                return;
+            }
+            if (!response.ok) {
+                alert([[#{form.unexpected}]]);
+                return;
+            }
+            window.location.reload();
+        }).catch(function () {
+            alert([[#{form.unexpected}]]);
+        });
     }
 
 </script>
