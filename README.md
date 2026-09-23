@@ -2,10 +2,11 @@
 
 A Spring Boot web application for managing files: uploading them into a folder tree, creating
 new **versions** and alternative **formats** of the same logical file, publishing a subset of them
-publicly, and downloading them again — with a per-endpoint permission model and a full audit trail.
+publicly, handing out temporary links to individual revisions, and downloading them again — with
+a per-endpoint permission model, folder-level access control and a full audit trail.
 
 Files are stored on the local filesystem; metadata lives in MySQL. A small REST API
-(`/api/v1/files`) exists for programmatic access.
+(`/api/v1/files`) exists for programmatic access, with API keys as well as passwords.
 
 > **Status.** This branch (`redesign-arch`) is being restructured. Before adding features, read
 > [docs/issues.md](docs/issues.md) — several of the entries there are things you will otherwise
@@ -106,9 +107,12 @@ java -jar target/file-management.jar
 through Testcontainers and uses `./target/test-storage/` as the storage root, so there is nothing
 to provision and nothing machine-specific to configure.
 
-87 tests: one `@SpringBootTest` smoke test that proves the whole context starts, and eight
-`@DataJpaTest` service suites. The shared plumbing lives in
-`src/test/java/com/hnp/filemanagement/support/`.
+Over six hundred tests: unit tests that need nothing, repository tests against a real MySQL,
+service tests through the real Spring beans, web tests through the real security chain, and a
+few that read the repository's own sources (every `hasAuthority` names a real permission; the
+externalised templates hold no Persian). The shared plumbing lives in
+`src/test/java/com/hnp/filemanagement/support/`; the kinds are tabulated in
+[docs/arch.md](docs/arch.md#12-tests).
 
 ## Concepts
 
@@ -118,10 +122,17 @@ to provision and nothing machine-specific to configure.
 Home → Folder → Folder → … → FileInfo → FileDetails
 ```
 
-A folder name may not contain `.`, spaces or `/` (a display name may say anything). A
-top-level folder carries a `TagGroup` - a label group, not a folder - and every file's tags are
-the names of the folders above it, in that group. Files are stored by folder id, so the tree is
-created, renamed, moved and deleted from the file explorer without a byte moving on disk.
+A name is what a file system accepts — spaces, dots and Persian are fine; separators,
+`< > : " | ? *`, a trailing dot or space and the names Windows reserves are not — and it is
+unique among its siblings. A top-level folder carries a `TagGroup` - a label group, not a
+folder - and every file's tags are the names of the folders above it, in that group. Files are
+stored by their own id, so the tree is created, renamed, moved and deleted from the file
+explorer without a byte moving on disk.
+
+**Personal folders.** `Home/Profiles/{username}`, made when a user is created (a ticked box on
+the form) or later from the user's page — an administrator's decision either way. The user has
+`WRITE` on their own folder, and it may carry a quota in megabytes, changed at any time, which
+caps everything stored beneath it.
 
 **FileInfo vs FileDetails.** A `FileInfo` is the *logical* file — "the Q3 report". A `FileDetails`
 is one concrete artefact of it: a specific version in a specific format. Uploading `report.pdf`
@@ -129,11 +140,19 @@ creates one `FileInfo` and one `FileDetails` (v1, pdf). Uploading `report.docx` 
 adds a second `FileDetails` at the same version. Uploading a revised `report.pdf` as a *version*
 adds a `FileDetails` at v2 and bumps `FileInfo.lastVersion`.
 
-Uploaded file names must match the `FileInfo` name and contain exactly one `.` and no spaces.
+An uploaded file name must match the `FileInfo` name and end in an extension of letters and
+digits; what may be in the rest of it is the folder rule above.
 
 **Public vs private.** `FileInfo.state = 0` is public, `-1` is private. A file is downloadable
 without authentication (`/files/public-download/{id}`) only when both its `FileInfo` and its
-`FileDetails` have `state = 0`.
+`FileDetails` have `state = 0` — and only while the administrator leaves the public pages open
+to visitors (a run-time setting on `/settings/general`).
+
+**Temporary share links.** Anyone who may read a file can hand out a link to one of its
+revisions: `/share/{token}`, valid for a number of minutes (capped by a property), optionally
+behind a password, optionally for a number of downloads. It works without signing in — the link
+is the access — and stops working when it expires, is revoked, or runs out. Only a hash of the
+token is stored.
 
 **Permissions.** Authorities are fine-grained per-endpoint constants from `PermissionEnum`, granted
 through roles. A user in a role named `ADMIN` additionally receives the synthetic `ADMIN` authority,
@@ -153,8 +172,15 @@ database only, `2` Active Directory only.
 ## Storage layout
 
 ```
-{base-dir}/{Category}/{SubCategory}/{fileNameWithoutExtension}/v{version}/{fileName}.{ext}
+{base-dir}/files/s{id ÷ 1000}/{file id}/{fileNameWithoutExtension}/v{version}/{fileName}.{ext}
 ```
+
+By the file's own id, sharded a thousand to a directory, so that no rename or move touches a
+byte and no directory ever holds a million children. Files stored by older releases keep their
+keys: `files/{file id}/…` (1.4.0) and `{Category}/{SubCategory}/…` before it — three layouts
+under one root, all read through `file_details.storage_key`, which is the only record of where
+the bytes are. The directory tree is **not** a mirror of the folder tree; a backup is the
+database **and** `base-dir` together.
 
 ## Configuration reference
 
@@ -169,11 +195,23 @@ database only, `2` Active Directory only.
 | `spring.servlet.multipart.max-request-size` | `20MB` | per-request upload cap |
 | `filemanagement.default.page-size` | `30` | rows per page in list views |
 | `filemanagement.default.element-size` | `30` | items per dropdown |
+| `filemanagement.folder-access.enabled` | `false` | whether a person's folder grants are enforced as well as their permissions (API keys are always scoped) |
+| `filemanagement.folders.max-depth` | `6` | how deep the tree may go below `Home` |
+| `filemanagement.folders.max-delete-files` | `1000` | the most files one "delete this folder with everything in it" may remove |
+| `filemanagement.profiles.default-quota-mb` | `0` | the quota a new personal folder starts with; `0` for none |
+| `filemanagement.share-links.max-minutes` | `1440` | the longest a share link may live; a longer request is clamped to it |
+| `filemanagement.share-links.default-minutes` | `60` | its validity when the maker does not say |
+| `filemanagement.share-links.password` | `OPTIONAL` | `REQUIRED` refuses a link without a password |
 | `filemanagement.auth.ldap.activedirectory.enabled` | `false` | |
+
+The full list, including the share links' lock settings, is in
+[docs/arch.md](docs/arch.md#11-configuration).
 
 ## REST API
 
-`/api/v1/files`, HTTP Basic, stateless. Requires the matching `API_*` permission or `ADMIN`.
+`/api/v1/files`, stateless. HTTP Basic, or an API key as `Authorization: Bearer fmk_…` — a key
+reaches only the folders it was granted, whether or not folder access is enforced for people.
+Requires the matching `API_*` permission or `ADMIN`.
 
 | Method | Path |
 |---|---|
@@ -181,6 +219,7 @@ database only, `2` Active Directory only.
 | `POST` | `/api/v1/files` — multipart; `?public-file=0` stores it private |
 | `DELETE` | `/api/v1/files/file-info/{fileInfoId}/file-details/{fileDetailsId}` |
 | `GET` | `/api/v1/files/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` |
+| `DELETE` / `GET` | `/api/v1/files/file-details/{fileDetailsId}`, `.../download` — the same two by the revision's id alone |
 
 Full endpoint inventory, including the UI's own `/resource/**` endpoints, is in
 [docs/arch.md](docs/arch.md#endpoint-inventory).
@@ -195,7 +234,6 @@ Validation currently trusts the `Content-Type` the client sends — see
 ## Repository
 
 ```
-├── .github/workflows/    CI: build and test on JDK 21 and 25
 ├── docs/                 architecture, issues, roadmap
 ├── compose.yaml          MySQL for local runs
 ├── src/main/java/        application code

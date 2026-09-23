@@ -1,15 +1,17 @@
 # Architecture — Current State
 
-> Snapshot of the codebase as it exists on branch `redesign-arch` (HEAD `08db773`).
+> Snapshot of the codebase as it exists on branch `redesign-arch` (version 1.5.0, HEAD `ac5ac68`).
 > For where we are going, see [target-architecture.md](target-architecture.md).
 
 ## 1. What the application is
 
 A server-rendered file-management web application. Users organise files into a folder tree
 of any depth up to a configured limit (six by default), upload them into any folder, and create
-additional **versions** and **formats** of the same logical file. Files live on the local filesystem; all metadata lives in MySQL.
-A small machine-facing REST API (`/api/v1/files`) was added later for programmatic upload,
-download and delete.
+additional **versions** and **formats** of the same logical file; each user may have a folder of
+their own, with a quota, and anyone who may read a file can hand out a temporary link to one of
+its revisions that works without a sign-in. Files live on the local filesystem; all metadata
+lives in MySQL. A small machine-facing REST API (`/api/v1/files`) was added later for
+programmatic upload, download and delete, and an S3-style one (`/api/v2`) after it.
 
 ## 2. Technology stack
 
@@ -953,7 +955,12 @@ Catalogued in full in [issues.md](issues.md). The ones that shape the architectu
    Thymeleaf layer deliberately does not, because it re-renders forms rather than returning statuses.
 2. `FileStorageService`'s directory half is filesystem-shaped; its key half (roadmap 7.1) is
    the part an object store can implement.
-3. Storage and database mutations are not atomic in either direction.
+3. Storage and database mutations are not atomic in either direction. Where the order matters the
+   code picks one deliberately: a delete writes the rows first and the bytes last, and a byte that
+   cannot be removed is logged and left rather than undoing the rows (§4, "What each operation
+   touches").
 4. `@Table(name = "user")` — a reserved word in PostgreSQL.
 5. Every `@ManyToOne` is `EAGER`; `ModelConverterUtil` walks the full graph on every list page.
-6. Authorization is per-endpoint, never per-resource.
+6. Authorization is per-endpoint **and** per-folder since Phase 6 (§7), but never per-file: a grant
+   names a folder and covers everything beneath it. A temporary share link is the one way a single
+   revision is reachable on its own, and it is deliberately short-lived.
