@@ -181,7 +181,7 @@ Order matters — each step is independently shippable.
 * One generic `PageResponse<T>` replacing the six `*PageDTO` classes (issue 46).
 * `messages.properties` + `MessageSource` for the Persian UI strings (issue 26).
 
-### 2.2 The storage port
+### 2.2 The storage port — **done** (1.6.0)
 
 Introduce `BlobStore`, `StorageKey`, `StoredBlob` exactly as specified in
 [target-architecture.md](target-architecture.md#the-storage-port), and reimplement
@@ -191,11 +191,34 @@ check that is currently missing (issue 16) and the broken `load` guard (issue 4)
 Write the **storage contract test** now, as an abstract JUnit class. `FilesystemBlobStore` is its
 only subject until Phase 4 adds a second one.
 
-> **Half of this is pulled forward into
+> **Half of this was pulled forward into
 > [Phase 7.1](#71-first-decouple-the-storage-key-from-the-structure--done)**: the `storage_key` column and
 > the key → path mapping, because folders cannot become the structure while the structure *is* the
-> path on disk. What is left here is the rest of the port — the interface itself, the containment
-> check, the guards and the contract test.
+> path on disk. What was left here - the interface itself, the containment check, the guards and
+> the contract test - shipped in 1.6.0.
+>
+> **What shipped**, in `com.hnp.filemanagement.storage`: `BlobStore` (`put`, `open`, `exists`,
+> `delete`, `deleteDirectory`), `StorageKey` (a relative path with no leading slash, no
+> backslash, no empty or relative segment - the rule every backend shares, so that one key never
+> means two objects), `StoredBlob` (the byte count and SHA-256 of what was actually written) and
+> `FilesystemBlobStore`. `FileStorageService` and `FileStorageFileSystemService` are gone: their
+> path-shaped half — `save(address, file, version, extension)`, `load(...)`, `createDirectory(...)` —
+> had no caller left in the application once files were addressed by key, and it was the part an
+> object store could never implement. `BlobStoreContractTest` is the abstract class; the
+> filesystem contributes a subject and keeps its own test for what is true of a filesystem alone
+> (the root's trailing separator, nothing written outside the root, a failed write leaving
+> nothing behind).
+>
+> **Two deviations from the specified interface**, both deliberate: `presignedGet` and `copy` are
+> not there. Neither has a caller, and neither can be tested honestly against a filesystem - they
+> arrive with the S3 adapter in Phase 4, where the contract test is what they have to satisfy.
+> And `deleteDirectory` is on the port although it is not about a single key: a whole-file delete
+> needs it, both kinds of store can do it (one walks a directory, the other lists a prefix), and
+> leaving it out would put the caller back to knowing which kind of store it holds.
+>
+> **No change on disk, in the database, or on the wire**: the same bytes at the same keys,
+> the same refusals. Every `storage_key` in the production-shaped database was checked against
+> the new key rule before the change shipped - 1370 of them, none refused.
 
 ### 2.3 Domain restructuring
 
@@ -888,7 +911,7 @@ So: add `file_details.storage_key`, backfill it to each row's current relative p
 filesystem adapter map key → path. **No bytes move.** From that point a folder move is a metadata
 change, and three other things fall out of it:
 
-* it is the small, useful half of the `BlobStore` port that [Phase 2](#22-the-storage-port) wants
+* it is the small, useful half of the `BlobStore` port that [Phase 2](#22-the-storage-port--done-160) wants
   anyway, so it is brought forward rather than duplicated;
 * [Phase 5.2](#52-drag-and-drop) (drag-and-drop) stops being blocked on a storage port that can
   express a move;

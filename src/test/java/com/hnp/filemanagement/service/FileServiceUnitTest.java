@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.service;
 
+import com.hnp.filemanagement.storage.BlobStore;
 import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FileUploadDTO;
 import com.hnp.filemanagement.entity.FileInfo;
@@ -55,7 +56,7 @@ class FileServiceUnitTest {
     @Mock
     private UserRepository userRepository;
     @Mock
-    private FileStorageService fileStorageService;
+    private BlobStore blobStore;
     @Mock
     private ActionHistoryService actionHistoryService;
     /**
@@ -114,7 +115,7 @@ class FileServiceUnitTest {
         assertThatThrownBy(() -> underTest.createNewFile(request, 1, 1))
                 .isInstanceOf(InvalidDataException.class);
 
-        verifyNoInteractions(fileStorageService, folderService, actionHistoryService);
+        verifyNoInteractions(blobStore, folderService, actionHistoryService);
     }
 
     @Test
@@ -125,7 +126,7 @@ class FileServiceUnitTest {
         assertThatThrownBy(() -> underTest.createNewFile(request, 1, 1))
                 .isInstanceOf(InvalidDataException.class);
 
-        verifyNoInteractions(fileStorageService, folderService);
+        verifyNoInteractions(blobStore, folderService);
     }
 
     @Test
@@ -138,7 +139,7 @@ class FileServiceUnitTest {
                 .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("folderId");
 
-        verifyNoInteractions(fileStorageService, folderService);
+        verifyNoInteractions(blobStore, folderService);
         verify(fileInfoRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
@@ -152,7 +153,7 @@ class FileServiceUnitTest {
                 .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("ROOT");
 
-        verifyNoInteractions(fileStorageService);
+        verifyNoInteractions(blobStore);
     }
 
     /** The write check runs before the duplicate check, and this is the test that pins that order. */
@@ -167,7 +168,7 @@ class FileServiceUnitTest {
         assertThatThrownBy(() -> underTest.createNewFile(uploadRequest("report.txt"), 1, 1))
                 .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
 
-        verifyNoInteractions(fileStorageService, fileInfoRepository);
+        verifyNoInteractions(blobStore, fileInfoRepository);
     }
 
     @Test
@@ -183,7 +184,7 @@ class FileServiceUnitTest {
                 .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("unknown upload type");
 
-        verifyNoInteractions(fileStorageService);
+        verifyNoInteractions(blobStore);
         verify(fileDetailsRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
@@ -199,7 +200,7 @@ class FileServiceUnitTest {
         assertThatThrownBy(() -> underTest.createNewFileDetails(request, 1))
                 .isInstanceOf(InvalidDataException.class);
 
-        verifyNoInteractions(fileStorageService);
+        verifyNoInteractions(blobStore);
     }
 
     @Test
@@ -214,7 +215,7 @@ class FileServiceUnitTest {
         assertThatThrownBy(() -> underTest.createNewFileDetails(request, 1))
                 .isInstanceOf(InvalidDataException.class);
 
-        verifyNoInteractions(fileStorageService);
+        verifyNoInteractions(blobStore);
     }
 
     @Test

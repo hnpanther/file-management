@@ -1,6 +1,6 @@
 package com.hnp.filemanagement.validation;
 
-import com.hnp.filemanagement.service.FileStorageFileSystemService;
+import com.hnp.filemanagement.storage.FilesystemBlobStore;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * The naming rules, as pure unit tests — no Spring, no database, no file system.
  *
  * <p>These two predicates are the only thing standing between a caller-supplied string and a
- * path segment on disk. {@link FileStorageFileSystemService} contains every path it builds
+ * path segment on disk. {@link FilesystemBlobStore} contains every path it builds
  * ({@code within}), so traversal cannot escape the root even if a rule let it through - but a
  * rule that let {@code ..} through would still turn "a folder named this" into "the parent",
  * which is why the traversal cases below are the ones to keep whatever else is relaxed.

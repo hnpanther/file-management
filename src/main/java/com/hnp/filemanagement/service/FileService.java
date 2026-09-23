@@ -5,6 +5,9 @@ import com.hnp.filemanagement.dto.FileDownloadDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FolderAccess;
 import com.hnp.filemanagement.dto.PageResponse;
+import java.io.IOException;
+import com.hnp.filemanagement.storage.BlobStore;
+import com.hnp.filemanagement.storage.StorageKey;
 import com.hnp.filemanagement.dto.PublicFileDetailsDTO;
 import com.hnp.filemanagement.dto.FileUploadDTO;
 import com.hnp.filemanagement.entity.ActionEnum;
@@ -12,6 +15,7 @@ import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.Folder;
+import com.hnp.filemanagement.exception.BusinessException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
@@ -94,7 +98,7 @@ public class FileService {
     private final FileInfoRepository fileInfoRepository;
     private final FileDetailsRepository fileDetailsRepository;
     private final UserRepository userRepository;
-    private final FileStorageService fileStorageService;
+    private final BlobStore blobStore;
     private final ActionHistoryService actionHistoryService;
     private final FolderAccessService folderAccessService;
     private final UploadPolicyService uploadPolicyService;
@@ -106,7 +110,7 @@ public class FileService {
     public FileService(FileInfoRepository fileInfoRepository,
                        FileDetailsRepository fileDetailsRepository,
                        UserRepository userRepository,
-                       FileStorageService fileStorageService,
+                       BlobStore blobStore,
                        ActionHistoryService actionHistoryService,
                        FolderAccessService folderAccessService,
                        TagMirrorService tagMirrorService,
@@ -117,7 +121,7 @@ public class FileService {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
-        this.fileStorageService = fileStorageService;
+        this.blobStore = blobStore;
         this.actionHistoryService = actionHistoryService;
         this.folderAccessService = folderAccessService;
         this.uploadPolicyService = uploadPolicyService;
@@ -200,7 +204,7 @@ public class FileService {
 
         FileDetailsDTO result = ModelConverterUtil.covertFileDetailsToFileDetailsDTO(fileDetails);
 
-        fileStorageService.saveByKey(fileDetails.getStorageKey(), multipartFile);
+        store(fileDetails.getStorageKey(), multipartFile);
 
         return result;
     }
@@ -297,7 +301,7 @@ public class FileService {
 
         // The bytes go where the row says they go. Rebuilding the path here from the taxonomy would
         // be a second expression for one thing, and the two would eventually disagree.
-        fileStorageService.saveByKey(created.getStorageKey(), multipartFile);
+        store(created.getStorageKey(), multipartFile);
     }
 
     private FileDetails createNewFormatFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo,
@@ -503,7 +507,7 @@ public class FileService {
         String address = deleteFileRows(id, principalId);
         if (address != null) {
             try {
-                fileStorageService.delete(address, "", 1, "", false);
+                blobStore.deleteDirectory(address);
             } catch (ResourceNotFoundException alreadyGone) {
                 logger.warn("delete of file id={}: nothing on disk at {}", id, address);
             }
@@ -619,9 +623,9 @@ public class FileService {
         if (lastFormatOfItsVersion) {
             // The version directory is the key's parent, so this needs no second expression for
             // where the file lives - and it removes the file with it.
-            fileStorageService.delete(parentOf(storageKey), "", 1, "", false);
+            blobStore.deleteDirectory(parentOf(storageKey));
         } else {
-            fileStorageService.deleteByKey(storageKey);
+            blobStore.delete(StorageKey.of(storageKey));
         }
     }
 
@@ -756,7 +760,7 @@ public class FileService {
 
         // The stored key, not a path rebuilt from the taxonomy: where the bytes are is what was
         // recorded when they were written (roadmap 7.1).
-        Resource resource = fileStorageService.loadByKey(fileDetails.getStorageKey());
+        Resource resource = blobStore.open(StorageKey.of(fileDetails.getStorageKey()));
 
         FileDownloadDTO fileDownloadDTO = new FileDownloadDTO();
         fileDownloadDTO.setResource(resource);
@@ -768,6 +772,20 @@ public class FileService {
         fileDownloadDTO.setInlineSafe(ContentTypes.inlineSafe(fileDetails.getFileExtension()));
         fileDownloadDTO.setFileName(fileDetails.getFileName());
         return fileDownloadDTO;
+    }
+
+    /**
+     * Writes the bytes of one revision. The store computes the size and the digest of what it
+     * actually wrote; neither has a column yet ({@code StoredBlob}), so what is kept here is the
+     * one thing the row already holds - and the write itself, which is what matters.
+     */
+    private void store(String storageKey, MultipartFile file) {
+        try {
+            blobStore.put(StorageKey.of(storageKey), file.getInputStream());
+        } catch (IOException e) {
+            logger.error("could not read the uploaded file for key=" + storageKey, e);
+            throw new BusinessException("error in saving file, check logs");
+        }
     }
 
     /** The directory holding a stored object, as a relative address - the key without its last segment. */
