@@ -334,6 +334,61 @@
     }
     .file-picker-name { @apply min-w-0 flex-1 truncate px-3 text-sm text-ink-500; }
 
+    /* Task forms and record pages share a compact, responsive hierarchy. */
+    .app-content.workspace-page { @apply max-w-7xl; }
+    .workspace-page .btn { white-space: normal; }
+    .task-form .card-body { @apply p-5 sm:p-7; }
+    .section-heading { @apply mb-4 flex items-start gap-3; }
+    .section-heading > .bi { @apply mt-0.5 text-lg text-brand-600; }
+    .section-heading h2 { @apply text-base font-semibold; }
+    .section-heading p { @apply mt-1 text-xs leading-6 text-ink-500; }
+    .form-section { @apply mt-4 border-t border-ink-200 pt-5; }
+    .upload-section { @apply mb-6 border-b border-ink-200 pb-5; }
+    .upload-picker { @apply flex-wrap gap-y-3 border-dashed bg-ink-50 p-4; }
+    .upload-picker.has-file { @apply border-solid border-brand-300 bg-brand-50; }
+    .upload-picker .file-picker-button { @apply rounded-[var(--radius-control)] border border-ink-300 bg-white; }
+    .upload-picker .file-picker-name { @apply whitespace-normal break-all text-ink-700; overflow: visible; }
+    .destination-section { @apply mt-2 border-t border-ink-200 pt-5; }
+    .choice-panel { @apply rounded-[var(--radius-card)] border border-ink-200 bg-ink-50 p-4; }
+    .choice-panel input[type="checkbox"] { @apply size-4 shrink-0 accent-[var(--color-brand-600)]; }
+    .choice-panel > label { @apply flex items-start gap-2 cursor-pointer; }
+    .choice-panel .field-hint { @apply ps-6 leading-6; }
+    .password-field { @apply relative; }
+    .password-field input { padding-left: 3rem; }
+    .password-toggle { @apply absolute left-0 top-0 flex h-full w-11 items-center justify-center rounded-[var(--radius-control)] text-ink-500 hover:text-brand-700 cursor-pointer; }
+    .detail-header { @apply flex flex-wrap items-center justify-between gap-4; }
+    .detail-layout { @apply grid grid-cols-1 items-start gap-5; }
+    @media (min-width: 80rem) {
+        .detail-layout { grid-template-columns: minmax(0, 1fr) minmax(17rem, 20rem); }
+    }
+    .metadata-grid { @apply grid grid-cols-1 gap-x-6 sm:grid-cols-2; }
+    .metadata-grid > div { @apply min-w-0 border-b border-ink-100 py-3; }
+    .metadata-grid dt, .revision-metadata dt { @apply mb-1 text-xs text-ink-500; }
+    .metadata-grid dd { @apply text-sm font-medium text-ink-800; overflow-wrap: anywhere; }
+    .metadata-grid dd[dir="ltr"], .revision-metadata dd[dir="ltr"] { text-align: end; }
+    #revisions-title { scroll-margin-top: 5rem; }
+    .btn-danger-outline { @apply border-red-200 bg-white text-red-700 hover:bg-red-50; }
+    .revision-list { @apply grid gap-3; }
+    .revision-card { @apply min-w-0 rounded-[var(--radius-card)] border border-ink-200 p-4; }
+    .revision-heading { @apply flex items-center gap-3; }
+    .revision-heading h3 { @apply text-sm font-semibold; overflow-wrap: anywhere; }
+    .format-mark { @apply flex min-h-11 min-w-12 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-ink-100 px-2 text-xs font-semibold uppercase text-ink-600; }
+    .revision-metadata { @apply my-4 grid grid-cols-1 gap-3 sm:grid-cols-3; }
+    .revision-metadata dd { @apply text-sm; overflow-wrap: anywhere; }
+    .revision-actions { @apply flex flex-wrap gap-2 border-t border-ink-100 pt-3; }
+    .revision-actions .btn { @apply min-h-9; }
+    .profile-mark { @apply flex size-14 shrink-0 items-center justify-center rounded-[var(--radius-card)] border border-ink-200 bg-white text-3xl text-brand-600; }
+    .quota-controls { @apply mt-2 flex flex-wrap items-center gap-2; }
+    .quota-controls input { @apply min-w-0 flex-1; min-width: 8rem; }
+    .quota-meter { @apply my-3 block h-2 w-full overflow-hidden rounded-full; appearance: none; border: 0; background: var(--color-ink-100); }
+    .quota-meter::-webkit-progress-bar { background: var(--color-ink-100); }
+    .quota-meter::-webkit-progress-value { background: var(--color-brand-600); border-radius: 999px; }
+    .quota-meter::-moz-progress-bar { background: var(--color-brand-600); border-radius: 999px; }
+    @media (max-width: 39.99rem) {
+        .upload-picker .file-picker-name { flex-basis: 100%; padding-inline: 0; }
+        .revision-actions .btn { @apply flex-auto; }
+    }
+
     .permission-grid { @apply grid grid-cols-1 gap-2 md:grid-cols-2; }
     .permission-option {
         @apply flex min-w-0 cursor-pointer items-start gap-3 rounded-[var(--radius-control)]

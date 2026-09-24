@@ -1,132 +1,135 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org">
+      xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 <head>
-    <th:block th:replace="~{fragments.html :: head-assets-select}"></th:block>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
     <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{file.create.pageTitle}">ایجاد فایل</title>
     <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{file.edit.pageTitle}">ویرایش فایل</title>
 </head>
 <body>
 <div th:replace="~{navbar.html :: navbar}"></div>
 
-<main class="container-fluid app-content">
+<main class="container-fluid app-content workspace-page">
     <header class="page-header">
         <div class="page-kicker" th:text="#{file.form.kicker}">اطلاعات فایل</div>
         <h1 th:if="${#strings.equals(pageType, 'create')}" th:text="#{file.create.pageTitle}">ایجاد فایل</h1>
         <h1 th:if="${#strings.equals(pageType, 'update')}" th:text="#{file.edit.heading}">ویرایش فایل</h1>
         <p class="page-description"
-           th:text="${#strings.equals(pageType, 'create')} ? #{file.create.description} : #{file.edit.description}">
-            مشخصات فایل را تکمیل کنید.
-        </p>
+            th:text="${#strings.equals(pageType, 'create')} ? #{file.create.description} : #{file.edit.description}">مشخصات فایل را تکمیل کنید.</p>
     </header>
-
-    <section class="card mx-auto max-w-4xl" aria-labelledby="file-form-title">
+    <section class="card mx-auto max-w-4xl task-form" aria-labelledby="file-form-title">
         <div class="card-body">
             <h2 id="file-form-title" class="sr-only"
-                th:text="${#strings.equals(pageType, 'create')} ? #{file.create.pageTitle} : #{file.edit.heading}">
-                اطلاعات فایل
-            </h2>
-
+                th:text="${#strings.equals(pageType, 'create')} ? #{file.create.pageTitle} : #{file.edit.heading}">اطلاعات فایل</h2>
             <form enctype="multipart/form-data"
-                  th:action="@{${#strings.equals(pageType, 'create') ? '/files' : '/files/' + file.getId()}}"
-                  method="post" id="fileForm" th:object="${file}">
-
+                th:action="@{${#strings.equals(pageType, 'create') ? '/files' : '/files/' + file.getId()}}"
+                method="post" id="fileForm" th:object="${file}">
                 <input th:field="*{id}" type="hidden">
-
+                <div th:if="${#strings.equals(pageType, 'create')}" class="upload-section">
+                    <div class="section-heading">
+                        <i class="bi bi-cloud-arrow-up" aria-hidden="true"></i>
+                        <div>
+                            <h2 th:text="#{ui.upload.file}"></h2>
+                            <p th:text="#{ui.upload.fileHint}"></p>
+                        </div>
+                    </div>
+                    <div class="file-picker upload-picker">
+                        <input type="file" class="file-picker-input" name="multipartFile" id="multipartFile"
+                            th:accept="${uploadAccept}" aria-describedby="upload-rules selectedFileName selectedFileSize" required>
+                        <label for="multipartFile" class="file-picker-button">
+                            <i class="bi bi-paperclip" aria-hidden="true"></i>
+                            <span th:text="#{file.upload.choose}">انتخاب فایل</span>
+                        </label>
+                        <span id="selectedFileName" class="file-picker-name technical" dir="auto" role="status"
+                            th:text="#{file.upload.none}">فایلی انتخاب نشده است</span>
+                        <span id="selectedFileSize" class="text-xs text-ink-500 technical" dir="ltr"></span>
+                    </div>
+                    <small class="form-text" id="upload-rules">
+                        <th:block th:if="${#maps.isEmpty(uploadLimits)}">
+                            <span th:text="#{file.upload.nothingAllowed}">برای شما هیچ نوع فایلی برای بارگذاری مجاز نیست.</span>
+                        </th:block>
+                        <th:block th:unless="${#maps.isEmpty(uploadLimits)}">
+                            <span th:text="#{file.upload.allowedTypes}">فرمت‌های مجاز و حداکثر حجم:</span>
+                            <span class="technical" dir="ltr">
+                                <th:block th:each="l, st : ${uploadLimits}">
+                                    <span class="inline-block" th:text="${l.key} + ' ≤ ' + ${l.value} + ' MB'"></span>
+                                    <span th:unless="${st.last}">,</span>
+                                </th:block>
+                            </span>
+                        </th:block>
+                    </small>
+                </div>
+                <div class="section-heading">
+                    <i class="bi bi-file-earmark-text" aria-hidden="true"></i>
+                    <div>
+                        <h2 th:text="#{ui.upload.details}"></h2>
+                        <p th:text="#{ui.required}"></p>
+                    </div>
+                </div>
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="fileName" th:text="#{field.fileTitle}">عنوان فایل</label>
                         <input id="fileName" dir="rtl" type="text" class="form-control"
-                               th:field="*{fileName}" required>
+                            th:field="*{fileName}" required>
                     </div>
-
                     <div class="form-group">
                         <label for="description" th:text="#{field.description}">توضیحات</label>
                         <input id="description" dir="rtl" type="text" class="form-control"
-                               th:field="*{description}" required>
+                            th:field="*{description}" required>
                     </div>
-
                     <!--
-                      Where the file goes: a folder, chosen by drilling down from the root (or
-                      from the folder the explorer's "upload here" opened this form on), and
-                      posted as folderId. The chooser is the shared fragment; its state is Alpine's,
-                      the hidden input is what the form submits (roadmap 7.2 step 5; any folder
-                      below the root since V2.9).
-                    -->
-                    <div class="form-group md:col-span-2"
-                         th:attr="data-initial-id=${file.getFolderId()}"
-                         x-data="folderChooser({
-                             url: $el.dataset.foldersUrl,
-                             initialId: $el.dataset.initialId ? Number($el.dataset.initialId) : null,
-                             initialPath: window.UPLOAD_TARGET_PATH || [],
-                             rootTitle: $el.dataset.rootTitle,
-                             selectRoot: false,
-                             copy: { loadFailed: $el.dataset.loadFailed }
-                         })"
-                         th:data-folders-url="@{/resource/folders/children}"
-                         th:data-root-title="#{explorer.root}"
-                         th:data-load-failed="#{explorer.loadFailed}">
+                        Where the file goes: a folder, chosen by drilling down from the root (or
+                        from the folder the explorer's "upload here" opened this form on), and
+                        posted as folderId. The chooser is the shared fragment; its state is Alpine's,
+                        the hidden input is what the form submits (roadmap 7.2 step 5; any folder
+                        below the root since V2.9).
+                        -->
+                    <div class="form-group md:col-span-2 destination-section"
+                        th:attr="data-initial-id=${file.getFolderId()}"
+                        x-data="folderChooser({
+                        url: $el.dataset.foldersUrl,
+                        initialId: $el.dataset.initialId ? Number($el.dataset.initialId) : null,
+                        initialPath: window.UPLOAD_TARGET_PATH || [],
+                        rootTitle: $el.dataset.rootTitle,
+                        selectRoot: false,
+                        copy: { loadFailed: $el.dataset.loadFailed }
+                        })"
+                        th:data-folders-url="@{/resource/folders/children}"
+                        th:data-root-title="#{explorer.root}"
+                        th:data-load-failed="#{explorer.loadFailed}">
                         <label th:text="#{file.upload.target}">مقصد بارگذاری</label>
                         <input type="hidden" name="folderId" id="folderId" :value="chosen ? chosen.id : ''">
                         <div th:replace="~{fragments.html :: folder-chooser}"></div>
                         <p class="form-text" th:text="#{file.upload.targetHint}">به پوشهٔ مقصد بروید و «انتخاب این پوشه» را بزنید.</p>
                     </div>
-
-                    <div th:if="${#strings.equals(pageType, 'create')}" class="form-group">
-                        <label for="multipartFile" th:text="#{field.chooseFile}">فایل موردنظر</label>
-                        <div class="file-picker">
-                            <input type="file" class="file-picker-input" name="multipartFile" id="multipartFile"
-                                   th:accept="${uploadAccept}" required>
-                            <label for="multipartFile" class="file-picker-button">
-                                <i class="bi bi-paperclip" aria-hidden="true"></i>
-                                <span th:text="#{file.upload.choose}">انتخاب فایل</span>
-                            </label>
-                            <span id="selectedFileName" class="file-picker-name"
-                                  th:text="#{file.upload.none}">فایلی انتخاب نشده است</span>
-                        </div>
-                        <small class="form-text">
-                            <th:block th:if="${#maps.isEmpty(uploadLimits)}">
-                                <span th:text="#{file.upload.nothingAllowed}">برای شما هیچ نوع فایلی برای بارگذاری مجاز نیست.</span>
-                            </th:block>
-                            <th:block th:unless="${#maps.isEmpty(uploadLimits)}">
-                                <span th:text="#{file.upload.allowedTypes}">فرمت‌های مجاز و حداکثر حجم:</span>
-                                <span class="technical" dir="ltr">
-                                    <th:block th:each="l, st : ${uploadLimits}"><span class="inline-block" th:text="${l.key} + ' ≤ ' + ${l.value} + ' MB'"></span><span th:unless="${st.last}">, </span></th:block>
-                                </span>
-                            </th:block>
-                        </small>
-                    </div>
-
                     <!-- Private unless ticked: a public file is listed on the public files page. -->
-                    <div th:if="${#strings.equals(pageType, 'create')}" class="form-group md:col-span-2">
+                    <div th:if="${#strings.equals(pageType, 'create')}" class="form-group md:col-span-2 choice-panel">
                         <label class="flex items-center gap-2 text-sm">
                             <input type="checkbox" name="public-file" value="1" id="publicFile"
-                                   th:checked="${publicFile}">
+                                th:checked="${publicFile}">
                             <span th:text="#{file.upload.public}">این فایل عمومی باشد</span>
                         </label>
                         <p class="field-hint" th:text="#{file.upload.publicHint}">فایل عمومی در صفحهٔ فایل‌های عمومی فهرست می‌شود.</p>
                     </div>
                 </div>
-
                 <div th:if="${showMessage && valid}" class="alert alert-success" role="status" id="success_message">
                     <span th:text="${message}"></span>
                     <!-- The file just stored: its page, and where it sits in the explorer. -->
                     <span th:if="${savedFileId != null}" class="saved-file-links">
                         <a sec:authorize="hasAuthority('FILE_INFO_PAGE') || hasAuthority('ADMIN')"
-                           th:href="@{/files/file-info/{id}(id=${savedFileId})}" id="saved-file-page"
-                           th:text="#{file.openFilePage}">رفتن به صفحهٔ فایل</a>
+                            th:href="@{/files/file-info/{id}(id=${savedFileId})}" id="saved-file-page"
+                            th:text="#{file.openFilePage}">رفتن به صفحهٔ فایل</a>
                         <a sec:authorize="hasAuthority('FILE_EXPLORER_PAGE') || hasAuthority('ADMIN')"
-                           th:href="@{/files/explorer(file=${savedFileId})}" id="saved-file-in-explorer">
+                            th:href="@{/files/explorer(file=${savedFileId})}" id="saved-file-in-explorer">
                             <i class="bi bi-folder2-open" aria-hidden="true"></i>
                             <span th:text="#{file.showInExplorer}">نمایش در فایل اکسپلورر</span>
                         </a>
                     </span>
                 </div>
                 <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert"
-                     id="warning_message" th:text="${message}"></div>
-
-                <div class="form-actions">
+                    id="warning_message" th:text="${message}"></div>
+                <div class="form-actions form-actions-split">
                     <a th:href="@{/files/file-info}" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-right" aria-hidden="true"></i>
                         <span th:text="#{action.backToFiles}">بازگشت به فهرست فایل‌ها</span>
@@ -150,6 +153,11 @@
         $("#multipartFile").on("change", function () {
             const chosen = this.files && this.files.length ? this.files[0] : null;
             $("#selectedFileName").text(chosen ? chosen.name : [[#{file.upload.none}]]);
+            const bytes = chosen ? chosen.size : 0;
+            const unit = bytes >= 1024 * 1024 ? "MB" : bytes >= 1024 ? "KB" : "B";
+            const divisor = unit === "MB" ? 1024 * 1024 : unit === "KB" ? 1024 : 1;
+            $("#selectedFileSize").text(chosen ? (bytes / divisor).toLocaleString("fa-IR", { maximumFractionDigits: 2 }) + " " + unit : "");
+            this.closest(".upload-picker").classList.toggle("has-file", Boolean(chosen));
 
             // The title is nearly always the file's own name, so offer it - but only into an
             // empty field, and only until the person types: what they wrote is theirs, and a

@@ -1,217 +1,179 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl"
-      xmlns="http://www.w3.org/1999/xhtml"
+<html lang="fa" dir="rtl" xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
-
 <head>
-
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <meta th:name="_csrf" th:content="${_csrf.token}"/>
-    <meta th:name="_csrf_header" th:content="${_csrf.headerName}"/>
-    <title th:text="#{user.profile.pageTitle}">پروفایل</title>
-
     <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
-
+    <title th:text="#{user.profile.pageTitle}"></title>
 </head>
-
-
 <body>
 <div th:replace="~{navbar.html :: navbar}"></div>
-
-<div class="container">
-    <div class="main-body">
-
-        <!-- Breadcrumb -->
-        <nav aria-label="breadcrumb" class="main-breadcrumb">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item active" aria-current="page" th:text="#{user.profile.heading}">پروفایل کاربری</li>
-            </ol>
-        </nav>
-        <!-- /Breadcrumb -->
-        <input class="userId" type="hidden" th:value="${user.getId()}">
-        <input class="enabled" type="hidden" th:value="${user.getEnabled()}">
-
-        <div class="row gutters-sm">
-            <div class="col-md-4 mb-3">
-                <div class="card">
-                    <div class="card-body">
-                        <div class="d-flex flex-column align-items-center text-center">
-
-                            <div class="mt-3">
-                                <h4 th:text="${user.getUsername()}"></h4>
-                                <p class="text-secondary mb-1" th:text="${user.getEnabled() == 1} ? #{user.state.enabled} : #{user.state.disabled}"></p>
-<!--                                <p class="text-muted font-size-sm">state</p>-->
-                                <button sec:authorize="hasAuthority('REST_CHANGE_USER_ENABLED') || hasAuthority('ADMIN')" onclick="changeState()" class="btn btn-primary" th:text="${user.getEnabled() == 1} ? #{user.action.disable} : #{user.action.enable}"></button>
-
-
-                                <th:block th:if="${user.getLoginType() == 0}">
-                                    <p class="text-secondary mb-1" th:text="#{user.loginTypeLabel(#{user.loginType.any})}">نوع ورود: بدون محدودیت</p>
-                                </th:block>
-                                <th:block th:if="${user.getLoginType() == 1}">
-                                    <p class="text-secondary mb-1" th:text="#{user.loginTypeLabel(#{user.loginType.local})}">نوع ورود: فقط احراز هویت داخلی</p>
-                                </th:block>
-                                <th:block th:if="${user.getLoginType() == 2}">
-                                    <p class="text-secondary mb-1"><span th:text="#{user.loginTypeLabel('')}">نوع ورود: فقط</span> <span class="technical" dir="ltr">Active Directory</span></p>
-                                </th:block>
-
-                                <div class="relative inline-block" x-data="{ open: false }"
-                                     @click.outside="open = false" @keydown.escape="open = false"
-                                     sec:authorize="hasAuthority('REST_CHANGE_USER_LOGIN_TYPE') || hasAuthority('ADMIN')">
-                                    <button class="btn btn-secondary" type="button"
-                                            @click="open = !open" :aria-expanded="open">
-                                        <span th:text="#{user.changeLoginType}">تغییر نوع ورود</span>
-                                        <i class="bi bi-chevron-down text-[0.7rem] opacity-70" aria-hidden="true"></i>
-                                    </button>
-                                    <div x-show="open" x-cloak x-transition.opacity.duration.120ms
-                                         class="absolute start-0 z-30 mt-1.5 w-60 overflow-hidden rounded-[var(--radius-card)]
-                                                border border-ink-200 bg-white p-1 shadow-[var(--shadow-pop)]">
-                                        <button class="flex w-full items-center rounded-[var(--radius-control)] px-2.5 py-2 text-start text-sm text-ink-700 hover:bg-ink-50"
-                                                type="button" @click="open = false; changeLoginType(0)" th:text="#{user.loginType.any}">بدون محدودیت</button>
-                                        <button class="flex w-full items-center rounded-[var(--radius-control)] px-2.5 py-2 text-start text-sm text-ink-700 hover:bg-ink-50"
-                                                type="button" @click="open = false; changeLoginType(1)" th:text="#{user.loginType.local}">فقط احراز هویت داخلی</button>
-                                        <button class="flex w-full items-center gap-1 rounded-[var(--radius-control)] px-2.5 py-2 text-start text-sm text-ink-700 hover:bg-ink-50"
-                                                type="button" @click="open = false; changeLoginType(2)">
-                                            <span th:text="#{user.loginTypeOnly}">فقط</span>
-                                            <span class="technical" dir="ltr">Active Directory</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-
-
-
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div sec:authorize="hasAuthority('USER_ROLE_PAGE') || hasAuthority('ADMIN')" class="card mt-3">
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap">
-                            <h6 th:text="#{field.roles}">نقش ها</h6>
-                            <span class="text-secondary"><a th:href="@{'/users/' + ${user.getId()} + '/roles' }" class="btn btn-success"> <i class="fa fa-arrow-circle-o-left"></i>نقش های کاربر</a></span>
-                        </li>
-
-                    </ul>
-                </div>
-
-                <!--
-                  The personal folder (roadmap 10.4): where it is, how full it is, and its quota - or,
-                  for a user made without one, the button that creates it. Both posts come back here
-                  with a flash message.
-                -->
-                <div class="card mt-3" id="home-card">
-                    <div class="card-body">
-                        <h6 class="mb-2" th:text="#{user.home.title}">پوشهٔ شخصی</h6>
-
-                        <div th:if="${homeMessage != null}"
-                             th:class="${homeValid} ? 'alert alert-success' : 'alert alert-warning'"
-                             role="status" th:text="${homeMessage}"></div>
-
-                        <th:block th:if="${home != null}">
-                            <p class="mb-1">
-                                <a th:href="@{/files/explorer(folder=${home.id()})}" class="technical" dir="ltr"
-                                   th:text="'Profiles/' + ${home.name()}">Profiles/username</a>
-                            </p>
-                            <p class="mb-1 text-secondary">
-                                <span th:text="#{user.home.used}">استفاده‌شده:</span>
-                                <span class="technical" dir="ltr" th:text="${home.usedMegabytes()} + ' MB'">0 MB</span>
-                                <th:block th:if="${home.quotaBytes() != null}">
-                                    <span th:text="#{user.home.of}">از</span>
-                                    <span class="technical" dir="ltr" th:text="${home.quotaMegabytes()} + ' MB'">100 MB</span>
-                                    <span th:text="#{user.home.percent(${home.percentUsed()})}">(0٪)</span>
-                                </th:block>
-                                <span th:if="${home.quotaBytes() == null}" th:text="#{user.home.noQuota}">— بدون سقف</span>
-                            </p>
-                            <form th:action="@{'/users/' + ${user.getId()} + '/home/quota'}" method="post" class="mt-2"
-                                  sec:authorize="hasAuthority('SET_FOLDER_QUOTA') || hasAuthority('ADMIN')">
-                                <label for="quotaMb" class="text-sm" th:text="#{user.home.quotaLabel}">سهمیه (مگابایت؛ خالی = بدون سقف)</label>
-                                <div class="flex items-center gap-2 mt-1">
-                                    <input id="quotaMb" name="quotaMb" type="number" min="1" step="1" class="form-control technical" dir="ltr"
-                                           th:value="${home.quotaMegabytes()}">
-                                    <button type="submit" class="btn btn-secondary btn-sm" th:text="#{user.home.saveQuota}">ذخیرهٔ سهمیه</button>
-                                </div>
-                            </form>
-                        </th:block>
-
-                        <th:block th:if="${home == null}">
-                            <p class="text-secondary mb-2" th:text="#{user.home.none}">این کاربر پوشهٔ شخصی ندارد.</p>
-                            <form th:action="@{'/users/' + ${user.getId()} + '/home'}" method="post"
-                                  sec:authorize="hasAuthority('CREATE_USER_HOME') || hasAuthority('ADMIN')">
-                                <button type="submit" class="btn btn-secondary btn-sm">
-                                    <i class="bi bi-folder-plus" aria-hidden="true"></i>
-                                    <span th:text="#{user.home.create}">ساخت پوشهٔ شخصی</span>
-                                </button>
-                            </form>
-                        </th:block>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-8">
-                <div class="card mb-3">
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-sm-3">
-                                <h6 class="mb-0" th:text="#{field.personnelCode}">کد پرسنلی</h6>
-                            </div>
-                            <div class="col-sm-9 text-secondary" th:text="${user.getPersonelCode()}"></div>
-                        </div>
-                        <hr>
-                        <div class="row">
-                            <div class="col-sm-3">
-                                <h6 class="mb-0" th:text="#{field.username}">نام کاربری</h6>
-                            </div>
-                            <div class="col-sm-9 text-secondary" th:text="${user.getUsername()}"></div>
-                        </div>
-                        <hr>
-                        <div class="row">
-                            <div class="col-sm-3">
-                                <h6 class="mb-0" th:text="#{field.fullName}">نام و نام خانوادگی</h6>
-                            </div>
-                            <div class="col-sm-9 text-secondary" th:text="${user.getFirstName() + ' ' + user.getLastName()}"></div>
-                        </div>
-                        <hr>
-                        <div class="row">
-                            <div class="col-sm-3">
-                                <h6 class="mb-0" th:text="#{field.phone}">شماره تلفن همراه</h6>
-                            </div>
-                            <div class="col-sm-9 text-secondary" th:text="${user.getPhoneNumber()}"></div>
-                        </div>
-                        <hr>
-                        <div class="row">
-                            <div class="col-sm-3">
-                                <h6 class="mb-0" th:text="#{user.otherInfo}">سایر اطلاعات</h6>
-                            </div>
-                            <div class="col-sm-9 text-secondary">
-
-                            </div>
-                        </div>
-                        <hr>
-                        <div sec:authorize="hasAuthority('UPDATE_USER_PAGE') || hasAuthority('ADMIN')" class="row">
-                            <div class="col-sm-12">
-                                <a class="btn btn-info " th:href="@{'/users/' + ${user.getId()} + '/edit'}" th:text="#{action.edit}">ویرایش</a>
-                            </div>
-                        </div>
-                        <hr>
-                        <div sec:authorize="hasAuthority('CHANGE_USER_PASSWORD_PAGE') || hasAuthority('ADMIN')" class="row">
-                            <div class="col-sm-12">
-                                <a class="btn btn-info " th:href="@{'/users/' + ${user.getId()} + '/change-password'}" th:text="#{user.changePassword}">تغییر رمز عبور</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-
+<main class="container-fluid app-content workspace-page">
+    <input class="userId" type="hidden" th:value="${user.getId()}">
+    <input class="enabled" type="hidden" th:value="${user.getEnabled()}">
+    <header class="page-header detail-header">
+        <div class="flex items-center gap-4 min-w-0">
+            <span class="profile-mark" aria-hidden="true">
+                <i class="bi bi-person"></i>
+            </span>
+            <div class="min-w-0">
+                <div class="page-kicker" th:text="#{user.profile.heading}"></div>
+                <h1 class="break-words" th:text="${user.getFirstName() + ' ' + user.getLastName()}"></h1>
+                <p class="page-description technical break-words" dir="auto" th:text="${user.getUsername()}"></p>
             </div>
         </div>
-
+        <span class="badge" th:classappend="${user.getEnabled() == 1} ? 'badge-success' : 'badge-danger'" th:text="${user.getEnabled() == 1} ? #{user.state.enabled} : #{user.state.disabled}"></span>
+    </header>
+    <div class="detail-layout">
+        <div class="flex flex-col gap-4 min-w-0">
+            <section class="card" aria-labelledby="user-metadata-title">
+                <div class="card-body">
+                    <div class="section-heading">
+                        <i class="bi bi-person-vcard" aria-hidden="true"></i>
+                        <h2 id="user-metadata-title" th:text="#{ui.user.identity}"></h2>
+                    </div>
+                    <dl class="metadata-grid">
+                        <div>
+                            <dt th:text="#{field.fullName}"></dt>
+                            <dd th:text="${user.getFirstName() + ' ' + user.getLastName()}"></dd>
+                        </div>
+                        <div>
+                            <dt th:text="#{field.username}"></dt>
+                            <dd class="technical" dir="ltr" th:text="${user.getUsername()}"></dd>
+                        </div>
+                        <div>
+                            <dt th:text="#{field.personnelCode}"></dt>
+                            <dd class="technical" dir="ltr" th:text="${user.getPersonelCode()}"></dd>
+                        </div>
+                        <div>
+                            <dt th:text="#{field.phone}"></dt>
+                            <dd class="technical" dir="ltr" th:text="${user.getPhoneNumber()}"></dd>
+                        </div>
+                    </dl>
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <a sec:authorize="hasAuthority('UPDATE_USER_PAGE') || hasAuthority('ADMIN')" class="btn btn-primary" th:href="@{'/users/' + ${user.getId()} + '/edit'}">
+                            <i class="bi bi-pencil-square" aria-hidden="true"></i>
+                            <span th:text="#{action.edit}"></span>
+                        </a>
+                        <a sec:authorize="hasAuthority('CHANGE_USER_PASSWORD_PAGE') || hasAuthority('ADMIN')" class="btn btn-outline-secondary" th:href="@{'/users/' + ${user.getId()} + '/change-password'}">
+                            <i class="bi bi-key" aria-hidden="true"></i>
+                            <span th:text="#{user.changePassword}"></span>
+                        </a>
+                    </div>
+                </div>
+            </section>
+            <div class="card" id="home-card">
+                <div class="card-body">
+                    <div class="section-heading">
+                        <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                        <div>
+                            <h2 th:text="#{user.home.title}"></h2>
+                        </div>
+                    </div>
+                    <div th:if="${homeMessage != null}"
+                        th:class="${homeValid} ? 'alert alert-success' : 'alert alert-warning'"
+                        role="status" th:text="${homeMessage}"></div>
+                    <th:block th:if="${home != null}">
+                        <p class="mb-1">
+                            <a th:href="@{/files/explorer(folder=${home.id()})}" class="technical" dir="ltr"
+                                th:text="'Profiles/' + ${home.name()}">Profiles/username</a>
+                        </p>
+                        <p class="mb-1 text-secondary">
+                            <span th:text="#{user.home.used}">استفاده‌شده:</span>
+                            <span class="technical" dir="ltr" th:text="${home.usedMegabytes()} + ' MB'">0 MB</span>
+                            <th:block th:if="${home.quotaBytes() != null}">
+                                <span th:text="#{user.home.of}">از</span>
+                                <span class="technical" dir="ltr" th:text="${home.quotaMegabytes()} + ' MB'">100 MB</span>
+                                <span th:text="#{user.home.percent(${home.percentUsed()})}">(0٪)</span>
+                            </th:block>
+                            <span th:if="${home.quotaBytes() == null}" th:text="#{user.home.noQuota}">— بدون سقف</span>
+                        </p>
+                        <progress th:if="${home.quotaBytes() != null}" class="quota-meter" max="100" th:value="${home.percentUsed()}" th:aria-label="#{user.home.used}"></progress>
+                        <form th:action="@{'/users/' + ${user.getId()} + '/home/quota'}" method="post" class="mt-2"
+                            sec:authorize="hasAuthority('SET_FOLDER_QUOTA') || hasAuthority('ADMIN')">
+                            <label for="quotaMb" class="text-sm" th:text="#{user.home.quotaLabel}">سهمیه (مگابایت؛ خالی = بدون سقف)</label>
+                            <div class="quota-controls">
+                                <input id="quotaMb" name="quotaMb" type="number" min="1" step="1" class="form-control technical" dir="ltr"
+                                    th:value="${home.quotaMegabytes()}">
+                                <button type="submit" class="btn btn-secondary btn-sm" th:text="#{user.home.saveQuota}">ذخیرهٔ سهمیه</button>
+                            </div>
+                        </form>
+                    </th:block>
+                    <th:block th:if="${home == null}">
+                        <p class="text-secondary mb-2" th:text="#{user.home.none}">این کاربر پوشهٔ شخصی ندارد.</p>
+                        <form th:action="@{'/users/' + ${user.getId()} + '/home'}" method="post"
+                            sec:authorize="hasAuthority('CREATE_USER_HOME') || hasAuthority('ADMIN')">
+                            <button type="submit" class="btn btn-secondary btn-sm">
+                                <i class="bi bi-folder-plus" aria-hidden="true"></i>
+                                <span th:text="#{user.home.create}">ساخت پوشهٔ شخصی</span>
+                            </button>
+                        </form>
+                    </th:block>
+                </div>
+            </div>
+        </div>
+        <aside class="flex flex-col gap-4 min-w-0">
+            <section class="card">
+                <div class="card-body">
+                    <div class="section-heading">
+                        <i class="bi bi-shield-lock" aria-hidden="true"></i>
+                        <div>
+                            <h2 th:text="#{ui.user.account}"></h2>
+                        </div>
+                    </div>
+                    <button sec:authorize="hasAuthority('REST_CHANGE_USER_ENABLED') || hasAuthority('ADMIN')" onclick="changeState()" type="button" class="btn btn-outline-secondary w-full mb-3" th:text="${user.getEnabled() == 1} ? #{user.action.disable} : #{user.action.enable}"></button>
+                    <th:block th:if="${user.getLoginType() == 0}">
+                        <p class="text-secondary mb-1" th:text="#{user.loginTypeLabel(#{user.loginType.any})}">نوع ورود: بدون محدودیت</p>
+                    </th:block>
+                    <th:block th:if="${user.getLoginType() == 1}">
+                        <p class="text-secondary mb-1" th:text="#{user.loginTypeLabel(#{user.loginType.local})}">نوع ورود: فقط احراز هویت داخلی</p>
+                    </th:block>
+                    <th:block th:if="${user.getLoginType() == 2}">
+                        <p class="text-secondary mb-1">
+                            <span th:text="#{user.loginTypeLabel('')}">نوع ورود: فقط</span>
+                            <span class="technical" dir="ltr">Active Directory</span>
+                        </p>
+                    </th:block>
+                    <div class="relative mt-3" x-data="{ open: false }"
+                        @click.outside="open = false" @keydown.escape="open = false"
+                        sec:authorize="hasAuthority('REST_CHANGE_USER_LOGIN_TYPE') || hasAuthority('ADMIN')">
+                        <button class="btn btn-secondary w-full" type="button"
+                            @click="open = !open" :aria-expanded="open">
+                            <span th:text="#{user.changeLoginType}">تغییر نوع ورود</span>
+                            <i class="bi bi-chevron-down text-[0.7rem] opacity-70" aria-hidden="true"></i>
+                        </button>
+                        <div x-show="open" x-cloak x-transition.opacity.duration.120ms
+                            class="absolute start-0 z-30 mt-1.5 w-60 overflow-hidden rounded-[var(--radius-card)]
+                            border border-ink-200 bg-white p-1 shadow-[var(--shadow-pop)]">
+                            <button class="flex w-full items-center rounded-[var(--radius-control)] px-2.5 py-2 text-start text-sm text-ink-700 hover:bg-ink-50"
+                                type="button" @click="open = false; changeLoginType(0)" th:text="#{user.loginType.any}">بدون محدودیت</button>
+                            <button class="flex w-full items-center rounded-[var(--radius-control)] px-2.5 py-2 text-start text-sm text-ink-700 hover:bg-ink-50"
+                                type="button" @click="open = false; changeLoginType(1)" th:text="#{user.loginType.local}">فقط احراز هویت داخلی</button>
+                            <button class="flex w-full items-center gap-1 rounded-[var(--radius-control)] px-2.5 py-2 text-start text-sm text-ink-700 hover:bg-ink-50"
+                                type="button" @click="open = false; changeLoginType(2)">
+                                <span th:text="#{user.loginTypeOnly}">فقط</span>
+                                <span class="technical" dir="ltr">Active Directory</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section sec:authorize="hasAuthority('USER_ROLE_PAGE') || hasAuthority('ADMIN')" class="card">
+                <div class="card-body">
+                    <div class="section-heading">
+                        <i class="bi bi-people" aria-hidden="true"></i>
+                        <div>
+                            <h2 th:text="#{field.roles}"></h2>
+                            <p th:text="#{ui.user.rolesHint}"></p>
+                        </div>
+                    </div>
+                    <a th:href="@{'/users/' + ${user.getId()} + '/roles'}" class="btn btn-outline-secondary w-full" th:text="#{ui.user.roles}"></a>
+                </div>
+            </section>
+        </aside>
     </div>
-</div>
-
+</main>
 <th:block th:replace="~{fragments.html :: scripts}"></th:block>
-<script th:inline="javascript">
-
-    function changeState() {
+<script th:inline="javascript">function changeState() {
         let newVal = $(".enabled").val();
         if(newVal == 1) {
             newVal = 0;
@@ -271,8 +233,7 @@
                 }
             });
         }
-    }
-
-</script>
+    }</script>
 
 </body>
+</html>

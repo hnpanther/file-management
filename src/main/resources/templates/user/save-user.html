@@ -10,83 +10,102 @@
 <body>
 <div th:replace="~{navbar.html :: navbar}"></div>
 
-<main class="container-fluid app-content">
+<main class="container-fluid app-content workspace-page">
     <header class="page-header">
         <div class="page-kicker" th:text="#{user.form.kicker}">مدیریت کاربران</div>
         <h1 th:if="${#strings.equals(pageType, 'create')}" th:text="#{user.create.heading}">ایجاد کاربر جدید</h1>
         <h1 th:if="${#strings.equals(pageType, 'update')}" th:text="#{user.edit.heading}">ویرایش اطلاعات کاربر</h1>
         <p class="page-description" th:text="#{user.form.description}">اطلاعات کاربر را تکمیل کنید.</p>
     </header>
-
-    <section class="card mx-auto max-w-4xl">
+    <section class="card mx-auto max-w-4xl task-form">
         <div class="card-body">
             <form th:action="@{${#strings.equals(pageType, 'create') ? '/users' : '/users/' + user.getId()}}"
-                  method="post" id="userForm" th:object="${user}">
+                method="post" id="userForm" th:object="${user}">
                 <input th:field="*{id}" type="hidden">
-
+                <div class="section-heading">
+                    <i class="bi bi-person-vcard" aria-hidden="true"></i>
+                    <div>
+                        <h2 th:text="#{ui.user.identity}"></h2>
+                        <p th:text="#{ui.required}"></p>
+                    </div>
+                </div>
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="personelCode" th:text="#{field.personnelCode}">کد پرسنلی</label>
                         <input id="personelCode" th:field="*{personelCode}" class="form-control technical"
-                               dir="ltr" type="text" inputmode="numeric" autocomplete="off" required>
+                            dir="ltr" type="text" inputmode="numeric" autocomplete="off" required>
                     </div>
                     <div class="form-group">
                         <label for="username" th:text="#{field.username}">نام کاربری</label>
                         <input id="username" th:field="*{username}" class="form-control technical"
-                               dir="ltr" type="text" autocomplete="username" required>
+                            dir="ltr" type="text" autocomplete="username" required>
                     </div>
                     <div class="form-group">
                         <label for="firstName" th:text="#{field.firstName}">نام</label>
                         <input id="firstName" th:field="*{firstName}" class="form-control"
-                               dir="rtl" type="text" autocomplete="given-name" required>
+                            dir="rtl" type="text" autocomplete="given-name" required>
                     </div>
                     <div class="form-group">
                         <label for="lastName" th:text="#{field.lastName}">نام خانوادگی</label>
                         <input id="lastName" th:field="*{lastName}" class="form-control"
-                               dir="rtl" type="text" autocomplete="family-name" required>
+                            dir="rtl" type="text" autocomplete="family-name" required>
                     </div>
                     <div class="form-group">
                         <label for="nationalCode" th:text="#{field.nationalCode}">کد ملی</label>
                         <input id="nationalCode" th:field="*{nationalCode}" class="form-control technical"
-                               dir="ltr" type="text" inputmode="numeric" autocomplete="off" required>
+                            dir="ltr" type="text" inputmode="numeric" autocomplete="off" required>
                     </div>
                     <div class="form-group">
                         <label for="phoneNumber" th:text="#{field.phone}">شماره تلفن همراه</label>
                         <input id="phoneNumber" th:field="*{phoneNumber}" class="form-control technical"
-                               dir="ltr" type="tel" inputmode="tel" autocomplete="tel" required>
-                    </div>
-                    <div th:if="${#strings.equals(pageType, 'create')}" class="form-group md:col-span-2">
-                        <label for="password" th:text="#{field.password}">رمز عبور</label>
-                        <input id="password" th:field="*{password}" class="form-control technical"
-                               dir="ltr" type="password" autocomplete="new-password" required>
-                    </div>
-                    <!--
-                      The personal folder (roadmap 10.4): Profiles/{username}, with a WRITE grant for the user
-                      and the installation's default quota. Ticked by default; the administrator decides.
-                      th:field on a Boolean renders the hidden "_createHome" too, so unticked posts false.
-                    -->
-                    <div th:if="${#strings.equals(pageType, 'create')}" class="form-group md:col-span-2">
-                        <label class="flex items-center gap-2 text-sm">
-                            <input type="checkbox" th:field="*{createHome}">
-                            <span th:text="#{user.create.createHome}">پوشهٔ شخصی برای این کاربر ساخته شود (Profiles/نام کاربری)</span>
-                        </label>
-                        <p class="field-hint" th:text="#{user.create.createHomeHint}">کاربر روی پوشهٔ شخصی خود دسترسی نوشتن دارد؛ سهمیهٔ آن بعداً از صفحهٔ کاربر قابل تنظیم است.</p>
+                            dir="ltr" type="tel" inputmode="tel" autocomplete="tel" required>
                     </div>
                 </div>
-
+                <div class="form-section" th:if="${#strings.equals(pageType, 'create')}">
+                    <div class="section-heading">
+                        <i class="bi bi-shield-lock" aria-hidden="true"></i>
+                        <div>
+                            <h2 th:text="#{ui.user.account}"></h2>
+                            <p th:text="#{ui.user.accountHint}"></p>
+                        </div>
+                    </div>
+                    <div class="form-grid">
+                        <div th:if="${#strings.equals(pageType, 'create')}" class="form-group md:col-span-2">
+                            <label for="password" th:text="#{field.password}">رمز عبور</label>
+                            <div class="password-field" x-data="{ visible: false }">
+                                <input :type="visible ? 'text' : 'password'" id="password" th:field="*{password}" class="form-control technical"
+                                    dir="ltr" type="password" autocomplete="new-password" required>
+                                <button type="button" class="password-toggle" @click="visible = !visible" :aria-pressed="visible" aria-controls="password" th:aria-label="#{ui.password.toggle}">
+                                    <i class="bi" :class="visible ? 'bi-eye-slash' : 'bi-eye'" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <!--
+                            The personal folder (roadmap 10.4): Profiles/{username}, with a WRITE grant for the user
+                            and the installation's default quota. Ticked by default; the administrator decides.
+                            th:field on a Boolean renders the hidden "_createHome" too, so unticked posts false.
+                            -->
+                        <div th:if="${#strings.equals(pageType, 'create')}" class="form-group md:col-span-2 choice-panel">
+                            <label class="flex items-center gap-2 text-sm">
+                                <input type="checkbox" th:field="*{createHome}">
+                                <span th:text="#{user.create.createHome}">پوشهٔ شخصی برای این کاربر ساخته شود (Profiles/نام کاربری)</span>
+                            </label>
+                            <p class="field-hint" th:text="#{user.create.createHomeHint}">کاربر روی پوشهٔ شخصی خود دسترسی نوشتن دارد؛ سهمیهٔ آن بعداً از صفحهٔ کاربر قابل تنظیم است.</p>
+                        </div>
+                    </div>
+                </div>
                 <div th:if="${showMessage && valid}" class="alert alert-success" role="status"
-                     id="success_message" th:text="#{message.saved}">اطلاعات ذخیره شد.</div>
+                    id="success_message" th:text="#{message.saved}">اطلاعات ذخیره شد.</div>
                 <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert"
-                     id="warning_message" th:text="${message}"></div>
-
-                <div class="form-actions">
+                    id="warning_message" th:text="${message}"></div>
+                <div class="form-actions form-actions-split">
                     <a th:if="${#strings.equals(pageType, 'update')}"
-                       th:href="@{'/users/' + ${user.getId()}}" class="btn btn-outline-secondary">
+                        th:href="@{'/users/' + ${user.getId()}}" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-right" aria-hidden="true"></i>
                         <span th:text="#{action.backToProfile}">بازگشت به پروفایل</span>
                     </a>
                     <a th:if="${#strings.equals(pageType, 'create')}"
-                       th:href="@{/users}" class="btn btn-outline-secondary">
+                        th:href="@{/users}" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-right" aria-hidden="true"></i>
                         <span th:text="#{action.backToUsers}">بازگشت به فهرست کاربران</span>
                     </a>
