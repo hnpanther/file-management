@@ -4,11 +4,13 @@ import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileDownloadDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FolderAccess;
+import com.hnp.filemanagement.dto.IdReference;
 import com.hnp.filemanagement.dto.PageResponse;
 import java.io.IOException;
 import com.hnp.filemanagement.storage.BlobStore;
 import com.hnp.filemanagement.storage.StorageKey;
 import com.hnp.filemanagement.storage.StorageWriter;
+import com.hnp.filemanagement.storage.StoredBlob;
 import com.hnp.filemanagement.dto.PublicFileDetailsDTO;
 import com.hnp.filemanagement.dto.FileUploadDTO;
 import com.hnp.filemanagement.entity.ActionEnum;
@@ -25,7 +27,7 @@ import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FileShareLinkRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.util.ModelConverterUtil;
-import com.hnp.filemanagement.util.SearchTerms;
+import com.hnp.filemanagement.util.SearchKey;
 import com.hnp.filemanagement.validation.ContentTypes;
 import com.hnp.filemanagement.validation.ValidationUtil;
 import org.springframework.core.io.Resource;
@@ -73,7 +75,8 @@ import java.util.UUID;
  * <p><b>Never {@code save()} a managed parent to persist a new child.</b> Spring Data's
  * {@code save()} on an entity that already has an id is a {@code merge}, and merging a parent whose
  * collection holds a transient child inserts a <em>copy</em> of that child — which surfaced as a
- * unique-key violation on {@code hash_id}. The child is persisted directly, before being linked.
+ * unique-key violation on {@code hash_id} (now {@code external_id}). The child is persisted
+ * directly, before being linked.
  *
  * <p><b>Never put an entity in a log line or a message.</b> {@code FileInfo} and {@code FileDetails}
  * are bidirectional; {@link com.hnp.filemanagement.entity.AbstractEntity} now makes
@@ -85,6 +88,12 @@ import java.util.UUID;
  * written leaves an orphan file; a delete that fails after the directory walk leaves a row pointing
  * at bytes that are gone. Both are issue 3, closed in Phase 2 by a storage port that can stage and
  * compensate.
+ *
+ * <h2>Two ids for everything a client names</h2>
+ *
+ * <p>A file and a revision each have their number and an {@code externalId}, a random UUID
+ * (issue 7, V2.16). The v1 API accepts either wherever it takes an id ({@link #fileInfoIdOf},
+ * {@link #fileDetailsIdOf}) and answers both; the pages keep the numbers.
  */
 @Service
 @Transactional(readOnly = true)
@@ -95,6 +104,7 @@ public class FileService {
 
     private static final int STATE_ACTIVE = 0;
     private static final int STATE_DISABLED = -1;
+
 
     /**
      * {@link #createNewFile}'s visibility: listed on the public files page and downloadable from it
@@ -184,14 +194,15 @@ public class FileService {
         Folder folder = targetFolderOf(fileInfoDTO);
         folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), folder);
 
-        // Names are unique per folder (uq_file_info_name_per_folder), and since V2.9 that is also
-        // where the bytes go - one directory per folder id - so this is the friendly error and the
-        // constraint is the guarantee.
+        // Names are unique per folder, compared by their folded key (SearchKey): a name that differs
+        // from one already there only by the half-space, the digits' script or case is the same
+        // name. This is the check; uq_file_info_name_per_folder guards the exact name in a race.
         if (isDuplicate(name, folder.getId())) {
             throw new DuplicateResourceException("file with name=" + name + " already exists in folder id=" + folder.getId());
         }
 
         FileInfo fileInfo = new FileInfo();
+        fileInfo.setExternalId(newExternalId());
         fileInfo.setFileName(name);
         fileInfo.setCodeName(name);
         fileInfo.setFileNameDescription(name);
@@ -228,11 +239,9 @@ public class FileService {
         actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetails.getId(), ActionEnum.CREATE,
                 principalId, "CREATE NEW FILE_DETAILS", "CREATE NEW FILE_DETAILS");
 
-        FileDetailsDTO result = ModelConverterUtil.covertFileDetailsToFileDetailsDTO(fileDetails);
+        store(fileDetails, multipartFile);
 
-        store(fileDetails.getStorageKey(), multipartFile);
-
-        return result;
+        return ModelConverterUtil.covertFileDetailsToFileDetailsDTO(fileDetails);
     }
 
     /**
@@ -343,7 +352,7 @@ public class FileService {
 
         // The bytes go where the row says they go. Rebuilding the path here from the taxonomy would
         // be a second expression for one thing, and the two would eventually disagree.
-        store(created.getStorageKey(), multipartFile);
+        store(created, multipartFile);
     }
 
     private FileDetails createNewFormatFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo,
@@ -431,9 +440,9 @@ public class FileService {
 
         FileDetails fileDetails = new FileDetails();
         fileDetails.setFileName(originalFilename);
-        // Named hash_id but generated, not derived: nothing checksums the stored bytes today.
-        // Issue 7 - a real checksum has to exist before the S3 migration.
-        fileDetails.setHashId(UUID.randomUUID().toString());
+        // The id a client may use in place of the number; the checksum is set once the bytes are
+        // written (store), from what the store actually wrote.
+        fileDetails.setExternalId(newExternalId());
         fileDetails.setFileExtension(getFileExtension(originalFilename));
         // Judged from the extension and the bytes, never taken from the client (issue 12). This is
         // the enforcement: every route that stores a file - form, v1, v2 - passes through here.
@@ -748,13 +757,13 @@ public class FileService {
 
         Page<FileInfo> page;
         if (readableFolders.isEmpty()) {
-            page = fileInfoRepository.search(SearchTerms.blankToEmpty(search), pageable);
+            page = fileInfoRepository.search(SearchKey.forSearch(search), pageable);
         } else if (readableFolders.get().isEmpty()) {
             // Granted nothing: an empty page, without asking the database for `IN ()`.
             page = Page.empty(pageable);
         } else {
             page = fileInfoRepository.searchWithinFolders(
-                    SearchTerms.blankToEmpty(search), readableFolders.get(), pageable);
+                    SearchKey.forSearch(search), readableFolders.get(), pageable);
         }
 
         // The ancestors of every folder on the page in one query, so the conversion below adds no
@@ -769,7 +778,7 @@ public class FileService {
     public PageResponse<PublicFileDetailsDTO> getPagePublicFiles(int pageSize, int pageNumber, String search) {
 
         Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
-        Page<FileDetails> page = fileDetailsRepository.searchPublicFiles(SearchTerms.blankToEmpty(search), pageable);
+        Page<FileDetails> page = fileDetailsRepository.searchPublicFiles(SearchKey.forSearch(search), pageable);
 
         Map<Integer, List<Folder>> ancestry = folderService.ancestryOf(
                 page.getContent().stream().map(d -> d.getFileInfo().getFolder()).toList());
@@ -779,9 +788,39 @@ public class FileService {
                 .toList());
     }
 
-    /** Whether a file of this name already exists in this folder. */
+    /**
+     * Whether a file of this name already exists in this folder - the names compared by their
+     * folded key ({@link SearchKey}), so that one written with the half-space and one without, or
+     * with Persian digits and with ASCII ones, are the same name on either database (issue 86).
+     */
     public boolean isDuplicate(String fileName, int folderId) {
-        return fileInfoRepository.findByFolderIdAndFileName(folderId, fileName).isPresent();
+        return fileInfoRepository.existsByFolderIdAndSearchName(folderId, SearchKey.of(fileName, SearchKey.NAME_LENGTH));
+    }
+
+    /**
+     * The number of a file named by either of its ids - the number itself, or its external id - as
+     * the v1 API accepts them. An external id no file has is a 404, like an unknown number.
+     */
+    public int fileInfoIdOf(IdReference reference) {
+        if (reference.isNumber()) {
+            return reference.number();
+        }
+        return fileInfoRepository.findIdByExternalId(reference.externalId()).orElseThrow(
+                () -> new ResourceNotFoundException("file info not exists, externalId=" + reference.externalId()));
+    }
+
+    /** The number of a revision named by either of its ids; see {@link #fileInfoIdOf}. */
+    public int fileDetailsIdOf(IdReference reference) {
+        if (reference.isNumber()) {
+            return reference.number();
+        }
+        return fileDetailsRepository.findIdByExternalId(reference.externalId()).orElseThrow(
+                () -> new ResourceNotFoundException("fileDetails not exists, externalId=" + reference.externalId()));
+    }
+
+    /** A new external id: a random (version 4) UUID, lower case, as every stored one is. */
+    static String newExternalId() {
+        return UUID.randomUUID().toString();
     }
 
     /** One file with its versions, for the file page — refused when it is outside the caller's folders. */
@@ -827,18 +866,26 @@ public class FileService {
 
     /**
      * Writes the bytes of one revision, through {@link StorageWriter} so that they cannot survive
-     * a transaction that does not commit (roadmap 2.3, issue 3). The store computes the size and
-     * the digest of what it actually wrote; neither has a column yet ({@code StoredBlob}), so what
-     * is kept here is the one thing the row already holds - and the write itself, which is what
-     * matters.
+     * a transaction that does not commit (roadmap 2.3, issue 3), and records on the row what the
+     * store computed while writing them ({@link StoredBlob}): the SHA-256 (issue 7), and the size -
+     * the bytes that reached the store, which is what the column has to describe. The row is
+     * managed, so both reach the database with the commit that keeps the bytes.
      */
-    private void store(String storageKey, MultipartFile file) {
+    private void store(FileDetails fileDetails, MultipartFile file) {
+        String storageKey = fileDetails.getStorageKey();
+        StoredBlob stored;
         try {
-            storageWriter.write(storageKey, file.getInputStream());
+            stored = storageWriter.write(storageKey, file.getInputStream());
         } catch (IOException e) {
             logger.error("could not read the uploaded file for key=" + storageKey, e);
             throw new BusinessException("error in saving file, check logs");
         }
+        if (stored.sizeBytes() != fileDetails.getFileSize()) {
+            logger.warn("fileDetails id={}: {} bytes declared, {} stored; the row records what was stored",
+                    fileDetails.getId(), fileDetails.getFileSize(), stored.sizeBytes());
+            fileDetails.setFileSize(stored.sizeBytes());
+        }
+        fileDetails.setChecksumSha256(stored.checksumSha256());
     }
 
     /** The directory holding a stored object, as a relative address - the key without its last segment. */

@@ -30,12 +30,17 @@ import java.util.Optional;
  * have. The one native query left, {@link #findIdsWhoseTagsDisagreeWithTheFolders}, is plain
  * SQL-92 and says why it is native.
  *
- * <p><b>Text compares without case, the same way on every database.</b> A search is
- * {@code UPPER(column) LIKE UPPER(CONCAT('%', :term, '%'))}, and a name looked up by equality is
- * {@code UPPER(column) = UPPER(:name)} - the function Spring Data's {@code IgnoreCase} renders, so a
- * derived query and a written one agree, and one functional index on PostgreSQL serves both.
- * MySQL's {@code unicode_ci} collation gave a bare {@code LIKE} and {@code =} that behaviour for
- * free; PostgreSQL does not (issue 86). Path prefixes are digits and slashes and stay as they are.
+ * <p><b>Text compares the same way on every database.</b> A search compares folded keys
+ * ({@code SearchKey}, V2.16): {@code REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%')},
+ * with the term folded by {@code SearchKey.forSearch} - so case, Persian and Arabic digits, the
+ * half-space and the marks are all folded in Java, identically for the stored key and the term,
+ * and the database compares plain text. The spaces are dropped on both sides, so a half-space, a
+ * space and none all meet. MySQL's {@code unicode_ci} collation did part of this by itself and
+ * PostgreSQL does none of it (issue 86); the key columns are binary on MySQL so that it adds
+ * nothing either. Whether a folder already holds a name compares the keys too, spaces kept
+ * ({@link #existsByFolderIdAndSearchName}). The v2 API's lookup of an object by its key is exact
+ * but for case, {@code UPPER(column) = UPPER(:name)}. Path prefixes are digits and slashes and stay
+ * as they are.
  *
  * <p><b>Reads that a converter will walk fetch the folder.</b> {@code ModelConverterUtil} goes
  * from a file to its folder and from there to every folder above it; the folder is fetched with
@@ -88,12 +93,12 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
             WHERE :search = ''
-               OR UPPER(f.fileName) LIKE UPPER(CONCAT('%', (:search), '%'))
-               OR UPPER(f.description) LIKE UPPER(CONCAT('%', (:search), '%'))
+               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
                OR EXISTS (SELECT a FROM Folder a
                           WHERE t.path LIKE CONCAT(a.path, '%') AND a.depth > 0
-                            AND (UPPER(a.name) LIKE UPPER(CONCAT('%', (:search), '%'))
-                                 OR UPPER(a.displayName) LIKE UPPER(CONCAT('%', (:search), '%'))))
+                            AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                                 OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%')))
             """)
     Page<FileInfo> search(@Param("search") String search, Pageable pageable);
 
@@ -109,12 +114,12 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             JOIN FETCH f.folder t
             WHERE t.id IN (:folderIds)
               AND (:search = ''
-               OR UPPER(f.fileName) LIKE UPPER(CONCAT('%', (:search), '%'))
-               OR UPPER(f.description) LIKE UPPER(CONCAT('%', (:search), '%'))
+               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
                OR EXISTS (SELECT a FROM Folder a
                           WHERE t.path LIKE CONCAT(a.path, '%') AND a.depth > 0
-                            AND (UPPER(a.name) LIKE UPPER(CONCAT('%', (:search), '%'))
-                                 OR UPPER(a.displayName) LIKE UPPER(CONCAT('%', (:search), '%')))))
+                            AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                                 OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%'))))
             """)
     Page<FileInfo> searchWithinFolders(@Param("search") String search,
                                        @Param("folderIds") Collection<Integer> folderIds,
@@ -131,8 +136,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder d
             WHERE (:id IS NOT NULL AND f.id = :id)
-               OR UPPER(f.fileName) LIKE UPPER(CONCAT('%', :term, '%'))
-               OR UPPER(f.description) LIKE UPPER(CONCAT('%', :term, '%'))
+               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%')
+               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%')
             ORDER BY f.fileName ASC
             """)
     List<FileInfo> searchForTree(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
@@ -173,11 +178,23 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     List<FileInfo> findByFolderIdIn(@Param("folderIds") Collection<Integer> folderIds);
 
     /**
-     * The file with this name in this folder, without its revisions - the duplicate check on
-     * upload. Without case, as {@code uq_file_info_name_per_folder} compares (issue 86).
+     * The file with this name in this folder, without its revisions - the v2 API's lookup of an
+     * object by its key. Without case, as {@code uq_file_info_name_per_folder} compares (issue 86).
      */
     @Query("SELECT f FROM FileInfo f WHERE f.folder.id = :folderId AND UPPER(f.fileName) = UPPER(:name)")
     Optional<FileInfo> findByFolderIdAndFileName(@Param("folderId") int folderId, @Param("name") String name);
+
+    /**
+     * Whether a folder already holds a file whose name folds to this key ({@code SearchKey}) - the
+     * duplicate check on upload and on a move: {@code گزارش‌ها} and {@code گزارشها}, or {@code ۱۴۰۳}
+     * and {@code 1403}, are one name, on MySQL and PostgreSQL alike (issue 86). Checked by the
+     * service; the unique constraint on the name itself is the guarantee against a race.
+     */
+    boolean existsByFolderIdAndSearchName(int folderId, String searchName);
+
+    /** The number of the file a client named by its external id ({@code external_id}, V2.16). */
+    @Query("SELECT f.id FROM FileInfo f WHERE f.externalId = :externalId")
+    Optional<Integer> findIdByExternalId(@Param("externalId") String externalId);
 
 
     /** Every file beneath a folder, by its materialised path - what a rename re-tags. */
@@ -210,8 +227,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder d
             WHERE (:id IS NOT NULL AND f.id = :id)
-               OR UPPER(f.fileName) LIKE UPPER(CONCAT('%', :term, '%'))
-               OR UPPER(f.description) LIKE UPPER(CONCAT('%', :term, '%'))
+               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%')
+               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%')
             """)
     Page<FileInfo> searchFiles(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
 
@@ -221,8 +238,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             JOIN FETCH f.folder d
             WHERE d.id IN (:folderIds)
               AND ((:id IS NOT NULL AND f.id = :id)
-               OR UPPER(f.fileName) LIKE UPPER(CONCAT('%', :term, '%'))
-               OR UPPER(f.description) LIKE UPPER(CONCAT('%', :term, '%')))
+               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%')
+               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%'))
             """)
     Page<FileInfo> searchFilesWithinFolders(@Param("id") Integer id,
                                             @Param("term") String term,

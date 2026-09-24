@@ -8,6 +8,8 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import com.hnp.filemanagement.util.SearchKey;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
@@ -55,9 +57,22 @@ public class Folder extends AbstractEntity {
     @Column(name = "name", nullable = false)
     private String name;
 
+    /**
+     * {@code SearchKey} of {@link #name}: what a search and the sibling-name check compare
+     * (issue 86). Written by {@link #setName} and nowhere else.
+     */
+    @Setter(AccessLevel.NONE)
+    @Column(name = "search_name", nullable = false)
+    private String searchName;
+
     /** What a person reads — the Persian label, for the rows that have one. */
     @Column(name = "display_name", nullable = false)
     private String displayName;
+
+    /** {@code SearchKey} of {@link #displayName}; written by {@link #setDisplayName}. */
+    @Setter(AccessLevel.NONE)
+    @Column(name = "search_display_name", nullable = false)
+    private String searchDisplayName;
 
     /**
      * Materialised path of ids with a leading <em>and</em> trailing slash, {@code /1/7/22/},
@@ -121,5 +136,15 @@ public class Folder extends AbstractEntity {
      */
     public String childPath(int childId) {
         return path + childId + "/";
+    }
+
+    public void setName(String name) {
+        this.name = name;
+        this.searchName = SearchKey.of(name, SearchKey.NAME_LENGTH);
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+        this.searchDisplayName = SearchKey.of(displayName, SearchKey.LABEL_LENGTH);
     }
 }

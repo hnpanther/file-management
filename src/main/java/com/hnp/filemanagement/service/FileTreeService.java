@@ -11,6 +11,7 @@ import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.ChildCount;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
+import com.hnp.filemanagement.util.SearchKey;
 import com.hnp.filemanagement.util.SearchTerms;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.AccessDeniedException;
@@ -137,7 +138,13 @@ public class FileTreeService {
         }
         FolderAccess access = folderAccessService.accessFor(principalId);
         Integer id = SearchTerms.asFileId(term);
-        List<FileInfo> hits = fileInfoRepository.searchForTree(id, term, PageRequest.of(0, 20)).stream()
+        // Compared as the stored keys are (SearchKey, issue 86). A term that folds to nothing -
+        // only half-spaces or marks - matches no text, rather than every file through LIKE '%%'.
+        String key = SearchKey.forSearch(term);
+        if (key.isEmpty() && id == null) {
+            return List.of();
+        }
+        List<FileInfo> hits = fileInfoRepository.searchForTree(id, key.isEmpty() ? SearchKey.MATCHES_NOTHING : key, PageRequest.of(0, 20)).stream()
                 // Search reaches across the whole tree, so unlike opening a folder it can turn up
                 // something outside every grant. A hit is only offered if its folder is readable.
                 .filter(fileInfo -> folderAccessService.allowsRead(access, fileInfo))

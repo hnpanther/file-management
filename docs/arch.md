@@ -297,10 +297,16 @@ is refused before a filesystem call, whatever the caller spelled (issues 4 and 1
 and this one both stay: a key can be well formed and still name somewhere it may not.
 
 **`StoredBlob`** is what the store actually wrote — the byte count and the SHA-256 of the bytes
-that streamed past, computed during the write rather than taken from the caller. The digest has
-nowhere to live yet (`file_details.hash_id` is a random UUID with a unique index, so identical
-files would collide there); the column arrives with the PostgreSQL baseline, and Phase 4 is what
-needs it, since copying bytes between two stores is only verifiable with it (issues 6 and 7).
+that streamed past, computed during the write rather than taken from the caller. `FileService`
+records both on the revision: `file_details.checksum_sha256` (since 1.8.0) and `file_size` as
+stored. Phase 4 is what needs the checksum, since copying bytes between two stores is only
+verifiable with it (issues 6 and 7). Revisions stored before 1.8.0 get theirs from
+**`ChecksumBackfill`**: after the application is ready, on a virtual thread of its own, it reads
+each revision that has none, a batch at a time in id order, and writes the digest only where the
+column is still null and the key is still the one it read (`recordChecksum`) - no transaction is
+held while the bytes stream. A revision whose bytes are missing is logged and left null; the run
+ends with a summary line, and a restart resumes with what is still null
+(`filemanagement.storage.checksum-backfill-enabled`).
 
 **The contract** every implementation keeps is written once, in `BlobStoreContractTest`: what
 `put` refuses, what a missing key answers, what a directory delete takes with it, which keys are
@@ -521,13 +527,18 @@ document, so a browser navigation still lands on a page.
 |---|---|---|
 | GET | `/health-test` | `API_HEALTH_TEST` |
 | POST | `/` (multipart; private unless `public-file=1` or `true` - since 1.7.0, before which it was public unless `0`; the place is `folderId`, the id of any folder below the root — a request without it is a 400 naming the parameter; the pre-step-4 triple is ignored) | `API_SAVE_NEW_FILE` |
-| DELETE | `/file-info/{fileInfoId}/file-details/{fileDetailsId}` | `API_DELETE_FILE_DETAILS` |
+| DELETE | `/file-info/{fileInfoId}/file-details/{fileDetailsId}` (each id a number or an external id - below) | `API_DELETE_FILE_DETAILS` |
 | DELETE | `/file-details/{fileDetailsId}` (the same delete by the version's id alone) | `API_DELETE_FILE_DETAILS` |
 | GET | `/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` |
 | GET | `/file-details/{fileDetailsId}/download` (the same download by the version's id alone) | `API_DOWNLOAD_FILE` |
 
 The id-only forms with `folderId` on the upload are the contract an integration keeps since Phase 7
-step 4: nothing in them names anything but a folder and a version. Both deletes are judged on the file's own folder
+step 4: nothing in them names anything but a folder and a version. **Since 1.8.0 every id in these
+paths is a number or an external id** - the file's or the revision's `external_id`, a UUID in any
+case (`IdReference`, converted like any path variable, so a segment that is neither is the same
+400 `InvalidParameter` a non-number always was). The upload answers `fileId`, `fileDetailsId`,
+`fileExternalId`, `fileDetailsExternalId` and `checksumSha256`; the first two are unchanged, and the
+numbers keep working. An external id is a name, not a permission: the folder check is the same. Both deletes are judged on the file's own folder
 (`requireWriteAccess` on the `FileInfo`), the same way a download and a new version are. The
 whole group accepts either credential: the shared account's Basic password, or a Bearer API key,
 which reaches its own folders only.
@@ -862,13 +873,14 @@ POST /files (multipart)
             ├─ ValidationUtil.checkCorrectFileName
             ├─ build FileInfo (folder, state, lastVersion = 1); tagMirrorService.retag(fileInfo)
             ├─ build FileDetails v1: UploadPolicyService.requireAllowed(principal, file) → kind and size for this person
-            │                        then hashId = random UUID, storageKey, content_type = ContentTypes.detect
+            │                        then externalId = random UUID, storageKey, content_type = ContentTypes.detect
             ├─ fileInfoRepository.save(fileInfo)          ← cascades to FileDetails
             ├─ actionHistoryService.saveActionHistory × 2
             └─ storageWriter.write(fileDetails.storageKey, bytes)          ← disk write, LAST
                  ├─ StorageWriteJournal.begin(key)   ← committed in its own transaction
-                 ├─ blobStore.put(key, bytes)
-                 └─ registerSynchronization → rolled back? delete the bytes; either way clear the note
+                 ├─ blobStore.put(key, bytes)        → StoredBlob: size, SHA-256
+                 ├─ registerSynchronization → rolled back? delete the bytes; either way clear the note
+                 └─ fileDetails.checksumSha256 (and fileSize) ← from the StoredBlob, committed with the row
 ```
 
 The disk write is still not part of the transaction — nothing can put it there — but it no longer
@@ -899,6 +911,12 @@ migrations themselves, in `src/main/resources/db/migration`:
 | `V2.7__Add_Content_Kind.sql` | `content_kind`: the custom half of the content catalogue - extension, media type, and a byte signature at an offset or "text only"; empty until an administrator adds one |
 | `V2.10__Add_App_Setting.sql` | `app_setting` (name → value, audited), seeded with `public-files.anonymous = true`, the behaviour there always was; `GENERAL_SETTINGS_PAGE` and `SAVE_GENERAL_SETTINGS` |
 | `V2.11__Profiles_And_Quota.sql` | `folder.quota_bytes`; `uq_folder_owner_user` (one home per user); the `Profiles` top-level folder (kind `PROFILES`, in a `profiles` tag group), created — or adopted, if a top-level folder of that name exists and holds no files directly (refused otherwise, fail-fast); `CREATE_USER_HOME` and `SET_FOLDER_QUOTA` |
+| `V2.13__Add_File_Storage_Write.sql` | `file_storage_write`: the note a byte write leaves until its transaction ends, which `StorageSweeper` settles (roadmap 2.3) |
+| `V2.14__Rename_User_To_App_User.sql` | `user` renamed `app_user` - reserved in PostgreSQL; ids, foreign keys and indexes unchanged (release A) |
+| `V2.15__Widen_File_Size.sql` | `file_details.file_size` a `BIGINT` (issue 6) |
+| `V2.16__Checksum_External_Id_And_Search_Keys.sql` | 1.8.0: `file_details.hash_id` renamed `external_id` (and its index); `file_details.checksum_sha256`; `file_info.external_id`; the search keys - `search_name` and `search_description` on `file_info` and `file_details`, `search_name` and `search_display_name` on `folder`, `utf8mb4_bin` - all nullable here |
+| `V2_17__Fill_Search_Keys_And_External_Ids` (Java) | fills them for existing rows: every key from `SearchKey`, a random UUID for every file, a revision's id kept if it is a canonical UUID (lower-cased) and replaced otherwise; paged by id, one transaction, re-runnable |
+| `V2.18__Require_External_Id_And_Search_Keys.sql` | makes them `NOT NULL` (all but a file's description key and the checksum), narrows `external_id` to `VARCHAR(36)` ascii, adds `uq_file_info_external_id` |
 | `V2.12__Add_File_Share_Link.sql` | `file_share_link` (token hash, revision, expiry, optional password hash and download cap, counts, lock, revocation, maker); `CREATE_SHARE_LINK`, `SHARE_LINKS_PAGE`, `REVOKE_SHARE_LINK` |
 | `V2.9__Folders_Any_Depth.sql` | Folders of any depth: refuses to run where a top-level folder or a stored key is named `files`; `CATEGORY` / `SUB_CATEGORY` / `TAG` become `FOLDER`; `REST_MOVE_FOLDER` (mapped onto the roles that may rename) and the three `TAG_GROUP` page permissions |
 | `V2.8__Remove_Taxonomy.sql` | Phase 7 step 4. Fails fast first: `file_info.folder_id NOT NULL`, `uq_file_info_name_per_folder`, `folder.tag_group_id` backfilled from each category's general tag and required on every `CATEGORY` row. Then the four `REST_*_FOLDER` / `REST_GET_TAG_GROUPS` permissions, mapped onto the roles that held the taxonomy ones; the 27 taxonomy permissions deleted; `file_info` / `file_details` lose `file_path`, `relative_path`, `file_sub_category_id`, `main_tag_file_id`; `folder` loses `general_tag_id`, `source_type`, `source_id`; `main_tag_file`, `file_sub_category`, `file_category`, `general_tag` dropped. Not reversible without the backup |
@@ -951,6 +969,8 @@ schema at startup but never modifies it.
 | `filemanagement.storage.sweep-every-minutes` | `15` | how often it runs. Read by the `@Scheduled` annotation from the raw property, because an annotation is resolved before any binding happens |
 | `filemanagement.storage.unfinished-after-minutes` | `60` | how old a byte write must be before it is treated as abandoned; longer than any upload could possibly take |
 | `filemanagement.storage.sweep-batch-size` | `200` | notes settled per read |
+| `filemanagement.storage.checksum-backfill-enabled` | `true` | `ChecksumBackfill`: whether it runs, once, after each start, for the revisions with no checksum. Off also logs how many there are |
+| `filemanagement.storage.checksum-backfill-batch-size` | `50` | revisions read per batch |
 | `filemanagement.auth.ldap.activedirectory.enabled` / `.domain` / `.url` | `false`, `hnp.local`, `ldap://172.29.76.9` | |
 
 Note the two different prefixes: `filemanagement.*` is the application's own settings, bound and

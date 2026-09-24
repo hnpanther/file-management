@@ -65,6 +65,11 @@ public class ModelConverterUtil {
 
         FileDetailsDTO fileDetailsDTO = new FileDetailsDTO();
         fileDetailsDTO.setId(fileDetails.getId());
+        fileDetailsDTO.setExternalId(fileDetails.getExternalId());
+        // The parent is loaded wherever this is called: it is the file being converted, or the one
+        // just created.
+        fileDetailsDTO.setFileInfoExternalId(fileDetails.getFileInfo().getExternalId());
+        fileDetailsDTO.setChecksumSha256(fileDetails.getChecksumSha256());
         fileDetailsDTO.setFileName(fileDetails.getFileName());
         fileDetailsDTO.setFileExtension(fileDetails.getFileExtension());
         fileDetailsDTO.setContentType(fileDetails.getContentType());
@@ -115,6 +120,7 @@ public class ModelConverterUtil {
 
         FileInfoDTO fileInfoDTO = new FileInfoDTO();
         fileInfoDTO.setId(fileInfo.getId());
+        fileInfoDTO.setExternalId(fileInfo.getExternalId());
         fileInfoDTO.setFileName(fileInfo.getFileName());
         fileInfoDTO.setFileNameDescription(fileInfo.getFileNameDescription());
         fileInfoDTO.setDescription(fileInfo.getDescription());
@@ -172,6 +178,9 @@ public class ModelConverterUtil {
 
         fileUploadOutputDTO.setFileId(fileDetailsDTO.getFileInfoId());
         fileUploadOutputDTO.setFileDetailsId(fileDetailsDTO.getId());
+        fileUploadOutputDTO.setFileExternalId(fileDetailsDTO.getFileInfoExternalId());
+        fileUploadOutputDTO.setFileDetailsExternalId(fileDetailsDTO.getExternalId());
+        fileUploadOutputDTO.setChecksumSha256(fileDetailsDTO.getChecksumSha256());
         fileUploadOutputDTO.setFileName(fileDetailsDTO.getFileName());
         fileUploadOutputDTO.setFileExtension(fileDetailsDTO.getFileExtension());
         fileUploadOutputDTO.setContentType(fileDetailsDTO.getContentType());

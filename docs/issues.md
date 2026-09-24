@@ -174,9 +174,18 @@ way to detect silent corruption after the S3 migration.
 Fix: keep the UUID as a surrogate `external_id`, and add a real `checksum_sha256` column populated
 during the upload stream.
 
-> **Scheduled** as step 2 of the roadmap's "Where things stand" (1.8.0), before PostgreSQL release
-> B: `checksum_sha256` with a backfill, `hash_id` renamed `external_id`, and an `external_id` on
-> `file_info` too, which the API accepts beside the integer id during a transition.
+> **Fixed in 1.8.0** (`V2.16` - `V2.18`). `hash_id` is `external_id`, a lower-case random UUID
+> with its unique index; the rows where the first code had stored the file name got a new UUID
+> (`V2_17`, a Java migration - MySQL's `UUID()` is version 1, a timestamp and a MAC address), and
+> `file_info` has an `external_id` of its own. `file_details.checksum_sha256` holds the SHA-256 of
+> the stored bytes: written on every upload from what `StorageWriter` computed while writing
+> (`StoredBlob`), and for older revisions by `ChecksumBackfill`, which reads each one back once in
+> the background after the start, only fills what is empty, and logs every revision whose bytes
+> are missing. The v1 API takes either id in every path (`IdReference`; a malformed one is the same
+> 400 `InvalidParameter` as before) and its upload answers both ids and the checksum. Still open
+> from the consequences above: de-duplication, and the v2 `ETag`, which stays
+> `"v{version}-{size}"` rather than becoming the checksum - a changed `ETag` format is a change
+> clients can see, to make on purpose.
 
 ### 8. The Active Directory provider returns `null` instead of throwing — **S1**
 
@@ -1464,6 +1473,20 @@ is refused beside `Report` - is what proves it.
 > cover only one direction; both directions need either a normalised copy of each searched
 > column or issue 21's full-text search. Until one is chosen, that part of today's search
 > behaviour does not survive the move.
+>
+> **Decided and done in 1.8.0: the normalised copy.** Every searched name and description has a
+> folded key beside it - `file_info.search_name` / `search_description`, the same two on
+> `file_details`, `folder.search_name` / `search_display_name` - computed by `SearchKey` (NFKD,
+> marks, format characters and the tatweel dropped, every decimal digit as ASCII, Arabic `ي` `ى`
+> `ك` as Persian, whitespace collapsed, upper case), written by the entities' setters and filled
+> for existing rows by the Java migration `V2_17`. The file, folder, tree, explorer and public
+> searches compare `REPLACE(key, ' ', '') LIKE %term%` with the term folded the same way, so the
+> half-space, a plain space and no space all meet. The key columns are `utf8mb4_bin` on MySQL, so
+> the collation adds nothing PostgreSQL would not - and `PortableQueriesTest` now proves the fold
+> on MySQL too: a raw term in another case finds nothing. A file or folder name that folds to a
+> sibling's is refused as a duplicate (spaces kept: `report 1` and `report1` stay two names); the
+> check is the service's, and the exact-name constraints stay the guarantee against a race.
+> Accent folding came with it. The user list, roles, tags and tag groups keep `UPPER` only.
 
 ### 87. An empty search box is a `NULL` PostgreSQL cannot type — **S1 for the migration**
 

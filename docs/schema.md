@@ -133,7 +133,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V2.15`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
+_As of migration `V2.18`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
 
 ### `action_history`
 
@@ -259,17 +259,20 @@ _As of migration `V2.15`. Types and defaults are MySQL's own; every table is Inn
 |---|---|---|---|---|
 | `id` | `int` | no |  | auto-increment |
 | `file_info_id` | `int` | no |  |  |
-| `hash_id` | `varchar(300)` | no |  |  |
+| `external_id` | `varchar(36)` | no |  | ascii |
 | `file_name` | `varchar(100)` | no |  |  |
+| `search_name` | `varchar(200)` | no |  |  |
 | `file_extension` | `varchar(10)` | no |  |  |
 | `content_type` | `varchar(100)` | no |  |  |
 | `version` | `int` | no |  |  |
 | `version_name` | `varchar(100)` | no |  |  |
 | `version_name_description` | `varchar(1000)` | yes |  |  |
 | `description` | `varchar(1000)` | no |  |  |
+| `search_description` | `varchar(2000)` | no |  |  |
 | `storage_key` | `varchar(1000)` | no |  |  |
 | `file_link` | `varchar(1000)` | yes |  |  |
 | `file_size` | `bigint` | no |  |  |
+| `checksum_sha256` | `varchar(64)` | yes |  | ascii |
 | `enabled` | `int` | no |  |  |
 | `state` | `int` | no |  |  |
 | `created_at` | `datetime` | no |  |  |
@@ -278,7 +281,7 @@ _As of migration `V2.15`. Types and defaults are MySQL's own; every table is Inn
 | `updated_by` | `int` | yes |  |  |
 
 * **primary key** `id`
-* **unique** `uq_file_details_hash_id` (`hash_id`)
+* **unique** `uq_file_details_external_id` (`external_id`)
 * **unique** `uq_file_details_version_format` (`file_info_id`, `version`, `file_extension`)
 * **foreign key** `fk_file_details_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_file_details_file_info_id` `file_info_id` → `file_info` (`id`)
@@ -291,10 +294,13 @@ _As of migration `V2.15`. Types and defaults are MySQL's own; every table is Inn
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
 | `id` | `int` | no |  | auto-increment |
+| `external_id` | `varchar(36)` | no |  | ascii |
 | `file_name` | `varchar(100)` | no |  |  |
+| `search_name` | `varchar(200)` | no |  |  |
 | `code_name` | `varchar(300)` | no |  |  |
 | `file_name_description` | `varchar(500)` | no |  |  |
 | `description` | `varchar(1000)` | yes |  |  |
+| `search_description` | `varchar(2000)` | yes |  |  |
 | `file_link` | `varchar(1000)` | yes |  |  |
 | `last_version` | `int` | no |  |  |
 | `folder_id` | `int` | no |  |  |
@@ -306,6 +312,7 @@ _As of migration `V2.15`. Types and defaults are MySQL's own; every table is Inn
 | `updated_by` | `int` | yes |  |  |
 
 * **primary key** `id`
+* **unique** `uq_file_info_external_id` (`external_id`)
 * **unique** `uq_file_info_name_per_folder` (`folder_id`, `file_name`)
 * **foreign key** `fk_file_info_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_file_info_folder` `folder_id` → `folder` (`id`)
@@ -368,7 +375,9 @@ _As of migration `V2.15`. Types and defaults are MySQL's own; every table is Inn
 | `id` | `int` | no |  | auto-increment |
 | `parent_id` | `int` | yes |  |  |
 | `name` | `varchar(100)` | no |  |  |
+| `search_name` | `varchar(200)` | no |  |  |
 | `display_name` | `varchar(200)` | no |  |  |
+| `search_display_name` | `varchar(400)` | no |  |  |
 | `path` | `varchar(1000)` | no |  | ascii |
 | `depth` | `int` | no |  |  |
 | `kind` | `varchar(30)` | no |  |  |

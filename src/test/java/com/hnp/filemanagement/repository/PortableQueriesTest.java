@@ -10,6 +10,7 @@ import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.support.FolderFixture;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.util.SearchKey;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -34,6 +35,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * nothing on MySQL shows that a query depends on the collation. They are written for release B,
  * which runs the suite on both databases; there, a bare {@code =} or {@code LIKE} fails them.
  * Each name is stored in one case and asked for in another, never the same.
+ *
+ * <p><b>The searches are different since 1.8.0</b> (V2.16): they compare folded key columns
+ * ({@link SearchKey}), which are binary on MySQL, so the collation no longer helps them and these
+ * tests prove the fold on MySQL too. A search is handed its term folded, as the services do -
+ * {@link #key} - and the Persian cases (the half-space, the digits' script, Arabic letters, a
+ * space typed where the name has a half-space) are asked for in every form but the stored one.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -162,22 +169,25 @@ class PortableQueriesTest extends MySqlSupport {
         flushAndClear();
 
         // The list page, whole and within folders: name, description, and a folder's name above.
-        assertThat(fileInfoRepository.search("QUARTERLY report " + n, PAGE).getContent()).extracting(FileInfo::getId).contains(id);
-        assertThat(fileInfoRepository.search("annual SUMMARY " + n, PAGE).getContent()).extracting(FileInfo::getId).contains(id);
-        assertThat(fileInfoRepository.search(category, PAGE).getContent()).extracting(FileInfo::getId).contains(id);
-        assertThat(fileInfoRepository.searchWithinFolders("quarterly REPORT " + n, folder, PAGE).getContent()).extracting(FileInfo::getId).containsExactly(id);
-        assertThat(fileInfoRepository.searchWithinFolders(category.toLowerCase(), folder, PAGE).getContent()).extracting(FileInfo::getId).containsExactly(id);
+        assertThat(fileInfoRepository.search(key("quarterly report " + n), PAGE).getContent()).extracting(FileInfo::getId).contains(id);
+        assertThat(fileInfoRepository.search(key("annual summary " + n), PAGE).getContent()).extracting(FileInfo::getId).contains(id);
+        assertThat(fileInfoRepository.search(key(category), PAGE).getContent()).extracting(FileInfo::getId).contains(id);
+        assertThat(fileInfoRepository.searchWithinFolders(key("quarterly REPORT " + n), folder, PAGE).getContent()).extracting(FileInfo::getId).containsExactly(id);
+        assertThat(fileInfoRepository.searchWithinFolders(key(category.toLowerCase()), folder, PAGE).getContent()).extracting(FileInfo::getId).containsExactly(id);
 
         // The tree's and the explorer's search.
-        assertThat(fileInfoRepository.searchForTree(null, "QUARTERLY REPORT " + n, PAGE)).extracting(FileInfo::getId).contains(id);
-        assertThat(fileInfoRepository.searchFiles(null, "annual summary " + n, PAGE).getContent()).extracting(FileInfo::getId).contains(id);
-        assertThat(fileInfoRepository.searchFilesWithinFolders(null, "QUARTERLY", folder, PAGE).getContent()).extracting(FileInfo::getId).containsExactly(id);
+        assertThat(fileInfoRepository.searchForTree(null, key("quarterly report " + n), PAGE)).extracting(FileInfo::getId).contains(id);
+        assertThat(fileInfoRepository.searchFiles(null, key("annual summary " + n), PAGE).getContent()).extracting(FileInfo::getId).contains(id);
+        assertThat(fileInfoRepository.searchFilesWithinFolders(null, key("quarterly"), folder, PAGE).getContent()).extracting(FileInfo::getId).containsExactly(id);
 
         // The public list, matched on the revision's own name and the folders' labels.
-        assertThat(fileDetailsRepository.searchPublicFiles("QUARTERLY REPORT " + n, PAGE).getContent())
+        assertThat(fileDetailsRepository.searchPublicFiles(key("quarterly report " + n), PAGE).getContent())
                 .extracting(details -> details.getFileInfo().getId()).contains(id);
-        assertThat(fileDetailsRepository.searchPublicFiles(chain.category().getDisplayName().toUpperCase(), PAGE).getContent())
+        assertThat(fileDetailsRepository.searchPublicFiles(key(chain.category().getDisplayName().toLowerCase()), PAGE).getContent())
                 .extracting(details -> details.getFileInfo().getId()).contains(id);
+
+        // The raw term in another case finds nothing: the columns are binary, the fold does it all.
+        assertThat(fileInfoRepository.search("quarterly report " + n, PAGE).getContent()).extracting(FileInfo::getId).doesNotContain(id);
     }
 
     @Test
@@ -186,10 +196,95 @@ class PortableQueriesTest extends MySqlSupport {
         String rootPath = FolderFixture.root(folderRepository).getPath();
         flushAndClear();
 
-        assertThat(folderRepository.searchFolders(null, chain.subCategory().getName().toUpperCase(), rootPath, PAGE))
+        assertThat(folderRepository.searchFolders(null, key(chain.subCategory().getName().toLowerCase()), rootPath, PAGE))
                 .extracting(Folder::getId).contains(chain.subCategoryId());
-        assertThat(folderRepository.searchFolders(null, chain.subCategory().getDisplayName().toUpperCase(), rootPath, PAGE))
+        assertThat(folderRepository.searchFolders(null, key(chain.subCategory().getDisplayName().toLowerCase()), rootPath, PAGE))
                 .extracting(Folder::getId).contains(chain.subCategoryId());
+    }
+
+    // ================================================================ Persian (issue 86, 1.8.0)
+
+    /** {@code گزارش‌های ۱۴۰۳}: a half-space and Persian digits, as a Persian keyboard writes it. */
+    private static final String REPORTS_1403 = "\u06af\u0632\u0627\u0631\u0634\u200c\u0647\u0627\u06cc \u06f1\u06f4\u06f0\u06f3";
+
+    @Test
+    @DisplayName("a Persian name is found typed without the half-space, with a space for it, with ASCII or Arabic-Indic digits, or with Arabic yeh")
+    void persianSearches() {
+        FileInfo file = TestData.fileInfo(creator, chain.tag(), REPORTS_1403 + " " + n);
+        file.setDescription("\u0628\u0648\u062f\u062c\u0647\u0654 \u0633\u0627\u0644 \u06f1\u06f4\u06f0\u06f3"); // بودجهٔ سال ۱۴۰۳
+        TestData.fileDetails(creator, file, 1, "pdf");
+        file = fileInfoRepository.save(file);
+        int id = file.getId();
+        Set<Integer> folder = Set.of(chain.tagId());
+        flushAndClear();
+
+        List<String> typed = List.of(
+                "\u06af\u0632\u0627\u0631\u0634\u0647\u0627\u06cc",          // گزارشهای - no half-space
+                "\u06af\u0632\u0627\u0631\u0634 \u0647\u0627\u06cc",         // گزارش های - a plain space
+                "\u06af\u0632\u0627\u0631\u0634\u0647\u0627\u064a 1403",     // گزارشهاي 1403 - Arabic yeh, ASCII digits
+                "\u0661\u0664\u0660\u0663",                                   // ١٤٠٣ - Arabic-Indic digits
+                "1403 " + n);
+        for (String term : typed) {
+            assertThat(fileInfoRepository.search(key(term), PAGE).getContent()).as(term).extracting(FileInfo::getId).contains(id);
+            assertThat(fileInfoRepository.searchWithinFolders(key(term), folder, PAGE).getContent()).as(term).extracting(FileInfo::getId).contains(id);
+            assertThat(fileInfoRepository.searchForTree(null, key(term), PAGE)).as(term).extracting(FileInfo::getId).contains(id);
+            assertThat(fileInfoRepository.searchFiles(null, key(term), PAGE).getContent()).as(term).extracting(FileInfo::getId).contains(id);
+            assertThat(fileInfoRepository.searchFilesWithinFolders(null, key(term), folder, PAGE).getContent()).as(term).extracting(FileInfo::getId).contains(id);
+            assertThat(fileDetailsRepository.searchPublicFiles(key(term), PAGE).getContent()).as(term)
+                    .extracting(details -> details.getFileInfo().getId()).contains(id);
+        }
+
+        // The description: بودجه without its hamza, and the year in ASCII.
+        assertThat(fileInfoRepository.searchFiles(null, key("\u0628\u0648\u062f\u062c\u0647 \u0633\u0627\u0644 1403"), PAGE).getContent())
+                .extracting(FileInfo::getId).contains(id);
+        // And something the name does not say is still not found.
+        assertThat(fileInfoRepository.searchFilesWithinFolders(null, key("1404"), folder, PAGE).getContent()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a Persian folder name and label are found in every writing, and so are the files beneath")
+    void persianFolderSearches() {
+        Folder persian = TestData.folder(creator, chain.tag(), "\u0627\u0633\u0646\u0627\u062f\u06f1\u06f4\u06f0\u06f3x" + n, null); // اسناد۱۴۰۳
+        persian.setDisplayName("\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645 " + n);                                    // می‌خواهم
+        persian = TestData.placed(folderRepository.save(persian));
+        FileInfo file = TestData.fileInfo(creator, persian, "plain" + n);
+        TestData.fileDetails(creator, file, 1, "pdf");
+        file = fileInfoRepository.save(file);
+        String rootPath = FolderFixture.root(folderRepository).getPath();
+        flushAndClear();
+
+        assertThat(folderRepository.searchFolders(null, key("\u0627\u0633\u0646\u0627\u062f1403X" + n), rootPath, PAGE))
+                .extracting(Folder::getId).containsExactly(persian.getId());
+        assertThat(folderRepository.searchFolders(null, key("\u0645\u06cc\u062e\u0648\u0627\u0647\u0645 " + n), rootPath, PAGE))
+                .extracting(Folder::getId).containsExactly(persian.getId());
+        assertThat(fileInfoRepository.search(key("\u0645\u06cc \u062e\u0648\u0627\u0647\u0645 " + n), PAGE).getContent())
+                .as("a file under the folder, by the folder's label").extracting(FileInfo::getId).containsExactly(file.getId());
+        assertThat(fileDetailsRepository.searchPublicFiles(key("\u0645\u06cc\u062e\u0648\u0627\u0647\u0645" + n), PAGE).getContent())
+                .extracting(details -> details.getFileInfo().getId()).containsExactly(file.getId());
+    }
+
+    @Test
+    @DisplayName("names that differ only by the half-space, the digits' script, case or Arabic letters are one name in a folder; a space still counts")
+    void persianNameUniqueness() {
+        fileInfoRepository.save(TestData.fileInfo(creator, chain.tag(), REPORTS_1403 + " " + n));
+        Folder child = TestData.placed(folderRepository.save(TestData.folder(creator, chain.tag(), "Arch\u06f1\u06f4\u06f0\u06f3x" + n, null)));
+        flushAndClear();
+
+        int folder = chain.tagId();
+        assertThat(fileInfoRepository.existsByFolderIdAndSearchName(folder,
+                SearchKey.of("\u06af\u0632\u0627\u0631\u0634\u0647\u0627\u064a 1403 " + n))).isTrue();
+        assertThat(fileInfoRepository.existsByFolderIdAndSearchName(folder,
+                SearchKey.of("\u06af\u0632\u0627\u0631\u0634 \u0647\u0627\u06cc 1403 " + n))).as("a space is not a half-space").isFalse();
+        assertThat(fileInfoRepository.existsByFolderIdAndSearchName(chain.subCategoryId(),
+                SearchKey.of(REPORTS_1403 + " " + n))).as("per folder").isFalse();
+
+        assertThat(folderRepository.findByParentIdAndSearchName(chain.tagId(), SearchKey.of("ARCH1403X" + n)))
+                .extracting(Folder::getId).containsExactly(child.getId());
+    }
+
+    /** A term as the services hand it to these queries. */
+    private static String key(String term) {
+        return SearchKey.forSearch(term);
     }
 
     @Test

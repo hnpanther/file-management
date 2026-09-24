@@ -6,6 +6,8 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import com.hnp.filemanagement.util.SearchKey;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -20,10 +22,14 @@ import lombok.Setter;
  * guarantees it. The extension is kept as uploaded and compared without case, since {@code PDF}
  * and {@code pdf} at one version would be two keys for one file on Windows (issue 86).
  *
- * <p>{@code hashId} is a UUID, not a hash of the content, despite the name and the unique
- * constraint. Nothing computes a checksum of the stored bytes today; see
- * {@code docs/issues.md}, issue 7 — a real checksum has to exist before the S3 migration, because
- * that is what verifies an object survived the copy.
+ * <p>{@link #externalId} is how a client may name a revision (issue 7): a random UUID, neither
+ * guessable nor this database's numbering. It was {@code hash_id} until V2.16 - a UUID then too,
+ * never a hash. {@link #checksumSha256} is the hash: the SHA-256 of the stored bytes, written on
+ * every upload since 1.8.0 and filled in for older revisions by {@code ChecksumBackfill} - what
+ * verifies that an object survived a copy to another store (roadmap 4.3).
+ *
+ * <p>{@link #searchName} and {@link #searchDescription} are the {@code SearchKey} folds of the name
+ * and the description, set by those two setters and nowhere else, so they cannot fall behind.
  */
 @Entity
 @Table(name = "file_details")
@@ -34,8 +40,14 @@ public class FileDetails extends AuditableEntity {
     @Column(name = "file_name", nullable = false)
     private String fileName;
 
-    @Column(name = "hash_id", nullable = false, unique = true)
-    private String hashId;
+    /** {@code SearchKey} of {@link #fileName}; written by {@link #setFileName}. */
+    @Setter(AccessLevel.NONE)
+    @Column(name = "search_name", nullable = false)
+    private String searchName;
+
+    /** A lower-case random UUID, unique - the id a client may use in place of {@code id}. */
+    @Column(name = "external_id", nullable = false, unique = true, length = 36)
+    private String externalId;
 
     @Column(name = "file_extension", nullable = false)
     private String fileExtension;
@@ -45,6 +57,11 @@ public class FileDetails extends AuditableEntity {
 
     @Column(name = "description", nullable = false)
     private String description;
+
+    /** {@code SearchKey} of {@link #description}; written by {@link #setDescription}. */
+    @Setter(AccessLevel.NONE)
+    @Column(name = "search_description", nullable = false)
+    private String searchDescription;
 
     /**
      * Where the bytes are, as one opaque string relative to the storage root (roadmap 7.1).
@@ -75,6 +92,14 @@ public class FileDetails extends AuditableEntity {
     @Column(name = "file_size", nullable = false)
     private long fileSize;
 
+    /**
+     * Lower-case hex of the SHA-256 of the stored bytes, as the store computed it while writing
+     * them ({@code StoredBlob}). Null only for a revision stored before 1.8.0 that
+     * {@code ChecksumBackfill} has not read yet, or whose bytes it could not find.
+     */
+    @Column(name = "checksum_sha256", length = 64)
+    private String checksumSha256;
+
     @Column(name = "version", nullable = false)
     private Integer version;
 
@@ -94,4 +119,14 @@ public class FileDetails extends AuditableEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "file_info_id", nullable = false)
     private FileInfo fileInfo;
+
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+        this.searchName = SearchKey.of(fileName, SearchKey.NAME_LENGTH);
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+        this.searchDescription = SearchKey.of(description, SearchKey.DESCRIPTION_LENGTH);
+    }
 }

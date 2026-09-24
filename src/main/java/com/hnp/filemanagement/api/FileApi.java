@@ -6,6 +6,7 @@ import com.hnp.filemanagement.dto.FileDetailsDTO;
 import com.hnp.filemanagement.dto.FileDownloadDTO;
 import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FileUploadOutputDTO;
+import com.hnp.filemanagement.dto.IdReference;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.util.ContentDispositions;
@@ -46,6 +47,12 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>The upload still answers 200 rather than 201. It is a published endpoint and the status is
  * part of its contract, so changing it is a Phase 2 decision, not a cleanup.
+ *
+ * <p><b>Either id, since 1.8.0.</b> Every path segment that names a file or a revision takes its
+ * number, as it always has, or its external id - a UUID, in any case (issue 7, {@link IdReference});
+ * a segment that is neither is the same 400 a non-number always was. The upload answers
+ * both. The numbers keep working for as long as a client uses them; the external id is the one
+ * that is neither guessable nor tied to this database's numbering, so it is the one to move to.
  */
 @RestController
 @RequestMapping("/api/v1/files")
@@ -115,14 +122,19 @@ public class FileApi {
         return ModelConverterUtil.convertFileDetailsDTOToFileUploadOutputDTO(fileDetailsDTO);
     }
 
-    /** Deletes one version. Removing the last version removes the file itself. */
+    /**
+     * Deletes one version. Removing the last version removes the file itself. Each id is a number
+     * or an external id, and the two need not be the same kind.
+     */
     // API_DELETE_FILE_DETAILS
     @PreAuthorize("hasAuthority('API_DELETE_FILE_DETAILS') || hasAuthority('ADMIN')")
     @DeleteMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}")
     public ApiResult deleteFileDetails(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                       @PathVariable("fileInfoId") int fileInfoId,
-                                       @PathVariable("fileDetailsId") int fileDetailsId) {
+                                       @PathVariable("fileInfoId") IdReference fileInfoReference,
+                                       @PathVariable("fileDetailsId") IdReference fileDetailsReference) {
 
+        int fileInfoId = fileService.fileInfoIdOf(fileInfoReference);
+        int fileDetailsId = fileService.fileDetailsIdOf(fileDetailsReference);
         globalGeneralLogging.detail("delete file details id=" + fileDetailsId + " of file info id=" + fileInfoId);
 
         fileService.deleteFileDetails(fileInfoId, fileDetailsId, userDetails.getId());
@@ -139,8 +151,9 @@ public class FileApi {
     @PreAuthorize("hasAuthority('API_DELETE_FILE_DETAILS') || hasAuthority('ADMIN')")
     @DeleteMapping("file-details/{fileDetailsId}")
     public ApiResult deleteFileDetailsById(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                           @PathVariable("fileDetailsId") int fileDetailsId) {
+                                           @PathVariable("fileDetailsId") IdReference fileDetailsReference) {
 
+        int fileDetailsId = fileService.fileDetailsIdOf(fileDetailsReference);
         globalGeneralLogging.detail("delete file details id=" + fileDetailsId);
 
         fileService.deleteFileDetails(fileDetailsId, userDetails.getId());
@@ -151,14 +164,15 @@ public class FileApi {
     /**
      * Streams the stored bytes. {@code fileInfoId} is not used to look the version up - the id of a
      * {@code fileDetails} is already unique - but it keeps the URL parallel to the delete endpoint.
+     * It is still read as an id, so that a malformed one is a 400 as it always was.
      */
     // API_DOWNLOAD_FILE
     @PreAuthorize("hasAuthority('API_DOWNLOAD_FILE') || hasAuthority('ADMIN')")
     @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
     public ResponseEntity<Resource> downloadFile(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                                 @PathVariable("fileInfoId") int fileInfoId,
-                                                 @PathVariable("fileDetailsId") int fileDetailsId) {
-        return downloadFileById(userDetails, fileDetailsId);
+                                                 @PathVariable("fileInfoId") IdReference fileInfoReference,
+                                                 @PathVariable("fileDetailsId") IdReference fileDetailsReference) {
+        return downloadFileById(userDetails, fileDetailsReference);
     }
 
     /** The same download, by the version's id alone. */
@@ -166,8 +180,9 @@ public class FileApi {
     @PreAuthorize("hasAuthority('API_DOWNLOAD_FILE') || hasAuthority('ADMIN')")
     @GetMapping("file-details/{fileDetailsId}/download")
     public ResponseEntity<Resource> downloadFileById(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                                     @PathVariable("fileDetailsId") int fileDetailsId) {
+                                                     @PathVariable("fileDetailsId") IdReference fileDetailsReference) {
 
+        int fileDetailsId = fileService.fileDetailsIdOf(fileDetailsReference);
         globalGeneralLogging.detail("download file details id=" + fileDetailsId);
 
         FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId, userDetails.getId());

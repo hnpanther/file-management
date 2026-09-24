@@ -17,6 +17,7 @@ import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
+import com.hnp.filemanagement.util.SearchKey;
 import com.hnp.filemanagement.validation.ValidationUtil;
 import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.stereotype.Service;
@@ -432,11 +433,19 @@ public class FolderService {
         return trimmed.isEmpty() ? fallback : trimmed;
     }
 
+    /**
+     * Refuses a name another child of {@code parent} already has - compared by the folded key
+     * ({@code SearchKey}), so that one written with the half-space and one without, or with Persian
+     * digits and with ASCII ones, are the same name on either database (issue 86). The folder
+     * being renamed does not collide with itself.
+     */
     private void requireFreeAmongSiblings(Folder parent, String name, Integer selfId) {
-        folderRepository.findByParentIdAndNameIgnoreCase(parent.getId(), name)
+        folderRepository.findByParentIdAndSearchName(parent.getId(), SearchKey.of(name, SearchKey.NAME_LENGTH)).stream()
                 .filter(sibling -> !Objects.equals(sibling.getId(), selfId))
+                .findFirst()
                 .ifPresent(sibling -> {
-                    throw new DuplicateResourceException("a folder named " + name + " already exists under folder id=" + parent.getId());
+                    throw new DuplicateResourceException("a folder named " + name + " already exists under folder id="
+                            + parent.getId() + " (as " + sibling.getName() + ")");
                 });
     }
 

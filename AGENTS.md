@@ -198,7 +198,8 @@ the traversal cases in `ValidationUtilTest` are the ones never to relax.
 Schema is owned by **Flyway** (`src/main/resources/db/migration`), and `ddl-auto=validate` means
 Hibernate will refuse to start on a mismatch.
 
-* Add the next `V2.x__Description.sql` (`V2.15` is the latest). Never edit an applied migration.
+* Add the next `V2.x__Description.sql` (`V2.18` is the latest; `V2_17` is a Java migration in
+  `src/main/java/db/migration`). Never edit an applied migration.
 * Flyway is the only source of schema. There is no schema dump to keep in sync any more.
 * Update the entity in the same commit.
 * `ddl-auto=validate` checks types and existence but **not** nullability — if you add a `NOT NULL`
@@ -213,6 +214,18 @@ Hibernate will refuse to start on a mismatch.
   for in another
   ([issue 86](docs/issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2)).
   Tokens, keys and paths stay exact.
+* **A file or folder search compares the folded keys, not the names** (1.8.0). `search_name`,
+  `search_description` and `search_display_name` hold `SearchKey` of the column beside them - set
+  by the entity's setter, never by hand; a query compares `REPLACE(x.searchName, ' ', '') LIKE
+  CONCAT('%', :term, '%')` and the service passes `SearchKey.forSearch(term)`. A name that must be
+  unique in its folder is checked by its key (`SearchKey.of`). A new searched column gets a key
+  column and a line in `PersianNameFoldingTest`'s consistency check. **Changing `SearchKey` changes
+  every stored key** - it needs a migration that recomputes them
+  ([issue 86](docs/issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2)).
+* **Bytes get a checksum where they are written**: `StorageWriter.write` returns the `StoredBlob`,
+  and its SHA-256 goes on the revision (`file_details.checksum_sha256`). A new path that stores a
+  revision records it too
+  ([issue 7](docs/issues.md#7-hash_id-is-not-a-hash--s2)).
 * **A search term that means "everything" is `''`, never `null`**: write `:search = '' OR ...`
   and pass `SearchTerms.blankToEmpty`. A `null` inside `LIKE CONCAT(...)` has no type PostgreSQL
   accepts, and `CAST` cannot fix it without breaking MySQL's collations

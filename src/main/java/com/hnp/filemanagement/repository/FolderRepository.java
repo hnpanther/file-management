@@ -51,6 +51,14 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     /** A sibling by name - the uniqueness check before a create or rename, case-insensitive like the column. */
     Optional<Folder> findByParentIdAndNameIgnoreCase(Integer parentId, String name);
 
+    /**
+     * The children of a folder whose names fold to this key ({@code SearchKey}): what a new or a
+     * renamed folder's name is checked against, so that {@code گزارش‌ها} and {@code گزارشها} are one
+     * name on either database (issue 86). A list, because rows written before the check compared
+     * keys may already share one.
+     */
+    List<Folder> findByParentIdAndSearchName(Integer parentId, String searchName);
+
     /** One folder with its parent and its tag group loaded. */
     @Query("""
             SELECT f FROM Folder f
@@ -64,7 +72,8 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     long countByTagGroupId(Integer tagGroupId);
 
     /**
-     * Folders found by id, or by a fragment of the name or the label, inside one subtree (the
+     * Folders found by id, or by a fragment of the name or the label - their folded keys, against
+     * a term folded by {@code SearchKey.forSearch} (issue 86) - inside one subtree (the
      * root's own path covers everything). The root itself is never a hit. Folder access is applied
      * by the caller on the rows' paths, so the page is a little wider than what is shown.
      */
@@ -74,8 +83,8 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
             WHERE f.kind <> com.hnp.filemanagement.entity.FolderKind.ROOT
               AND f.path LIKE CONCAT(:pathPrefix, '%')
               AND ((:id IS NOT NULL AND f.id = :id)
-               OR UPPER(f.name) LIKE UPPER(CONCAT('%', :term, '%'))
-               OR UPPER(f.displayName) LIKE UPPER(CONCAT('%', :term, '%')))
+               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%')
+               OR REPLACE(f.searchDisplayName, ' ', '') LIKE CONCAT('%', :term, '%'))
             ORDER BY f.depth ASC, f.name ASC
             """)
     List<Folder> searchFolders(@Param("id") Integer id, @Param("term") String term,

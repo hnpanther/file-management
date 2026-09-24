@@ -19,6 +19,7 @@ import com.hnp.filemanagement.repository.ChildCount;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
+import com.hnp.filemanagement.util.SearchKey;
 import com.hnp.filemanagement.util.SearchTerms;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -192,10 +193,19 @@ public class FolderContentService {
                     pageInfoOf(null, pageRequest));
         }
 
-        Page<FileInfo> found = matches(term, folderFilter(access, scope), pageRequest);
+        // The term as the stored keys are compared (SearchKey). One that folds to nothing - only
+        // half-spaces or marks - names nothing; it is not a search for everything.
+        String key = SearchKey.forSearch(term);
+        Integer id = SearchTerms.asFileId(term);
+        if (key.isEmpty() && id == null) {
+            return new FolderSearchDTO(term, scope == null ? null : refOf(scope), List.of(), List.of(),
+                    pageInfoOf(null, pageRequest));
+        }
+
+        Page<FileInfo> found = matches(id, key, folderFilter(access, scope), pageRequest);
 
         return new FolderSearchDTO(term, scope == null ? null : refOf(scope),
-                folderHitsOf(term, scope, access), hitsOf(found.getContent()),
+                folderHitsOf(id, key, scope, access), hitsOf(found.getContent()),
                 pageInfoOf(found, pageRequest));
     }
 
@@ -204,10 +214,10 @@ public class FolderContentService {
      * scope, that this person may at least walk into. A short list, never paged: the query reads
      * a little more than it shows so that a folder hidden by access does not leave a gap.
      */
-    private List<FolderSearchDTO.FolderHit> folderHitsOf(String term, Folder scope, FolderAccess access) {
+    private List<FolderSearchDTO.FolderHit> folderHitsOf(Integer id, String key, Folder scope, FolderAccess access) {
         String prefix = (scope == null ? rootFolder() : scope).getPath();
         List<Folder> visible = folderRepository
-                .searchFolders(SearchTerms.asFileId(term), term, prefix,
+                .searchFolders(id, nothingIfEmpty(key), prefix,
                         PageRequest.of(0, FolderSearchDTO.MAX_FOLDER_HITS * 5))
                 .stream()
                 .filter(folder -> access.visible(folder.getPath()))
@@ -288,8 +298,13 @@ public class FolderContentService {
         return Optional.of(withinScope);
     }
 
-    private Page<FileInfo> matches(String term, Optional<Set<Integer>> folderFilter, PageRequest pageRequest) {
-        Integer id = SearchTerms.asFileId(term);
+    /** When only the id can match, the text side is a term no stored key contains. */
+    private static String nothingIfEmpty(String key) {
+        return key.isEmpty() ? SearchKey.MATCHES_NOTHING : key;
+    }
+
+    private Page<FileInfo> matches(Integer id, String key, Optional<Set<Integer>> folderFilter, PageRequest pageRequest) {
+        String term = nothingIfEmpty(key);
         if (folderFilter.isEmpty()) {
             return fileInfoRepository.searchFiles(id, term, pageRequest);
         }
