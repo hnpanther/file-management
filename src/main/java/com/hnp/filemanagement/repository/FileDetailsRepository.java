@@ -4,6 +4,7 @@ import com.hnp.filemanagement.entity.FileDetails;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -64,8 +65,9 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
 
     /**
      * The public file list. Only active versions of active files, filtered by a term matched
-     * against the version, the file, and the display name of every folder above it. An empty
-     * term matches everything; never {@code null} ({@code SearchTerms.blankToEmpty}, issue 87).
+     * against the version, the file, and the display name of every folder above it - their folded
+     * keys, against a term folded by {@code SearchKey.forSearch} (issue 86). An empty term matches
+     * everything; never {@code null} (issue 87).
      */
     @Query("""
             SELECT fd FROM FileDetails fd
@@ -73,11 +75,11 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
             JOIN FETCH fi.folder t
             WHERE fd.state = 0 AND fi.state = 0
               AND (:search = ''
-                   OR UPPER(fd.fileName) LIKE UPPER(CONCAT('%', (:search), '%'))
-                   OR UPPER(fd.description) LIKE UPPER(CONCAT('%', (:search), '%'))
+                   OR REPLACE(fd.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                   OR REPLACE(fd.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
                    OR EXISTS (SELECT a FROM Folder a
                               WHERE t.path LIKE CONCAT(a.path, '%') AND a.depth > 0
-                                AND UPPER(a.displayName) LIKE UPPER(CONCAT('%', (:search), '%'))))
+                                AND REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%')))
             """)
     Page<FileDetails> searchPublicFiles(@Param("search") String search, Pageable pageable);
 
@@ -106,6 +108,38 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
     boolean existsByFileInfoAndVersionAndFormat(@Param("fileInfoId") int fileInfoId,
                                                 @Param("version") int version,
                                                 @Param("format") String format);
+
+    /** The number of the revision a client named by its external id ({@code external_id}, V2.16). */
+    @Query("SELECT fd.id FROM FileDetails fd WHERE fd.externalId = :externalId")
+    Optional<Integer> findIdByExternalId(@Param("externalId") String externalId);
+
+    /**
+     * The next revisions {@code ChecksumBackfill} has to read: no checksum yet, id above the last
+     * one it looked at, in id order - so a revision whose bytes are missing is passed over once per
+     * run instead of being asked for again and again.
+     */
+    @Query("""
+            SELECT fd.id FROM FileDetails fd
+            WHERE fd.checksumSha256 IS NULL AND fd.id > :afterId
+            ORDER BY fd.id
+            """)
+    List<Integer> findIdsWithoutChecksum(@Param("afterId") int afterId, Pageable pageable);
+
+    /** How many revisions have no checksum - what the backfill reports as left when it ends. */
+    long countByChecksumSha256IsNull();
+
+    /**
+     * Records a checksum the backfill computed, only where none is recorded yet and only for the
+     * bytes it read: a revision that received one in the meantime, or whose key changed, is left as
+     * it is. Returns the rows written, 0 or 1.
+     */
+    @Modifying
+    @Query("""
+            UPDATE FileDetails fd SET fd.checksumSha256 = :checksum
+            WHERE fd.id = :id AND fd.checksumSha256 IS NULL AND fd.storageKey = :storageKey
+            """)
+    int recordChecksum(@Param("id") int id, @Param("storageKey") String storageKey,
+                       @Param("checksum") String checksum);
 
     /** How many rows share one version of a file — one format, or several. */
     int countByFileInfoIdAndVersion(int fileInfoId, int version);

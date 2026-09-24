@@ -9,6 +9,15 @@ public class FileDetailsDTO {
 
     private Integer id;
 
+    /** The id a client may use in place of {@link #id}: a lower-case UUID (V2.16). */
+    private String externalId;
+
+    /** The external id of the file this revision belongs to. */
+    private String fileInfoExternalId;
+
+    /** Lower-case hex SHA-256 of the stored bytes; null until a revision from before 1.8.0 is read. */
+    private String checksumSha256;
+
     private String fileName;
 
     private String fileExtension;

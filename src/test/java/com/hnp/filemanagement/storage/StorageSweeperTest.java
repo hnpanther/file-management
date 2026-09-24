@@ -189,6 +189,6 @@ class StorageSweeperTest extends MySqlSupport {
 
     private FileManagementProperties sweepDisabled() {
         return new FileManagementProperties(baseDir, null, null, null, null,
-                new FileManagementProperties.Storage(false, null, null, null), null, null, null);
+                new FileManagementProperties.Storage(false, null, null, null, false, null), null, null, null);
     }
 }

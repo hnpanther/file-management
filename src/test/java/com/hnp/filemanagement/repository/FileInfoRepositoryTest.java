@@ -101,7 +101,8 @@ class FileInfoRepositoryTest extends MySqlSupport {
         String fileName = underTest.findById(fileInfoId).orElseThrow().getFileName();
         flushAndClear();
 
-        var page = underTest.search(fileName, PageRequest.of(0, 10));
+        // The term as the service passes it: folded, as the stored key is (SearchKey, 1.8.0).
+        var page = underTest.search(com.hnp.filemanagement.util.SearchKey.forSearch(fileName), PageRequest.of(0, 10));
 
         assertThat(page.getContent()).hasSize(1);
         assertThat(Hibernate.isInitialized(page.getContent().getFirst().getFolder())).isTrue();

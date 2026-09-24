@@ -19,6 +19,9 @@ public class FileInfoDTO {
     @NotNull(groups = {UpdateValidation.class})
     private Integer id;
 
+    /** The id a client may use in place of {@link #id}: a lower-case UUID (V2.16). Read only. */
+    private String externalId;
+
     private String fileName;
 
 

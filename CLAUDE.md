@@ -33,8 +33,9 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 
 ## Traps specific to writing code here
 
-* **Compare names and search text through `UPPER(...)` on both sides** (`IgnoreCase` in a derived
-  query), and pass an empty search as `''`, never `null` - a `null` in `LIKE CONCAT(...)` is a type
+* **Compare names through `UPPER(...)` on both sides** (`IgnoreCase` in a derived query); **search
+  files and folders through their folded keys** (`search_name` and the like, `SearchKey.forSearch`
+  for the term - 1.8.0); and pass an empty search as `''`, never `null` - a `null` in `LIKE CONCAT(...)` is a type
   PostgreSQL refuses ([issue 87](docs/issues.md#87-an-empty-search-box-is-a-null-postgresql-cannot-type--s1-for-the-migration)).
   The accounts table is `app_user`; the entity is still `User`. Details in
   [AGENTS.md](AGENTS.md#database-changes).

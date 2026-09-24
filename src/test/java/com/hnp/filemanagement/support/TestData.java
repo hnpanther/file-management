@@ -164,6 +164,7 @@ public final class TestData {
     /** A file with no versions yet, in a folder; add versions with {@link #fileDetails}. */
     public static FileInfo fileInfo(User creator, Folder folder, String fileName) {
         FileInfo fileInfo = new FileInfo();
+        fileInfo.setExternalId(UUID.randomUUID().toString());
         fileInfo.setFileName(fileName);
         fileInfo.setCodeName(fileName);
         fileInfo.setFileNameDescription(fileName + " description");
@@ -185,7 +186,7 @@ public final class TestData {
         String fileName = fileInfo.getFileName() + "." + extension;
         FileDetails fileDetails = new FileDetails();
         fileDetails.setFileName(fileName);
-        fileDetails.setHashId(UUID.randomUUID().toString());
+        fileDetails.setExternalId(UUID.randomUUID().toString());
         fileDetails.setFileExtension(extension);
         fileDetails.setContentType("application/octet-stream");
         fileDetails.setDescription(fileName + " description");

@@ -52,7 +52,7 @@ public record FileManagementProperties(
         folderAccess = folderAccess == null ? new FolderAccess(null) : folderAccess;
         folders = folders == null ? new Folders(null, null) : folders;
         profiles = profiles == null ? new Profiles(null) : profiles;
-        storage = storage == null ? new Storage(null, null, null, null) : storage;
+        storage = storage == null ? new Storage(null, null, null, null, null, null) : storage;
         shareLinks = shareLinks == null ? new ShareLinks(null, null, null, null, null) : shareLinks;
         bootstrap = bootstrap == null ? new Bootstrap(null) : bootstrap;
         auth = auth == null ? new Auth(null) : auth;
@@ -123,14 +123,20 @@ public record FileManagementProperties(
      *                              Longer than any request could possibly take: a write still in
      *                              flight must never be swept
      * @param sweepBatchSize        notes settled per read
+     * @param checksumBackfillEnabled false stops {@code ChecksumBackfill} from running after the
+     *                              start; it can still be called
+     * @param checksumBackfillBatchSize revisions read per batch by the backfill
      */
     public record Storage(Boolean sweepEnabled, @Min(1) Integer sweepEveryMinutes,
-                          @Min(1) Integer unfinishedAfterMinutes, @Min(1) Integer sweepBatchSize) {
+                          @Min(1) Integer unfinishedAfterMinutes, @Min(1) Integer sweepBatchSize,
+                          Boolean checksumBackfillEnabled, @Min(1) Integer checksumBackfillBatchSize) {
         public Storage {
             sweepEnabled = sweepEnabled == null || sweepEnabled;
             sweepEveryMinutes = sweepEveryMinutes == null ? 15 : sweepEveryMinutes;
             unfinishedAfterMinutes = unfinishedAfterMinutes == null ? 60 : unfinishedAfterMinutes;
             sweepBatchSize = sweepBatchSize == null ? 200 : sweepBatchSize;
+            checksumBackfillEnabled = checksumBackfillEnabled == null || checksumBackfillEnabled;
+            checksumBackfillBatchSize = checksumBackfillBatchSize == null ? 50 : checksumBackfillBatchSize;
         }
     }
 

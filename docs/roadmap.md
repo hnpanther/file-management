@@ -38,13 +38,18 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: 1.7.0, written and tested, not yet deployed.** It is PostgreSQL release A
+**Now: 1.8.0, written and tested, not yet deployed** - and 1.7.0 before it was not deployed
+either, so the next deployment takes both
+([deployment.md](deployment.md#upgrading-from-170-to-180--checksums-external-ids-and-persian-search)).
+1.7.0 is PostgreSQL release A
 ([3.3](#33-release-a--what-to-neutralise-on-mysql-first--done-170)) - `app_user`, a 64-bit
-`file_size`, every name and search compared through `UPPER`, an empty search passed as `''` -
-together with the download-name fix (issue 85), "show in the explorer" from the file page and
-after an upload, and new files private unless the upload asks to publish them (the form's box,
-the API's `public-file=1`). Its two migrations have already run once against a development database holding
-real rows: all twenty-two foreign keys followed the table, and no row was lost.
+`file_size`, every name compared through `UPPER`, an empty search passed as `''` - together with
+the download-name fix (issue 85), "show in the explorer" from the file page and after an upload,
+new files private unless the upload asks to publish them, and upload refusals that say why
+(issue 89). 1.8.0 is steps 2 and 4 of the table below: a SHA-256 for every revision, an external
+id for every file and revision, and search keys that fold Persian the same way on either
+database. Release A's two migrations have already run once against a development database
+holding real rows: all twenty-two foreign keys followed the table, and no row was lost.
 
 **The order from here**, and why each step is where it is. One rule sets most of it: from
 release B until release C every migration has to be written twice, once per database, and in the
@@ -53,10 +58,10 @@ is therefore cheapest **before** B, where it is written once and lands in the `V
 
 | # | Step | Why it is here | Where it is specified |
 |---|---|---|---|
-| 1 | **Deploy 1.7.0** and let it run on MySQL for a while | the point of release A is that anything it broke shows up while there is no PostgreSQL in the picture; the rollback is a restore, not the old jar | [deployment.md, 1.6.1 → 1.7.0](deployment.md#upgrading-from-161-to-170--ready-for-postgresql-still-on-mysql) |
-| 2 | **Real checksums and an external id (1.8.0)**: a `checksum_sha256` column (`V2.16`), written on every upload, and a one-off job that reads every existing file and fills it in; in the same migration, `file_details.hash_id` - a random UUID despite its name - renamed `external_id`, and an `external_id` UUID added to `file_info`, so a client can name a file and a revision by something that is neither guessable nor a database row number. The v1 API takes either id and answers both, until the PL/SQL clients have moved over; the integer ids stay for the pages | the checksum: Phase 4 cannot verify that a file survived the copy to S3 without it, and 4.3 assigns the backfill to Phase 3. `StoredBlob` has computed the SHA-256 of every write since 1.6.0; only the column and the backfill are missing. The external id: sequential ids let anyone count the files and walk `/files/public-download/{id}`, and tie every client to this database's numbering. It is a second layer, never the access control - that stays the permission and the folder grant. Both are schema changes, so before B they are one migration instead of two | [issue 7](issues.md#7-hash_id-is-not-a-hash--s2), [4.3](#43-migrating-existing-bytes) |
+| 1 | **Deploy 1.8.0** (with 1.7.0 in it) and let it run on MySQL for a while | the point of release A is that anything it broke shows up while there is no PostgreSQL in the picture; the rollback is a restore, not the old jar. The checksum backfill runs once after the first start and reports what it could not read | [deployment.md, 1.6.1 → 1.7.0](deployment.md#upgrading-from-161-to-170--ready-for-postgresql-still-on-mysql), [1.7.0 → 1.8.0](deployment.md#upgrading-from-170-to-180--checksums-external-ids-and-persian-search) |
+| 2 | **Done (1.8.0).** **Real checksums and an external id**: a `checksum_sha256` column (`V2.16`), written on every upload, and a one-off job that reads every existing file and fills it in; in the same migration, `file_details.hash_id` - a random UUID despite its name - renamed `external_id`, and an `external_id` UUID added to `file_info`, so a client can name a file and a revision by something that is neither guessable nor a database row number. The v1 API takes either id and answers both, until the PL/SQL clients have moved over; the integer ids stay for the pages | the checksum: Phase 4 cannot verify that a file survived the copy to S3 without it, and 4.3 assigns the backfill to Phase 3. `StoredBlob` has computed the SHA-256 of every write since 1.6.0; only the column and the backfill are missing. The external id: sequential ids let anyone count the files and walk `/files/public-download/{id}`, and tie every client to this database's numbering. It is a second layer, never the access control - that stays the permission and the folder grant. Both are schema changes, so before B they are one migration instead of two | [issue 7](issues.md#7-hash_id-is-not-a-hash--s2), [4.3](#43-migrating-existing-bytes) |
 | 3 | **Restore CI**: one workflow, `./mvnw verify` on JDK 25 with a Docker daemon | release B's plan is "CI runs the suite twice"; there is no CI to run it once. Without it, every change in the dual period has to be tested by hand on both databases | [issue 38](issues.md#38-no-ci--s1), [issue 83](issues.md#83-the-docs-describe-a-ci-workflow-that-was-removed--s3) |
-| 4 | **Decide on digit, accent and half-space folding** | MySQL finds `۱۴۰۳` when `1403` is typed and treats a name with and without the half-space as one; PostgreSQL will not. Keeping it needs a normalised column - a schema change, so before B - or full-text search after C (issue 21); or accept the loss | [issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2) |
+| 4 | **Done (1.8.0).** **Digit, accent and half-space folding**: decided for a normalised copy of each searched column - `search_name`, `search_description`, `search_display_name` on `file_info`, `file_details` and `folder`, written by the entities through `SearchKey` and filled for existing rows by the Java migration `V2_17`. Persian and Arabic digits as ASCII, the half-space and the marks dropped, Arabic `ي`/`ك` as Persian (which MySQL never did), upper case; a search also drops the spaces. A file or folder name that folds to a sibling's is refused as a duplicate | MySQL found `۱۴۰۳` when `1403` was typed and treated a name with and without the half-space as one; PostgreSQL would not. A schema change, so before B | [issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2) |
 | 5 | **Only if planned soon**: coarse permission verbs | it migrates the `permission` rows, so before B or after C, never in between | [issue 19](issues.md#19-permissionenum-is-a-hardcoded-list-of-endpoint-names--s2), [2.4](#24-authorization) |
 | 6 | **Release B (2.0.0)**: migrations moved to `db/migration/mysql/`, the hand-written PostgreSQL baseline `V3.0` (with the `upper(column)` unique indexes, the `varchar_pattern_ops` index on `folder.path`, the seed rows), the PostgreSQL driver and Flyway module, the suite on both databases | the jar that can run on either, chosen by `FILEMANAGEMENT_DB_URL` - nothing is switched yet | [3.4](#34-release-b--the-dual-database-jar) |
 | 7 | **Rehearsal, then the cut-over** - the data copied, sequences set, verified, the service pointed at PostgreSQL | the one irreversible-feeling step; taken only when decided, with the rollback window announced | [3.5](#35-copying-the-data), [3.6](#36-production-runbook) |
@@ -399,13 +404,17 @@ they test something. That run is also what found issue 87.
 
 ```
 src/main/resources/db/migration/
-├── mysql/          V1.0 … V2.13, V2.14+ (release A)  ← the existing files, moved, unchanged
+├── mysql/          V1.0 … V2.13, V2.14+ (release A), V2.16 - V2.18 (1.8.0)  ← moved, unchanged
 └── postgresql/     V3.0__Baseline.sql
 ```
 
 ```properties
 spring.flyway.locations=classpath:db/migration/{vendor}
 ```
+
+`V2_17__Fill_Search_Keys_And_External_Ids` is a Java migration, in the package `db.migration`;
+it moves with the rest, to `db.migration.mysql`. PostgreSQL never runs it - the copy brings the
+values it wrote.
 
 `V3.0__Baseline.sql` is the schema **as it stands after release A**, written by hand in
 PostgreSQL syntax — `docs/schema.md` is the specification and `spring.jpa.hibernate.ddl-auto=validate`
@@ -424,6 +433,10 @@ exactly as an empty MySQL does.
 | `folder.path` indexed for prefix `LIKE` (every subtree and folder-access query) | the index declared `varchar_pattern_ops`, or the column `COLLATE "C"` - under any other collation PostgreSQL cannot use a B-tree for `LIKE 'prefix%'` and those queries become sequential scans (Phase 6.1 left this to be decided here) |
 | case-insensitive unique names | a unique index on `upper(column)` - the expression the queries use - for each constraint listed in [issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2), under its existing name |
 | the database's locale | `ENCODING 'UTF8'` with a UTF-8 `LC_CTYPE` (`en_US.utf8`, or ICU): under `C`, `upper()` folds ASCII only, and a name with an accented capital would stop matching |
+| the search keys (`search_*`, 1.8.0), `utf8mb4_bin` on MySQL | plain `VARCHAR`, no collation of their own: they are folded in Java, and `=` and `LIKE` on them must compare exactly - which PostgreSQL does under any deterministic collation |
+| `external_id` (`VARCHAR(36)`, ascii) | `VARCHAR(36)`, with `uq_file_info_external_id` and `uq_file_details_external_id`; a native `uuid` column is possible but would need a Hibernate type mapping, and buys nothing the index does not |
+| `checksum_sha256` | `VARCHAR(64)`, nullable |
+| one name per folder by its key (1.8.0) | checked by the services (`existsByFolderIdAndSearchName`, `findByParentIdAndSearchName`); a unique index on `(folder_id, search_name)` and `(parent_id, search_name)` may be added once the rehearsal shows the copied rows have no two names that fold together - MySQL accepted such pairs until 1.8.0 (a name with `ي` beside one with `ی`, for one) |
 
 **Dependencies.** `org.postgresql:postgresql` and `org.flywaydb:flyway-database-postgresql` are
 added beside the MySQL pair (removed only in C).

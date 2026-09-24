@@ -7,11 +7,11 @@ package com.hnp.filemanagement.storage;
  * describe what reached the store rather than what the caller said it was sending - which is the
  * only way either can be trusted ({@code docs/issues.md} issues 6 and 7).
  *
- * <p>{@code checksumSha256} has nowhere to be kept yet: {@code file_details.hash_id} is a random
- * UUID with a unique index, so two identical files would collide if the digest went there. The
- * column it belongs in arrives with the PostgreSQL baseline (roadmap 3.3), and the S3 migration
- * (Phase 4) is what needs it - copying bytes between stores is only verifiable with it. Until
- * then it is returned and dropped, which costs one pass over bytes that are already in memory.
+ * <p>{@code FileService} records both on the revision's row: {@code checksum_sha256} since 1.8.0
+ * (V2.16, issue 7), and {@code file_size} as what was stored rather than what was declared. The S3
+ * migration (Phase 4) is what needs the checksum - copying bytes between stores is only
+ * verifiable with it - and {@code ChecksumBackfill} computes it the same way for the revisions
+ * stored before 1.8.0.
  *
  * @param key            where it was stored
  * @param sizeBytes      how many bytes were written

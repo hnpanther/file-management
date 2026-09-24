@@ -610,6 +610,88 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 1.7.0 to 1.8.0 — checksums, external ids and Persian search
+
+Roadmap steps 2 and 4, the last schema changes planned before PostgreSQL release B. A jar swap
+with **three migrations** (`Successfully applied 3 migrations` at the start; **five** when coming
+straight from 1.6.1, which is fine - they run in order). Take the database backup first, as always.
+Rehearsed on a copy of a development database holding real rows: the migrations took under a
+second, and the checksum of every revision matched `sha256sum` of its file.
+
+* **`V2.16`** renames `file_details.hash_id` to `external_id` (with its unique index) and adds
+  the new columns, empty: `file_details.checksum_sha256`, `file_info.external_id`, and the search
+  keys (`search_name`, `search_description`, `search_display_name` on `file_info`,
+  `file_details` and `folder`). **`V2_17`**, a Java migration, fills them for every existing row:
+  the search keys, a random UUID for every file, and for every revision its old `hash_id` kept
+  (lower-cased) where it already was a UUID - and replaced by a new one where it was not, which is
+  what the oldest revisions hold (the first code stored the file name there). **`V2.18`** makes
+  them required. MySQL rebuilds the three tables for the last step: seconds for thousands of rows,
+  during which the service is not yet up. Anything outside the application that reads
+  `file_details.hash_id` by name has to say `external_id`. How many revision ids will be replaced
+  can be seen beforehand:
+
+  ```sql
+  SELECT COUNT(*) FROM file_details
+  WHERE hash_id NOT REGEXP '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+  ```
+
+* **After the start, the checksums of existing files are read back once, in the background**
+  (`ChecksumBackfill`). The service answers requests meanwhile; the backfill reads every stored
+  byte once, so on a large store expect disk activity for a while. The log says what it does:
+
+  ```
+  checksum backfill: 1234 revisions to read
+  checksum backfill: 50 computed so far, up to revision id=...
+  checksum backfill finished: 1234 computed; 0 revisions still without a checksum
+  ```
+
+  A revision whose file is missing on disk is logged at WARN with its id and key, left without a
+  checksum, and counted in the summary - worth reading: it is a file the service already cannot
+  serve. A restart carries on with what is still empty. To choose when the reading happens, set
+  `FILEMANAGEMENT_STORAGE_CHECKSUM_BACKFILL_ENABLED=false` and turn it on for a later start. To
+  check the result:
+
+  ```sql
+  SELECT COUNT(*) FROM file_details WHERE checksum_sha256 IS NULL;
+  ```
+
+  `0`, or exactly the number of revisions the log reported missing.
+* **What people will notice: search finds Persian however it was typed.** `۱۴۰۳` and `1403`,
+  a word with the half-space, without it or with a plain space, and the Arabic `ي` and `ك` for the
+  Persian `ی` and `ک` - which MySQL itself never matched. And a **file or folder name that differs
+  from one already in the folder only by those** - the half-space, the digits' script, `ي`/`ی`,
+  an accent - **is refused as a duplicate**. A space still counts: `report 1` and `report1` remain
+  two names. Names already stored are left as they are.
+* **For the PL/SQL clients, nothing changes unless they want it to.** The upload answers three
+  more fields - `fileExternalId`, `fileDetailsExternalId`, `checksumSha256` - beside the ones they
+  read today. Every path that takes an id now takes the number or the external id (a UUID); the
+  numbers keep working. Moving the clients to the external ids is recommended, at their own pace:
+  they are not guessable and do not depend on this database's numbering. A malformed id is the
+  same `400` as before.
+
+**Rollback is not the old jar**: 1.7.0 finds no `hash_id` and refuses to start. Restore the backup
+taken before the upgrade, with the 1.7.0 jar - or, with the service stopped, undo the three
+migrations by hand (rehearsed: the three tables come back exactly as 1.7.0 left them; the
+revision ids `V2_17` replaced stay replaced, and nothing outside ever saw the old values):
+
+```sql
+ALTER TABLE file_details
+    CHANGE COLUMN external_id hash_id VARCHAR(300) NOT NULL,
+    RENAME INDEX uq_file_details_external_id TO uq_file_details_hash_id,
+    DROP COLUMN checksum_sha256,
+    DROP COLUMN search_name,
+    DROP COLUMN search_description;
+ALTER TABLE file_info
+    DROP INDEX uq_file_info_external_id,
+    DROP COLUMN external_id,
+    DROP COLUMN search_name,
+    DROP COLUMN search_description;
+ALTER TABLE folder
+    DROP COLUMN search_name,
+    DROP COLUMN search_display_name;
+DELETE FROM flyway_schema_history WHERE version IN ('2.16', '2.17', '2.18');
+```
+
 ### Upgrading from 1.6.1 to 1.7.0 — ready for PostgreSQL, still on MySQL
 
 The first of the three PostgreSQL releases (roadmap 3.2, release A): everything PostgreSQL will
