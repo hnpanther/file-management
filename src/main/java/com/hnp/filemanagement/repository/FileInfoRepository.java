@@ -187,6 +187,15 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     /** The files directly in a folder, one page at a time — what the explorer lists. */
     Page<FileInfo> findByFolderId(int folderId, Pageable pageable);
 
+    /**
+     * How many files in a folder sort before this name: the file's position in the explorer's
+     * listing of that folder, which is ordered by {@code fileName} ascending. The comparison and the
+     * sort go through the same collation on either database, and a name is unique in its folder,
+     * so there are no ties and the position is exact - no page has to be read to find it.
+     */
+    @Query("SELECT COUNT(f) FROM FileInfo f WHERE f.folder.id = :folderId AND f.fileName < :fileName")
+    long countInFolderSortedBefore(@Param("folderId") int folderId, @Param("fileName") String fileName);
+
     /** How many files each of these folders holds directly — one grouped query for a whole level. */
     @Query("""
             SELECT new com.hnp.filemanagement.repository.ChildCount(fi.folder.id, COUNT(fi.id))

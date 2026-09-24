@@ -79,6 +79,9 @@ public class FolderResource {
      * @param page     zero-based page of files, defaulting to the first
      * @param size     files per page; the service clamps it, so an out-of-range value is answered
      *                 rather than refused
+     * @param fileId   instead of a folder: open the folder this file is in, at the page that lists
+     *                 it ("show in the explorer"). {@code page} is then worked out, not taken;
+     *                 naming a folder as well is a 400, since the two could disagree
      */
     //REST_GET_FOLDER_CONTENT
     @PreAuthorize("hasAuthority('REST_GET_FOLDER_CONTENT') || hasAuthority('FILE_EXPLORER_PAGE') || hasAuthority('ADMIN')")
@@ -86,7 +89,16 @@ public class FolderResource {
     public FolderContentDTO getFolderContent(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                              @RequestParam(value = "folderId", required = false) Integer folderId,
                                              @RequestParam(value = "page", defaultValue = "0") int page,
-                                             @RequestParam(value = "size", defaultValue = "100") int size) {
+                                             @RequestParam(value = "size", defaultValue = "100") int size,
+                                             @RequestParam(value = "fileId", required = false) Integer fileId) {
+
+        if (fileId != null) {
+            if (folderId != null) {
+                throw new InvalidDataException("name the folder by folderId or by fileId, not both");
+            }
+            globalGeneralLogging.detail("list the folder content around fileId=" + fileId);
+            return folderContentService.contentAround(fileId, size, userDetails.getId());
+        }
 
         globalGeneralLogging.detail("list folder content of folderId=" + folderId + ", page=" + page);
 

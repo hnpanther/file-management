@@ -11,28 +11,36 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 | What does the database look like right now? | [docs/schema.md](docs/schema.md) — generated; regenerate it with every migration |
 | Is this thing I found already known? | [docs/issues.md](docs/issues.md) — **check before "fixing"** |
 | What is it becoming? | [docs/target-architecture.md](docs/target-architecture.md) |
-| In what order? | [docs/roadmap.md](docs/roadmap.md) |
+| In what order, and what is next? | [docs/roadmap.md](docs/roadmap.md) — start at "Where things stand, and what comes next" |
 | How is it deployed and backed up? | [docs/deployment.md](docs/deployment.md) |
 | How do I work in it? | [AGENTS.md](AGENTS.md) |
 
 ## Verify, don't infer
 
-* **`pom.xml` says Spring Boot 3.2.1, not 3.5.5.** The commit log claims 3.5.5 because merge
-  `08db773` discarded the upgrade
-  ([issue 1](docs/issues.md#1-the-spring-boot-upgrade-was-silently-reverted-by-a-merge--s1)). Read
-  the file before stating any version, here or in generated code.
-* **The tests need a live MySQL** at `localhost:3306/file_management_test` and a writable
-  `D:/files/test/`. On most machines `./mvnw test` cannot run. If you did not run it, say you did
-  not run it — do not describe a change as verified.
+* **Read the version in `pom.xml`; never take it from the log.** It is Spring Boot 4.1.1 on Java
+  25 now, but a merge once discarded an upgrade and left the commit log claiming a version the
+  build never had ([issue 1](docs/issues.md#1-the-spring-boot-upgrade-was-silently-reverted-by-a-merge--s1)).
+* **The tests need only a Docker daemon.** `support/MySqlSupport` starts a MySQL container and
+  `support/StorageRootSupport` uses `./target/test-storage/`. Run `./mvnw test`; if you did not run
+  it, say you did not run it — do not describe a change as verified.
+* **On MySQL, a query can be wrong and pass every test.** The `utf8mb4_unicode_ci` collation makes
+  `=` and `LIKE` on text case-insensitive by itself; PostgreSQL does not. A case test proves
+  nothing on MySQL alone - release A's were also run on PostgreSQL
+  ([issue 86](docs/issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2)).
 * **`docs/issues.md` is a catalogue, not a backlog of things to fix now.** Each entry has a phase in
-  the roadmap. Fixing one out of order can conflict with a later step (e.g. the `@Data` entity fix
-  must precede the Spring Boot upgrade; checksum backfill must precede the S3 migration).
+  the roadmap. Fixing one out of order can conflict with a later step (e.g. checksum backfill must
+  precede the S3 migration; a schema change wanted soon belongs before PostgreSQL release B).
 
 ## Traps specific to writing code here
 
-* **Never put a JPA entity in a log statement or a string concatenation.** `FileInfo` ↔
-  `FileDetails` are bidirectional and both are `@Data`, so `toString()` recurses until the stack
-  overflows ([issue 2](docs/issues.md#2-data-on-bidirectional-jpa-entities--s1)).
+* **Compare names and search text through `UPPER(...)` on both sides** (`IgnoreCase` in a derived
+  query), and pass an empty search as `''`, never `null` - a `null` in `LIKE CONCAT(...)` is a type
+  PostgreSQL refuses ([issue 87](docs/issues.md#87-an-empty-search-box-is-a-null-postgresql-cannot-type--s1-for-the-migration)).
+  The accounts table is `app_user`; the entity is still `User`. Details in
+  [AGENTS.md](AGENTS.md#database-changes).
+* **Log an id, not an entity.** `AbstractEntity.toString` prints `Type#id` and no longer recurses
+  ([issue 2](docs/issues.md#2-data-on-bidirectional-jpa-entities--s1) is fixed), but an entity in a
+  message says less than its id.
 * **Bytes are written through `StorageWriter`, never through `BlobStore.put` directly.** It is
   what makes a write disappear with a transaction that does not commit, and what records it in
   `file_storage_write` so `StorageSweeper` can settle what a killed process left (roadmap 2.3,
@@ -58,8 +66,8 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   from the tree, and `files` is a reserved top-level name. Do not move bytes on a rename or a
   move — what each operation may touch (tree, keys, bytes, tags) is tabulated in
   [docs/arch.md](docs/arch.md#what-each-operation-touches); keep it true.
-* **Adding a field to `ModelConverterUtil` can add joins to every list page**, because every
-  `@ManyToOne` is `EAGER`.
+* **Adding a field to `ModelConverterUtil` that follows an association costs a query per row** -
+  every association is `LAZY` and `open-in-view` is off. Fetch it in the repository query.
 * **Flyway owns the schema; `docs/schema.md` describes it.** The old `schema-db/schema.sql`
   (which began with `DROP DATABASE IF EXISTS file_management;`) was deleted in Phase 0. Never
   recreate it, and never suggest a `DROP DATABASE` against anything but a throw-away local
@@ -77,7 +85,8 @@ Four things, all required (details in [AGENTS.md](AGENTS.md#conventions-in-this-
 1. a constant in `PermissionEnum` with the endpoint named in a comment above it;
 2. `@PreAuthorize("hasAuthority('X') || hasAuthority('ADMIN')")` on the handler;
 3. an `actionHistoryService.saveActionHistory(...)` call for any mutation;
-4. the `globalGeneralLogging.controllerLogging(...)` preamble, matching the surrounding file.
+4. a `globalGeneralLogging.detail(...)` line with what the request line cannot say (an id, a
+   name) - `LoggingInterceptor` already logs who called what.
 
 ## Running the application
 

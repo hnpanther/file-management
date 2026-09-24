@@ -20,8 +20,10 @@ in MySQL. One folder tree of any depth up to a limit (`Folder`, one `ROOT`), wit
 is a label group and **not** a folder), and `Home/Profiles/{username}` is a user's own folder,
 optionally with a quota. Authorities are fine-grained per-endpoint permissions, not roles - and a
 permission's *name* in a `@PreAuthorize` is checked against `PermissionEnum` by
-`PermissionNamesTest`, because a drifted string silently locks an endpoint to administrators.
-Package root `com.hnp.filemanagement`.
+`PermissionNamesTest`, because a drifted string silently locks an endpoint to administrators. On
+top of them sits folder access: `READ` or `WRITE` grants on folders, inherited downward. The
+database is MySQL today and PostgreSQL is on the way (roadmap Phase 3; release A, 1.7.0, is
+done). Package root `com.hnp.filemanagement`.
 
 ## Commands
 
@@ -57,9 +59,10 @@ change is verified.
 
 1. **Check [docs/issues.md](docs/issues.md).** Much of what looks like a bug is a known one, often
    with a decided fix and a phase it belongs to. Fixing it out of order can conflict with the plan.
-2. **Check which phase you are in.** The roadmap sequences work deliberately — e.g. the `@Data`
-   entity fix must land *before* the Spring Boot upgrade, and checksum backfill must land *before*
-   the S3 migration.
+2. **Check which step you are in.** [roadmap.md, "Where things stand, and what comes next"](docs/roadmap.md#where-things-stand-and-what-comes-next)
+   is the ordered list of the next steps and why each is where it is. The order is deliberate -
+   e.g. checksum backfill must land *before* the S3 migration, and any schema change wanted soon
+   belongs *before* PostgreSQL release B, since from B until C every migration is written twice.
 3. **Never claim a version that is not in `pom.xml`.** It now says Spring Boot 4.1.1 on Java 25.
    A merge once discarded an upgrade and left the log claiming a version the build never had
    ([issue 1](docs/issues.md#1-the-spring-boot-upgrade-was-silently-reverted-by-a-merge--s1)),
@@ -120,23 +123,20 @@ contract in [arch.md §6](docs/arch.md#the-rest-contract).
 and take it as `@RequestBody`. `JsonParserFactory` plus `map.get("x").toString()` is how these
 endpoints used to turn a missing field into a 500.
 
-**Log with the request-aware overload.** `globalGeneralLogging.controllerLogging(userDetails,
-request, YourClass.class, "what you are about to do")` replaces the six-line preamble. The old
-five-argument signature is still there for the Thymeleaf controllers; do not use it in new code.
+**Logging a request is not the handler's job.** `LoggingInterceptor` writes one line for every
+request - method, path, the signed-in user, the handler Spring chose - and one for the answer.
+A handler adds only what the interceptor cannot know, with `globalGeneralLogging.detail("create
+folder " + name + " under folderId=" + parentId)`: an id, a name, a decision - never an entity.
 
 **Every handler needs a permission.** Add a constant to `PermissionEnum`, annotate the handler with
 `@PreAuthorize("hasAuthority('YOUR_CONSTANT') || hasAuthority('ADMIN')")`, and keep the comment above
-the constant naming the endpoint. `FileManagementApplication.initialize` seeds new constants
-automatically on the next `prod` start.
+the constant naming the endpoint. `DataInitializer` (run by `BootstrapConfig` on the `prod`
+profile) seeds new constants on the next start; `PermissionNamesTest` fails the build if the
+string in an annotation or a template names no constant.
 
 **Every mutation writes audit history.** Call
 `actionHistoryService.saveActionHistory(EntityEnum.X, id, ActionEnum.Y, principalId, actionDesc, desc)`
 after the change. It is not automatic.
-
-**Handler preamble.** The `resource/` and `api/` packages are converted to the one-line overload
-above. The Thymeleaf controllers still open with the six-line block; match the file you are in —
-a half-converted file is worse than a consistent one — and see
-[issue 25](docs/issues.md#25-sixty-copies-of-the-same-logging-preamble--s3).
 
 **The app shell.** `templates/navbar.html :: navbar` emits the fixed top bar *and* the sidebar.
 Pages just insert it and need no wrapper; `app.css` offsets `<body>` via `body:has(.app-sidebar)`.
@@ -148,16 +148,17 @@ the traversal cases in `ValidationUtilTest` are the ones never to relax.
 
 ## Things that will bite you
 
-* **`@Data` on entities recurses.** `FileInfo` ↔ `FileDetails` is bidirectional and both are
-  `@Data`. Calling `toString()` on either — including implicitly in a log line or an exception
-  message — is a `StackOverflowError`. Do not add an entity to a log statement.
-* **The disk write is not in the transaction.** `FileService.createNewFile` persists rows, then
-  writes the file. A rollback after the write leaves an orphan. Do not add work between them.
+* **Do not put an entity in a log line or a message anyway.** `AbstractEntity.toString` prints
+  `Type#id` and can no longer recurse (issue 2 is fixed), but an entity in a string still says
+  less than its id and invites someone to "improve" `toString` back into walking associations.
 * **`state` and `enabled` are magic integers.** `state`: `0` public, `-1` private. `enabled`: `1`
   active. There is no enum and no constraint.
-* **Everything is `FetchType.EAGER`.** Loading one `FileDetails` pulls the entire ancestry plus two
-  `User` rows per level. Adding a field to a mapper can quietly add joins to every list page.
-* **`hash_id` is a random UUID, not a hash.** Nothing verifies file integrity.
+* **A mapper that walks an association issues a query per row.** Every association is `LAZY`
+  and `open-in-view` is off, so a field added to `ModelConverterUtil` that follows one either
+  fails outside the transaction or costs a lazy load per row. Fetch it in the repository query
+  (see the folder chain: `FolderService.ancestryOf`, one query per page).
+* **`hash_id` is a random UUID, not a hash.** Nothing verifies file integrity yet - the real
+  checksum is the next step after 1.7.0 (roadmap, "Where things stand").
 * **A write goes through `StorageWriter`**, not through `BlobStore.put`: it is what removes the
   bytes again if the transaction rolls back, and what leaves the note in `file_storage_write` that
   `StorageSweeper` settles when a process is killed mid-upload (roadmap 2.3). Reads and deletes
@@ -177,10 +178,6 @@ the traversal cases in `ValidationUtilTest` are the ones never to relax.
   with hundreds of `cannot find symbol`. Do not remove it.
 * **A `@Component` is constructed whether or not its feature is enabled.** Give every `@Value`
   placeholder for an optional feature a default, or the app will not start without it.
-* **`data-bs-theme` cascades to descendants.** A Bootstrap 5.3 dropdown inside a dark region
-  inherits `--bs-dropdown-bg: #212529`; if the stylesheet also paints items with the dark body
-  text colour the menu is black on black. Restate the `--bs-dropdown-*` variables on the menu
-  rather than colouring individual items.
 * **The UI is Tailwind + Alpine, not Bootstrap.** `data-bs-*` attributes do nothing. Page
   bodies are still Bootstrap 3-era markup kept alive by a compatibility layer in
   `src/main/frontend/app.css`; convert them to utilities and delete the matching block.
@@ -234,19 +231,25 @@ Hibernate will refuse to start on a mismatch.
   - without a byte signature (or the text rule) to verify it by. `html`, `svg`, `xml`, `js` and
   their relatives are refused as kinds outright (`ContentTypes.isBrowserActive`); keep it so.
 * **Do not widen the `permitAll` list** in `SecurityConfig` without saying why in the commit message.
-* **Do not add `inline` content disposition** to any new download path. Every download goes
-  through `FileController.download(FileDownloadDTO, boolean)`, which honours `?inline=1` only for
-  the types `ContentTypes.inlineSafe` names and always sends `nosniff` and a `default-src 'none'`
-  CSP; route a new download through it rather than building the headers again. The file name
+* **Do not add `inline` content disposition** to any new download path. The four download
+  responses - `FileController.download` (the file page and the public files), `ShareLinkController.attachment`,
+  `FileApi` and `ObjectStoreApi` - all send `nosniff`, and only the first honours `?inline=1`,
+  for the types `ContentTypes.inlineSafe` names, with a `default-src 'none'` CSP. A new one sends
+  the same headers, and is an attachment. The file name
   goes into `Content-Disposition` only through `ContentDispositions` - never by concatenation:
   a response header is ISO-8859-1, and Tomcat silently drops one carrying a Persian name, so
   the browser saves the file as `download`
   ([issue 85](docs/issues.md#85-every-persian-named-file-downloaded-as-download--s1)).
 * **Every AJAX call needs the CSRF header.** Read `_csrf` / `_csrf_header` from the `<meta>` tags,
   as every existing template does. The session chain has CSRF enabled and it must stay that way.
-* **Authorization is per-endpoint only.** There is no per-file check
-  ([issue 14](docs/issues.md#14-no-resource-level-authorization--s1)). If you add an endpoint that
-  reads file bytes, assume the permission grants access to *every* file, and say so.
+* **Authorization is two-tier.** The endpoint permission (`@PreAuthorize`) says what someone may
+  do; folder access (`FolderAccessService`, Phase 6) says where - a `READ` or `WRITE` grant on a
+  folder, inherited below it, to a role or a person, `ADMIN` unrestricted. It is enforced when
+  `filemanagement.folder-access.enabled` is on: the file list filters in the query, the file page
+  and every download check the file's folder, and every upload asks for `WRITE`. An endpoint that
+  reads or writes a file goes through `FileService` or asks `FolderAccessService` itself - never a
+  repository alone, which would reopen [issue 14](docs/issues.md#14-no-resource-level-authorization--s1).
+  An API key reaches only its own grants, whatever the setting.
 
 ## Commits and pull requests
 
@@ -260,7 +263,7 @@ Hibernate will refuse to start on a mismatch.
 
 ## Tests
 
-Four kinds, and the choice is not stylistic — each answers something the others cannot. The table in
+Five kinds, and the choice is not stylistic — each answers something the others cannot. The table in
 [arch.md §12](docs/arch.md#12-tests) says which is which. In short:
 
 * **unit** (`*UnitTest`, plain JUnit or Mockito) — guard clauses, pure functions, and *negative*

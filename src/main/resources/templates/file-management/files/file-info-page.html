@@ -139,6 +139,16 @@
                 </div>
 
                 <div class="col-12 col-md-3 mb-3">
+                    <!-- Where the file lives: the explorer opened on its folder, at the page that lists it, with it selected. -->
+                    <div sec:authorize="hasAuthority('FILE_EXPLORER_PAGE') || hasAuthority('ADMIN')" class="card mb-3">
+                        <div class="card-body">
+                            <a th:href="@{/files/explorer(file=${file.getId()})}" class="btn btn-block btn-secondary"
+                               id="show-in-explorer">
+                                <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                                <span th:text="#{file.showInExplorer}">نمایش در فایل اکسپلورر</span>
+                            </a>
+                        </div>
+                    </div>
                     <div class="card mb-3">
                         <div class="card-body">
                             <div class="px-xl-3">

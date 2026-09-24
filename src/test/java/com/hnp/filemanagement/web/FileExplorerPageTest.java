@@ -98,6 +98,17 @@ class FileExplorerPageTest extends MySqlSupport {
                 .andExpect(content().string(Matchers.containsString("const INITIAL_FOLDER_ID = 999999")));
     }
 
+    /** "Show in the explorer" names a file; the page is handed the id the same way, unchecked. */
+    @Test
+    void aFileDeepLinkIsHandedToThePageUnchecked() throws Exception {
+        mockMvc.perform(get("/files/explorer").param("file", "5120")
+                        .with(user(principal(PermissionEnum.FILE_EXPLORER_PAGE)))
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString("const INITIAL_FILE_ID = 5120")))
+                .andExpect(content().string(Matchers.containsString("const INITIAL_FOLDER_ID = null")));
+    }
+
     /**
      * Holding the page permission is enough to load what the page displays. Granting the two
      * separately produced a tree that answered every click with a permission error the account

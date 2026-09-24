@@ -487,6 +487,10 @@ already does.
 line, and every handler in `resource/` and `api/` now uses it. The Thymeleaf controllers still carry
 the long form; converting them is worth doing with the aspect, not before it.
 
+> **Fixed** in roadmap 2.1 (`cfb96ba`), without the aspect: `LoggingInterceptor` is the one writer
+> of the request line, and `controllerLogging` is gone - every handler calls
+> `GlobalGeneralLogging.detail(...)` with only what the interceptor cannot know.
+
 ### 26. Persian UI strings hardcoded in Java — **S3**
 
 `"لطفا اطلاعات را بطور صحیح وارد نمایید"`, `"اطلاعات با موفقیت ذخیره شد"` and similar are string

@@ -186,6 +186,42 @@ class FileUploadAddressingTest extends MySqlSupport {
 
     // ================================================================ the web form
 
+    /**
+     * After an upload the form says "saved" - and now also where the file went: its page, and its
+     * place in the explorer (the folder, at the page that lists it, the file selected). A refused
+     * upload offers neither: there is no file to go to.
+     */
+    @Test
+    @DisplayName("a successful upload links to the new file's page and its place in the explorer; a refused one links to nothing")
+    void theSuccessMessageLinksToTheFile() throws Exception {
+        String page = mockMvc.perform(multipart("/files")
+                        .file(new MockMultipartFile("multipartFile", "linked.txt", "text/plain",
+                                "linked".getBytes(StandardCharsets.UTF_8)))
+                        .param("description", "just uploaded")
+                        .param("folderId", String.valueOf(tagFolderId))
+                        .with(user(principal(adminId, PermissionEnum.ADMIN)))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        int fileId = fileInfoRepository.findAll().stream().filter(f -> f.getFileName().equals("linked"))
+                .findFirst().orElseThrow().getId();
+
+        assertThat(page)
+                .contains("href=\"/files/file-info/" + fileId + "\"")
+                .contains("href=\"/files/explorer?file=" + fileId + "\"");
+
+        String refused = mockMvc.perform(multipart("/files")
+                        .file(new MockMultipartFile("multipartFile", "linked.txt", "text/plain",
+                                "linked again".getBytes(StandardCharsets.UTF_8)))
+                        .param("description", "a duplicate name")
+                        .param("folderId", String.valueOf(tagFolderId))
+                        .with(user(principal(adminId, PermissionEnum.ADMIN)))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(refused).doesNotContain("/files/explorer?file=").doesNotContain("id=\"saved-file-page\"");
+    }
+
     @Test
     @DisplayName("the upload form posts a folderId the same way")
     void theWebFormAcceptsAFolderId() throws Exception {

@@ -10,7 +10,7 @@ working, and to depend only on what came before.
 |---|---|---|---|
 | 0 | Safety net — CI, smoke test, containerised dev environment | — | **done** |
 | 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done**; the language level moved to 25 in 1.4.0, on its own, once every host ran a JDK 25 |
-| 2 | Architectural restructuring | 1 | |
+| 2 | Architectural restructuring | 1 | **partly done**: 2.1, 2.2, the two-phase write of 2.3 and most of 2.4 (issues 8, 12, 13; 14 by Phase 6); left: the package re-slice and one REST surface (issue 18), per-feature mappers (issue 29), coarse permission verbs (issue 19) - none of them needed by Phase 3 |
 | 3 | PostgreSQL migration | 1, partly 2, **and 7** | three releases, the middle one runs on both databases (3.2); **release A done** (1.7.0), B and C to come |
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done**; the move it needs **done** (7.2 step 5d, 1.4.0); the drag handlers are what is left |
@@ -35,6 +35,42 @@ release - `docs/arch.md`, "The content catalogue".
 
 Phase 0 was not one of those goals, but every later phase is a large refactor of code that had **no**
 automated verification at all (issues 36–38). Doing it first is what made the rest safe.
+
+## Where things stand, and what comes next
+
+**Now: 1.7.0, written and tested, not yet deployed.** It is PostgreSQL release A
+([3.3](#33-release-a--what-to-neutralise-on-mysql-first--done-170)) - `app_user`, a 64-bit
+`file_size`, every name and search compared through `UPPER`, an empty search passed as `''` -
+together with the download-name fix (issue 85) and "show in the explorer" from the file page and
+after an upload. Its two migrations have already run once against a development database holding
+real rows: all twenty-two foreign keys followed the table, and no row was lost.
+
+**The order from here**, and why each step is where it is. One rule sets most of it: from
+release B until release C every migration has to be written twice, once per database, and in the
+rollback window between B's cut-over and C none may be added at all. A schema change wanted soon
+is therefore cheapest **before** B, where it is written once and lands in the `V3.0` baseline.
+
+| # | Step | Why it is here | Where it is specified |
+|---|---|---|---|
+| 1 | **Deploy 1.7.0** and let it run on MySQL for a while | the point of release A is that anything it broke shows up while there is no PostgreSQL in the picture; the rollback is a restore, not the old jar | [deployment.md, 1.6.1 → 1.7.0](deployment.md#upgrading-from-161-to-170--ready-for-postgresql-still-on-mysql) |
+| 2 | **Real checksums (1.8.0)**: a `checksum_sha256` column (`V2.16`), written on every upload, and a one-off job that reads every existing file and fills it in | Phase 4 cannot verify that a file survived the copy to S3 without it, and 4.3 assigns the backfill to Phase 3. `StoredBlob` has computed the SHA-256 of every write since 1.6.0; only the column and the backfill are missing. Before B, it is one migration instead of two | [issue 7](issues.md#7-hash_id-is-not-a-hash--s2), [4.3](#43-migrating-existing-bytes) |
+| 3 | **Restore CI**: one workflow, `./mvnw verify` on JDK 25 with a Docker daemon | release B's plan is "CI runs the suite twice"; there is no CI to run it once. Without it, every change in the dual period has to be tested by hand on both databases | [issue 38](issues.md#38-no-ci--s1), [issue 83](issues.md#83-the-docs-describe-a-ci-workflow-that-was-removed--s3) |
+| 4 | **Decide on digit, accent and half-space folding** | MySQL finds `۱۴۰۳` when `1403` is typed and treats a name with and without the half-space as one; PostgreSQL will not. Keeping it needs a normalised column - a schema change, so before B - or full-text search after C (issue 21); or accept the loss | [issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2) |
+| 5 | **Only if planned soon**: coarse permission verbs | it migrates the `permission` rows, so before B or after C, never in between | [issue 19](issues.md#19-permissionenum-is-a-hardcoded-list-of-endpoint-names--s2), [2.4](#24-authorization) |
+| 6 | **Release B (2.0.0)**: migrations moved to `db/migration/mysql/`, the hand-written PostgreSQL baseline `V3.0` (with the `upper(column)` unique indexes, the `varchar_pattern_ops` index on `folder.path`, the seed rows), the PostgreSQL driver and Flyway module, the suite on both databases | the jar that can run on either, chosen by `FILEMANAGEMENT_DB_URL` - nothing is switched yet | [3.4](#34-release-b--the-dual-database-jar) |
+| 7 | **Rehearsal, then the cut-over** - the data copied, sequences set, verified, the service pointed at PostgreSQL | the one irreversible-feeling step; taken only when decided, with the rollback window announced | [3.5](#35-copying-the-data), [3.6](#36-production-runbook) |
+| 8 | **Release C (2.1.0)**: MySQL removed, after the rollback window | from here migrations are PostgreSQL-only | [3.2](#32-strategy-one-release-that-runs-on-both-then-a-cut-over-that-is-only-data) |
+| 9 | **After C**: `TIMESTAMPTZ`, full-text search (`tsvector`, issue 21), then Phase 4 (S3) | these use what only PostgreSQL has, and Phase 4 needs step 2 | [Phase 4](#phase-4--s3-as-a-storage-backend) |
+
+**Not tied to that order** - any time, and none of it touches the database migration:
+
+* the rest of Phase 2: the package re-slice by feature, one REST surface (issue 18), per-feature
+  mappers in place of `ModelConverterUtil` (issue 29);
+* [issue 88](issues.md#88-a-user-cannot-change-only-the-case-of-their-own-username--s3) - a user cannot change only the case of their own username; one query;
+* Phase 5's drag-and-drop handlers, and Phase 8 (IMS) when it is wanted;
+* the operational leftovers of Phase 0: the credentials still in the git history rotated
+  ([issue 11](issues.md#11-credentials-and-infrastructure-details-are-committed--s1)), and the bootstrap administrator's password changed on every
+  installation that still has the first one.
 
 ---
 

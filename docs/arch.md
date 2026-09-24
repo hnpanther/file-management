@@ -498,7 +498,7 @@ document, so a browser navigation still lands on a page.
 
 | Method | Path |
 |---|---|
-| GET | `/resource/folders/children?folderId=&page=&size=` (each file entry names its latest revision - of the latest version, the format uploaded last - as `latestFileDetailsId`, for the explorer's download), `/resource/folders/{id}` (one folder's details: trail, group, direct and total counts, audit), `/resource/folders/search?query=&folderId=` (folders by id / name / label as `folders`, at most 20; files paged as `hits`) (`REST_GET_FOLDER_CONTENT` / `REST_SEARCH_FOLDER_CONTENT`, or `FILE_EXPLORER_PAGE`) |
+| GET | `/resource/folders/children?folderId=&page=&size=`, or `?fileId=` for the folder a file is in at the page that lists it - "show in the explorer"; a 400 if both are given (each file entry names its latest revision - of the latest version, the format uploaded last - as `latestFileDetailsId`, for the explorer's download), `/resource/folders/{id}` (one folder's details: trail, group, direct and total counts, audit), `/resource/folders/search?query=&folderId=` (folders by id / name / label as `folders`, at most 20; files paged as `hits`) (`REST_GET_FOLDER_CONTENT` / `REST_SEARCH_FOLDER_CONTENT`, or `FILE_EXPLORER_PAGE`) |
 | GET | `/resource/folders/tag-groups` (`REST_GET_TAG_GROUPS` or `REST_CREATE_FOLDER`) |
 | POST | `/resource/folders` `{parentId, name, displayName, tagGroupId | newTagGroupName}` → 201 (`REST_CREATE_FOLDER`; under the root a group is needed, deeper none is taken; 400 past the depth limit) |
 | PUT | `/resource/folders/{id}` `{name, displayName, tagGroupId?}` (`REST_RENAME_FOLDER`; the group only at the top level) |
@@ -812,13 +812,18 @@ itself refuses to run on a database that would have failed it (section 10).
 `action_history` row. It is called explicitly from the services after each mutation; it is not an
 aspect, so coverage depends on the author remembering.
 
-**Logging** — two mechanisms overlap:
+**Logging** — one writer per concern:
 
-* `LoggingInterceptor` (registered by `MyWebMvcConfigurer`) logs method / URI / remote-addr per request.
-* `GlobalGeneralLogging.controllerLogging(...)` is called by hand at the top of roughly sixty
-  handler methods, each rebuilding `request.getRequestURI() + "?" + request.getQueryString()`.
+* `LoggingInterceptor` (registered by `MyWebMvcConfigurer`) writes two lines per request: what
+  arrived - method, path (a share-link token masked), caller, the signed-in user, the handler
+  Spring chose - and what was answered.
+* A handler adds only what the interceptor cannot know, with
+  `GlobalGeneralLogging.detail("...")` - an id, a name, a decision. The six-line preamble that
+  used to rebuild the request line by hand in over a hundred handlers is gone (roadmap 2.1,
+  issue 25).
 
-`logback-spring.xml` writes to `D:/files/logs`, rolling daily / 10 MB, keeping 10 files.
+`logback-spring.xml` writes to `filemanagement.log.path` (`FILEMANAGEMENT_LOG_PATH`, default
+`./logs`), rolling daily and at 10 MB, keeping 10 days within 1 GB.
 `com.hnp.filemanagement` is at `debug`, root at `info`.
 
 **Exception handling** — one `@ControllerAdvice`, `GlobalExceptionHandler`. It picks its shape from

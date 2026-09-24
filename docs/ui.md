@@ -574,3 +574,20 @@ Choosing a file puts its name - without the extension - into the empty "file tit
 stops doing so from the first keystroke the person makes in it (`editedByHand`). It never
 overwrites what somebody typed, and picking a different file afterwards does not undo their
 wording.
+
+### Show a file in the explorer
+
+The file page has a "show in the file explorer" button (`file.showInExplorer`, shown only to someone
+holding `FILE_EXPLORER_PAGE` or `ADMIN`), and a successful upload says where the file went: the
+green message carries a link to the new file's page (`file.openFilePage`) and the same explorer
+link. Both lead to `/files/explorer?file={id}`.
+
+The explorer then opens **the folder the file is in, at the page that lists it**, with the file's
+row selected (`is-selected`), scrolled into view, and its details pane open. The page matters: a
+folder's files are paged by name, a hundred to a page, so in a large folder the file is often not
+on the first. The page is not searched for in the browser. The content read takes the file
+instead of the folder - `/resource/folders/children?fileId=` - and the server works the page out
+from how many names in that folder sort before the file's (`FolderContentService.contentAround`),
+by the same comparison the listing sorts with. A link to a file that no longer exists shows
+`explorer.fileNotFound`; one to a file in a folder the person may not read shows the usual
+`explorer.forbidden`. `?folder=` still opens a folder, as the folder path on the file page does.
