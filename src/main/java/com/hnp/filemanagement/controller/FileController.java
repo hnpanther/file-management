@@ -25,6 +25,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -93,6 +95,51 @@ public class FileController {
     }
 
     /** The refusal in the page's language, with the facts the exception carries. */
+    /** One debug line per upload, safe when the request carried no file part at all. */
+    private void logUpload(MultipartFile file) {
+        logger.debug("upload originalName={}, contentType={}, size={}",
+                file == null ? null : file.getOriginalFilename(),
+                file == null ? null : file.getContentType(),
+                file == null ? 0 : file.getSize());
+    }
+
+    /**
+     * What a refused upload says to the person who sent it: the policy's answer, the refusal's own
+     * message when it has one ({@link InvalidDataException#getMessageCode()}), and the generic
+     * sentence only for what a person could not have caused - a hidden field that does not add up.
+     */
+    private String reasonOf(InvalidDataException e) {
+        if (e instanceof UploadRefusedException refused) {
+            return uploadRefusedMessage(refused);
+        }
+        return e.getMessageCode()
+                .map(code -> messages.get(code, e.getMessageArguments()))
+                .orElseGet(() -> messages.get("form.invalid"));
+    }
+
+    /**
+     * A form that did not bind, said by field. What is left to fail at binding on the two upload
+     * forms is a missing value - the file's kind and content are judged by the service, where the
+     * answer can say which kinds this person may upload. A hidden field that is missing is not
+     * something the person can fix, and gets the generic sentence.
+     */
+    private String bindingMessage(BindingResult bindingResult) {
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        for (String field : bindingResult.getFieldErrors().stream().map(FieldError::getField).distinct().toList()) {
+            String label = switch (field) {
+                case "multipartFile" -> messages.get("field.chooseFile");
+                case "description", "fileDetailsDescription" -> messages.get("field.description");
+                case "fileName" -> messages.get("field.fileTitle");
+                default -> null;
+            };
+            if (label == null) {
+                return messages.get("form.invalid");
+            }
+            labels.add(label);
+        }
+        return labels.isEmpty() ? messages.get("form.invalid") : messages.get("form.fill", String.join(messages.get("form.listSeparator"), labels));
+    }
+
     private String uploadRefusedMessage(UploadRefusedException e) {
         if (e.getReason() == UploadRefusedException.Reason.TOO_LARGE) {
             return messages.get("upload.refused.tooLarge", UploadPolicyService.megabytesOf(e.getSizeBytes()),
@@ -161,12 +208,7 @@ public class FileController {
         int principalId = userDetails.getId();
         globalGeneralLogging.detail("save new file=" + fileInfoDTO);
 
-        logger.debug("file details for create new file===============");
-        logger.debug("orig name=" +fileInfoDTO.getMultipartFile().getOriginalFilename());
-        logger.debug("name=" + fileInfoDTO.getMultipartFile().getName());
-        logger.debug("content type=" + fileInfoDTO.getMultipartFile().getContentType());
-        logger.debug("size=" + fileInfoDTO.getMultipartFile().getSize());
-        logger.debug("===============================================");
+        logUpload(fileInfoDTO.getMultipartFile());
 
 
         boolean showMessage = true;
@@ -177,7 +219,7 @@ public class FileController {
 
 
         if(bindingResult.hasErrors()) {
-            message = messages.get("form.invalid");
+            message = bindingMessage(bindingResult);
             globalGeneralLogging.detail("ValidationError:" + bindingResult);
         } else {
 
@@ -195,7 +237,7 @@ public class FileController {
                 message = uploadRefusedMessage(e);
             } catch (InvalidDataException e) {
                 globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
-                message = messages.get("form.invalid");
+                message = reasonOf(e);
             } catch (DuplicateResourceException e) {
                 globalGeneralLogging.detail("DuplicateResourceException:" + e.getMessage());
                 message = messages.get("file.duplicate");
@@ -413,12 +455,7 @@ public class FileController {
             throw new  InvalidDataException("type not correct, type=" + fileUploadDTO.getType());
         }
 
-        logger.debug("file details for create new file===============");
-        logger.debug("orig name=" +fileUploadDTO.getMultipartFile().getOriginalFilename());
-        logger.debug("name=" + fileUploadDTO.getMultipartFile().getName());
-        logger.debug("content type=" + fileUploadDTO.getMultipartFile().getContentType());
-        logger.debug("size=" + fileUploadDTO.getMultipartFile().getSize());
-        logger.debug("===============================================");
+        logUpload(fileUploadDTO.getMultipartFile());
 
 
 
@@ -427,10 +464,18 @@ public class FileController {
         boolean valid = false;
         String message = messages.get("form.saved");
 
-        String fileNameWithoutExtension = ModelConverterUtil.getFileNameWithoutExtension(fileUploadDTO.getMultipartFile().getOriginalFilename());
+        // No file part is a binding error (the field is @NotNull), answered below by name.
+        MultipartFile uploaded = fileUploadDTO.getMultipartFile();
+        String fileNameWithoutExtension = uploaded == null || uploaded.getOriginalFilename() == null
+                ? null : ModelConverterUtil.getFileNameWithoutExtension(uploaded.getOriginalFilename());
         fileUploadDTO.setFileNameWithoutExtension(fileNameWithoutExtension);
-        if(bindingResult.hasErrors() || !fileNameWithoutExtension.equals(fileUploadDTO.getFileName())) {
-            message = messages.get("form.invalid");
+        if(bindingResult.hasErrors() || !java.util.Objects.equals(fileNameWithoutExtension, fileUploadDTO.getFileName())) {
+            // A new version or format carries the file's own name: say which name, rather than
+            // that something somewhere was wrong.
+            message = bindingResult.hasErrors()
+                    ? bindingMessage(bindingResult)
+                    : messages.get("upload.invalid.versionName",
+                            fileUploadDTO.getMultipartFile().getOriginalFilename(), fileUploadDTO.getFileName());
             fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
             globalGeneralLogging.detail("ValidationError:" + bindingResult);
         } else {
@@ -448,7 +493,7 @@ public class FileController {
             } catch (InvalidDataException e) {
                 fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
                 globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
-                message = messages.get("form.invalid");
+                message = reasonOf(e);
             } catch (DuplicateResourceException e) {
                 fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
                 globalGeneralLogging.detail("DuplicateResourceException:" + e.getMessage());

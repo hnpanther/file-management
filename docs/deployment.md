@@ -654,6 +654,11 @@ migrations**; take the database backup first, as always, and watch the start for
   **For the PL/SQL clients:** a function that sends no `public-file` now stores private files.
   Their downloads are unaffected; only if those files must also appear on the public files page
   does it need to send `public-file=1`. Files already stored keep whatever they were.
+* **A refused upload says why**, where it used to say only «لطفا اطلاعات را بطور صحیح وارد نمایید»:
+  the type and the types allowed, a name that cannot be stored, no folder chosen, and so on
+  ([issue 89](issues.md#89-the-upload-form-answered-every-refusal-with-enter-the-information-correctly--s2)).
+  For the API only the wording of one detail changes: a type nobody may upload is still a 400,
+  now reading `file type .x is not allowed; allowed: ...`.
 * **And one addition**: the file page has a "نمایش در فایل اکسپلورر" button, and a successful
   upload's message links to the new file's page and to the same place - the explorer opened on the
   file's folder, at the page that lists it, with the file selected. Nothing to configure: it is

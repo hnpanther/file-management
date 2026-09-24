@@ -119,9 +119,11 @@ class UploadContentTypeTest extends MySqlSupport {
         uploadV1("photo.png", "image/png", html)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value(containsString("not a .png")));
+        // Refused by the upload policy, which the service asks before the catalogue: .html is
+        // allowed to nobody, and the answer says what is (there is no earlier check since 1.7.0).
         uploadV1("page.html", "text/plain", "hello".getBytes(StandardCharsets.UTF_8))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value(containsString("not recognised")));
+                .andExpect(jsonPath("$.detail").value(containsString("is not allowed")));
         uploadV1("icon.svg", "image/png", "<svg onload=alert(1)/>".getBytes(StandardCharsets.UTF_8))
                 .andExpect(status().isBadRequest());
         uploadV1("tool.pdf", "application/pdf", new byte[]{'M', 'Z', (byte) 0x90, 0})

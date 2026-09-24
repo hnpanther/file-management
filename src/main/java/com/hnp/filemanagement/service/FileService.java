@@ -174,13 +174,7 @@ public class FileService {
     public FileDetailsDTO createNewFile(FileInfoDTO fileInfoDTO, int principalId, int publicFile) {
 
         MultipartFile multipartFile = fileInfoDTO.getMultipartFile();
-        String originalFilename = multipartFile.getOriginalFilename();
-        if (originalFilename == null) {
-            throw new InvalidDataException("file name is null");
-        }
-        if (!ValidationUtil.checkCorrectFileName(originalFilename)) {
-            throw new InvalidDataException("invalid file name (a separator, a forbidden character, or no extension)=" + originalFilename);
-        }
+        String originalFilename = requireStorableName(multipartFile);
 
         String name = ModelConverterUtil.getFileNameWithoutExtension(originalFilename);
         String extension = getFileExtension(originalFilename);
@@ -266,7 +260,7 @@ public class FileService {
      */
     private Folder targetFolderOf(FileInfoDTO fileInfoDTO) {
         if (fileInfoDTO.getFolderId() == null) {
-            throw new InvalidDataException("no target: send folderId (the id of the folder)");
+            throw new InvalidDataException("no target: send folderId (the id of the folder)", "upload.invalid.noFolder");
         }
         Folder folder = folderService.requireWithTagGroup(fileInfoDTO.getFolderId());
         requireHoldsFiles(folder);
@@ -276,8 +270,26 @@ public class FileService {
     private static void requireHoldsFiles(Folder folder) {
         if (!FolderService.canHoldFiles(folder)) {
             throw new InvalidDataException("folder id=" + folder.getId() + " is the " + folder.getKind()
-                    + "; a document is filed into a folder beneath it");
+                    + "; a document is filed into a folder beneath it",
+                    "upload.invalid.folderCannotHoldFiles", folder.getDisplayName());
         }
+    }
+
+    /**
+     * The name the upload came with, if it can be stored: a safe path segment with an extension
+     * ({@link ValidationUtil#checkCorrectFileName}). "No file chosen" and "a name that cannot be
+     * stored" are told apart, because they are fixed in two different ways.
+     */
+    private static String requireStorableName(MultipartFile multipartFile) {
+        String originalFilename = multipartFile == null ? null : multipartFile.getOriginalFilename();
+        if (originalFilename == null || originalFilename.isBlank()) {
+            throw new InvalidDataException("no file was sent", "upload.invalid.noFile");
+        }
+        if (!ValidationUtil.checkCorrectFileName(originalFilename)) {
+            throw new InvalidDataException("invalid file name (a separator, a forbidden character, or no extension)="
+                    + originalFilename, "upload.invalid.name", originalFilename);
+        }
+        return originalFilename;
     }
 
     /**
@@ -305,10 +317,7 @@ public class FileService {
         folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), fileInfo);
 
         MultipartFile multipartFile = fileUploadDTO.getMultipartFile();
-        String originalFilename = multipartFile.getOriginalFilename();
-        if (originalFilename == null || !ValidationUtil.checkCorrectFileName(originalFilename)) {
-            throw new InvalidDataException("invalid file name (a separator, a forbidden character, or no extension)=" + originalFilename);
-        }
+        String originalFilename = requireStorableName(multipartFile);
         // A new version or format adds its bytes under the file's folder: any quota above must
         // have room, asked before anything is written (roadmap 10.4).
         folderQuotaService.requireRoom(fileInfo.getFolder(), multipartFile.getSize());
@@ -320,7 +329,8 @@ public class FileService {
         // A version of a file has to carry that file's name: the stored name is derived from it.
         if (!fileInfo.getFileName().equals(fileUploadDTO.getFileName()) || !fileInfo.getFileName().equals(name)) {
             throw new InvalidDataException("file name not correct, fileName=" + fileUploadDTO.getFileNameWithoutExtension()
-                    + " should be=" + fileInfo.getFileName());
+                    + " should be=" + fileInfo.getFileName(),
+                    "upload.invalid.versionName", originalFilename, fileInfo.getFileName());
         }
 
         FileDetails created = switch (fileUploadDTO.getType()) {

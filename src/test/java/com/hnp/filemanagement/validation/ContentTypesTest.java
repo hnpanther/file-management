@@ -75,6 +75,28 @@ class ContentTypesTest {
         assertThat(ContentTypes.isAllowed(file)).isFalse();
     }
 
+    /**
+     * Each refusal also says itself to a person: the page shows the message code's text, not
+     * "enter the information correctly". The English message stays what the API answers.
+     */
+    @Test
+    @DisplayName("both refusals carry the message a person is shown, with the extension and the name in it")
+    void refusalsCarryAMessageForPeople() {
+        MockMultipartFile visio = new MockMultipartFile("f", "drawing.vsdx", null, new byte[]{'P', 'K', 3, 4});
+        assertThatThrownBy(() -> ContentTypes.detect(visio))
+                .isInstanceOfSatisfying(InvalidDataException.class, e -> {
+                    assertThat(e.getMessageCode()).contains("upload.invalid.typeNotRecognised");
+                    assertThat(e.getMessageArguments()[0]).isEqualTo("vsdx");
+                });
+
+        MockMultipartFile fake = new MockMultipartFile("f", "report.pdf", null, "not a pdf".getBytes(StandardCharsets.UTF_8));
+        assertThatThrownBy(() -> ContentTypes.detect(fake))
+                .isInstanceOfSatisfying(InvalidDataException.class, e -> {
+                    assertThat(e.getMessageCode()).contains("upload.invalid.contentMismatch");
+                    assertThat(e.getMessageArguments()).containsExactly("report.pdf", "pdf");
+                });
+    }
+
     @Test
     @DisplayName("a renamed binary is refused whatever it is called: an EXE as .pdf, a PDF as .png")
     void aRenamedBinaryIsRefused() {
