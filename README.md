@@ -219,7 +219,7 @@ Requires the matching `API_*` permission or `ADMIN`.
 | Method | Path |
 |---|---|
 | `GET` | `/api/v1/files/health-test` |
-| `POST` | `/api/v1/files` — multipart; `?public-file=0` stores it private |
+| `POST` | `/api/v1/files` — multipart; stored private unless `public-file=1` (or `true`) |
 | `DELETE` | `/api/v1/files/file-info/{fileInfoId}/file-details/{fileDetailsId}` |
 | `GET` | `/api/v1/files/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` |
 | `DELETE` / `GET` | `/api/v1/files/file-details/{fileDetailsId}`, `.../download` — the same two by the revision's id alone |

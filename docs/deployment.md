@@ -646,6 +646,14 @@ migrations**; take the database backup first, as always, and watch the start for
   that carried the name
   ([issue 85](issues.md#85-every-persian-named-file-downloaded-as-download--s1)). The log line
   `The HTTP response header [Content-Disposition] ... has been removed` stops appearing.
+* **A new file is private unless the upload asks otherwise** - a change people will notice. The
+  web form has a "public" box, unticked; the v1 API publishes only with `public-file=1` (or
+  `true`), where it used to publish unless it was sent `0`. Private means one thing: the file is
+  not on the public files page and `/files/public-download/...` does not serve it. Every
+  signed-in download - the file page, the explorer, both APIs, a share link - works as before.
+  **For the PL/SQL clients:** a function that sends no `public-file` now stores private files.
+  Their downloads are unaffected; only if those files must also appear on the public files page
+  does it need to send `public-file=1`. Files already stored keep whatever they were.
 * **And one addition**: the file page has a "نمایش در فایل اکسپلورر" button, and a successful
   upload's message links to the new file's page and to the same place - the explorer opened on the
   file's folder, at the page that lists it, with the file selected. Nothing to configure: it is

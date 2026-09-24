@@ -591,3 +591,12 @@ from how many names in that folder sort before the file's (`FolderContentService
 by the same comparison the listing sorts with. A link to a file that no longer exists shows
 `explorer.fileNotFound`; one to a file in a folder the person may not read shows the usual
 `explorer.forbidden`. `?folder=` still opens a folder, as the folder path on the file page does.
+
+### A new file is private unless asked
+
+The upload form has one checkbox under the file picker, `public-file` (`file.upload.public`, with
+`file.upload.publicHint` beneath it saying what public means), **unticked**: a file is private
+unless the person uploading it says otherwise. Ticked, the form sends `public-file=1`, read by
+`FileService.visibilityOf` exactly as the v1 API reads it. A refused upload re-renders the form
+with the box as it was sent. Public can still be switched either way afterwards from the file
+page, under its own permission.

@@ -77,9 +77,11 @@ public class FileApi {
      * tree render (since Phase 7 step 4; the category / sub-category / tag triple that preceded
      * it is ignored). A request without one is a 400 that names the parameter.
      *
-     * @param publicFile {@code "0"} marks the file private; anything else, including absent,
-     *                   leaves it public. The odd default is the existing behaviour and the pages
-     *                   depend on it.
+     * @param publicFile {@code "1"} or {@code "true"} lists the file on the public files page;
+     *                   anything else, absent included, keeps it private. Since 1.7.0 - it used to
+     *                   be public unless {@code "0"}, so a caller that wants a public file has to
+     *                   say so ({@link FileService#visibilityOf}). Private is not "not
+     *                   downloadable": this API and every signed-in download ignore it.
      */
     // API_SAVE_NEW_FILE
     @PreAuthorize("hasAuthority('API_SAVE_NEW_FILE') || hasAuthority('ADMIN')")
@@ -107,9 +109,8 @@ public class FileApi {
                 fileInfoDTO.getMultipartFile().getSize(),
                 publicFile);
 
-        int savePublicFile = "0".equals(publicFile) ? 0 : 1;
-
-        FileDetailsDTO fileDetailsDTO = fileService.createNewFile(fileInfoDTO, userDetails.getId(), savePublicFile);
+        FileDetailsDTO fileDetailsDTO = fileService.createNewFile(fileInfoDTO, userDetails.getId(),
+                FileService.visibilityOf(publicFile));
 
         return ModelConverterUtil.convertFileDetailsDTOToFileUploadOutputDTO(fileDetailsDTO);
     }

@@ -41,8 +41,9 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 **Now: 1.7.0, written and tested, not yet deployed.** It is PostgreSQL release A
 ([3.3](#33-release-a--what-to-neutralise-on-mysql-first--done-170)) - `app_user`, a 64-bit
 `file_size`, every name and search compared through `UPPER`, an empty search passed as `''` -
-together with the download-name fix (issue 85) and "show in the explorer" from the file page and
-after an upload. Its two migrations have already run once against a development database holding
+together with the download-name fix (issue 85), "show in the explorer" from the file page and
+after an upload, and new files private unless the upload asks to publish them (the form's box,
+the API's `public-file=1`). Its two migrations have already run once against a development database holding
 real rows: all twenty-two foreign keys followed the table, and no row was lost.
 
 **The order from here**, and why each step is where it is. One rule sets most of it: from
