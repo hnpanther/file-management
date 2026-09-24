@@ -132,7 +132,7 @@ class ShareLinkWebTest extends MySqlSupport {
         // The POST is the download, with the same headers as the public download.
         mockMvc.perform(post("/share/{token}", token).with(csrf()))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"shared.txt\""))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"shared.txt\"; filename*=UTF-8''shared.txt"))
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andExpect(content().string("content of shared.txt"));
@@ -172,7 +172,7 @@ class ShareLinkWebTest extends MySqlSupport {
         clock.advance(Duration.ofMinutes(15));
         mockMvc.perform(post("/share/{token}", link.token()).with(csrf()).param("password", "open sesame"))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"shared.txt\""))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"shared.txt\"; filename*=UTF-8''shared.txt"))
                 .andExpect(content().string("content of shared.txt"));
     }
 

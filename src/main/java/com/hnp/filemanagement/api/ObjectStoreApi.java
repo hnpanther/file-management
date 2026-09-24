@@ -5,6 +5,7 @@ import com.hnp.filemanagement.dto.FileDownloadDTO;
 import com.hnp.filemanagement.dto.ObjectListingDTO;
 import com.hnp.filemanagement.dto.ObjectMetadataDTO;
 import com.hnp.filemanagement.service.ObjectStoreService;
+import com.hnp.filemanagement.util.ContentDispositions;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import com.hnp.filemanagement.config.OpenApiConfig;
 import com.hnp.filemanagement.util.RawBodyMultipartFile;
@@ -140,7 +141,7 @@ public class ObjectStoreApi {
         // Served as the extension's type, as an attachment, with nosniff - the v1 rules (issue 13).
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(download.getContentType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + download.getFileName() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDispositions.attachment(download.getFileName()))
                 .header("X-Content-Type-Options", "nosniff")
                 .header(HttpHeaders.ETAG, metadata.eTag())
                 .header("x-fm-version", String.valueOf(metadata.version()))

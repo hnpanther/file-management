@@ -8,6 +8,7 @@ import com.hnp.filemanagement.dto.FileInfoDTO;
 import com.hnp.filemanagement.dto.FileUploadOutputDTO;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.service.FileService;
+import com.hnp.filemanagement.util.ContentDispositions;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import com.hnp.filemanagement.validation.InsertValidation;
@@ -172,8 +173,7 @@ public class FileApi {
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(fileDownloadDTO.getContentType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + fileDownloadDTO.getFileName() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDispositions.attachment(fileDownloadDTO.getFileName()))
                 .header("X-Content-Type-Options", "nosniff")
                 .body(fileDownloadDTO.getResource());
     }

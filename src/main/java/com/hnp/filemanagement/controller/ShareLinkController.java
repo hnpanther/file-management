@@ -6,6 +6,7 @@ import com.hnp.filemanagement.entity.FileShareLink;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.ShareLinkService;
+import com.hnp.filemanagement.util.ContentDispositions;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -89,7 +90,7 @@ public class ShareLinkController {
     static ResponseEntity<?> attachment(FileDownloadDTO file) {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(file.getContentType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getFileName() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDispositions.attachment(file.getFileName()))
                 .header("X-Content-Type-Options", "nosniff")
                 .header("Content-Security-Policy", "default-src 'none'")
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")

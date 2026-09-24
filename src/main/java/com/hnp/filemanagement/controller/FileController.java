@@ -8,6 +8,7 @@ import com.hnp.filemanagement.exception.QuotaExceededException;
 import com.hnp.filemanagement.exception.UploadRefusedException;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.service.UploadPolicyService;
+import com.hnp.filemanagement.util.ContentDispositions;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
 import com.hnp.filemanagement.util.UiMessages;
 import com.hnp.filemanagement.util.ModelConverterUtil;
@@ -332,7 +333,7 @@ public class FileController {
      */
     private static ResponseEntity<?> download(FileDownloadDTO file, boolean inlineRequested) {
         boolean inline = inlineRequested && file.isInlineSafe();
-        String disposition = (inline ? "inline" : "attachment") + "; filename=\"" + file.getFileName() + "\"";
+        String disposition = ContentDispositions.of(inline, file.getFileName());
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(file.getContentType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
