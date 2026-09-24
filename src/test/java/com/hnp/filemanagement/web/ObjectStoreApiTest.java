@@ -242,9 +242,13 @@ class ObjectStoreApiTest extends MySqlSupport {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.key").value(prefix + "/" + name + "/v1/" + name + ".txt"));
 
+        // And it downloads under that name: percent-encoded in filename*, since a raw Persian
+        // header is one Tomcat drops before it is sent (issue 85).
         mockMvc.perform(get("/api/v2/" + bucket + "/" + prefix + "/" + name + "/v1/" + name + ".txt")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
                 .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        containsString("filename*=UTF-8''%DA%AF%D8%B2%D8%A7%D8%B1%D8%B4.txt")))
                 .andExpect(content().string("x"));
 
         org.assertj.core.api.Assertions.assertThat(fileInfoRepository.findAll())

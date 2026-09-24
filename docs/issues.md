@@ -1323,3 +1323,78 @@ class of defect).
 > `PermissionNamesTest` reads every `hasAuthority('X')` in the Java sources **and** the
 > templates and checks each against `PermissionEnum`, so this class of drift fails the build
 > from now on. It found nothing else.
+
+## Found in production (1.6.1)
+
+### 85. Every Persian-named file downloaded as `download` — **S1**
+
+`FileController.download`, `ShareLinkController.attachment`, `FileApi.downloadFileById` and
+`ObjectStoreApi.getObject` each wrote the header by concatenation:
+`"attachment; filename=\"" + fileName + "\""`. The name is the one the file was uploaded with
+(`FileService.newFileDetails` keeps `getOriginalFilename()`), which here is usually Persian. A
+response header may carry ISO-8859-1 only, so Tomcat refuses the value, logs
+
+```
+WARNING: The HTTP response header [Content-Disposition] with value [attachment; filename="????? ????.pdf"]
+has been removed from the response because it is invalid
+```
+
+and sends the response **without** the header. The browser then names the file after the last
+segment of the URL - `…/download` - with no extension, from the file page, the explorer, the
+public files, a share link and both APIs alike. The bytes were always right; only the name was
+lost. It was not new: `main` built the header the same way, and it surfaced once Persian names
+became the norm. MockMvc never showed it, because MockMvc has no servlet container to drop the
+header.
+
+> **Fixed.** `util/ContentDispositions` is the one place the header is built, through Spring's
+> `ContentDisposition` with UTF-8: ASCII from end to end (RFC 6266), the real name
+> percent-encoded in `filename*`, and in `filename` a fallback with each non-ASCII character
+> replaced by `_`, extension kept. An ASCII name is unchanged in `filename`, so an integration
+> that reads that parameter sees what it always did; the PL/SQL clients read only the bytes.
+> `ContentDispositionsTest` runs a real Tomcat 11 and shows both halves - the raw header dropped,
+> the built one arriving and decoding to the Persian name - and a Persian case on the page,
+> v1 and v2 routes checks the header is ASCII only and names the file.
+
+## Found while reviewing the PostgreSQL plan (Phase 3)
+
+### 86. Case-insensitive equality and uniqueness come from the MySQL collation, and Release A plans only for `LIKE` — **S2**
+
+Every table is created `COLLATE = utf8mb4_unicode_ci`, and `docs/schema.md` says why: it makes
+the unique constraints compare names case-insensitively. It does more than that, and not only for
+`LIKE`. Checked against MySQL 8 with that collation:
+
+| Comparison | MySQL `unicode_ci` | PostgreSQL, default collation |
+|---|---|---|
+| `'admin' = 'Admin'` | equal | different |
+| `'resume' = 'résumé'` | equal | different |
+| `'میخواهم' = 'می‌خواهم'` (with and without the zero-width non-joiner) | equal | different |
+| Arabic `ي` / `ك` against Persian `ی` / `ک` | different | different |
+
+Roadmap 3.3 rewrites the 22 search `LIKE`s with `LOWER(...)` and stops there. After the move, as
+planned:
+
+* **Sign-in becomes case-sensitive.** `UserRepository.findByUsernameWithRolesAndPermissions`
+  compares `u.username = :username`; whoever signs in today as `admin` for the account `Admin`
+  is refused on PostgreSQL. So is `DataInitializer`'s `existsByUsername`, and the role lookups.
+* **Every unique name becomes case-sensitive**: `uq_folder_sibling_name`,
+  `uq_file_info_name_per_folder`, `uq_tag_group_name`, `uq_tag_name_per_group`,
+  `uq_role_role_name`, `uq_user_username`, `uq_user_email`, `uq_content_kind_extension`,
+  `uq_upload_policy_rule` and `uq_file_details_version_format` (the extension column). `Report`
+  and `report` may then sit side by side in one folder, and `PDF` and `pdf` be two formats of one
+  version. The data copies cleanly - it is unique under the looser rule, so under the stricter one
+  too; the change is in what is accepted afterwards.
+* **`FileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders`** matches tag names against
+  folder names with `IN`: a pair differing only in case agrees on MySQL and disagrees on
+  PostgreSQL, so the one check that tags and tree agree would report files that are fine.
+* **A Persian name typed with and without the half-space** is one name on MySQL and two on
+  PostgreSQL - for uniqueness and for search.
+
+**What Release A has to add**, decided per column rather than globally: for identifiers looked up
+by equality (username, role name, tag and folder names), `LOWER(x) = LOWER(:x)` in the JPQL, as
+the `LIKE`s get; in `V3.0`, a unique index on `lower(column)` for each constraint above that is
+meant to stay case-insensitive (PostgreSQL has no collation-level equivalent it can also run
+`LIKE` against before version 18, whose nondeterministic ICU collations would be the alternative
+- and would move the target from 17 to 18). Accent and half-space folding are a separate
+decision; nothing here depends on them except search, and issue 21's full-text search is where
+they belong. A test on both databases in Release B - `admin` signs in as `Admin`; `report` is
+refused beside `Report` - is what proves it.

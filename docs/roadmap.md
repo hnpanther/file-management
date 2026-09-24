@@ -320,6 +320,7 @@ cut-over changes no behaviour:
 | `RENAME TABLE user TO app_user`; `@Table(name = "app_user")` | `user` is reserved in PostgreSQL (issue 30); quoting it would spread into every native query and every operator's `psql` session |
 | `file_details.file_size INT` → `BIGINT`; the field `Integer` → `long` | issue 6; a type change on MySQL now, so the PostgreSQL baseline is not the first place the entity meets a wider column |
 | every search `LIKE` on user text becomes `LOWER(column) LIKE LOWER(:term)` (22 places in the repositories; the path-prefix `LIKE`s stay as they are) | MySQL's `utf8mb4` collations compare case-insensitively and PostgreSQL's `LIKE` does not; without this, a search that finds `Report` today stops finding it on `report` after the move. Made on MySQL first so the behaviour is the same on both, and the queries stay JPQL |
+| equality lookups on names (`username`, role, tag and folder names) become `LOWER(x) = LOWER(:x)`; each case-insensitive unique constraint is listed for a `lower(column)` index in `V3.0` | the collation makes `=` and every `UNIQUE` on text case-insensitive on MySQL, not only `LIKE`: without this, signing in as `admin` for `Admin` stops working and `Report` and `report` can share a folder ([issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2)) |
 | the one native query (`findIdsWhoseTagsDisagreeWithTheFolders`) checked against PostgreSQL syntax | it is plain SQL-92 (`LIKE CONCAT`, subselects) and should pass unchanged; the check is a test in release B, not a rewrite |
 | `# comments`, `ENGINE`, `AFTER`, `AUTO_INCREMENT` in `V1.0`–`V2.10` | left alone: they never run on PostgreSQL (3.4) |
 
@@ -332,7 +333,7 @@ have.
 
 ```
 src/main/resources/db/migration/
-├── mysql/          V1.0 … V2.10, V2.11 (release A)   ← the existing files, moved, unchanged
+├── mysql/          V1.0 … V2.13, V2.14+ (release A)  ← the existing files, moved, unchanged
 └── postgresql/     V3.0__Baseline.sql
 ```
 
@@ -354,6 +355,8 @@ exactly as an empty MySQL does.
 | `ENGINE`, `CHARSET`, collations | dropped; the database is created `ENCODING 'UTF8'` |
 | `LIKE` search | as after release A; `tsvector` (issue 21) is a later `V3.x` |
 | indexes and constraints | the same set, the same names, so `schema.md` describes both |
+| `folder.path` indexed for prefix `LIKE` (every subtree and folder-access query) | the index declared `varchar_pattern_ops`, or the column `COLLATE "C"` - under any other collation PostgreSQL cannot use a B-tree for `LIKE 'prefix%'` and those queries become sequential scans (Phase 6.1 left this to be decided here) |
+| case-insensitive unique names | a unique index on `lower(column)` for each constraint listed in [issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2), under its existing name |
 
 **Dependencies.** `org.postgresql:postgresql` and `org.flywaydb:flyway-database-postgresql` are
 added beside the MySQL pair (removed only in C).

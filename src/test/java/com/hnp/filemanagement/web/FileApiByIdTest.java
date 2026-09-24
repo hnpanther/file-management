@@ -137,6 +137,32 @@ class FileApiByIdTest extends MySqlSupport {
                 .andExpect(status().isNotFound());
     }
 
+    /**
+     * Issue 85, on the route the PL/SQL clients use: a Persian name arrives percent-encoded in
+     * {@code filename*}, and the header is ASCII only - which is what lets Tomcat send it at all.
+     */
+    @Test
+    @DisplayName("a Persian-named file downloads under its own name, on both download routes")
+    void aPersianNameSurvivesTheDownload() throws Exception {
+        String name = "گزارش.pdf"; // "report.pdf"
+        String body = upload(name, adminId).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        int fileId = JsonPath.read(body, "$.fileId");
+        int detailsId = JsonPath.read(body, "$.fileDetailsId");
+
+        for (String route : List.of("/api/v1/files/file-details/" + detailsId + "/download",
+                "/api/v1/files/file-info/" + fileId + "/file-details/" + detailsId + "/download")) {
+            String disposition = mockMvc.perform(get(route).with(user(principal(adminId, PermissionEnum.API_DOWNLOAD_FILE))))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                            containsString("filename*=UTF-8''%DA%AF%D8%B2%D8%A7%D8%B1%D8%B4.pdf")))
+                    .andExpect(content().bytes(TestData.bytesFor(name)))
+                    .andReturn().getResponse().getHeader(HttpHeaders.CONTENT_DISPOSITION);
+
+            assertThat(disposition.chars()).as(route).allMatch(c -> c < 0x80);
+            assertThat(org.springframework.http.ContentDisposition.parse(disposition).getFilename()).isEqualTo(name);
+        }
+    }
+
     @Test
     @DisplayName("deleting one of two versions by id leaves the other, and the two-id form answers the same")
     void deletingOneOfTwoVersionsById() throws Exception {

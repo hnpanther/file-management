@@ -224,7 +224,11 @@ Hibernate will refuse to start on a mismatch.
 * **Do not add `inline` content disposition** to any new download path. Every download goes
   through `FileController.download(FileDownloadDTO, boolean)`, which honours `?inline=1` only for
   the types `ContentTypes.inlineSafe` names and always sends `nosniff` and a `default-src 'none'`
-  CSP; route a new download through it rather than building the headers again.
+  CSP; route a new download through it rather than building the headers again. The file name
+  goes into `Content-Disposition` only through `ContentDispositions` - never by concatenation:
+  a response header is ISO-8859-1, and Tomcat silently drops one carrying a Persian name, so
+  the browser saves the file as `download`
+  ([issue 85](docs/issues.md#85-every-persian-named-file-downloaded-as-download--s1)).
 * **Every AJAX call needs the CSRF header.** Read `_csrf` / `_csrf_header` from the `<meta>` tags,
   as every existing template does. The session chain has CSRF enabled and it must stay that way.
 * **Authorization is per-endpoint only.** There is no per-file check

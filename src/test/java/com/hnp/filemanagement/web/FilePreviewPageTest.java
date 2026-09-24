@@ -122,6 +122,33 @@ class FilePreviewPageTest extends MySqlSupport {
                 .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, containsString("attachment;")));
     }
 
+    /**
+     * Issue 85: the name went into the header raw, Tomcat dropped a header it could not encode,
+     * and the browser saved every Persian-named file as {@code download}. MockMvc has no Tomcat,
+     * so what is checked here is the property that makes the header survive one - nothing but
+     * ASCII - and that the name a browser reads back out of it is the file's own.
+     * {@code ContentDispositionsTest} runs the real container.
+     */
+    @Test
+    @DisplayName("a Persian-named file downloads and previews under its own name, in a header that is ASCII only")
+    void aPersianNameIsWhatTheBrowserSaves() throws Exception {
+        String name = "گزارش مالی.pdf"; // "financial report.pdf"
+        FileDetailsDTO stored = upload(name);
+        String downloadPath = "/files/file-info/" + stored.getFileInfoId() + "/file-details/" + stored.getId() + "/download";
+
+        for (boolean inline : new boolean[]{false, true}) {
+            String disposition = mockMvc.perform(get(downloadPath).param("inline", inline ? "1" : "0").with(user(administrator())))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getHeader(HttpHeaders.CONTENT_DISPOSITION);
+
+            org.assertj.core.api.Assertions.assertThat(disposition)
+                    .startsWith(inline ? "inline; " : "attachment; ")
+                    .satisfies(header -> org.assertj.core.api.Assertions.assertThat(header.chars()).allMatch(c -> c < 0x80));
+            org.assertj.core.api.Assertions.assertThat(org.springframework.http.ContentDisposition.parse(disposition).getFilename())
+                    .isEqualTo(name);
+        }
+    }
+
     /** A browser cannot show a spreadsheet inline; offering a preview would only download it. */
     @Test
     @DisplayName("a format the browser cannot show gets no preview link")
