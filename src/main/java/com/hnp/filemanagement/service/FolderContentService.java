@@ -106,8 +106,40 @@ public class FolderContentService {
      */
     public FolderContentDTO contentOf(Integer folderId, int page, int size, int principalId) {
         FolderAccess access = folderAccessService.accessFor(principalId);
-        Folder folder = resolve(folderId, access);
+        return contentOf(resolve(folderId, access), access, page, size);
+    }
 
+    /**
+     * The folder a file is in, opened at the page that lists the file - where "show in the
+     * explorer" lands, from the file page and after an upload.
+     *
+     * <p>A folder's files are paged by name, {@value #DEFAULT_PAGE_SIZE} to a page by default, so
+     * in a large folder the file is not necessarily on the first one. Its page is worked out from
+     * how many of its neighbours sort before it, by the column the listing sorts on, rather than by
+     * reading pages until it turns up.
+     *
+     * @param size files per page, as for {@link #contentOf(Integer, int, int, int)}
+     * @throws InvalidDataException  if the id names no file - the answer an id that names no
+     *                               folder gets here too
+     * @throws AccessDeniedException if this person may not read the folder the file is in: the
+     *                               link names a file, and a folder whose files stay hidden would
+     *                               not show it
+     */
+    public FolderContentDTO contentAround(int fileId, int size, int principalId) {
+        FileInfo file = fileInfoRepository.findById(fileId)
+                .orElseThrow(() -> new InvalidDataException("no file with id=" + fileId));
+        Folder folder = file.getFolder();
+        FolderAccess access = folderAccessService.accessFor(principalId);
+        if (!access.canRead(folder.getPath())) {
+            throw new AccessDeniedException("no read access to the folder of file id=" + fileId);
+        }
+
+        int pageSize = pageRequest(0, size).getPageSize();
+        long before = fileInfoRepository.countInFolderSortedBefore(folder.getId(), file.getFileName());
+        return contentOf(folder, access, (int) (before / pageSize), size);
+    }
+
+    private FolderContentDTO contentOf(Folder folder, FolderAccess access, int page, int size) {
         boolean readable = access.canRead(folder.getPath());
         PageRequest pageRequest = pageRequest(page, size);
 

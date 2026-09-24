@@ -30,9 +30,9 @@ import org.springframework.web.context.request.ServletRequestAttributes;
  * nothing to get wrong. Outside a request (a scheduled task, a test) the line is still written,
  * with what is known.
  *
- * <p>Never pass a JPA entity as {@code message}: {@code FileInfo} and {@code FileDetails} are
- * bidirectional and both are {@code @Data}, so {@code toString()} recurses until the stack
- * overflows. Log an id.
+ * <p>Never pass a JPA entity as {@code message}. Its {@code toString()} no longer recurses - it is
+ * {@code AbstractEntity}'s {@code Type#id} since {@code @Data} left the entities - but an id says
+ * as much and cannot start loading anything. Log an id.
  */
 @Component
 public class GlobalGeneralLogging {

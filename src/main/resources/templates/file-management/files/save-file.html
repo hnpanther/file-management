@@ -99,8 +99,20 @@
                     </div>
                 </div>
 
-                <div th:if="${showMessage && valid}" class="alert alert-success" role="status"
-                     id="success_message" th:text="${message}"></div>
+                <div th:if="${showMessage && valid}" class="alert alert-success" role="status" id="success_message">
+                    <span th:text="${message}"></span>
+                    <!-- The file just stored: its page, and where it sits in the explorer. -->
+                    <span th:if="${savedFileId != null}" class="saved-file-links">
+                        <a sec:authorize="hasAuthority('FILE_INFO_PAGE') || hasAuthority('ADMIN')"
+                           th:href="@{/files/file-info/{id}(id=${savedFileId})}" id="saved-file-page"
+                           th:text="#{file.openFilePage}">رفتن به صفحهٔ فایل</a>
+                        <a sec:authorize="hasAuthority('FILE_EXPLORER_PAGE') || hasAuthority('ADMIN')"
+                           th:href="@{/files/explorer(file=${savedFileId})}" id="saved-file-in-explorer">
+                            <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                            <span th:text="#{file.showInExplorer}">نمایش در فایل اکسپلورر</span>
+                        </a>
+                    </span>
+                </div>
                 <div th:if="${showMessage && !valid}" class="alert alert-warning" role="alert"
                      id="warning_message" th:text="${message}"></div>
 

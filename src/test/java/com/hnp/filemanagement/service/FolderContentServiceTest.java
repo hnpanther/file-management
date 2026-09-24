@@ -106,6 +106,56 @@ class FolderContentServiceTest extends MySqlSupport {
         fileInfoRepository.save(fileInfo);
     }
 
+    // ---------------------------------------------------------------- show a file in the explorer
+
+    /**
+     * The page is worked out from how many names sort before the file's, not found by reading
+     * pages - so the one thing that must hold is that it is the page the ordinary listing shows the
+     * file on. Checked for every file of a folder spread over several pages, with names in both
+     * cases and in both scripts, where a comparison that disagreed with the sort would show.
+     */
+    @Test
+    @DisplayName("showing a file opens its folder at the very page the listing shows it on, for every file of a paged folder")
+    void showingAFileOpensItsFolderAtItsPage() {
+        var tag = folderRepository.findById(tagId).orElseThrow();
+        User creator = userRepository.findById(adminId).orElseThrow();
+        for (String name : List.of("alpha", "Beta", "charlie", "Delta", "گزارش", "آرشیو", "Zulu")) {
+            fileInfoRepository.save(TestData.fileInfo(creator, tag, name));
+        }
+        entityManager.flush();
+        entityManager.clear();
+
+        int size = 2;
+        FolderContentDTO first = folderContentService.contentOf(tagId, 0, size, adminId);
+        assertThat(first.page().totalPages()).as("the folder spans several pages").isEqualTo(4);
+
+        for (int number = 0; number < first.page().totalPages(); number++) {
+            for (FolderContentDTO.FileEntry listed : folderContentService.contentOf(tagId, number, size, adminId).files()) {
+                FolderContentDTO shown = folderContentService.contentAround(listed.id(), size, adminId);
+
+                assertThat(shown.folder().id()).isEqualTo(tagId);
+                assertThat(shown.page().number()).as("the page of " + listed.name()).isEqualTo(number);
+                assertThat(shown.files()).extracting(FolderContentDTO.FileEntry::id).contains(listed.id());
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("a file in a folder this person may not read is refused, not shown in an empty folder")
+    void showingAFileNeedsReadAccess() {
+        int fileId = fileInfoRepository.findByFolderIdAndFileName(tagId, fileName).orElseThrow().getId();
+
+        assertThatThrownBy(() -> folderContentService.contentAround(fileId, 100, restrictedId))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    @DisplayName("an id that names no file is a 400, as one that names no folder is")
+    void showingAMissingFileIsInvalid() {
+        assertThatThrownBy(() -> folderContentService.contentAround(Integer.MAX_VALUE, 100, adminId))
+                .isInstanceOf(InvalidDataException.class);
+    }
+
     // ---------------------------------------------------------------- the shape of an answer
 
     @Test

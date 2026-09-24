@@ -39,6 +39,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -90,6 +91,10 @@ class FilePreviewPageTest extends MySqlSupport {
     }
 
     private static UserDetailsImpl administrator() {
+        return withPermissions(PermissionEnum.ADMIN);
+    }
+
+    private static UserDetailsImpl withPermissions(PermissionEnum... permissions) {
         UserDetailsImpl userDetails = new UserDetailsImpl();
         userDetails.setId(1);
         userDetails.setUsername("tester");
@@ -97,7 +102,7 @@ class FilePreviewPageTest extends MySqlSupport {
         userDetails.setEnabled(1);
         userDetails.setState(0);
         userDetails.setLoginType(0);
-        userDetails.setPermissions(List.of(PermissionEnum.ADMIN));
+        userDetails.setPermissions(List.of(permissions));
         return userDetails;
     }
 
@@ -147,6 +152,39 @@ class FilePreviewPageTest extends MySqlSupport {
             org.assertj.core.api.Assertions.assertThat(org.springframework.http.ContentDisposition.parse(disposition).getFilename())
                     .isEqualTo(name);
         }
+    }
+
+    // ---------------------------------------------------------------- show in the explorer
+
+    @Test
+    @DisplayName("the file page offers the file's place in the explorer - to those who may open the explorer")
+    void theFilePageLinksToTheExplorer() throws Exception {
+        FileDetailsDTO stored = upload("located.pdf");
+        String link = "href=\"/files/explorer?file=" + stored.getFileInfoId() + "\"";
+
+        mockMvc.perform(get("/files/file-info/{id}", stored.getFileInfoId()).with(user(administrator())))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString(link)));
+
+        mockMvc.perform(get("/files/file-info/{id}", stored.getFileInfoId())
+                        .with(user(withPermissions(PermissionEnum.FILE_INFO_PAGE))))
+                .andExpect(status().isOk())
+                .andExpect(content().string(not(containsString("/files/explorer?file="))));
+    }
+
+    /** What the link's page then asks for: the file's folder, with the file on the page returned. */
+    @Test
+    @DisplayName("the explorer's content request by file id answers the file's folder with the file in it")
+    void theExplorerOpensAtTheFile() throws Exception {
+        FileDetailsDTO stored = upload("located.pdf");
+
+        mockMvc.perform(get("/resource/folders/children").param("fileId", String.valueOf(stored.getFileInfoId()))
+                        .with(user(withPermissions(PermissionEnum.FILE_EXPLORER_PAGE)))
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .accept(org.springframework.http.MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.folder.id").value(tagFolderId))
+                .andExpect(jsonPath("$.files[?(@.id == " + stored.getFileInfoId() + ")]").exists());
     }
 
     /** A browser cannot show a spreadsheet inline; offering a preview would only download it. */

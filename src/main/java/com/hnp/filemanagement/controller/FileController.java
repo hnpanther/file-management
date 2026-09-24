@@ -169,6 +169,8 @@ public class FileController {
         boolean showMessage = true;
         boolean valid = false;
         String message = "";
+        // The file just stored, for the success message's links to its page and its place in the explorer.
+        Integer savedFileId = null;
 
 
         if(bindingResult.hasErrors()) {
@@ -179,6 +181,7 @@ public class FileController {
             try {
                 FileDetailsDTO fileDetailsDTO = fileService.createNewFile(fileInfoDTO, principalId, 1);
                 valid = true;
+                savedFileId = fileDetailsDTO.getFileInfoId();
                 message = messages.get("form.saved");
             } catch (QuotaExceededException e) {
                 globalGeneralLogging.detail("QuotaExceededException:" + e.getMessage());
@@ -213,6 +216,7 @@ public class FileController {
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);
         model.addAttribute("message", message);
+        model.addAttribute("savedFileId", savedFileId);
         addUploadLimits(model, principalId);
 
         return "file-management/files/save-file.html";

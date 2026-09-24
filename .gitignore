@@ -40,6 +40,7 @@ TempFiles/
 application-local.properties
 src/main/resources/application-local.properties
 .env
+.claude
 
 ### logs
 logs/

@@ -112,6 +112,31 @@ class FolderContentEndpointTest extends MySqlSupport {
     }
 
     @Test
+    void aFileIdThatNamesNoFileIsAnsweredAsProblemJson() throws Exception {
+        mockMvc.perform(get("/resource/folders/children")
+                        .param("fileId", "999999")
+                        .with(user(principal(PermissionEnum.REST_GET_FOLDER_CONTENT)))
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    /** A folder named twice could be named two different ways; the request is refused, not guessed at. */
+    @Test
+    void aFolderIdAndAFileIdTogetherAreRefused() throws Exception {
+        mockMvc.perform(get("/resource/folders/children")
+                        .param("folderId", "1")
+                        .param("fileId", "1")
+                        .with(user(principal(PermissionEnum.REST_GET_FOLDER_CONTENT)))
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    @Test
     void anIdThatNamesNoFolderIsAnsweredAsProblemJson() throws Exception {
         mockMvc.perform(get("/resource/folders/children")
                         .param("folderId", "999999")

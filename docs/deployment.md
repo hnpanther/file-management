@@ -646,6 +646,10 @@ migrations**; take the database backup first, as always, and watch the start for
   that carried the name
   ([issue 85](issues.md#85-every-persian-named-file-downloaded-as-download--s1)). The log line
   `The HTTP response header [Content-Disposition] ... has been removed` stops appearing.
+* **And one addition**: the file page has a "نمایش در فایل اکسپلورر" button, and a successful
+  upload's message links to the new file's page and to the same place - the explorer opened on the
+  file's folder, at the page that lists it, with the file selected. Nothing to configure: it is
+  shown to whoever holds the explorer's own permission (`FILE_EXPLORER_PAGE`).
 
 **Rollback is not the old jar.** Unlike 1.6.1, the 1.6.1 jar cannot start on the migrated
 schema: `ddl-auto=validate` looks for `user` and refuses. Roll back by restoring the backup taken

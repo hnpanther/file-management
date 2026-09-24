@@ -437,6 +437,7 @@
 
                     <template x-for="entry in files" :key="'f' + entry.id">
                         <tr :class="selectedFile && selectedFile.id === entry.id && 'is-selected'"
+                            :data-file-row="entry.id"
                             @click="selectedFile = entry; selectedFolder = null">
                             <td>
                                 <span class="explorer-cell-name">
@@ -649,6 +650,7 @@
         collapse:          [[#{explorer.tree.collapse}]],
         forbidden:         [[#{explorer.forbidden}]],
         notFound:          [[#{explorer.notFound}]],
+        fileNotFound:      [[#{explorer.fileNotFound}]],
         loadFailed:        [[#{explorer.loadFailed}]],
         searchFailed:      [[#{explorer.search.failed}]],
         sessionExpired:    [[#{explorer.sessionExpired}]],
@@ -674,6 +676,8 @@
     };
 
     const INITIAL_FOLDER_ID = /*[[${initialFolderId}]]*/ null;
+    // ?file=: open the folder that file is in, at the page that lists it, with the file selected.
+    const INITIAL_FILE_ID = /*[[${initialFileId}]]*/ null;
     const SHARE_LINK = {
         createUrl:        /*[[@{/resource/files/file-details/{id}/share-links}]]*/ "/resource/files/file-details/{id}/share-links",
         maxMinutes:       /*[[${shareLinkRules.maxMinutes()}]]*/ 1440,
@@ -786,7 +790,11 @@
             expired: false,
 
             async init() {
-                await this.navigate(INITIAL_FOLDER_ID);
+                if (INITIAL_FILE_ID !== null) {
+                    await this.showFile(INITIAL_FILE_ID);
+                } else {
+                    await this.navigate(INITIAL_FOLDER_ID);
+                }
             },
 
             // ------------------------------------------------------------ navigation
@@ -797,6 +805,31 @@
              * two views of two different reads.
              */
             async navigate(folderId, pageNumber) {
+                return this.open(this.folderParams(folderId, pageNumber), EX.notFound);
+            },
+
+            /**
+             * "Show in the explorer": the server opens the folder the file is in at the page that
+             * lists it - the listing is paged by name, so in a large folder that is not the first -
+             * and the file is selected there and scrolled into view.
+             */
+            async showFile(fileId) {
+                const params = new URLSearchParams();
+                params.set("fileId", fileId);
+                if (!await this.open(params, EX.fileNotFound)) {
+                    return;
+                }
+                this.selectedFile = this.files.find(candidate => candidate.id === fileId) || null;
+                this.$nextTick(() => {
+                    const row = document.querySelector('[data-file-row="' + fileId + '"]');
+                    if (row) {
+                        row.scrollIntoView({ block: "center" });
+                    }
+                });
+            },
+
+            /** One read of a folder's content, applied to both panes; false when it failed. */
+            async open(params, notFoundMessage) {
                 this.error = "";
                 this.expired = false;
                 this.selectedFile = null;
@@ -807,14 +840,15 @@
 
                 let content;
                 try {
-                    content = await this.fetchContent(folderId, pageNumber || 0);
+                    content = await readJson(EX.childrenUrl + "?" + params.toString());
                 } catch (e) {
-                    this.fail(e, EX.loadFailed);
-                    return;
+                    this.fail(e, EX.loadFailed, notFoundMessage);
+                    return false;
                 }
 
                 this.apply(content);
                 await this.syncTree(content);
+                return true;
             },
 
             apply(content) {
@@ -833,12 +867,16 @@
             },
 
             fetchContent(folderId, pageNumber) {
+                return readJson(EX.childrenUrl + "?" + this.folderParams(folderId, pageNumber).toString());
+            },
+
+            folderParams(folderId, pageNumber) {
                 const params = new URLSearchParams();
                 if (folderId !== null && folderId !== undefined) {
                     params.set("folderId", folderId);
                 }
                 params.set("page", pageNumber || 0);
-                return readJson(EX.childrenUrl + "?" + params.toString());
+                return params;
             },
 
             goToPage(pageNumber) {
@@ -1273,7 +1311,7 @@
                 }
             },
 
-            fail(e, fallback) {
+            fail(e, fallback, notFoundMessage) {
                 if (e instanceof SessionExpiredError) {
                     this.expired = true;
                     this.error = EX.sessionExpired;
@@ -1284,7 +1322,7 @@
                     return;
                 }
                 if (e instanceof ExplorerError && e.status === 400) {
-                    this.error = EX.notFound;
+                    this.error = notFoundMessage || EX.notFound;
                     return;
                 }
                 this.error = fallback;
