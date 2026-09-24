@@ -36,7 +36,9 @@ import java.util.stream.Collectors;
  *
  * <p>A tag's title is copied when the tag is created and not followed afterwards. Names merge
  * within a group (two folders on one chain both called {@code HSED} are one tag), so "which
- * folder's label wins" has no answer until tags are edited as tags.
+ * folder's label wins" has no answer until tags are edited as tags. They merge without case, too -
+ * {@code HSED} and {@code hsed} are one tag - as the collation decided it when V2.4 built the
+ * tags; the lookup says so itself rather than leaving it to MySQL (issue 86).
  */
 @Service
 @Transactional(propagation = Propagation.MANDATORY)
@@ -104,7 +106,7 @@ public class TagMirrorService {
     // ------------------------------------------------------------------ get-or-create
 
     private Tag tagOf(TagGroup group, Folder folder) {
-        return tagRepository.findByGroupIdAndName(group.getId(), folder.getName()).orElseGet(() -> {
+        return tagRepository.findByGroupIdAndNameIgnoreCase(group.getId(), folder.getName()).orElseGet(() -> {
             Tag tag = new Tag();
             tag.setGroup(group);
             tag.setName(folder.getName());

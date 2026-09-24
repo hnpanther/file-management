@@ -20,7 +20,7 @@ public class FileDetailsDTO {
 
     private String fileLink;
 
-    private Integer fileSize;
+    private Long fileSize;
 
     private Integer version;
 

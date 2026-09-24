@@ -402,7 +402,7 @@ public class FileService {
         fileDetails.setContentType(ContentTypes.detect(multipartFile));
         fileDetails.setDescription(description);
         fileDetails.setStorageKey(storageKey);
-        fileDetails.setFileSize((int) multipartFile.getSize());
+        fileDetails.setFileSize(multipartFile.getSize());
         fileDetails.setVersion(version);
         fileDetails.setVersionName(versionName);
         fileDetails.setEnabled(1);
@@ -710,13 +710,13 @@ public class FileService {
 
         Page<FileInfo> page;
         if (readableFolders.isEmpty()) {
-            page = fileInfoRepository.search(SearchTerms.blankToNull(search), pageable);
+            page = fileInfoRepository.search(SearchTerms.blankToEmpty(search), pageable);
         } else if (readableFolders.get().isEmpty()) {
             // Granted nothing: an empty page, without asking the database for `IN ()`.
             page = Page.empty(pageable);
         } else {
             page = fileInfoRepository.searchWithinFolders(
-                    SearchTerms.blankToNull(search), readableFolders.get(), pageable);
+                    SearchTerms.blankToEmpty(search), readableFolders.get(), pageable);
         }
 
         // The ancestors of every folder on the page in one query, so the conversion below adds no
@@ -731,7 +731,7 @@ public class FileService {
     public PageResponse<PublicFileDetailsDTO> getPagePublicFiles(int pageSize, int pageNumber, String search) {
 
         Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
-        Page<FileDetails> page = fileDetailsRepository.searchPublicFiles(SearchTerms.blankToNull(search), pageable);
+        Page<FileDetails> page = fileDetailsRepository.searchPublicFiles(SearchTerms.blankToEmpty(search), pageable);
 
         Map<Integer, List<Folder>> ancestry = folderService.ancestryOf(
                 page.getContent().stream().map(d -> d.getFileInfo().getFolder()).toList());

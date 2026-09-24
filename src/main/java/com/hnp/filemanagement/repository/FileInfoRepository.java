@@ -16,7 +16,7 @@ import java.util.Optional;
  * Files, as opposed to their versions — one row per logical file, with {@code FileDetails} holding
  * the revisions.
  *
- * <p>Three conventions run through this interface.
+ * <p>Four conventions run through this interface.
  *
  * <p><b>Fetching is explicit.</b> Every association on {@code FileInfo} is lazy, so a query says
  * what it needs. {@code JOIN FETCH} on the {@code @ManyToOne} side is free to paginate — it is one
@@ -24,10 +24,18 @@ import java.util.Optional;
  * still return a {@link Page}. Fetching the {@code fileDetailsList} collection cannot be paginated
  * in SQL, so the queries that do it return a single file.
  *
- * <p><b>Everything is JPQL, never native SQL.</b> The PostgreSQL migration has to change the
- * dialect and nothing else. The one native query this project ever had — in the deleted
- * {@code MainTagFileDAO} — spelled a table {@code file_Info}, which MySQL on Windows accepted and
- * PostgreSQL would not have.
+ * <p><b>JPQL, not native SQL.</b> The PostgreSQL migration has to change the dialect and nothing
+ * else. The native query the project used to have — in the deleted {@code MainTagFileDAO} —
+ * spelled a table {@code file_Info}, which MySQL on Windows accepted and PostgreSQL would not
+ * have. The one native query left, {@link #findIdsWhoseTagsDisagreeWithTheFolders}, is plain
+ * SQL-92 and says why it is native.
+ *
+ * <p><b>Text compares without case, the same way on every database.</b> A search is
+ * {@code UPPER(column) LIKE UPPER(CONCAT('%', :term, '%'))}, and a name looked up by equality is
+ * {@code UPPER(column) = UPPER(:name)} - the function Spring Data's {@code IgnoreCase} renders, so a
+ * derived query and a written one agree, and one functional index on PostgreSQL serves both.
+ * MySQL's {@code unicode_ci} collation gave a bare {@code LIKE} and {@code =} that behaviour for
+ * free; PostgreSQL does not (issue 86). Path prefixes are digits and slashes and stay as they are.
  *
  * <p><b>Reads that a converter will walk fetch the folder.</b> {@code ModelConverterUtil} goes
  * from a file to its folder and from there to every folder above it; the folder is fetched with
@@ -55,12 +63,12 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             """)
     Optional<FileInfo> findByIdAndFetchFileDetails(@Param("id") int id);
 
-    /** The file with this name in this folder, with its revisions. */
+    /** The file with this name in this folder, with its revisions; the name compared without case. */
     @Query("""
             SELECT DISTINCT f FROM FileInfo f
             LEFT JOIN FETCH f.fileDetailsList
             JOIN FETCH f.folder t
-            WHERE t.id = :folderId AND f.fileName = :name
+            WHERE t.id = :folderId AND UPPER(f.fileName) = UPPER(:name)
             """)
     Optional<FileInfo> findByFolderIdAndFileNameWithDetails(@Param("folderId") int folderId, @Param("name") String name);
 
@@ -69,21 +77,23 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
      * it are loaded for the page as a batch by {@code FolderService.ancestryOf}, since a chain
      * of any depth cannot be fetch-joined.
      *
-     * <p>A null or blank {@code search} matches everything, so the page needs no second query for
-     * the unfiltered case. The term is matched against the file and every folder above it, found
+     * <p>An empty {@code search} matches everything, so the page needs no second query for the
+     * unfiltered case - the empty string, never {@code null}, which PostgreSQL cannot type there and
+     * which finds nothing here ({@code SearchTerms.blankToEmpty}, issue 87). The term is matched
+     * against the file and every folder above it, found
      * by the path prefix — a {@code LIKE '%term%'} across the graph, which no index can serve;
      * replacing it with a real search index is issue 21.
      */
     @Query("""
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
-            WHERE (:search) IS NULL
-               OR f.fileName LIKE CONCAT('%', (:search), '%')
-               OR f.description LIKE CONCAT('%', (:search), '%')
+            WHERE :search = ''
+               OR UPPER(f.fileName) LIKE UPPER(CONCAT('%', (:search), '%'))
+               OR UPPER(f.description) LIKE UPPER(CONCAT('%', (:search), '%'))
                OR EXISTS (SELECT a FROM Folder a
                           WHERE t.path LIKE CONCAT(a.path, '%') AND a.depth > 0
-                            AND (a.name LIKE CONCAT('%', (:search), '%')
-                                 OR a.displayName LIKE CONCAT('%', (:search), '%')))
+                            AND (UPPER(a.name) LIKE UPPER(CONCAT('%', (:search), '%'))
+                                 OR UPPER(a.displayName) LIKE UPPER(CONCAT('%', (:search), '%'))))
             """)
     Page<FileInfo> search(@Param("search") String search, Pageable pageable);
 
@@ -98,13 +108,13 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
             WHERE t.id IN (:folderIds)
-              AND ((:search) IS NULL
-               OR f.fileName LIKE CONCAT('%', (:search), '%')
-               OR f.description LIKE CONCAT('%', (:search), '%')
+              AND (:search = ''
+               OR UPPER(f.fileName) LIKE UPPER(CONCAT('%', (:search), '%'))
+               OR UPPER(f.description) LIKE UPPER(CONCAT('%', (:search), '%'))
                OR EXISTS (SELECT a FROM Folder a
                           WHERE t.path LIKE CONCAT(a.path, '%') AND a.depth > 0
-                            AND (a.name LIKE CONCAT('%', (:search), '%')
-                                 OR a.displayName LIKE CONCAT('%', (:search), '%'))))
+                            AND (UPPER(a.name) LIKE UPPER(CONCAT('%', (:search), '%'))
+                                 OR UPPER(a.displayName) LIKE UPPER(CONCAT('%', (:search), '%')))))
             """)
     Page<FileInfo> searchWithinFolders(@Param("search") String search,
                                        @Param("folderIds") Collection<Integer> folderIds,
@@ -121,8 +131,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder d
             WHERE (:id IS NOT NULL AND f.id = :id)
-               OR f.fileName LIKE CONCAT('%', :term, '%')
-               OR f.description LIKE CONCAT('%', :term, '%')
+               OR UPPER(f.fileName) LIKE UPPER(CONCAT('%', :term, '%'))
+               OR UPPER(f.description) LIKE UPPER(CONCAT('%', :term, '%'))
             ORDER BY f.fileName ASC
             """)
     List<FileInfo> searchForTree(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
@@ -162,8 +172,11 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     @Query("SELECT f FROM FileInfo f WHERE f.folder.id IN :folderIds")
     List<FileInfo> findByFolderIdIn(@Param("folderIds") Collection<Integer> folderIds);
 
-    /** The file with this name in this folder, without its revisions - the duplicate check on upload. */
-    @Query("SELECT f FROM FileInfo f WHERE f.folder.id = :folderId AND f.fileName = :name")
+    /**
+     * The file with this name in this folder, without its revisions - the duplicate check on
+     * upload. Without case, as {@code uq_file_info_name_per_folder} compares (issue 86).
+     */
+    @Query("SELECT f FROM FileInfo f WHERE f.folder.id = :folderId AND UPPER(f.fileName) = UPPER(:name)")
     Optional<FileInfo> findByFolderIdAndFileName(@Param("folderId") int folderId, @Param("name") String name);
 
 
@@ -188,8 +201,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder d
             WHERE (:id IS NOT NULL AND f.id = :id)
-               OR f.fileName LIKE CONCAT('%', :term, '%')
-               OR f.description LIKE CONCAT('%', :term, '%')
+               OR UPPER(f.fileName) LIKE UPPER(CONCAT('%', :term, '%'))
+               OR UPPER(f.description) LIKE UPPER(CONCAT('%', :term, '%'))
             """)
     Page<FileInfo> searchFiles(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
 
@@ -199,8 +212,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             JOIN FETCH f.folder d
             WHERE d.id IN (:folderIds)
               AND ((:id IS NOT NULL AND f.id = :id)
-               OR f.fileName LIKE CONCAT('%', :term, '%')
-               OR f.description LIKE CONCAT('%', :term, '%'))
+               OR UPPER(f.fileName) LIKE UPPER(CONCAT('%', :term, '%'))
+               OR UPPER(f.description) LIKE UPPER(CONCAT('%', :term, '%')))
             """)
     Page<FileInfo> searchFilesWithinFolders(@Param("id") Integer id,
                                             @Param("term") String term,
@@ -214,6 +227,10 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
      * move they make. Native, because the comparison is between two counts and a set membership,
      * which JPQL expresses badly. The chain is every folder whose path is a prefix of the file's
      * folder's path, the root left out; the group is the top-level folder's.
+     *
+     * <p>Names are compared through {@code UPPER} on both sides, as {@code TagMirrorService} looks
+     * a tag up (issue 86). The SQL is otherwise SQL-92 - {@code CONCAT}, subselects, no
+     * MySQL-only syntax - so the same text runs on PostgreSQL (roadmap 3.3).
      */
     @Query(value = """
             SELECT fi.id
@@ -224,11 +241,11 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
                OR (SELECT COUNT(*) FROM file_tag ft WHERE ft.file_info_id = fi.id)
                   <> (SELECT COUNT(DISTINCT tg.id) FROM tag tg
                       WHERE tg.group_id = top.tag_group_id
-                        AND tg.name IN (SELECT a.name FROM folder a WHERE a.depth > 0 AND t.path LIKE CONCAT(a.path, '%')))
+                        AND UPPER(tg.name) IN (SELECT UPPER(a.name) FROM folder a WHERE a.depth > 0 AND t.path LIKE CONCAT(a.path, '%')))
                OR EXISTS (SELECT 1 FROM file_tag ft JOIN tag tg ON tg.id = ft.tag_id
                           WHERE ft.file_info_id = fi.id
                             AND (tg.group_id <> top.tag_group_id
-                                 OR tg.name NOT IN (SELECT a.name FROM folder a WHERE a.depth > 0 AND t.path LIKE CONCAT(a.path, '%'))))
+                                 OR UPPER(tg.name) NOT IN (SELECT UPPER(a.name) FROM folder a WHERE a.depth > 0 AND t.path LIKE CONCAT(a.path, '%'))))
             """, nativeQuery = true)
     List<Integer> findIdsWhoseTagsDisagreeWithTheFolders();
 }

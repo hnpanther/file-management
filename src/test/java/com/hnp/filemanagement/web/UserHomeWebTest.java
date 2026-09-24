@@ -62,7 +62,7 @@ class UserHomeWebTest extends MySqlSupport {
     @BeforeEach
     void setUp() {
         // createUser gives every new user the USER role, which the test database does not seed.
-        if (roleRepository.findByRoleName("USER").isEmpty()) {
+        if (roleRepository.findByRoleNameIgnoreCase("USER").isEmpty()) {
             roleRepository.save(TestData.role("USER"));
         }
         Role adminRole = roleRepository.save(TestData.role("ADMIN"));
@@ -80,7 +80,7 @@ class UserHomeWebTest extends MySqlSupport {
                         .with(user(principal(adminId, PermissionEnum.SAVE_NEW_USER))).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(Matchers.not(Matchers.containsString("warning_message"))));
-        User boxed = userRepository.findByUsername("boxed" + n).orElseThrow();
+        User boxed = userRepository.findByUsernameIgnoreCase("boxed" + n).orElseThrow();
         Folder home = userHomeService.homeOf(boxed.getId()).orElseThrow();
         assertThat(home.getName()).isEqualTo("boxed" + n);
         assertThat(home.getParent().getId()).isEqualTo(userHomeService.profiles().getId());
@@ -89,7 +89,7 @@ class UserHomeWebTest extends MySqlSupport {
         mockMvc.perform(newUser("plain" + m, m).param("_createHome", "on")
                         .with(user(principal(adminId, PermissionEnum.SAVE_NEW_USER))).with(csrf()))
                 .andExpect(status().isOk());
-        User plain = userRepository.findByUsername("plain" + m).orElseThrow();
+        User plain = userRepository.findByUsernameIgnoreCase("plain" + m).orElseThrow();
         assertThat(userHomeService.homeOf(plain.getId())).isEmpty();
 
         // The form itself arrives with the box ticked.

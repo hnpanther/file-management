@@ -7,5 +7,6 @@ import java.util.Optional;
 
 public interface TagGroupRepository extends JpaRepository<TagGroup, Integer> {
 
-    Optional<TagGroup> findByName(String name);
+    /** A group by name, compared without case like its unique name (issue 86). */
+    Optional<TagGroup> findByNameIgnoreCase(String name);
 }

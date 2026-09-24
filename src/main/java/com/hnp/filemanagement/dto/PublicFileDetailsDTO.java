@@ -20,5 +20,5 @@ public class PublicFileDetailsDTO {
 
     private String version;
 
-    private Integer size;
+    private Long size;
 }

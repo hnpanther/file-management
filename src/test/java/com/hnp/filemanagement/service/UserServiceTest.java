@@ -80,7 +80,7 @@ class UserServiceTest extends MySqlSupport {
 
         underTest.createUser(request, principalId);
 
-        User created = userRepository.findByUsername(request.getUsername()).orElseThrow();
+        User created = userRepository.findByUsernameIgnoreCase(request.getUsername()).orElseThrow();
         assertThat(created.getEnabled()).isEqualTo(1);
         assertThat(created.getPassword()).isNotEqualTo(request.getPassword());
         assertThat(passwordEncoder.matches(request.getPassword(), created.getPassword())).isTrue();
@@ -97,6 +97,29 @@ class UserServiceTest extends MySqlSupport {
 
         assertThatThrownBy(() -> underTest.createUser(request, principalId))
                 .isInstanceOf(DuplicateResourceException.class);
+    }
+
+    /** Usernames are unique without case, as they sign in (issue 86). */
+    @Test
+    @DisplayName("a username someone already has in another case is a 409")
+    void rejectsADuplicateUsernameInAnotherCase() {
+        UserDTO request = request();
+        request.setUsername(userRepository.findById(subjectId).orElseThrow().getUsername().toUpperCase());
+
+        assertThatThrownBy(() -> underTest.createUser(request, principalId))
+                .isInstanceOf(DuplicateResourceException.class);
+    }
+
+    /** The sign-in lookup: {@code admin} reaches {@code Admin} - and the principal carries the stored spelling. */
+    @Test
+    @DisplayName("signing in with the username in another case reaches the same account")
+    void signInIgnoresCase() {
+        String stored = userRepository.findById(subjectId).orElseThrow().getUsername();
+
+        UserDetailsImpl principal = underTest.createUserDetailsFromUser(stored.toUpperCase());
+
+        assertThat(principal.getId()).isEqualTo(subjectId);
+        assertThat(principal.getUsername()).isEqualTo(stored);
     }
 
     // ---------------------------------------------------------------- update
@@ -273,7 +296,7 @@ class UserServiceTest extends MySqlSupport {
     @Test
     @DisplayName("holding the ADMIN role adds the synthetic ADMIN authority")
     void grantsTheAdminAuthorityToAdmins() {
-        Role admin = roleRepository.findByRoleName("ADMIN").orElseThrow();
+        Role admin = roleRepository.findByRoleNameIgnoreCase("ADMIN").orElseThrow();
         underTest.updateUserRoles(subjectId, List.of(admin.getId()), principalId);
         String username = userRepository.findById(subjectId).orElseThrow().getUsername();
 

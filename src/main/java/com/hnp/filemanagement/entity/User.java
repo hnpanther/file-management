@@ -44,9 +44,12 @@ import java.util.stream.Collectors;
  * </ul>
  *
  * <p>There is no {@code CascadeType.REMOVE}: deleting a user must never delete the roles they held.
+ *
+ * <p>The table is {@code app_user}, not {@code user} (V2.14): {@code USER} is reserved in
+ * PostgreSQL, and the entity keeps its name, so JPQL still says {@code FROM User u}.
  */
 @Entity
-@Table(name = "user")
+@Table(name = "app_user")
 @Getter
 @Setter
 public class User extends AbstractEntity {

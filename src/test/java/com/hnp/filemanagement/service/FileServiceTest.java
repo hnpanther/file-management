@@ -296,6 +296,72 @@ class FileServiceTest extends MySqlSupport {
                 .containsOnly("V1");
     }
 
+    /**
+     * Names are unique without case (issue 86): {@code uq_file_info_name_per_folder} compares that
+     * way on MySQL, and the check before it has to agree on any database.
+     */
+    @Test
+    @DisplayName("the same name in another case in the same folder is a 409")
+    void rejectsADuplicateFileNameInAnotherCase() {
+        underTest.createNewFile(uploadRequest("Report.txt"), principalId, 1);
+
+        assertThatThrownBy(() -> underTest.createNewFile(uploadRequest("REPORT.txt"), principalId, 1))
+                .isInstanceOf(DuplicateResourceException.class);
+        assertThat(underTest.isDuplicate("report", tagFolderId)).isTrue();
+    }
+
+    /**
+     * The format check is about the bytes as much as the row. Both extensions are kept as uploaded,
+     * so {@code report.pdf} and {@code report.PDF} at one version are two keys - and on Windows one
+     * file: letting the second in would write over the first's bytes (issue 86).
+     */
+    @Test
+    @DisplayName("the same format in another case at the same version is a 409, and the first one's bytes are untouched")
+    void rejectsADuplicateFormatInAnotherCase() throws Exception {
+        FileDetailsDTO first = underTest.createNewFile(uploadRequest("report.pdf"), principalId, 1);
+        Path firstBytes = storedFile(first.getFileInfoId(), "report", 1, "pdf");
+        byte[] before = Files.readAllBytes(firstBytes);
+
+        FileUploadDTO request = formatRequest(first.getFileInfoId(), first.getId(), "report.PDF", 1);
+        request.setMultipartFile(new MockMultipartFile("report.PDF", "report.PDF", "application/pdf",
+                "%PDF-1.4 a different document".getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
+
+        assertThatThrownBy(() -> underTest.createNewFileDetails(request, principalId))
+                .isInstanceOf(DuplicateResourceException.class);
+        assertThat(Files.readAllBytes(firstBytes)).isEqualTo(before);
+        assertThat(fileDetailsRepository.findAll()).filteredOn(d -> d.getFileInfo().getId() == first.getFileInfoId())
+                .singleElement().extracting(FileDetails::getFileExtension).isEqualTo("pdf");
+    }
+
+    /**
+     * A tag is one per distinct name in its group, and "distinct" is without case - as V2.4 decided
+     * it when the tags were built from the taxonomy (issue 86). Two folders in one group whose
+     * names differ only in case therefore share a tag, and the check that tags and tree agree
+     * accepts it.
+     */
+    @Test
+    @DisplayName("two folders in one group whose names differ only in case give their files one shared tag")
+    void aTagIsSharedAcrossCase() {
+        var budget = FolderFixture.tag(folderRepository, chain.subCategory(), creator, "Budget" + TestData.nextSequence());
+        var otherSub = FolderFixture.subCategory(folderRepository, chain.category(), creator, "Other" + TestData.nextSequence());
+        var budgetUpper = FolderFixture.tag(folderRepository, otherSub, creator, budget.getName().toUpperCase());
+
+        FileInfoDTO inFirst = uploadRequest("first.txt");
+        inFirst.setFolderId(budget.getId());
+        FileInfoDTO inSecond = uploadRequest("second.txt");
+        inSecond.setFolderId(budgetUpper.getId());
+        int firstId = underTest.createNewFile(inFirst, principalId, 1).getFileInfoId();
+        int secondId = underTest.createNewFile(inSecond, principalId, 1).getFileInfoId();
+        entityManager.flush();
+        entityManager.clear();
+
+        var tagOfFirst = fileInfoRepository.findById(firstId).orElseThrow().getTags().stream()
+                .filter(tag -> tag.getName().equalsIgnoreCase(budget.getName())).findFirst().orElseThrow();
+        assertThat(fileInfoRepository.findById(secondId).orElseThrow().getTags())
+                .extracting(com.hnp.filemanagement.entity.Tag::getId).contains(tagOfFirst.getId());
+        assertThat(fileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders()).doesNotContain(firstId, secondId);
+    }
+
     @Test
     @DisplayName("the same format at the same version twice is a 409")
     void rejectsADuplicateFormat() {

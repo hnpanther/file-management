@@ -141,7 +141,7 @@ class FolderServiceTest extends MySqlSupport {
 
             String newName = "fresh" + TestData.nextSequence();
             FolderDTO byName = underTest.create(rootId, "ByName" + TestData.nextSequence(), null, null, newName, adminId);
-            assertThat(tagGroupRepository.findByName(newName)).isPresent()
+            assertThat(tagGroupRepository.findByNameIgnoreCase(newName)).isPresent()
                     .get().satisfies(group -> assertThat(group.getId()).isEqualTo(byName.tagGroupId()));
             FolderDTO sameName = underTest.create(rootId, "SameName" + TestData.nextSequence(), null, null, newName, adminId);
             assertThat(sameName.tagGroupId()).as("naming an existing group joins it").isEqualTo(byName.tagGroupId());

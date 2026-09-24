@@ -23,6 +23,22 @@ public abstract class MySqlSupport extends StorageRootSupport {
         MYSQL.start();
     }
 
+    /**
+     * A URL for another database in the same container, and the root password to reach it with -
+     * for a test that has to run the migrations into a database of its own, stopping part-way
+     * ({@code PortableSchemaMigrationTest}), which has no Spring context and so does not extend
+     * this class; calling either starts the shared container like any subclass would. Everything
+     * else uses the Spring datasource.
+     */
+    public static String jdbcUrlFor(String database) {
+        return "jdbc:mysql://" + MYSQL.getHost() + ":" + MYSQL.getMappedPort(MySQLContainer.MYSQL_PORT) + "/" + database;
+    }
+
+    /** The container sets root's password to the application user's. */
+    public static String rootPassword() {
+        return MYSQL.getPassword();
+    }
+
     @DynamicPropertySource
     static void datasourceProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", MYSQL::getJdbcUrl);

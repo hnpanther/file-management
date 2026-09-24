@@ -197,7 +197,7 @@ the traversal cases in `ValidationUtilTest` are the ones never to relax.
 Schema is owned by **Flyway** (`src/main/resources/db/migration`), and `ddl-auto=validate` means
 Hibernate will refuse to start on a mismatch.
 
-* Add a new `V1.x__Description.sql`. Never edit an applied migration.
+* Add the next `V2.x__Description.sql` (`V2.15` is the latest). Never edit an applied migration.
 * Flyway is the only source of schema. There is no schema dump to keep in sync any more.
 * Update the entity in the same commit.
 * `ddl-auto=validate` checks types and existence but **not** nullability — if you add a `NOT NULL`
@@ -205,6 +205,19 @@ Hibernate will refuse to start on a mismatch.
   ([issue 33](docs/issues.md#33-schema-and-entity-mappings-disagree--s2)).
 * Migrations are MySQL-specific today. If you are writing one during the PostgreSQL migration, see
   [roadmap Phase 3](docs/roadmap.md#phase-3--postgresql-migration) for the vendor-directory layout.
+* **A query must not lean on MySQL's collation** (release A, 1.7.0). `utf8mb4_unicode_ci` makes a
+  bare `=` or `LIKE` on text case-insensitive; PostgreSQL does not. Compare a name or search a
+  text through `UPPER(...)` on both sides - in a derived query, `IgnoreCase`, which renders the
+  same - and give the new query its case in `PortableQueriesTest`, stored in one case and asked
+  for in another
+  ([issue 86](docs/issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2)).
+  Tokens, keys and paths stay exact.
+* **A search term that means "everything" is `''`, never `null`**: write `:search = '' OR ...`
+  and pass `SearchTerms.blankToEmpty`. A `null` inside `LIKE CONCAT(...)` has no type PostgreSQL
+  accepts, and `CAST` cannot fix it without breaking MySQL's collations
+  ([issue 87](docs/issues.md#87-an-empty-search-box-is-a-null-postgresql-cannot-type--s1-for-the-migration)).
+* The accounts table is **`app_user`** since `V2.14` - `user` is reserved in PostgreSQL. The entity
+  is still `User`.
 
 ## Security rules
 

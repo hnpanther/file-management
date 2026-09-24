@@ -362,7 +362,7 @@ public class ObjectStoreService {
                             id -> relativeNames(bucketFolder, subtree.get(id), subtree));
                     return new ObjectListingDTO.ObjectSummary(
                             ObjectKeyDTO.of(folders, file.getFileName(), details.getVersion(), details.getFileName()),
-                            sizeOf(details), eTagOf(details), details.getCreatedAt());
+                            details.getFileSize(), eTagOf(details), details.getCreatedAt());
                 })
                 .toList();
     }
@@ -403,12 +403,8 @@ public class ObjectStoreService {
                                          FileInfo fileInfo, FileDetails details) {
         return new ObjectMetadataDTO(bucket,
                 ObjectKeyDTO.of(folders, fileInfo.getFileName(), details.getVersion(), details.getFileName()),
-                details.getVersion(), sizeOf(details), details.getContentType(),
+                details.getVersion(), details.getFileSize(), details.getContentType(),
                 eTagOf(details), details.getCreatedAt());
-    }
-
-    private static long sizeOf(FileDetails details) {
-        return details.getFileSize() == null ? 0L : details.getFileSize();
     }
 
     /**
@@ -420,7 +416,7 @@ public class ObjectStoreService {
      * while it does not, which is what a client uses an ETag for; it is not offered as a digest.
      */
     private static String eTagOf(FileDetails details) {
-        return "\"v" + details.getVersion() + "-" + sizeOf(details) + "\"";
+        return "\"v" + details.getVersion() + "-" + details.getFileSize() + "\"";
     }
 
     private FileInfoDTO newFileRequest(Folder folder, ObjectKeyDTO parsed, MultipartFile body) {

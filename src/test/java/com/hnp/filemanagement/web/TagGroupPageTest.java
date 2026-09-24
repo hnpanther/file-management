@@ -100,7 +100,7 @@ class TagGroupPageTest extends MySqlSupport {
                         .param("name", name).param("title", "عنوان"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(Matchers.containsString("id=\"success_message\"")));
-        TagGroup created = tagGroupRepository.findByName(name).orElseThrow();
+        TagGroup created = tagGroupRepository.findByNameIgnoreCase(name).orElseThrow();
         assertThat(created.getTitle()).isEqualTo("عنوان");
 
         mockMvc.perform(get("/settings/tag-groups/{id}", created.getId())

@@ -204,9 +204,9 @@ On the Active Directory block specifically, two failures that point somewhere el
 * **`FILEMANAGEMENT_AD_DOMAIN` is the UPN suffix, not the domain controller's hostname.** The bind is
   `username@<domain>`, so it has to be the suffix Active Directory itself accepts. Wrong here, every
   user gets an ordinary *invalid credentials* error and it reads as a password problem.
-* **A user must already exist in the `user` table.** AD verifies the password; it does not create
-  accounts. `user.login_type` then decides which backend may accept that account — `0` either,
-  `1` local only, `2` AD only.
+* **A user must already exist in the `app_user` table** (`user` before 1.7.0). AD verifies the
+  password; it does not create accounts. `app_user.login_type` then decides which backend may
+  accept that account — `0` either, `1` local only, `2` AD only.
 
 ### `ldaps://` — "Connection to LDAP server failed", and what is actually failing
 
@@ -609,6 +609,55 @@ the `seeded 5 new permission(s)` line.
 
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
+
+### Upgrading from 1.6.1 to 1.7.0 — ready for PostgreSQL, still on MySQL
+
+The first of the three PostgreSQL releases (roadmap 3.2, release A): everything PostgreSQL will
+need, done on MySQL, with **no change in behaviour** on MySQL. A jar swap with **two
+migrations**; take the database backup first, as always, and watch the start for
+`Successfully applied 2 migrations`.
+
+* **`V2.14` renames the table `user` to `app_user`.** `USER` is a reserved word in PostgreSQL. The
+  rows, the ids, the twenty-two foreign keys that point at it and its indexes all stay as they
+  are; only the name changes. **Anything outside the application that reads the table by name
+  has to say `app_user` from now on** - a report, a view in another schema, a script. The
+  restore check below already does. The PL/SQL clients are not affected: they reach the
+  application over HTTP and never name a table.
+* **`V2.15` widens `file_details.file_size` to `BIGINT`.** Every existing value fits unchanged.
+  MySQL rebuilds the table for this - seconds for a few thousand rows, during which uploads
+  wait.
+* **Pre-flight**: the rename fails only if a table named `app_user` already exists. This must
+  return `0`:
+
+  ```sql
+  SELECT COUNT(*) FROM information_schema.tables
+  WHERE table_schema = DATABASE() AND table_name = 'app_user';
+  ```
+
+* **Nothing users can see changes on MySQL.** Signing in and searching already ignored case,
+  because the MySQL collation does; the queries now say so themselves, so that PostgreSQL will
+  give the same answers
+  ([issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2)).
+  An empty search box still lists everything
+  ([issue 87](issues.md#87-an-empty-search-box-is-a-null-postgresql-cannot-type--s1-for-the-migration)).
+* **One thing users will notice, and it is a fix**: a file with a Persian name now downloads
+  under its own name, from the file page, the explorer, the public files, a share link and both
+  APIs. It used to be saved as `download`, without an extension, because Tomcat dropped the header
+  that carried the name
+  ([issue 85](issues.md#85-every-persian-named-file-downloaded-as-download--s1)). The log line
+  `The HTTP response header [Content-Disposition] ... has been removed` stops appearing.
+
+**Rollback is not the old jar.** Unlike 1.6.1, the 1.6.1 jar cannot start on the migrated
+schema: `ddl-auto=validate` looks for `user` and refuses. Roll back by restoring the backup taken
+before the upgrade, together with the 1.6.1 jar. Undoing the two migrations by hand is possible
+only while no file larger than 2 GiB has been stored (none can be, under the 20 MB cap), and
+only with the service stopped:
+
+```sql
+RENAME TABLE app_user TO user;
+ALTER TABLE file_details MODIFY COLUMN file_size INT NOT NULL;
+DELETE FROM flyway_schema_history WHERE version IN ('2.14', '2.15');
+```
 
 ### Upgrading from 1.6.0 to 1.6.1 — bytes that cannot outlive their row
 
@@ -1575,18 +1624,17 @@ broke, copy the current state aside first — a broken system sometimes holds da
 SELECT 'file_info', COUNT(*) FROM file_info
 UNION ALL SELECT 'file_details', COUNT(*) FROM file_details
 UNION ALL SELECT 'folder',       COUNT(*) FROM folder
-UNION ALL SELECT 'user',         COUNT(*) FROM user;
+UNION ALL SELECT 'app_user',     COUNT(*) FROM app_user;   -- `user` for a jar older than 1.7.0
 
 SELECT version, description, success
 FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 3;
 ```
 
-Then check that every stored version has its file. `relative_path` is the path under
-`FILEMANAGEMENT_BASE_DIR`:
+Then check that every stored version has its file. `storage_key` is the path under
+`FILEMANAGEMENT_BASE_DIR`, exactly as written - it is the only record of where the bytes are:
 
 ```sql
-SELECT CONCAT(fi.relative_path, '/v', fd.version, '/', fd.file_name, '.', fd.file_extension)
-FROM file_details fd JOIN file_info fi ON fi.id = fd.file_info_id;
+SELECT id, storage_key FROM file_details ORDER BY id;
 ```
 
 **Rows with no file must be zero.** Files with no row are the harmless orphans from the order table

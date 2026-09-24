@@ -113,12 +113,16 @@ class FileInfoRepositoryTest extends MySqlSupport {
      * {@code file_info} rows — so a fixed count passes or fails depending on which class ran first.
      */
     @Test
-    @DisplayName("a null search term matches everything")
-    void aNullTermMatchesEverything() {
-        var everything = underTest.search(null, PageRequest.of(0, Integer.MAX_VALUE));
+    @DisplayName("an empty search term matches everything; a null one matches nothing")
+    void anEmptyTermMatchesEverything() {
+        var everything = underTest.search("", PageRequest.of(0, Integer.MAX_VALUE));
 
         assertThat(everything.getTotalElements()).isEqualTo(underTest.count());
         assertThat(everything.getContent()).extracting(FileInfo::getId).contains(fileInfoId);
+
+        // Null is the value PostgreSQL cannot type in this query (issue 87); here it finds nothing,
+        // so a caller that forgets SearchTerms.blankToEmpty is caught on MySQL as well.
+        assertThat(underTest.search(null, PageRequest.of(0, 10)).getTotalElements()).isZero();
     }
 
     // ---------------------------------------------------------------- lastVersion

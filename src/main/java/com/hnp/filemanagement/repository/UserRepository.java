@@ -20,15 +20,20 @@ import java.util.Optional;
  *       is what {@link #findByUsernameWithRolesAndPermissions} exists for. Everything else — list
  *       pages, duplicate checks — must not, or every row drags its roles and their permissions
  *       along.</li>
+ *   <li><b>Names compare without case, and say so.</b> A username is looked up with
+ *       {@code IgnoreCase} or {@code UPPER(...)} on both sides, and searched the same way; MySQL's
+ *       {@code unicode_ci} collation made a bare {@code =} case-insensitive, PostgreSQL's does not
+ *       (issue 86).</li>
  *   <li><b>Every query here is JPQL or derived, never native SQL.</b> The PostgreSQL migration in
  *       Phase 3 has to change the dialect and nothing else; a native query would have to be
- *       rewritten, and {@code user} is a reserved word there, so a hand-written
- *       {@code SELECT ... FROM user} would not even parse.</li>
+ *       rewritten - the table is {@code app_user} since V2.14 because {@code user} is a reserved
+ *       word there.</li>
  * </ul>
  */
 public interface UserRepository extends JpaRepository<User, Integer> {
 
-    boolean existsByUsername(String username);
+    /** Whether the name is taken - compared without case, as a unique username is (issue 86). */
+    boolean existsByUsernameIgnoreCase(String username);
 
     boolean existsByPersonelCode(Integer personelCode);
 
@@ -36,7 +41,7 @@ public interface UserRepository extends JpaRepository<User, Integer> {
 
     boolean existsByPhoneNumber(String phoneNumber);
 
-    Optional<User> findByUsername(String username);
+    Optional<User> findByUsernameIgnoreCase(String username);
 
     /**
      * The login path: the user plus every authority they hold, in one query.
@@ -45,12 +50,15 @@ public interface UserRepository extends JpaRepository<User, Integer> {
      * permissions of each role — on every single sign-in. Fetching both levels is only legal
      * because {@code roles} and {@code permissions} are mapped as {@link java.util.Set}; two
      * {@code List}-mapped collections in one query is Hibernate's {@code MultipleBagFetchException}.
+     *
+     * <p>The name is compared without case: {@code admin} signs in to {@code Admin}. MySQL's
+     * collation did that by itself; PostgreSQL compares exactly, so the query says it (issue 86).
      */
     @Query("""
             SELECT DISTINCT u FROM User u
             LEFT JOIN FETCH u.roles r
             LEFT JOIN FETCH r.permissions
-            WHERE u.username = :username
+            WHERE UPPER(u.username) = UPPER(:username)
             """)
     Optional<User> findByUsernameWithRolesAndPermissions(@Param("username") String username);
 
@@ -64,8 +72,11 @@ public interface UserRepository extends JpaRepository<User, Integer> {
 
     /**
      * The user list page. {@code search} matches the username or the full name, and
-     * {@code searchNumber} the id or the personnel code; both are null when the box is empty, and
-     * a null term matches everything.
+     * {@code searchNumber} the id or the personnel code. An empty box is the empty string and a
+     * null number, and each matches everything. The text is never {@code null}: PostgreSQL cannot
+     * type a null bound into {@code LIKE CONCAT(...)}, and here it finds nothing
+     * ({@code SearchTerms.blankToEmpty}, issue 87). The number may be null - its comparison with
+     * the id types it.
      *
      * <p>This returns a {@link Page}. It used to be two methods — one for the rows, one for the
      * count — with the same {@code WHERE} clause written out twice, which is one edit away from
@@ -74,9 +85,9 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     @Query("""
             SELECT u FROM User u
             WHERE ((:searchNumber) IS NULL OR u.id = (:searchNumber) OR u.personelCode = (:searchNumber))
-              AND ((:search) IS NULL
-                   OR u.username LIKE CONCAT('%', (:search), '%')
-                   OR CONCAT(u.firstName, ' ', u.lastName) LIKE CONCAT('%', (:search), '%'))
+              AND (:search = ''
+                   OR UPPER(u.username) LIKE UPPER(CONCAT('%', (:search), '%'))
+                   OR UPPER(CONCAT(u.firstName, ' ', u.lastName)) LIKE UPPER(CONCAT('%', (:search), '%')))
             """)
     Page<User> search(@Param("searchNumber") Integer searchNumber, @Param("search") String search, Pageable pageable);
 }

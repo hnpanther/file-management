@@ -119,7 +119,7 @@ public class DataInitializer {
     }
 
     private Role seedRole(String roleName) {
-        return roleRepository.findByRoleName(roleName).orElseGet(() -> {
+        return roleRepository.findByRoleNameIgnoreCase(roleName).orElseGet(() -> {
             Role role = new Role();
             role.setRoleName(roleName);
             logger.info("seeded role {}", roleName);
@@ -129,7 +129,7 @@ public class DataInitializer {
 
     private void seedAdministrator(Role adminRole) {
 
-        if (userRepository.existsByUsername(ADMIN_USERNAME)) {
+        if (userRepository.existsByUsernameIgnoreCase(ADMIN_USERNAME)) {
             return;
         }
 

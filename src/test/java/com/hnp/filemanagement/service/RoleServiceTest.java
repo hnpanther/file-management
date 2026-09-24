@@ -107,6 +107,17 @@ class RoleServiceTest extends MySqlSupport {
                 .isInstanceOf(DuplicateResourceException.class);
     }
 
+    /** Role names are unique without case, as {@code uq_role_role_name} compares on MySQL (issue 86). */
+    @Test
+    @DisplayName("a role name taken in another case is a 409")
+    void rejectsADuplicateRoleNameInAnotherCase() {
+        String taken = roleRepository.findById(roleId).orElseThrow().getRoleName();
+
+        assertThat(taken.toLowerCase()).as("the fixture's name has a case to differ in").isNotEqualTo(taken);
+        assertThatThrownBy(() -> underTest.createRole(taken.toLowerCase(), null, principalId))
+                .isInstanceOf(DuplicateResourceException.class);
+    }
+
     @Test
     @DisplayName("updating replaces the whole set - the page posts the complete selection")
     void replacesThePermissionsOfARole() {
