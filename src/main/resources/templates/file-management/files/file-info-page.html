@@ -1,291 +1,191 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl"
-      xmlns="http://www.w3.org/1999/xhtml"
+<html lang="fa" dir="rtl" xmlns="http://www.w3.org/1999/xhtml"
       xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 <head>
-    <meta charset="UTF-8">
-    <meta th:name="_csrf" th:content="${_csrf.token}"/>
-    <meta th:name="_csrf_header" th:content="${_csrf.headerName}"/>
-    <title th:text="#{file.info.heading}">اطلاعات فایل</title>
-
     <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
-
+    <title th:text="#{file.info.heading}"></title>
 </head>
 <body>
-
-<!-- start navbar -->
 <div th:replace="~{navbar.html :: navbar}"></div>
-
-<!-- end navbar -->
-
-<div class="container">
-    <div class="row flex-lg-nowrap">
-        <input type="hidden" th:value="${file.getId()}" class="idInput" id="idInput" name="idInput">
-
-        <div class="col">
-            <div class="row">
-                <div class="col mb-3">
-                    <div class="card">
-                        <div class="card-body">
-                            <div class="e-profile">
-                                <div class="row">
-
-                                    <div class="col d-flex flex-column flex-sm-row justify-content-between mb-3">
-                                        <div class="text-center text-sm-start mb-2 mb-sm-0">
-                                            <h4 th:text="${file.getDescription()}"
-                                                class="pt-sm-2 pb-1 mb-0 text-nowrap"></h4>
-                                            <p th:text="${file.getFileName}" class="mb-0 technical"></p>
-
-                                        </div>
-                                        <div class="text-center text-sm-end">
-                                            <span th:if="${file.getState() == 0}"
-                                                  class="badge badge-secondary" th:text="#{state.public}">عمومی</span>
-                                            <span th:if="${file.getState() != 0}" class="badge badge-secondary" th:text="#{state.private}">غیرعمومی</span>
-
-
-                                            <div sec:authorize="hasAuthority('REST_CHANGE_FILE_INFO_STATE') || hasAuthority('ADMIN')" class="btn-group">
-                                                <button onclick="changeState(0)" th:if="${file.getState() == -1}" type="button" class="btn btn-secondary btn-sm" aria-haspopup="true" aria-expanded="false" th:text="#{file.makePublic}">تغییر به عمومی</button>
-                                                <button onclick="changeState(-1)" th:if="${file.getState() == 0}" type="button" class="btn btn-secondary btn-sm" aria-haspopup="true" aria-expanded="false" th:text="#{file.makePrivate}">تغییر به غیرعمومی</button>
-                                            </div>
-
-
-                                        </div>
-                                    </div>
-                                </div>
-                                <ul class="nav nav-tabs">
-                                    <li class="nav-item"><a href="#" class="active nav-link" th:text="#{file.info.heading}">اطلاعات فایل</a></li>
-                                </ul>
-                                <div class="tab-content pt-3">
-                                    <div class="tab-pane active">
-                                        <form class="form" novalidate="">
-                                            <div class="row">
-                                                <div class="col">
-                                                    <div class="row">
-                                                        <div class="col">
-                                                            <div class="form-group">
-                                                                <label th:text="#{field.fileTitle}">عنوان فایل</label>
-                                                                <input th:value="${file.getFileName() }"
-                                                                       class="form-control technical" type="text" name="fileName"
-                                                                       disabled>
-                                                            </div>
-                                                        </div>
-                                                        <div class="col">
-                                                            <div class="form-group">
-                                                                <label th:text="#{file.titleDescription}">توضیحات عنوان</label>
-                                                                <input th:value="${file.getDescription() }"
-                                                                       class="form-control description" type="text"
-                                                                       name="description" id="description">
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div class="row">
-                                                        <div class="col">
-                                                            <div class="form-group">
-                                                                <label th:text="#{field.createdAt}">تاریخ ایجاد</label>
-                                                                <input th:value="${@jalali.format(file.getCreatedAt())}"
-                                                                       class="form-control change-date-input" dir="ltr"
-                                                                       type="text" name="cerate-date"
-                                                                        disabled>
-                                                            </div>
-                                                        </div>
-                                                        <div class="col">
-                                                            <div class="form-group">
-                                                                <label th:text="#{field.createdBy}">ایجاد کننده</label>
-                                                                <input th:value="${file.getCreatedBy()}" class="form-control"
-                                                                       type="text" name="size" disabled>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div class="row">
-                                                        <div class="col">
-                                                            <div class="form-group">
-                                                                <label th:text="#{field.state}">وضعیت</label>
-                                                                <input th:value="${file.getEnabled() == 1} ? #{state.enabled} : #{state.disabled}"
-                                                                       class="form-control" type="text"
-                                                                       name="format"
-                                                                       disabled>
-                                                            </div>
-                                                        </div>
-                                                        <div class="col">
-                                                            <div class="form-group">
-                                                                <label th:text="#{field.folder}">پوشه</label>
-                                                                <!-- The folders above the file, outermost first; each opens the explorer on that folder. -->
-                                                                <div class="folder-path" th:if="${!#lists.isEmpty(file.getFolderPath())}">
-                                                                    <th:block th:each="crumb, it : ${file.getFolderPath()}">
-                                                                        <a class="folder-path-link" th:href="@{/files/explorer(folder=${crumb.id()})}"
-                                                                           th:text="${crumb.title()}"></a>
-                                                                        <span class="folder-path-separator" th:unless="${it.last}" aria-hidden="true">/</span>
-                                                                    </th:block>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-
-                                                </div>
-                                            </div>
-
-
-                                        </form>
-
-
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+<main class="container-fluid app-content workspace-page">
+    <input type="hidden" th:value="${file.getId()}" class="idInput" id="idInput" name="idInput">
+    <header class="page-header detail-header">
+        <div class="min-w-0">
+            <div class="page-kicker" th:text="#{file.info.heading}"></div>
+            <h1 class="technical break-words" dir="auto" th:text="${file.getFileName()}"></h1>
+            <p class="page-description break-words" th:text="${file.getDescription()}"></p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="#revisions-title" class="btn btn-primary">
+                <i class="bi bi-arrow-down-circle" aria-hidden="true"></i>
+                <span th:text="#{ui.file.jumpToRevisions}"></span>
+            </a>
+            <a th:href="@{/files/file-info}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                <span th:text="#{action.backToFiles}"></span>
+            </a>
+        </div>
+    </header>
+    <div class="detail-layout">
+        <section class="card min-w-0" aria-labelledby="file-metadata-title">
+            <div class="card-body">
+                <div class="section-heading">
+                    <i class="bi bi-file-earmark-text" aria-hidden="true"></i>
+                    <h2 id="file-metadata-title" th:text="#{ui.file.metadata}"></h2>
                 </div>
-
-                <div class="col-12 col-md-3 mb-3">
-                    <!-- Where the file lives: the explorer opened on its folder, at the page that lists it, with it selected. -->
-                    <div sec:authorize="hasAuthority('FILE_EXPLORER_PAGE') || hasAuthority('ADMIN')" class="card mb-3">
-                        <div class="card-body">
-                            <a th:href="@{/files/explorer(file=${file.getId()})}" class="btn btn-block btn-secondary"
-                               id="show-in-explorer">
-                                <i class="bi bi-folder2-open" aria-hidden="true"></i>
-                                <span th:text="#{file.showInExplorer}">نمایش در فایل اکسپلورر</span>
-                            </a>
-                        </div>
+                <dl class="metadata-grid">
+                    <div>
+                        <dt th:text="#{field.fileTitle}"></dt>
+                        <dd class="technical" dir="auto" th:text="${file.getFileName()}"></dd>
                     </div>
-                    <div class="card mb-3">
-                        <div class="card-body">
-                            <div class="px-xl-3">
-                                <button sec:authorize="hasAuthority('REST_DELETE_FILE_INFO') || hasAuthority('ADMIN')" class="btn btn-block btn-danger" onclick="deleteFileInfo()">
-                                    <i class="fa fa-sign-out"></i>
-                                    <span th:text="#{file.deleteCompletely}">حذف کامل فایل</span>
-                                </button>
+                    <div>
+                        <dt th:text="#{field.state}"></dt>
+                        <dd>
+                            <span class="badge" th:classappend="${file.getEnabled() == 1} ? 'badge-success' : 'badge-danger'" th:text="${file.getEnabled() == 1} ? #{state.enabled} : #{state.disabled}"></span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt th:text="#{field.createdAt}"></dt>
+                        <dd class="technical" dir="ltr" th:text="${@jalali.format(file.getCreatedAt())}"></dd>
+                    </div>
+                    <div>
+                        <dt th:text="#{field.createdBy}"></dt>
+                        <dd th:text="${file.getCreatedBy()}"></dd>
+                    </div>
+                    <div class="md:col-span-2">
+                        <dt th:text="#{field.folder}"></dt>
+                        <dd>
+                            <div class="folder-path" th:if="${!#lists.isEmpty(file.getFolderPath())}">
+                                <th:block th:each="crumb, it : ${file.getFolderPath()}">
+                                    <a class="folder-path-link" th:href="@{/files/explorer(folder=${crumb.id()})}"
+                                        th:text="${crumb.title()}"></a>
+                                    <span class="folder-path-separator" th:unless="${it.last}" aria-hidden="true">/</span>
+                                </th:block>
                             </div>
-                        </div>
+                        </dd>
                     </div>
-                    <div class="card">
-                        <div sec:authorize="hasAuthority('REST_UPDATE_FILE_INFO_DESCRIPTION') || hasAuthority('ADMIN')" class="card-body">
-                            <button onclick="updateFileInfoDescription()" type="button" class="btn btn-primary" th:text="#{file.saveDescription}">ذخیرهٔ توضیحات</button>
-
-                        </div>
-                        <div sec:authorize="hasAuthority('CREATE_FILE_PAGE') || hasAuthority('ADMIN')" class="card-body">
-                            <a th:href="@{/files/create}" type="button"
-                               class="btn btn-primary" th:text="#{file.createNew}">ایجاد فایل جدید</a>
-
-                        </div>
+                </dl>
+                <div class="form-section">
+                    <label class="block mb-2 text-sm font-medium" for="description" th:text="#{file.titleDescription}"></label>
+                    <input th:value="${file.getDescription()}" class="form-control description" type="text" name="description" id="description">
+                    <div class="flex flex-wrap gap-2 mt-3">
+                        <button sec:authorize="hasAuthority('REST_UPDATE_FILE_INFO_DESCRIPTION') || hasAuthority('ADMIN')" onclick="updateFileInfoDescription()" type="button" class="btn btn-primary" th:text="#{file.saveDescription}"></button>
                     </div>
                 </div>
             </div>
-
-        </div>
+        </section>
+        <aside class="flex flex-col gap-4 min-w-0">
+            <section class="card">
+                <div class="card-body">
+                    <div class="section-heading">
+                        <i class="bi bi-shield-check" aria-hidden="true"></i>
+                        <div>
+                            <h2 th:text="#{ui.file.visibility}"></h2>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 mb-3">
+                        <span class="badge" th:classappend="${file.getState() == 0} ? 'badge-success' : ''" th:text="${file.getState() == 0} ? #{state.public} : #{state.private}"></span>
+                        <div sec:authorize="hasAuthority('REST_CHANGE_FILE_INFO_STATE') || hasAuthority('ADMIN')">
+                            <button onclick="changeState(0)" th:if="${file.getState() == -1}" type="button" class="btn btn-secondary btn-sm" th:text="#{file.makePublic}"></button>
+                            <button onclick="changeState(-1)" th:if="${file.getState() == 0}" type="button" class="btn btn-secondary btn-sm" th:text="#{file.makePrivate}"></button>
+                        </div>
+                    </div>
+                    <p class="field-hint" th:text="#{file.upload.publicHint}"></p>
+                </div>
+            </section>
+            <section class="card">
+                <div class="card-body flex flex-col gap-3">
+                    <a sec:authorize="hasAuthority('FILE_EXPLORER_PAGE') || hasAuthority('ADMIN')" th:href="@{/files/explorer(file=${file.getId()})}" class="btn btn-outline-secondary" id="show-in-explorer">
+                        <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                        <span th:text="#{file.showInExplorer}"></span>
+                    </a>
+                    <a sec:authorize="hasAuthority('CREATE_FILE_PAGE') || hasAuthority('ADMIN')" th:href="@{/files/create}" class="btn btn-outline-secondary">
+                        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                        <span th:text="#{file.createNew}"></span>
+                    </a>
+                    <div sec:authorize="hasAuthority('REST_DELETE_FILE_INFO') || hasAuthority('ADMIN')" class="border-t border-ink-100 pt-3">
+                        <button type="button" class="btn btn-danger-outline w-full" onclick="deleteFileInfo()">
+                            <i class="bi bi-trash3" aria-hidden="true"></i>
+                            <span th:text="#{file.deleteCompletely}"></span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </aside>
     </div>
-</div>
-
-
-<div class="container">
-    <div class="row flex-lg-nowrap">
-
-
-        <div class="col">
-            <!--
-              The share-link panel (roadmap 10.5), one for the page: a revision row dispatches
-              `share-link` with its id and label, and the panel opens for that revision.
-            -->
-            <div class="mb-3 px-3" x-data="shareLinkPanel(SHARE_LINK)" @share-link.window="start($event.detail.id, $event.detail.label)"
-                 sec:authorize="hasAuthority('CREATE_SHARE_LINK') || hasAuthority('ADMIN')">
+    <section class="card mt-5" aria-labelledby="revisions-title">
+        <div class="card-body">
+            <div class="section-heading">
+                <i class="bi bi-clock-history" aria-hidden="true"></i>
+                <div>
+                    <h2 id="revisions-title" th:text="#{file.versionsAndFormats}"></h2>
+                    <p th:text="#{ui.file.revisionsHint}"></p>
+                </div>
+                <span class="badge ms-auto" th:text="${file.getFileDetailsDTOS().size()}"></span>
+            </div>
+            <div x-data="shareLinkPanel(SHARE_LINK)" @share-link.window="start($event.detail.id, $event.detail.label)" sec:authorize="hasAuthority('CREATE_SHARE_LINK') || hasAuthority('ADMIN')">
                 <div th:replace="~{fragments.html :: share-link-panel}"></div>
             </div>
-            <div class="e-tabs mb-3 px-3">
-                <ul class="nav nav-tabs">
-                    <li class="nav-item"><a class="nav-link active" href="#" th:text="#{file.versionsAndFormats}">نسخه‌ها و فرمت‌ها</a></li>
-                </ul>
-            </div>
-
-            <div class="row flex-lg-nowrap">
-                <div class="col mb-3">
-                    <div class="e-panel card">
-                        <div class="card-body">
-                            <div class="card-title">
-                                <h6><span th:text="#{file.versionsAndFormats}">نسخه‌ها و فرمت‌ها</span></h6>
-                            </div>
-                            <div class="e-table">
-                                <div class="table-responsive table-lg mt-3">
-                                    <table class="table table-bordered">
-                                        <thead>
-                                        <tr>
-
-                                            <th class="max-width" th:text="#{field.id}">شناسه</th>
-                                            <th class="max-width" th:text="#{field.fileName}">نام فایل</th>
-                                            <th class="max-width" th:text="#{field.version}">نسخه</th>
-                                            <th class="max-width" th:text="#{field.sizeKb}">حجم (کیلوبایت)</th>
-<!--                                            <th class="max-width" th:text="#{field.state}">State</th>-->
-                                            <th class="max-width" th:text="#{field.format}">فرمت</th>
-                                            <th class="max-width" th:text="#{field.createdAt}">تاریخ ایجاد</th>
-                                            <th class="max-width" th:text="#{field.createdBy}">ایجاد کننده</th>
-                                            <th class="max-width" th:text="#{field.actions}">عملیات</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody>
-                                        <tr th:each="fd: ${file.getFileDetailsDTOS()}">
-
-                                            <td th:text="${fd.getId()}" class="text-nowrap align-middle"></td>
-                                            <td th:text="${fd.getFileName()}" class="text-nowrap align-middle technical"></td>
-                                            <td th:text="${fd.getVersion()}" class="text-nowrap align-middle"></td>
-                                            <td th:text="${(fd.getFileSize() / 1024)}" class="text-nowrap align-middle"></td>
-                                            <td th:text="${fd.getFileExtension()}" class="text-nowrap align-middle technical"></td>
-                                            <td th:text="${@jalali.format(fd.getCreatedAt())}" class="text-nowrap align-middle" dir="ltr"></td>
-                                            <td th:text="${fd.getCreatedBy()}" class="text-nowrap align-middle"></td>
-
-                                            <td sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')" class="text-center align-middle">
-                                                <div class="btn-group align-top">
-                                                    <a sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/' + ${fd.getId() + '/download'} }"
-                                                       class="btn btn-sm btn-outline-secondary badge" type="button" th:text="#{action.download}">دانلود</a>
-                                                    <a sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')" th:if="${fd.isPreviewable()}"
-                                                       th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/' + ${fd.getId()} + '/download?inline=1'}" target="_blank"
-                                                       class="btn btn-sm btn-outline-secondary badge" type="button" th:text="#{action.preview}">پیش‌نمایش</a>
-                                                    <a sec:authorize="hasAuthority('REST_DELETE_FILE_DETAILS') || hasAuthority('ADMIN')" th:onclick="deleteFileDetails(/*[[${fd.getId()}]]*/, /*[[${file.getFileDetailsDTOS().size()}]]*/)"
-                                                       class="btn btn-sm btn-outline-secondary badge" type="button" th:text="#{action.delete}">حذف</a>
-                                                    <a sec:authorize="hasAuthority('SAVE_NEW_FILE_DETAILS_PAGE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=format&id=' + ${fd.getId()} + '&version-number=' + ${fd.getVersion()}}"
-                                                       class="btn btn-sm btn-outline-secondary badge" type="button" th:text="#{file.newFormat}">فرمت جدید</a>
-                                                    <a sec:authorize="hasAuthority('SAVE_NEW_FILE_DETAILS_PAGE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=version&id=' + ${fd.getId()} + '&version-number=' + ${fd.getVersion()}}"
-                                                       class="btn btn-sm btn-outline-secondary badge" type="button" th:text="#{file.newVersion}">نسخهٔ جدید</a>
-
-                                                    <a sec:authorize="hasAuthority('REST_CHANGE_STATE_FILE_DETAILS') || hasAuthority('ADMIN')"
-                                                       class="btn btn-sm btn-outline-secondary badge" th:onclick="changeFileDetailsState(/*[[${fd.getId()}]]*/, /*[[${fd.getState}]]*/)" type="button" th:text="${fd.getState() == 0} ? #{state.public} : #{state.private}"></a>
-                                                    <a sec:authorize="hasAuthority('CREATE_SHARE_LINK') || hasAuthority('ADMIN')"
-                                                       class="btn btn-sm btn-outline-secondary badge" type="button"
-                                                       th:attr="data-file-details-id=${fd.getId()},data-label=${fd.getFileName() + ' v' + fd.getVersion()}"
-                                                       onclick="window.dispatchEvent(new CustomEvent('share-link', { detail: { id: Number(this.dataset.fileDetailsId), label: this.dataset.label } }))"
-                                                       th:text="#{shareLink.button.short}">لینک موقت</a>
-
-                                                </div>
-                                            </td>
-                                        </tr>
-
-
-                                        </tbody>
-                                    </table>
-                                </div>
-
+            <div class="revision-list">
+                <article class="revision-card" th:each="fd: ${file.getFileDetailsDTOS()}">
+                    <div class="revision-heading">
+                        <span class="format-mark technical" dir="ltr" th:text="${fd.getFileExtension()}"></span>
+                        <div class="min-w-0">
+                            <h3 class="technical break-words" dir="auto" th:text="${fd.getFileName()}"></h3>
+                            <div class="flex flex-wrap gap-2 mt-1 text-xs text-ink-500">
+                                <span>
+                                    <span th:text="#{field.version}"></span>
+                                    <b th:text="${fd.getVersion()}"></b>
+                                </span>
+                                <span aria-hidden="true">·</span>
+                                <span>
+                                    <span th:text="#{field.id}"></span>
+                                    <span th:text="${fd.getId()}"></span>
+                                </span>
                             </div>
                         </div>
                     </div>
-                </div>
-<!--                <div class="col-12 col-lg-3 mb-3">-->
-<!--                    <div class="card">-->
-<!--                        <div class="card-body">-->
-<!--                            <div class="text-center px-xl-3">-->
-<!--                                <a th:href="@{2222}"-->
-<!--                                   class="btn btn-success btn-block" type="button">Add</a>-->
-<!--                            </div>-->
-<!--                            <hr class="my-3">-->
-
-<!--                        </div>-->
-<!--                    </div>-->
-<!--                </div>-->
+                    <dl class="revision-metadata">
+                        <div>
+                            <dt th:text="#{field.sizeKb}"></dt>
+                            <dd class="technical" dir="ltr" th:text="${fd.getFileSize() / 1024}"></dd>
+                        </div>
+                        <div>
+                            <dt th:text="#{field.createdAt}"></dt>
+                            <dd class="technical" dir="ltr" th:text="${@jalali.format(fd.getCreatedAt())}"></dd>
+                        </div>
+                        <div>
+                            <dt th:text="#{field.createdBy}"></dt>
+                            <dd th:text="${fd.getCreatedBy()}"></dd>
+                        </div>
+                    </dl>
+                    <div sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')">
+                        <div class="revision-actions">
+                            <a sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/' + ${fd.getId() + '/download'} }"
+                                class="btn btn-sm btn-primary" th:text="#{action.download}">دانلود</a>
+                            <a sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')" th:if="${fd.isPreviewable()}"
+                                th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/' + ${fd.getId()} + '/download?inline=1'}" target="_blank" rel="noopener"
+                                class="btn btn-sm btn-outline-secondary" type="button" th:text="#{action.preview}">پیش‌نمایش</a>
+                            <button sec:authorize="hasAuthority('REST_DELETE_FILE_DETAILS') || hasAuthority('ADMIN')" th:onclick="deleteFileDetails(/*[[${fd.getId()}]]*/, /*[[${file.getFileDetailsDTOS().size()}]]*/)"
+                                class="btn btn-sm btn-danger-outline" type="button" th:text="#{action.delete}">حذف</button>
+                            <a sec:authorize="hasAuthority('SAVE_NEW_FILE_DETAILS_PAGE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=format&id=' + ${fd.getId()} + '&version-number=' + ${fd.getVersion()}}"
+                                class="btn btn-sm btn-outline-secondary" type="button" th:text="#{file.newFormat}">فرمت جدید</a>
+                            <a sec:authorize="hasAuthority('SAVE_NEW_FILE_DETAILS_PAGE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/create?type=version&id=' + ${fd.getId()} + '&version-number=' + ${fd.getVersion()}}"
+                                class="btn btn-sm btn-outline-secondary" type="button" th:text="#{file.newVersion}">نسخهٔ جدید</a>
+                            <button sec:authorize="hasAuthority('REST_CHANGE_STATE_FILE_DETAILS') || hasAuthority('ADMIN')"
+                                class="btn btn-sm btn-outline-secondary" th:onclick="changeFileDetailsState(/*[[${fd.getId()}]]*/, /*[[${fd.getState}]]*/)" type="button" th:text="${fd.getState() == 0} ? #{state.public} : #{state.private}"></button>
+                            <button sec:authorize="hasAuthority('CREATE_SHARE_LINK') || hasAuthority('ADMIN')"
+                                class="btn btn-sm btn-outline-secondary" type="button"
+                                th:attr="data-file-details-id=${fd.getId()},data-label=${fd.getFileName() + ' v' + fd.getVersion()}"
+                                onclick="window.dispatchEvent(new CustomEvent('share-link', { detail: { id: Number(this.dataset.fileDetailsId), label: this.dataset.label } }))"
+                                th:text="#{shareLink.button.short}">لینک موقت</button>
+                        </div>
+                    </div>
+                </article>
             </div>
-
-
         </div>
-    </div>
-</div>
-
+    </section>
+</main>
 <th:block th:replace="~{fragments.html :: scripts}"></th:block>
 
 <script th:inline="javascript">

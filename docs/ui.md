@@ -488,6 +488,21 @@ reports a non-empty folder with `explorer.manage.deleteRefused`. After any of th
 folder is reloaded, and the tree pane refreshed, so the new state comes from the server rather
 than from the form.
 
+## Task forms and record pages
+
+The file and user forms group related fields under compact section headings. File selection
+comes first and shows the selected name and size without changing the upload request, title
+autofill, accepted formats, size checks, destination chooser or public-file default. The user
+form includes a keyboard-accessible password visibility toggle; it does not change the value
+or the server's password rules.
+
+The file and user detail pages use definition lists for read-only facts and place actions beside
+the information they affect. File revisions are responsive cards, each retaining the existing
+download, preview, share and management permissions. The personal-folder card shows a native
+progress meter when a quota exists. Existing mutation handlers, confirmation prompts and form
+bindings remain in place. These components use the shared compiled stylesheet and vendored
+assets only; they add no runtime dependencies.
+
 ## Legacy compatibility classes
 
 Some templates still contain class names inherited from the old Bootstrap UI, including `btn-block`,
