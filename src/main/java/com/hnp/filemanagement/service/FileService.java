@@ -96,6 +96,18 @@ public class FileService {
     private static final int STATE_ACTIVE = 0;
     private static final int STATE_DISABLED = -1;
 
+    /**
+     * {@link #createNewFile}'s visibility: listed on the public files page and downloadable from it
+     * - by visitors too, when that page is open to them.
+     */
+    public static final int PUBLIC = 1;
+
+    /**
+     * {@link #createNewFile}'s visibility: reachable only by whoever the permissions and the folder
+     * grants let in. What every upload is unless it asks to be public.
+     */
+    public static final int PRIVATE = 0;
+
     private final FileInfoRepository fileInfoRepository;
     private final FileDetailsRepository fileDetailsRepository;
     private final UserRepository userRepository;
@@ -138,9 +150,25 @@ public class FileService {
     // ------------------------------------------------------------------ upload
 
     /**
+     * An upload's {@code public-file} parameter, read the one way the form and the v1 API both read
+     * it: public only when it says so - {@code 1} or {@code true} - and private otherwise, absent
+     * included. An unrecognised value is private rather than an error: that is the safe reading of
+     * an unclear request, and it cannot start failing an integration that has always sent
+     * something odd. Before 1.7.0 the API read it the other way round - public unless {@code 0}.
+     */
+    public static int visibilityOf(String publicFileParameter) {
+        if (publicFileParameter == null) {
+            return PRIVATE;
+        }
+        String value = publicFileParameter.trim();
+        return "1".equals(value) || "true".equalsIgnoreCase(value) ? PUBLIC : PRIVATE;
+    }
+
+    /**
      * Stores a file that does not exist yet, as version 1.
      *
-     * @param publicFile 1 to make the file publicly visible, anything else to keep it private
+     * @param publicFile {@link #PUBLIC} to list it on the public files page, anything else
+     *                   ({@link #PRIVATE}) to keep it to those the permissions and grants let in
      */
     @Transactional
     public FileDetailsDTO createNewFile(FileInfoDTO fileInfoDTO, int principalId, int publicFile) {
@@ -175,7 +203,7 @@ public class FileService {
         fileInfo.setFileNameDescription(name);
         fileInfo.setDescription(fileInfoDTO.getDescription());
         fileInfo.setEnabled(1);
-        fileInfo.setState(publicFile == 1 ? STATE_ACTIVE : STATE_DISABLED);
+        fileInfo.setState(publicFile == PUBLIC ? STATE_ACTIVE : STATE_DISABLED);
         fileInfo.setLastVersion(1);
         fileInfo.setCreatedBy(userRepository.getReferenceById(principalId));
         fileInfo.setFolder(folder);

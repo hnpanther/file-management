@@ -520,7 +520,7 @@ document, so a browser navigation still lands on a page.
 | Method | Path | Permission |
 |---|---|---|
 | GET | `/health-test` | `API_HEALTH_TEST` |
-| POST | `/` (multipart, `?public-file=0` for private; the place is `folderId`, the id of any folder below the root — a request without it is a 400 naming the parameter; the pre-step-4 triple is ignored) | `API_SAVE_NEW_FILE` |
+| POST | `/` (multipart; private unless `public-file=1` or `true` - since 1.7.0, before which it was public unless `0`; the place is `folderId`, the id of any folder below the root — a request without it is a 400 naming the parameter; the pre-step-4 triple is ignored) | `API_SAVE_NEW_FILE` |
 | DELETE | `/file-info/{fileInfoId}/file-details/{fileDetailsId}` | `API_DELETE_FILE_DETAILS` |
 | DELETE | `/file-details/{fileDetailsId}` (the same delete by the version's id alone) | `API_DELETE_FILE_DETAILS` |
 | GET | `/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` |

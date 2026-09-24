@@ -153,6 +153,9 @@ public class FileController {
     @PostMapping
     public String saveNewFile(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) FileInfoDTO fileInfoDTO,
                               BindingResult bindingResult,
+                              // The form's "public" box: ticked sends 1, left alone sends nothing -
+                              // private, as every upload is unless it asks (FileService.visibilityOf).
+                              @RequestParam(value = "public-file", required = false) String publicFile,
                               Model model) {
 
         int principalId = userDetails.getId();
@@ -179,7 +182,8 @@ public class FileController {
         } else {
 
             try {
-                FileDetailsDTO fileDetailsDTO = fileService.createNewFile(fileInfoDTO, principalId, 1);
+                FileDetailsDTO fileDetailsDTO = fileService.createNewFile(fileInfoDTO, principalId,
+                        FileService.visibilityOf(publicFile));
                 valid = true;
                 savedFileId = fileDetailsDTO.getFileInfoId();
                 message = messages.get("form.saved");
@@ -217,6 +221,8 @@ public class FileController {
         model.addAttribute("valid", valid);
         model.addAttribute("message", message);
         model.addAttribute("savedFileId", savedFileId);
+        // A refused upload re-renders the form as it was sent, the box included.
+        model.addAttribute("publicFile", FileService.visibilityOf(publicFile) == FileService.PUBLIC);
         addUploadLimits(model, principalId);
 
         return "file-management/files/save-file.html";

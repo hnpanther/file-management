@@ -198,7 +198,7 @@ public class ObjectStoreService {
                 .orElse(null);
 
         if (existing == null) {
-            fileService.createNewFile(newFileRequest(folder, parsed, body), principalId, 0);
+            fileService.createNewFile(newFileRequest(folder, parsed, body), principalId, FileService.PRIVATE);
         } else {
             fileService.createNewFileDetails(newVersionRequest(existing, parsed, body), principalId);
         }

@@ -97,6 +97,16 @@
                             </th:block>
                         </small>
                     </div>
+
+                    <!-- Private unless ticked: a public file is listed on the public files page. -->
+                    <div th:if="${#strings.equals(pageType, 'create')}" class="form-group md:col-span-2">
+                        <label class="flex items-center gap-2 text-sm">
+                            <input type="checkbox" name="public-file" value="1" id="publicFile"
+                                   th:checked="${publicFile}">
+                            <span th:text="#{file.upload.public}">این فایل عمومی باشد</span>
+                        </label>
+                        <p class="field-hint" th:text="#{file.upload.publicHint}">فایل عمومی در صفحهٔ فایل‌های عمومی فهرست می‌شود.</p>
+                    </div>
                 </div>
 
                 <div th:if="${showMessage && valid}" class="alert alert-success" role="status" id="success_message">

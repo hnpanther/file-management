@@ -239,11 +239,17 @@ class UploadContentTypeTest extends MySqlSupport {
 
     // ---------------------------------------------------------------- helpers
 
+    /**
+     * Published on purpose: the download tests read through the public download as well as the
+     * private one, and since 1.7.0 a file is private unless the upload asks
+     * ({@code UploadVisibilityTest}).
+     */
     private ResultActions uploadV1(String fileName, String declaredType, byte[] bytes) throws Exception {
         return mockMvc.perform(multipart("/api/v1/files")
                 .file(new MockMultipartFile("multipartFile", fileName, declaredType, bytes))
                 .param("description", "uploaded through v1")
                 .param("folderId", String.valueOf(tagFolderId))
+                .param("public-file", "1")
                 .with(user(principal(PermissionEnum.API_SAVE_NEW_FILE)))
                 .accept(MediaType.APPLICATION_JSON));
     }
