@@ -3,10 +3,14 @@ package com.hnp.filemanagement.util;
 /**
  * How a search box turns into a query parameter.
  *
- * <p>Every list page in the application accepts an optional search term, and every one of the
- * repository queries is written as {@code (:search) IS NULL OR ... LIKE ...} so that an absent term
- * matches everything without a second query. That only works if "absent" reaches the query as
- * {@code null} — an empty or all-whitespace string would be matched literally.
+ * <p>The list pages accept an optional search term, and their repository queries are written as
+ * {@code :search = '' OR ... LIKE ...} so that an absent term matches everything without a second
+ * query. "Absent" therefore reaches the query as the <em>empty string</em>, never as {@code null}
+ * ({@link #blankToEmpty}): a {@code null} bound into {@code LIKE CONCAT('%', :search, '%')} has no
+ * type Hibernate can infer, and PostgreSQL refuses an untyped parameter there - every list page
+ * with an empty box failed on it (issue 87). MySQL never minded, which is why nothing showed it.
+ * The queries answer a {@code null} with no rows at all, on both databases, so a caller that
+ * passes one is caught on MySQL too.
  *
  * <p>Each service used to do this inline, and they did not agree: some checked
  * {@code isEmpty() || isBlank()}, some only {@code isEmpty()}, and the user list page checked one
@@ -20,6 +24,14 @@ public final class SearchTerms {
     /** The term, or {@code null} when the box was empty or held only whitespace. */
     public static String blankToNull(String search) {
         return (search == null || search.isBlank()) ? null : search.trim();
+    }
+
+    /**
+     * The term, or the empty string when the box was empty or held only whitespace - what a
+     * {@code :search = '' OR ...} query takes, where the empty string means "everything".
+     */
+    public static String blankToEmpty(String search) {
+        return (search == null || search.isBlank()) ? "" : search.trim();
     }
 
     /**

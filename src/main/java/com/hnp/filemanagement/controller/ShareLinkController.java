@@ -79,8 +79,7 @@ public class ShareLinkController {
         model.addAttribute("token", token);
         model.addAttribute("fileName", link.getFileDetails().getFileName());
         model.addAttribute("version", link.getFileDetails().getVersion());
-        long sizeBytes = link.getFileDetails().getFileSize() == null ? 0L : link.getFileDetails().getFileSize().longValue();
-        model.addAttribute("sizeKb", Math.max(1L, sizeBytes / 1024));
+        model.addAttribute("sizeKb", Math.max(1L, link.getFileDetails().getFileSize() / 1024));
         model.addAttribute("expiresAt", link.getExpiresAt());
         model.addAttribute("passwordProtected", link.hasPassword());
         model.addAttribute("downloadsLeft", link.getMaxDownloads() == null ? null : link.getMaxDownloads() - link.getDownloadCount());

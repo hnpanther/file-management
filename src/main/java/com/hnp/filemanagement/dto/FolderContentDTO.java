@@ -88,10 +88,9 @@ public record FolderContentDTO(
      * describe the <em>latest</em> version only, which is what a listing is for. The versions
      * themselves are the file's own detail view, not a column.
      *
-     * @param size total bytes of the latest version's formats. A {@code long} on purpose: the column
-     *            behind it is a 32-bit {@code Integer} and overflows past 2 GiB
-     *            ({@code docs/issues.md}, issue 6), and summing several of them in an {@code int}
-     *            would add a second way to overflow on top of the first
+     * @param size total bytes of the latest version's formats. A {@code long}, as the column behind
+     *            it is since V2.15 ({@code docs/issues.md}, issue 6) - and a sum of several sizes
+     *            can pass what an {@code int} holds even when no single one does
      * @param latestFileDetailsId the one revision "download the latest" means: of the latest
      *            version, the format uploaded last (by {@code created_at}, then id). The
      *            explorer links it to the download endpoint without a visit to the file page.

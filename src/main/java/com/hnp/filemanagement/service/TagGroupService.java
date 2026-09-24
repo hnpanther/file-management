@@ -79,7 +79,7 @@ public class TagGroupService {
     public TagGroupDTO create(TagGroupForm form, int principalId) {
         String name = requireName(form.getName());
         String title = requireTitle(form.getTitle(), name);
-        tagGroupRepository.findByName(name).ifPresent(taken -> {
+        tagGroupRepository.findByNameIgnoreCase(name).ifPresent(taken -> {
             throw new DuplicateResourceException("a tag group named " + name + " already exists");
         });
 
@@ -99,7 +99,7 @@ public class TagGroupService {
         TagGroup group = require(id);
         String name = requireName(form.getName());
         String title = requireTitle(form.getTitle(), name);
-        tagGroupRepository.findByName(name)
+        tagGroupRepository.findByNameIgnoreCase(name)
                 .filter(other -> !Objects.equals(other.getId(), group.getId()))
                 .ifPresent(taken -> {
                     throw new DuplicateResourceException("a tag group named " + name + " already exists");

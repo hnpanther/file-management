@@ -15,8 +15,10 @@ import lombok.Setter;
  * <p>A version and a format are different things and both live in this table. Uploading
  * {@code report.pdf} as v2 of a file that already has {@code report.docx} at v2 adds a row with the
  * same {@code version} and a different {@code fileExtension}; uploading it as v3 adds a row with a
- * new version. The pair {@code (fileInfo, version, fileExtension)} is what must be unique — the
- * check is in {@code FileService}, not yet in the schema.
+ * new version. The triple {@code (fileInfo, version, fileExtension)} is what must be unique:
+ * {@code FileService} checks it for the friendly error and {@code uq_file_details_version_format}
+ * guarantees it. The extension is kept as uploaded and compared without case, since {@code PDF}
+ * and {@code pdf} at one version would be two keys for one file on Windows (issue 86).
  *
  * <p>{@code hashId} is a UUID, not a hash of the content, despite the name and the unique
  * constraint. Nothing computes a checksum of the stored bytes today; see
@@ -66,11 +68,12 @@ public class FileDetails extends AuditableEntity {
     private String fileLink;
 
     /**
-     * Size in bytes as a 32-bit column, so anything past 2 GiB overflows into a negative number.
-     * The multipart cap hides it today; see {@code docs/issues.md}, issue 6.
+     * Size in bytes. A {@code BIGINT} since V2.15 (issue 6); it was a 32-bit column, into which
+     * anything past 2 GiB would have overflowed as a negative number. Primitive because the
+     * column is {@code NOT NULL}: nothing reading it has to ask whether it is there.
      */
     @Column(name = "file_size", nullable = false)
-    private Integer fileSize;
+    private long fileSize;
 
     @Column(name = "version", nullable = false)
     private Integer version;

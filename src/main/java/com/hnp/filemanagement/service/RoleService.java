@@ -71,7 +71,7 @@ public class RoleService {
     @Transactional
     public void createRole(String roleName, List<PermissionDTO> permissionDTOList, int principalId) {
 
-        if (roleRepository.existsByRoleName(roleName)) {
+        if (roleRepository.existsByRoleNameIgnoreCase(roleName)) {
             throw new DuplicateResourceException("role with name " + roleName + " exists");
         }
 

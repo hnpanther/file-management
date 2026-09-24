@@ -38,7 +38,11 @@ Line by line:
   without an explicit clause a different collation — and then a `JOIN` between the two fails with
   "illegal mix of collations". `utf8mb4` is what Persian text and emoji need; `unicode_ci` is what
   makes the uniqueness constraints compare names case-insensitively, which the pre-flight queries
-  in [deployment.md](deployment.md#upgrading-from-100-to-110) rely on.
+  in [deployment.md](deployment.md#upgrading-from-100-to-110) rely on. It folds more than case -
+  accents, Persian and Arabic-Indic digits against ASCII ones, the zero-width non-joiner - and
+  since 1.7.0 the application does not lean on it for case: every name lookup and search says
+  `UPPER(...)` on both sides itself, so PostgreSQL gives the same answers
+  ([issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2)).
 * **A dedicated user.** The application must not connect as `root`. `ALL PRIVILEGES ON
   file_management.*` is the least that works — Flyway needs `CREATE`, `ALTER`, `INDEX` and
   `REFERENCES` on this schema to run migrations at start-up — and it is scoped to this one schema:
@@ -112,7 +116,7 @@ Two groups:
 
 | Group | Tables | State |
 |---|---|---|
-| **Identity and permissions** | `user`, `role`, `user_role`, `permission`, `permission_role`, `api_key`, `api_key_folder`, `upload_policy`, `upload_policy_rule`, `content_kind`, `app_setting` | stable |
+| **Identity and permissions** | `app_user` (`user` before `V2.14`), `role`, `user_role`, `permission`, `permission_role`, `api_key`, `api_key_folder`, `upload_policy`, `upload_policy_rule`, `content_kind`, `app_setting` | stable |
 | **Where a file is** | `folder`, `role_folder`, `user_folder`, `file_info.folder_id` | authoritative since `V2.8` (Phase 7 step 4); any depth since `V2.9`; `folder_id` is `NOT NULL` and names any folder but the root or `Profiles`. `folder.kind` is `ROOT`, `FOLDER`, `PROFILES` or `USER_HOME`; `owner_user_id` names a personal folder's user (unique) and `quota_bytes` caps what may be stored beneath any folder (`V2.11`) |
 | **What a file is, and about** | `file_info`, `file_details`, `tag_group`, `tag`, `file_tag` | stable; a file's tags are derived from its folder chain, `tag_group` is the label group a category carries |
 | **Who may have it without signing in** | `file_share_link` | `V2.12`: one row per temporary link - the token's SHA-256, the revision it names (cascade), expiry, optional password hash and download cap, the counters and the revocation |
@@ -124,12 +128,12 @@ columns that pointed at them (`file_info.file_sub_category_id` / `main_tag_file_
 `file_info` and `file_details`) were dropped by `V2.8`.
 
 Conventions that hold everywhere: `id INT AUTO_INCREMENT` primary keys; `created_at` / `updated_at`
-written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign keys to `user`
+written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign keys to `app_user`
 (nullable where a migration, not a person, may have written the row); `enabled` and `state` are
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V2.13`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
+_As of migration `V2.15`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
 
 ### `action_history`
 
@@ -148,7 +152,7 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 | `created_at` | `datetime` | no |  |  |
 
 * **primary key** `id`
-* **foreign key** `fk_action_history_user_id` `user_id` → `user` (`id`)
+* **foreign key** `fk_action_history_user_id` `user_id` → `app_user` (`id`)
 * **index** `ix_action_history_entity` (`entity_name`, `entity_id`)
 
 ### `api_key`
@@ -171,8 +175,8 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 
 * **primary key** `id`
 * **unique** `uq_api_key_key_id` (`key_id`)
-* **foreign key** `fk_api_key_created_by_user` `created_by` → `user` (`id`)
-* **foreign key** `fk_api_key_updated_by_user` `updated_by` → `user` (`id`)
+* **foreign key** `fk_api_key_created_by_user` `created_by` → `app_user` (`id`)
+* **foreign key** `fk_api_key_updated_by_user` `updated_by` → `app_user` (`id`)
 
 ### `api_key_folder`
 
@@ -199,7 +203,34 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 
 * **primary key** `id`
 * **unique** `uq_app_setting_key` (`setting_key`)
-* **foreign key** `fk_app_setting_updated_by_user` `updated_by` → `user` (`id`)
+* **foreign key** `fk_app_setting_updated_by_user` `updated_by` → `app_user` (`id`)
+
+### `app_user`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `int` | no |  | auto-increment |
+| `username` | `varchar(150)` | no |  |  |
+| `personel_code` | `int` | no |  |  |
+| `national_code` | `varchar(10)` | no |  |  |
+| `email` | `varchar(150)` | yes |  |  |
+| `phone_number` | `varchar(15)` | yes |  |  |
+| `password` | `varchar(100)` | no |  |  |
+| `first_name` | `varchar(250)` | no |  |  |
+| `last_name` | `varchar(250)` | no |  |  |
+| `created_at` | `datetime` | no |  |  |
+| `updated_at` | `datetime` | yes |  |  |
+| `login_type` | `int` | no | `0` |  |
+| `enabled` | `int` | no |  |  |
+| `state` | `int` | no |  |  |
+
+* **primary key** `id`
+* **unique** `uq_user_email` (`email`)
+* **unique** `uq_user_national_code` (`national_code`)
+* **unique** `uq_user_personel_code` (`personel_code`)
+* **unique** `uq_user_phone_number` (`phone_number`)
+* **unique** `uq_user_username` (`username`)
+* **index** `ix_user_created_at` (`created_at`)
 
 ### `content_kind`
 
@@ -219,8 +250,8 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 
 * **primary key** `id`
 * **unique** `uq_content_kind_extension` (`extension`)
-* **foreign key** `fk_content_kind_created_by_user` `created_by` → `user` (`id`)
-* **foreign key** `fk_content_kind_updated_by_user` `updated_by` → `user` (`id`)
+* **foreign key** `fk_content_kind_created_by_user` `created_by` → `app_user` (`id`)
+* **foreign key** `fk_content_kind_updated_by_user` `updated_by` → `app_user` (`id`)
 
 ### `file_details`
 
@@ -238,7 +269,7 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 | `description` | `varchar(1000)` | no |  |  |
 | `storage_key` | `varchar(1000)` | no |  |  |
 | `file_link` | `varchar(1000)` | yes |  |  |
-| `file_size` | `int` | no |  |  |
+| `file_size` | `bigint` | no |  |  |
 | `enabled` | `int` | no |  |  |
 | `state` | `int` | no |  |  |
 | `created_at` | `datetime` | no |  |  |
@@ -249,9 +280,9 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 * **primary key** `id`
 * **unique** `uq_file_details_hash_id` (`hash_id`)
 * **unique** `uq_file_details_version_format` (`file_info_id`, `version`, `file_extension`)
-* **foreign key** `fk_file_details_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_file_details_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_file_details_file_info_id` `file_info_id` → `file_info` (`id`)
-* **foreign key** `fk_file_details_updated_by_user` `updated_by` → `user` (`id`)
+* **foreign key** `fk_file_details_updated_by_user` `updated_by` → `app_user` (`id`)
 * **index** `ix_file_details_file_info_version` (`file_info_id`, `version`)
 * **index** `ix_file_details_state` (`state`)
 
@@ -276,9 +307,9 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 
 * **primary key** `id`
 * **unique** `uq_file_info_name_per_folder` (`folder_id`, `file_name`)
-* **foreign key** `fk_file_info_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_file_info_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_file_info_folder` `folder_id` → `folder` (`id`)
-* **foreign key** `fk_file_info_updated_by_user` `updated_by` → `user` (`id`)
+* **foreign key** `fk_file_info_updated_by_user` `updated_by` → `app_user` (`id`)
 * **index** `ix_file_info_created_at` (`created_at`)
 * **index** `ix_file_info_folder` (`folder_id`)
 * **index** `ix_file_info_state` (`state`)
@@ -302,7 +333,7 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 
 * **primary key** `id`
 * **unique** `uq_file_share_link_token` (`token_hash`)
-* **foreign key** `fk_file_share_link_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_file_share_link_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_file_share_link_file_details` `file_details_id` → `file_details` (`id`), on delete cascade
 * **index** `ix_file_share_link_created_by` (`created_by`)
 * **index** `ix_file_share_link_file_details` (`file_details_id`)
@@ -354,11 +385,11 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 * **primary key** `id`
 * **unique** `uq_folder_owner_user` (`owner_user_id`)
 * **unique** `uq_folder_sibling_name` (`parent_id`, `name`)
-* **foreign key** `fk_folder_created_by_user` `created_by` → `user` (`id`)
-* **foreign key** `fk_folder_owner_user` `owner_user_id` → `user` (`id`)
+* **foreign key** `fk_folder_created_by_user` `created_by` → `app_user` (`id`)
+* **foreign key** `fk_folder_owner_user` `owner_user_id` → `app_user` (`id`)
 * **foreign key** `fk_folder_parent` `parent_id` → `folder` (`id`)
 * **foreign key** `fk_folder_tag_group` `tag_group_id` → `tag_group` (`id`)
-* **foreign key** `fk_folder_updated_by_user` `updated_by` → `user` (`id`)
+* **foreign key** `fk_folder_updated_by_user` `updated_by` → `app_user` (`id`)
 * **index** `ix_folder_parent` (`parent_id`)
 * **index** `ix_folder_path` (`path`)
 
@@ -425,9 +456,9 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 
 * **primary key** `id`
 * **unique** `uq_tag_name_per_group` (`group_id`, `name`)
-* **foreign key** `fk_tag_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_tag_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_tag_group` `group_id` → `tag_group` (`id`)
-* **foreign key** `fk_tag_updated_by_user` `updated_by` → `user` (`id`)
+* **foreign key** `fk_tag_updated_by_user` `updated_by` → `app_user` (`id`)
 
 ### `tag_group`
 
@@ -444,8 +475,8 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 
 * **primary key** `id`
 * **unique** `uq_tag_group_name` (`name`)
-* **foreign key** `fk_tag_group_created_by_user` `created_by` → `user` (`id`)
-* **foreign key** `fk_tag_group_updated_by_user` `updated_by` → `user` (`id`)
+* **foreign key** `fk_tag_group_created_by_user` `created_by` → `app_user` (`id`)
+* **foreign key** `fk_tag_group_updated_by_user` `updated_by` → `app_user` (`id`)
 
 ### `upload_policy`
 
@@ -460,9 +491,9 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 
 * **primary key** `id`
 * **unique** `uq_upload_policy_role` (`role_id`)
-* **foreign key** `fk_upload_policy_created_by_user` `created_by` → `user` (`id`)
+* **foreign key** `fk_upload_policy_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_upload_policy_role` `role_id` → `role` (`id`), on delete cascade
-* **foreign key** `fk_upload_policy_updated_by_user` `updated_by` → `user` (`id`)
+* **foreign key** `fk_upload_policy_updated_by_user` `updated_by` → `app_user` (`id`)
 
 ### `upload_policy_rule`
 
@@ -477,33 +508,6 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 * **unique** `uq_upload_policy_rule` (`policy_id`, `extension`)
 * **foreign key** `fk_upload_policy_rule_policy` `policy_id` → `upload_policy` (`id`), on delete cascade
 
-### `user`
-
-| Column | Type | Null | Default | Notes |
-|---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `username` | `varchar(150)` | no |  |  |
-| `personel_code` | `int` | no |  |  |
-| `national_code` | `varchar(10)` | no |  |  |
-| `email` | `varchar(150)` | yes |  |  |
-| `phone_number` | `varchar(15)` | yes |  |  |
-| `password` | `varchar(100)` | no |  |  |
-| `first_name` | `varchar(250)` | no |  |  |
-| `last_name` | `varchar(250)` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `login_type` | `int` | no | `0` |  |
-| `enabled` | `int` | no |  |  |
-| `state` | `int` | no |  |  |
-
-* **primary key** `id`
-* **unique** `uq_user_email` (`email`)
-* **unique** `uq_user_national_code` (`national_code`)
-* **unique** `uq_user_personel_code` (`personel_code`)
-* **unique** `uq_user_phone_number` (`phone_number`)
-* **unique** `uq_user_username` (`username`)
-* **index** `ix_user_created_at` (`created_at`)
-
 ### `user_folder`
 
 | Column | Type | Null | Default | Notes |
@@ -514,7 +518,7 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 
 * **primary key** `user_id`, `folder_id`
 * **foreign key** `fk_user_folder_folder` `folder_id` → `folder` (`id`), on delete cascade
-* **foreign key** `fk_user_folder_user` `user_id` → `user` (`id`), on delete cascade
+* **foreign key** `fk_user_folder_user` `user_id` → `app_user` (`id`), on delete cascade
 * **index** `ix_user_folder_user` (`user_id`)
 
 ### `user_role`
@@ -528,6 +532,6 @@ _As of migration `V2.13`. Types and defaults are MySQL's own; every table is Inn
 * **primary key** `id`
 * **unique** `uq_user_role` (`user_id`, `role_id`)
 * **foreign key** `fk_user_role_role_id` `role_id` → `role` (`id`)
-* **foreign key** `fk_user_role_user_id` `user_id` → `user` (`id`)
+* **foreign key** `fk_user_role_user_id` `user_id` → `app_user` (`id`)
 
 <!-- end of generated section -->

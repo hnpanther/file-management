@@ -136,9 +136,9 @@ byte-delete is retried, never silently dropped.
 
 | Change | Closes | Notes |
 |---|---|---|
-| `user` table → `app_user` | 30 | mandatory for PostgreSQL |
+| `user` table → `app_user` | 30 | mandatory for PostgreSQL; **done** (`V2.14`, 1.7.0) |
 | `state`/`enabled` `Integer` → `Visibility` and `LifecycleStatus` enums, `@Enumerated(STRING)` + CHECK constraints | 22 | `PUBLIC`, `PRIVATE`, `RESTRICTED`; `ACTIVE`, `PENDING`, `DELETING`, `DISABLED` |
-| `file_size INT` → `BIGINT`, `Integer` → `long` | 6 | |
+| `file_size INT` → `BIGINT`, `Integer` → `long` | 6 | **done** (`V2.15`, 1.7.0) |
 | add `checksum_sha256`, `storage_key`, `storage_backend` | 7, 35 | drop `file_path` / `relative_path` |
 | `LocalDateTime` → `Instant`, `DATETIME` → `TIMESTAMPTZ` | 24 | with JPA auditing |
 | `@Data` → `@Getter @Setter` + explicit `equals`/`hashCode` on id | 2 | |

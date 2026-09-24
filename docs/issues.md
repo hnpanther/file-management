@@ -155,6 +155,12 @@ value and the S3 work will raise it.
 
 Fix: `BIGINT` / `long`, and migrate the column.
 
+> **Fixed** in 1.7.0 (PostgreSQL release A, `V2.15`): `file_size` is `BIGINT NOT NULL`, the field a
+> primitive `long`, and `FileService` stores `getSize()` without the cast. Every existing value
+> fits unchanged; `PortableSchemaMigrationTest` migrates a row holding `Integer.MAX_VALUE` through
+> `V2.15` and stores 3 GiB after it, and `PortableQueriesTest` reads and sums a 3 GiB size back
+> through the entity.
+
 ### 7. `hash_id` is not a hash — **S2**
 
 `FileDetails.hashId` is `UUID.randomUUID().toString()` (three call sites in `FileService`). The
@@ -526,6 +532,17 @@ migration files, both `JOIN` DAOs and `schema-db/schema.sql`.
 
 Fix: rename the table to `app_user` in a migration and set `@Table(name = "app_user")`. Do **not**
 solve it by quoting — quoted mixed-case identifiers are worse to live with.
+
+> **Fixed** in 1.7.0 (PostgreSQL release A, `V2.14`): `RENAME TABLE user TO app_user`, on MySQL,
+> ahead of the move. InnoDB re-points all twenty-two foreign keys that referenced `user` and keeps
+> their names, their `ON DELETE` rules and the table's own index names - checked on 8.0.36 and 8.4
+> before the migration was written, and asserted by `PortableSchemaMigrationTest`, which migrates
+> a database holding accounts, a role, a grant and a file to `2.13`, applies the rest, and
+> checks the keys by name, table and rule, the columns, the indexes, the rows, and that the
+> constraints are still enforced (a dangling reference and a referenced delete refused, a
+> cascade still cascading). The entity keeps its name; JPQL still says `FROM User u`. Every other
+> table name, and every column name, was checked against PostgreSQL's reserved words: none
+> collides.
 
 ### 31. Migrations are MySQL-only — **S1 for the migration**
 
@@ -1368,6 +1385,7 @@ the unique constraints compare names case-insensitively. It does more than that,
 | `'admin' = 'Admin'` | equal | different |
 | `'resume' = 'résumé'` | equal | different |
 | `'میخواهم' = 'می‌خواهم'` (with and without the zero-width non-joiner) | equal | different |
+| `'۱۲۳' = '123'` (Persian digits; Arabic-Indic `١٢٣` alike) | equal, in `LIKE` too | different |
 | Arabic `ي` / `ك` against Persian `ی` / `ک` | different | different |
 
 Roadmap 3.3 rewrites the 22 search `LIKE`s with `LOWER(...)` and stops there. After the move, as
@@ -1390,11 +1408,99 @@ planned:
   PostgreSQL - for uniqueness and for search.
 
 **What Release A has to add**, decided per column rather than globally: for identifiers looked up
-by equality (username, role name, tag and folder names), `LOWER(x) = LOWER(:x)` in the JPQL, as
-the `LIKE`s get; in `V3.0`, a unique index on `lower(column)` for each constraint above that is
-meant to stay case-insensitive (PostgreSQL has no collation-level equivalent it can also run
-`LIKE` against before version 18, whose nondeterministic ICU collations would be the alternative
-- and would move the target from 17 to 18). Accent and half-space folding are a separate
-decision; nothing here depends on them except search, and issue 21's full-text search is where
-they belong. A test on both databases in Release B - `admin` signs in as `Admin`; `report` is
-refused beside `Report` - is what proves it.
+by equality (username, role name, tag and folder names), a case-insensitive comparison in the
+JPQL, as the `LIKE`s get; in `V3.0`, a unique index on the folded column for each constraint above
+that is meant to stay case-insensitive (PostgreSQL has no collation-level equivalent it can also
+run `LIKE` against before version 18, whose nondeterministic ICU collations would be the
+alternative - and would move the target from 17 to 18). Accent and half-space folding are a
+separate decision; nothing here depends on them except search, and issue 21's full-text search is
+where they belong. A test on both databases in Release B - `admin` signs in as `Admin`; `report`
+is refused beside `Report` - is what proves it.
+
+> **Release A's half is done** (1.7.0), with one change to the plan above: the function is
+> `UPPER`, not `LOWER`, on both sides, everywhere. `UPPER` is what Spring Data's `IgnoreCase`
+> renders, and two lookups already used it (`findByParentIdAndNameIgnoreCase`, `userHasRole`); one
+> function means one functional index per column in `V3.0` serves derived and written queries
+> alike. What changed:
+>
+> * the 21 search `LIKE`s: `UPPER(column) LIKE UPPER(CONCAT('%', :term, '%'))`;
+> * sign-in and the username checks (`findByUsernameWithRolesAndPermissions`,
+>   `existsByUsernameIgnoreCase`, `findByUsernameIgnoreCase`), the role lookups
+>   (`findByRoleNameIgnoreCase`, `existsByRoleNameIgnoreCase`, `findByRoleNameWithPermissions`),
+>   the tag lookups (`TagGroupRepository.findByNameIgnoreCase`,
+>   `TagRepository.findByGroupIdAndNameIgnoreCase`), the file-name checks
+>   (`FileInfoRepository.findByFolderIdAndFileName`, `...WithDetails`) and the format check
+>   (`existsByFileInfoAndVersionAndFormat` - the one that also protects bytes: the extension is
+>   stored as uploaded, and `report.PDF` beside `report.pdf` at one version are two keys for one
+>   file on Windows);
+> * `findIdsWhoseTagsDisagreeWithTheFolders` compares `UPPER` names, as `TagMirrorService` looks
+>   them up.
+>
+> Left exact, on purpose: tokens and keys (`api_key.key_id`, `file_share_link.token_hash`,
+> `storage_key`, `folder.path`, `app_setting.setting_key`), and the extensions of
+> `content_kind` and `upload_policy_rule`, which the code writes lower-case and nothing else can.
+>
+> **How it was verified.** On MySQL `PortableQueriesTest`, `FormSignInTest` and the case-variant
+> service tests pass with or without the change - the collation hides it. So the same tests were
+> run against real PostgreSQL 18.4 and 16.14 through a temporary harness (a schema built from the
+> entities; not committed - Release B brings the real one): every case-variant test passes; with
+> `UPPER` stripped out of the written queries, the eight `PortableQueriesTest` cases that depend
+> on it fail there, and only those.
+>
+> **Still open, for Release B:** the `V3.0` unique indexes on `upper(column)` for the constraints
+> listed above, and the database created with a UTF-8 locale (under `C`, PostgreSQL's `upper()`
+> folds ASCII only). **Still open, a decision:** digit, accent and half-space folding. MySQL finds
+> `۱۴۰۳` when `1403` is typed, and a name written with the half-space when it is typed without;
+> PostgreSQL will not, in search or in uniqueness. Folding digits in the search term alone would
+> cover only one direction; both directions need either a normalised copy of each searched
+> column or issue 21's full-text search. Until one is chosen, that part of today's search
+> behaviour does not survive the move.
+
+### 87. An empty search box is a `NULL` PostgreSQL cannot type — **S1 for the migration**
+
+The four list queries - `FileInfoRepository.search` and `.searchWithinFolders`,
+`FileDetailsRepository.searchPublicFiles`, `UserRepository.search` - were written as
+`(:search) IS NULL OR column LIKE CONCAT('%', :search, '%')`, and every service turned an empty
+box into `null` (`SearchTerms.blankToNull`) to hit the first branch. Hibernate cannot infer a
+type for a `null` bound into `CONCAT`, and sends it as binary; MySQL does not care, PostgreSQL
+refuses:
+
+```
+ERROR: operator does not exist: character varying ~~ bytea
+```
+
+So on PostgreSQL every one of those pages failed until something was typed in the box - the file
+list, the public files, the user list. It was in the code before release A (the same tests, run
+on PostgreSQL against the original queries, fail the same way), and no plan listed it: roadmap
+1.3 noted the idiom as a Hibernate 7 risk, and MySQL never showed a symptom. Found by running the
+existing repository and service tests against PostgreSQL 18 and 16 while verifying release A.
+
+The textbook fix, `CAST(:search AS String)`, does not travel: Hibernate renders it on MySQL as
+`CAST(? AS CHAR)`, whose result takes the connection's collation with the same coercibility as the
+column, and MySQL refuses the comparison - `ERROR 1267: Illegal mix of collations
+(utf8mb4_unicode_ci,IMPLICIT) and (utf8mb4_0900_ai_ci,IMPLICIT)` (checked on 8.0.36).
+
+> **Fixed** in 1.7.0: "no term" is the empty string, never `null`. The four queries say
+> `:search = ''` - a comparison with a string literal, which types the parameter on both
+> databases - and their callers pass `SearchTerms.blankToEmpty`. A `null` passed anyway now finds
+> nothing on MySQL as well, instead of everything, so a caller that forgets is caught before the
+> move rather than on the night. `FileInfoRepositoryTest`, `UserRepositoryTest` and
+> `PortableQueriesTest` pin both halves (empty matches all, `null` matches none); the service
+> tests that failed on PostgreSQL pass there with the fix. The other parameters checked for
+> `NULL` in a query - the integer `:id` and `:searchNumber` - are typed by their comparison with
+> an integer column and were run with `null` on PostgreSQL without trouble.
+
+### 88. A user cannot change only the case of their own username — **S3**
+
+`UserService.updateUser` decides whether the username changed with `Objects.equals` - exactly -
+and then asks `existsByUsernameIgnoreCase(newUsername)` whether it is taken, without excluding
+the user being edited. Renaming `ali` to `Ali` therefore finds `ali` itself and is refused as a
+duplicate (409). It is not new with 1.7.0: before it, `existsByUsername` compared through the
+MySQL collation and found the same row. Release A kept the behaviour as it was on purpose - it
+changes nothing a user can see on MySQL. Found while reviewing release A's lookups.
+
+The fix is one query that leaves the edited row out (`existsByUsernameIgnoreCaseAndIdNot`), and
+the same for the national code and the phone number, which are checked the same way; the home
+folder's rename, which follows, already compares siblings with
+`findByParentIdAndNameIgnoreCase` and would find its own folder, so it needs the same care.
+`TagGroupService.update` is the pattern: it filters the edited group out of the lookup.

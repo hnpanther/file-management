@@ -11,7 +11,7 @@ working, and to depend only on what came before.
 | 0 | Safety net — CI, smoke test, containerised dev environment | — | **done** |
 | 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done**; the language level moved to 25 in 1.4.0, on its own, once every host ran a JDK 25 |
 | 2 | Architectural restructuring | 1 | |
-| 3 | PostgreSQL migration | 1, partly 2, **and 7** | planned, not a priority; three releases, the middle one runs on both databases (3.2) |
+| 3 | PostgreSQL migration | 1, partly 2, **and 7** | three releases, the middle one runs on both databases (3.2); **release A done** (1.7.0), B and C to come |
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done**; the move it needs **done** (7.2 step 5d, 1.4.0); the drag handlers are what is left |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**; enforcement switched on per installation, after the grants exist |
@@ -310,22 +310,51 @@ releases, and only the middle one is the actual cut-over:
 The window between B going live on PostgreSQL and C is the rollback window. Do not add
 migrations during it: every one would have to be written twice.
 
-### 3.3 Release A — what to neutralise on MySQL first
+### 3.3 Release A — what to neutralise on MySQL first — **done** (1.7.0)
 
 Each is an ordinary migration plus a code change, shipped and verified on MySQL, so that the
 cut-over changes no behaviour:
 
-| Change | Why |
-|---|---|
-| `RENAME TABLE user TO app_user`; `@Table(name = "app_user")` | `user` is reserved in PostgreSQL (issue 30); quoting it would spread into every native query and every operator's `psql` session |
-| `file_details.file_size INT` → `BIGINT`; the field `Integer` → `long` | issue 6; a type change on MySQL now, so the PostgreSQL baseline is not the first place the entity meets a wider column |
-| every search `LIKE` on user text becomes `LOWER(column) LIKE LOWER(:term)` (22 places in the repositories; the path-prefix `LIKE`s stay as they are) | MySQL's `utf8mb4` collations compare case-insensitively and PostgreSQL's `LIKE` does not; without this, a search that finds `Report` today stops finding it on `report` after the move. Made on MySQL first so the behaviour is the same on both, and the queries stay JPQL |
-| equality lookups on names (`username`, role, tag and folder names) become `LOWER(x) = LOWER(:x)`; each case-insensitive unique constraint is listed for a `lower(column)` index in `V3.0` | the collation makes `=` and every `UNIQUE` on text case-insensitive on MySQL, not only `LIKE`: without this, signing in as `admin` for `Admin` stops working and `Report` and `report` can share a folder ([issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2)) |
-| the one native query (`findIdsWhoseTagsDisagreeWithTheFolders`) checked against PostgreSQL syntax | it is plain SQL-92 (`LIKE CONCAT`, subselects) and should pass unchanged; the check is a test in release B, not a rewrite |
-| `# comments`, `ENGINE`, `AFTER`, `AUTO_INCREMENT` in `V1.0`–`V2.10` | left alone: they never run on PostgreSQL (3.4) |
+| Change | Why | Status |
+|---|---|---|
+| `RENAME TABLE user TO app_user`; `@Table(name = "app_user")` | `user` is reserved in PostgreSQL (issue 30); quoting it would spread into every native query and every operator's `psql` session | **done**, `V2.14`; all 22 foreign keys follow the table with their names and rules (`PortableSchemaMigrationTest`, on a database that already holds rows) |
+| `file_details.file_size INT` → `BIGINT`; the field `Integer` → `long` | issue 6; a type change on MySQL now, so the PostgreSQL baseline is not the first place the entity meets a wider column | **done**, `V2.15` |
+| every search `LIKE` on user text becomes `UPPER(column) LIKE UPPER(CONCAT('%', :term, '%'))` (21 places in the repositories; the path-prefix `LIKE`s stay as they are) | MySQL's `utf8mb4` collations compare case-insensitively and PostgreSQL's `LIKE` does not; without this, a search that finds `Report` today stops finding it on `report` after the move. Made on MySQL first so the behaviour is the same on both, and the queries stay JPQL | **done**. `UPPER` rather than the `LOWER` first written here: it is what Spring Data's `IgnoreCase` renders, so one functional index per column serves every lookup |
+| equality lookups on names (`username`, role, tag and file names, a format's extension) compare through `UPPER`; each case-insensitive unique constraint is listed for an `upper(column)` index in `V3.0` | the collation makes `=` and every `UNIQUE` on text case-insensitive on MySQL, not only `LIKE`: without this, signing in as `admin` for `Admin` stops working and `Report` and `report` can share a folder ([issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2)) | **done** for the queries; the indexes are release B's |
+| an empty search is the empty string, never `NULL`: the four list queries say `:search = ''` | a `NULL` bound into `LIKE CONCAT(...)` has no type PostgreSQL accepts, and every list page failed with an empty box ([issue 87](issues.md#87-an-empty-search-box-is-a-null-postgresql-cannot-type--s1-for-the-migration)); found while verifying this release on PostgreSQL | **done** |
+| the one native query (`findIdsWhoseTagsDisagreeWithTheFolders`) checked against PostgreSQL syntax | it is plain SQL-92 (`LIKE CONCAT`, subselects) and should pass unchanged; the check is a test in release B, not a rewrite | **done early**: it runs on PostgreSQL 16 and 18, and now compares names through `UPPER` |
+| `# comments`, `ENGINE`, `AFTER`, `AUTO_INCREMENT` in `V1.0`–`V2.13` | left alone: they never run on PostgreSQL (3.4) | - |
 
 Nothing here is user-visible except the case-insensitive search, which is what users already
 have.
+
+**How release A was verified.** On MySQL the whole suite, plus `PortableSchemaMigrationTest` (the
+two migrations applied to a database that already holds accounts, a grant and a file),
+`PortableQueriesTest` (every rewritten query, each name stored in one case and asked for in
+another) and `FormSignInTest` (sign-in through the real chain, `admin` for `Admin`). None of the
+case tests can fail on MySQL - the collation answers them either way - so they were also run on
+**PostgreSQL 18.4 and 16.14** through a temporary harness (a `DataSource` bean pointing at a
+throw-away container, the schema built by Hibernate from the entities, the root folder seeded by
+hand; not committed): `PortableQueriesTest`, `UserRepositoryTest`, `FileInfoRepositoryTest`,
+`FileServiceTest`, `UserServiceTest`, `RoleServiceTest` and `FormSignInTest` - 102 tests - pass,
+but for two that assert constraints only the migrations create. With `UPPER` stripped from the
+written queries, the eight `PortableQueriesTest` cases that depend on it fail there - every one
+but the derived `IgnoreCase` tag lookups and the size and empty-term cases - which is what shows
+they test something. That run is also what found issue 87.
+
+**What it leaves for release B, learned on the way:**
+
+* **Write `V3.0` from `schema.md`, not from Hibernate's DDL.** The entities are not the schema:
+  `uq_file_info_name_per_folder` and `uq_file_details_version_format` exist only in the
+  migrations, and Hibernate's generated DDL made `updated_at` (an `@UpdateTimestamp`) `NOT NULL`
+  where every table has it nullable - a seed row without it was refused. `validate` checks
+  neither.
+* **One support class chooses the database.** A PostgreSQL sibling of `MySqlSupport` cannot
+  override `spring.datasource.*` from a subclass - both `@DynamicPropertySource` methods register
+  the same keys and the MySQL one won - so the choice (`-Ddb=postgresql`) belongs inside one
+  class that starts one container.
+* **Digit, accent and half-space folding** is a decision still to take (issue 86): MySQL finds
+  `۱۴۰۳` when `1403` is typed, PostgreSQL will not.
 
 ### 3.4 Release B — the dual-database jar
 
@@ -356,7 +385,8 @@ exactly as an empty MySQL does.
 | `LIKE` search | as after release A; `tsvector` (issue 21) is a later `V3.x` |
 | indexes and constraints | the same set, the same names, so `schema.md` describes both |
 | `folder.path` indexed for prefix `LIKE` (every subtree and folder-access query) | the index declared `varchar_pattern_ops`, or the column `COLLATE "C"` - under any other collation PostgreSQL cannot use a B-tree for `LIKE 'prefix%'` and those queries become sequential scans (Phase 6.1 left this to be decided here) |
-| case-insensitive unique names | a unique index on `lower(column)` for each constraint listed in [issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2), under its existing name |
+| case-insensitive unique names | a unique index on `upper(column)` - the expression the queries use - for each constraint listed in [issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2), under its existing name |
+| the database's locale | `ENCODING 'UTF8'` with a UTF-8 `LC_CTYPE` (`en_US.utf8`, or ICU): under `C`, `upper()` folds ASCII only, and a name with an accented capital would stop matching |
 
 **Dependencies.** `org.postgresql:postgresql` and `org.flywaydb:flyway-database-postgresql` are
 added beside the MySQL pair (removed only in C).

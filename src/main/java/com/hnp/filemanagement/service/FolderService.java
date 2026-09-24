@@ -449,7 +449,7 @@ public class FolderService {
         if (name.isEmpty() || name.length() > 100) {
             throw new InvalidDataException("a top-level folder needs a tag group: choose one, or name a new one");
         }
-        return tagGroupRepository.findByName(name).orElseGet(() -> {
+        return tagGroupRepository.findByNameIgnoreCase(name).orElseGet(() -> {
             TagGroup group = new TagGroup();
             group.setName(name);
             group.setTitle(name);

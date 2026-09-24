@@ -343,10 +343,11 @@ public class UserService {
      */
     public Page<UserDTO> getUserPage(String search, int pageSize, int pageNumber) {
 
-        String term = SearchTerms.blankToNull(search);
+        String term = SearchTerms.blankToEmpty(search);
         Integer searchNumber = parseIntOrNull(term);
         if (searchNumber != null) {
-            term = null;
+            // A number searches the id and the personnel code only; the empty text matches all.
+            term = "";
         }
 
         Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by("createdAt").descending());
@@ -376,7 +377,7 @@ public class UserService {
                                     String phoneNumber, UserDTO context) {
 
         boolean duplicate =
-                (username != null && userRepository.existsByUsername(username))
+                (username != null && userRepository.existsByUsernameIgnoreCase(username))
                         || (personelCode != null && userRepository.existsByPersonelCode(personelCode))
                         || (nationalCode != null && userRepository.existsByNationalCode(nationalCode))
                         || (phoneNumber != null && userRepository.existsByPhoneNumber(phoneNumber));

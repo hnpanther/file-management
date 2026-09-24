@@ -589,7 +589,8 @@ the folder from environment variables and never holds a credential in the file.
 `AuthenticationManagerBuilder` is assembled conditionally on
 `filemanagement.auth.ldap.activedirectory.enabled`:
 
-* **off** → `DaoAuthenticationProvider` only (BCrypt against the `user` table).
+* **off** → `DaoAuthenticationProvider` only (BCrypt against the `app_user` table; the username is
+  matched without case, so `admin` signs in to `Admin` on any database - issue 86).
 * **on** → `ActiveDirectoryCustomAuthenticationProvider` first, then `DaoAuthenticationProvider`.
   The AD provider is shaped for a real directory: several controllers as a JNDI fail-over list,
   connect/read timeouts on every bind, an optional PKCS12 truststore handed to JNDI through

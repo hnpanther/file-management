@@ -74,8 +74,8 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
             WHERE f.kind <> com.hnp.filemanagement.entity.FolderKind.ROOT
               AND f.path LIKE CONCAT(:pathPrefix, '%')
               AND ((:id IS NOT NULL AND f.id = :id)
-               OR f.name LIKE CONCAT('%', :term, '%')
-               OR f.displayName LIKE CONCAT('%', :term, '%'))
+               OR UPPER(f.name) LIKE UPPER(CONCAT('%', :term, '%'))
+               OR UPPER(f.displayName) LIKE UPPER(CONCAT('%', :term, '%')))
             ORDER BY f.depth ASC, f.name ASC
             """)
     List<Folder> searchFolders(@Param("id") Integer id, @Param("term") String term,

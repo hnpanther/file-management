@@ -109,12 +109,12 @@ class UserRepositoryTest extends MySqlSupport {
     @Test
     @DisplayName("each unique field is checked on its own")
     void checksEachUniqueFieldSeparately() {
-        assertThat(underTest.existsByUsername(user.getUsername())).isTrue();
+        assertThat(underTest.existsByUsernameIgnoreCase(user.getUsername())).isTrue();
         assertThat(underTest.existsByPersonelCode(user.getPersonelCode())).isTrue();
         assertThat(underTest.existsByNationalCode(user.getNationalCode())).isTrue();
         assertThat(underTest.existsByPhoneNumber(user.getPhoneNumber())).isTrue();
 
-        assertThat(underTest.existsByUsername("nobody-" + TestData.nextSequence())).isFalse();
+        assertThat(underTest.existsByUsernameIgnoreCase("nobody-" + TestData.nextSequence())).isFalse();
     }
 
     @Test
@@ -127,23 +127,25 @@ class UserRepositoryTest extends MySqlSupport {
                 PageRequest.of(0, 10)).getContent())
                 .extracting(User::getId).containsExactly(user.getId());
 
-        assertThat(underTest.search(user.getPersonelCode(), null, PageRequest.of(0, 10)).getContent())
+        assertThat(underTest.search(user.getPersonelCode(), "", PageRequest.of(0, 10)).getContent())
                 .extracting(User::getId).containsExactly(user.getId());
 
-        assertThat(underTest.search(user.getId(), null, PageRequest.of(0, 10)).getContent())
+        assertThat(underTest.search(user.getId(), "", PageRequest.of(0, 10)).getContent())
                 .extracting(User::getId).containsExactly(user.getId());
     }
 
     @Test
-    @DisplayName("a null term on both axes matches everything, and the count agrees")
-    void nullTermsMatchEverything() {
+    @DisplayName("no number and an empty text match everything, and the count agrees; a null text matches nothing")
+    void emptyTermsMatchEverything() {
         underTest.save(TestData.user());
         flushAndClear();
 
-        var page = underTest.search(null, null, PageRequest.of(0, 100));
+        var page = underTest.search(null, "", PageRequest.of(0, 100));
 
         assertThat(page.getTotalElements()).isEqualTo(page.getContent().size());
         assertThat(page.getTotalElements()).isGreaterThanOrEqualTo(2);
+        // Null text is what PostgreSQL cannot type here (issue 87): it finds nothing, on MySQL too.
+        assertThat(underTest.search(null, null, PageRequest.of(0, 100)).getTotalElements()).isZero();
     }
 
     private void flushAndClear() {

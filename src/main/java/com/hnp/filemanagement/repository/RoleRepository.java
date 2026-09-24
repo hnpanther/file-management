@@ -21,11 +21,12 @@ import java.util.Optional;
  */
 public interface RoleRepository extends JpaRepository<Role, Integer> {
 
-    Optional<Role> findByRoleName(String roleName);
+    /** A role by name, compared without case like the unique name it is (issue 86). */
+    Optional<Role> findByRoleNameIgnoreCase(String roleName);
 
     List<Role> findByIdIn(List<Integer> list);
 
-    boolean existsByRoleName(String roleName);
+    boolean existsByRoleNameIgnoreCase(String roleName);
 
     /**
      * Whether this person holds a role with this name — how folder access decides that somebody is
@@ -70,11 +71,11 @@ public interface RoleRepository extends JpaRepository<Role, Integer> {
             """)
     Optional<Role> findByIdWithFolders(@Param("id") int id);
 
-    /** One role with its permissions, by name — the "USER" and "ADMIN" lookups. */
+    /** One role with its permissions, by name without case — the "USER" and "ADMIN" lookups. */
     @Query("""
             SELECT DISTINCT r FROM Role r
             LEFT JOIN FETCH r.permissions
-            WHERE r.roleName = :roleName
+            WHERE UPPER(r.roleName) = UPPER(:roleName)
             """)
     Optional<Role> findByRoleNameWithPermissions(@Param("roleName") String roleName);
 

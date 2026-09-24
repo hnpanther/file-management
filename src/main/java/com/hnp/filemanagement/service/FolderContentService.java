@@ -490,10 +490,10 @@ public class FolderContentService {
                 .sorted()
                 .toList();
 
-        // Summed as a long: file_size is a 32-bit column that already overflows past 2 GiB
-        // (issue 6), and adding several of them in an int would overflow a second way.
+        // Summed as a long: several sizes together can pass what an int holds even when no
+        // single file does.
         long size = latestVersion.stream()
-                .mapToLong(details -> details.getFileSize() == null ? 0L : details.getFileSize())
+                .mapToLong(FileDetails::getFileSize)
                 .sum();
 
         // "The latest" when a version has several formats: the one uploaded last. By the

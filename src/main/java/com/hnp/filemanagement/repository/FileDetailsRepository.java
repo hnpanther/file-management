@@ -40,8 +40,8 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
 
     /**
      * The bytes stored anywhere beneath a folder, itself included: every revision of every file,
-     * summed as a {@code long} (the column is a 32-bit {@code int}, issue 6). What a quota is
-     * checked against; zero for an empty subtree.
+     * summed as a {@code long}, as the column is since V2.15 (issue 6). What a quota is checked
+     * against; zero for an empty subtree.
      */
     @Query("""
             SELECT COALESCE(SUM(fd.fileSize), 0) FROM FileDetails fd
@@ -64,19 +64,20 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
 
     /**
      * The public file list. Only active versions of active files, filtered by a term matched
-     * against the version, the file, and the display name of every folder above it.
+     * against the version, the file, and the display name of every folder above it. An empty
+     * term matches everything; never {@code null} ({@code SearchTerms.blankToEmpty}, issue 87).
      */
     @Query("""
             SELECT fd FROM FileDetails fd
             JOIN FETCH fd.fileInfo fi
             JOIN FETCH fi.folder t
             WHERE fd.state = 0 AND fi.state = 0
-              AND ((:search) IS NULL
-                   OR fd.fileName LIKE CONCAT('%', (:search), '%')
-                   OR fd.description LIKE CONCAT('%', (:search), '%')
+              AND (:search = ''
+                   OR UPPER(fd.fileName) LIKE UPPER(CONCAT('%', (:search), '%'))
+                   OR UPPER(fd.description) LIKE UPPER(CONCAT('%', (:search), '%'))
                    OR EXISTS (SELECT a FROM Folder a
                               WHERE t.path LIKE CONCAT(a.path, '%') AND a.depth > 0
-                                AND a.displayName LIKE CONCAT('%', (:search), '%')))
+                                AND UPPER(a.displayName) LIKE UPPER(CONCAT('%', (:search), '%'))))
             """)
     Page<FileDetails> searchPublicFiles(@Param("search") String search, Pageable pageable);
 
@@ -88,12 +89,19 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
     @Query("SELECT MAX(fd.version) FROM FileDetails fd WHERE fd.fileInfo.id = :fileInfoId")
     Integer findMaxVersion(@Param("fileInfoId") int fileInfoId);
 
-    /** The duplicate check for "this format already exists at this version". */
+    /**
+     * The duplicate check for "this format already exists at this version".
+     *
+     * <p>The extension is compared without case, and that is about the bytes as much as the row:
+     * the extension is stored as uploaded, so {@code report.PDF} and {@code report.pdf} at one
+     * version would have two keys that name one file on Windows, and the second upload would
+     * write over the first (issue 86).
+     */
     @Query("""
             SELECT COUNT(fd) > 0 FROM FileDetails fd
             WHERE fd.fileInfo.id = :fileInfoId
               AND fd.version = :version
-              AND fd.fileExtension = :format
+              AND UPPER(fd.fileExtension) = UPPER(:format)
             """)
     boolean existsByFileInfoAndVersionAndFormat(@Param("fileInfoId") int fileInfoId,
                                                 @Param("version") int version,
