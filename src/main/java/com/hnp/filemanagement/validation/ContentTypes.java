@@ -206,11 +206,13 @@ public final class ContentTypes {
         Kind kind = lookup(extension);
         if (kind == null) {
             throw new InvalidDataException("file type ." + extension + " is not recognised; recognised: "
-                    + String.join(", ", knownExtensions()));
+                    + String.join(", ", knownExtensions()),
+                    "upload.invalid.typeNotRecognised", extension, String.join(", ", knownExtensions()));
         }
         byte[] head = head(file);
         if (!kind.matches().test(head)) {
-            throw new InvalidDataException("the content of " + name + " is not a ." + extension + " file");
+            throw new InvalidDataException("the content of " + name + " is not a ." + extension + " file",
+                    "upload.invalid.contentMismatch", name, extension);
         }
         return kind.mediaType();
     }

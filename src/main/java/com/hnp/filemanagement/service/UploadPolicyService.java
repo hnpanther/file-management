@@ -46,8 +46,10 @@ import java.util.Optional;
  *
  * <p><b>Where it is enforced.</b> {@link #requireAllowed} is called once, in
  * {@code FileService.newFileDetails}, which every route that stores a file - the form, v1, v2, a
- * new version - passes through. The bean-validation face of the upload ({@code @ValidFile}) still
- * checks the catalogue, because it has no principal to resolve a policy for.
+ * new version - passes through, before the catalogue is asked whether the bytes match the
+ * extension. There is no earlier check: a bean-validation constraint used to ask the catalogue
+ * while the form was still binding, and its refusal reached the page as "enter the information
+ * correctly" - the policy's answer, which says what this person may upload, never got a turn.
  *
  * <p><b>The server's own cap.</b> {@code spring.servlet.multipart.max-file-size} is enforced by
  * the container before any of this runs, so a limit above it would never be reached; the page

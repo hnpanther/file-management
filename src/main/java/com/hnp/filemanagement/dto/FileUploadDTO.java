@@ -1,7 +1,6 @@
 package com.hnp.filemanagement.dto;
 
 import com.hnp.filemanagement.validation.InsertValidation;
-import com.hnp.filemanagement.validation.ValidFile;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,6 +31,5 @@ public class FileUploadDTO {
     private String fileNameWithoutExtension;
 
     @NotNull(groups = InsertValidation.class)
-    @ValidFile(groups = InsertValidation.class)
     private MultipartFile multipartFile;
 }

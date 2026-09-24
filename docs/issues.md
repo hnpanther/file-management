@@ -174,6 +174,10 @@ way to detect silent corruption after the S3 migration.
 Fix: keep the UUID as a surrogate `external_id`, and add a real `checksum_sha256` column populated
 during the upload stream.
 
+> **Scheduled** as step 2 of the roadmap's "Where things stand" (1.8.0), before PostgreSQL release
+> B: `checksum_sha256` with a backfill, `hash_id` renamed `external_id`, and an `external_id` on
+> `file_info` too, which the API accepts beside the integer id during a transition.
+
 ### 8. The Active Directory provider returns `null` instead of throwing — **S1**
 
 `ActiveDirectoryCustomAuthenticationProvider.authenticate` returns `null` when the user authenticated
@@ -251,7 +255,8 @@ first-login password change, and rotation of anything already committed.
 > documents, `ftyp`, `ID3`, no NUL byte for text); the client's declared type is never read. It is
 > enforced in `FileService.newFileDetails`, which every storing route passes through - the form,
 > `/api/v1/files`, and `/api/v2` whose raw body bypassed the DTO validator entirely - and the
-> `@ValidFile` validator delegates to it so the form and v1 answer early with the reason. What is
+> `@ValidFile` validator delegated to it so the form and v1 answered early (removed in 1.7.0: its
+> refusal pre-empted the policy's clearer answer - issue 89; the service is the one check). What is
 > stored in `file_details.content_type` is the server's word; `V2.5` rewrites the existing rows to
 > match. No Tika: the allow-list is nine fixed kinds, and a hand-written check has no dependency
 > to keep current. `ContentTypesTest` and `UploadContentTypeTest`.
@@ -1508,3 +1513,33 @@ the same for the national code and the phone number, which are checked the same 
 folder's rename, which follows, already compares siblings with
 `findByParentIdAndNameIgnoreCase` and would find its own folder, so it needs the same care.
 `TagGroupService.update` is the pattern: it filters the edited group out of the lookup.
+
+### 89. The upload form answered every refusal with "enter the information correctly" — **S2**
+
+Reported: a Visio drawing (`.vsdx`) uploaded through the form, with the title left as the file's
+name, came back with «لطفا اطلاعات را بطور صحیح وارد نمایید» and nothing else. The reason was
+known and thrown away twice over:
+
+* the form's `multipartFile` carried a `@ValidFile` constraint, which asked the content catalogue
+  while the request was still binding. `.vsdx` is not catalogued, so binding failed - and
+  `FileController.saveNewFile` answered *any* binding error with the one generic sentence. The
+  upload policy, which has a clear Persian answer naming the kinds this person may upload
+  (`upload.refused.typeNotAllowed`), never got to run;
+* every `InvalidDataException` from the service - a name with a colon or no extension, no folder
+  chosen, the root chosen, bytes that are not what the extension says, a new version under
+  another name - was caught and answered with the same sentence.
+
+It also answered a form posted without a file part with a 500: the handler's debug logging read
+the file's name before anything checked there was a file (the v1 API had been fixed for this; the
+form had not).
+
+> **Fixed** in 1.7.0. `InvalidDataException` may carry a message code beside its English message:
+> the pages show the code's Persian text, the API keeps answering the English one. The upload path
+> gives one to every refusal a person can fix - `upload.invalid.typeNotRecognised`,
+> `contentMismatch`, `name`, `noFile`, `noFolder`, `folderCannotHoldFiles`, `versionName` - and
+> `form.fill` names the fields a form is missing. `@ValidFile` and its validator are gone: the
+> service runs the one sequence of checks, the policy before the catalogue, so a `.vsdx` now reads
+> «نوع فایل .vsdx برای شما مجاز نیست؛ انواع مجاز: pdf, png, ...» - checked with the reported file
+> itself. Through the API the same upload is still a 400; its detail now says `is not allowed`
+> (the policy) where it said `is not recognised` (the catalogue). `UploadErrorMessagesTest`
+> covers each case and that the generic sentence is gone from all of them.

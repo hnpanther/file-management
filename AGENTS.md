@@ -111,7 +111,11 @@ DTO fields, activated by `@Validated(InsertValidation.class)` on the handler par
 **Exceptions.** Throw the domain exceptions from `exception/`: `ResourceNotFoundException` (404),
 `DuplicateResourceException` (409), `DependencyResourceException` (409), `InvalidDataException`
 (400), `BusinessException` (417). The status lives on the exception class as `@ResponseStatus`, and
-the single `GlobalExceptionHandler` reads it — do not repeat a status in a handler.
+the single `GlobalExceptionHandler` reads it — do not repeat a status in a handler. When a
+person can fix what an `InvalidDataException` refuses, give it a message code as well
+(`new InvalidDataException(english, "some.key", args...)`): the pages show that text, the API
+keeps the English. A page that answers "enter the information correctly" for something it could
+have named is the bug of [issue 89](docs/issues.md#89-the-upload-form-answered-every-refusal-with-enter-the-information-correctly--s2).
 
 **REST handlers do not catch.** A method in `resource/` or `api/` throws and lets the advice answer.
 Catching locally is what used to flatten 404, 409 and 417 into one 400 with the body

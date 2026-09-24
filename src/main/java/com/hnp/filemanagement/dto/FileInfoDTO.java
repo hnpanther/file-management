@@ -2,7 +2,6 @@ package com.hnp.filemanagement.dto;
 
 import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.validation.UpdateValidation;
-import com.hnp.filemanagement.validation.ValidFile;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import org.springframework.web.multipart.MultipartFile;
@@ -47,7 +46,6 @@ public class FileInfoDTO {
     private String folderTitle;
 
     @NotNull(groups = InsertValidation.class)
-    @ValidFile(groups = InsertValidation.class)
     private MultipartFile multipartFile;
 
     private Integer state;

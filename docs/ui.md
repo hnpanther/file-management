@@ -600,3 +600,15 @@ unless the person uploading it says otherwise. Ticked, the form sends `public-fi
 `FileService.visibilityOf` exactly as the v1 API reads it. A refused upload re-renders the form
 with the box as it was sent. Public can still be switched either way afterwards from the file
 page, under its own permission.
+
+### An upload that is refused says why
+
+Both upload forms - a new file, a new version or format - show the reason a person can act on, in
+the warning box above the buttons: the file's type is not allowed, with the kinds this person may
+upload listed (the upload policy's own message); the bytes do not match the extension; the name
+cannot be stored, with the rule; no file, or no folder, was chosen; the chosen folder only holds
+folders; a new version carries another file's name, with the name it must carry; and which
+fields are missing (`form.fill`). The texts are `upload.invalid.*` and `upload.refused.*` in
+`messages.properties`, carried to the page by the exception's message code. The generic
+`form.invalid` is left for what a person could not have caused, such as a hidden field that does
+not add up.

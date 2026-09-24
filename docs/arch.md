@@ -49,7 +49,7 @@ com.hnp.filemanagement
 ├── dto/                           form-binding, paging and response DTOs
 ├── exception/                     custom exceptions + two @ControllerAdvice handlers
 ├── util/                          ModelConverterUtil (entity→DTO), GlobalGeneralLogging
-└── validation/                    @ValidFile constraint, validation groups, ValidationUtil
+└── validation/                    ContentTypes (the catalogue), validation groups, ValidationUtil
 ```
 
 ## 4. The domain model
@@ -826,6 +826,13 @@ aspect, so coverage depends on the author remembering.
 `./logs`), rolling daily and at 10 MB, keeping 10 days within 1 GB.
 `com.hnp.filemanagement` is at `debug`, root at `info`.
 
+**Two messages for one refusal.** An `InvalidDataException` may carry a message code beside its
+English message (issue 89). The API answers the English one as the detail, as before; a page shows
+the code's text from `messages.properties`, so a person reads which rule and which file - «نوع
+فایل .vsdx برای شما مجاز نیست؛ ...» - rather than "enter the information correctly". The upload
+path gives one to every refusal a person can fix; the generic sentence is left for what a person
+could not have caused.
+
 **Exception handling** — one `@ControllerAdvice`, `GlobalExceptionHandler`. It picks its shape from
 the request: `Accept: text/html` gets `error.html` at the right status, anything else gets an
 RFC 9457 `ProblemDetail`. The status is read off the `@ResponseStatus` annotation on the exception
@@ -847,7 +854,7 @@ beside it, which a status code cannot do.
 POST /files (multipart)
   └─ FileController.saveNewFile
        ├─ @PreAuthorize SAVE_NEW_FILE || ADMIN
-       ├─ @Validated(InsertValidation) → @ValidFile asks ContentTypes (catalogued extension + first bytes)
+       ├─ @Validated(InsertValidation): the required fields only; the file's kind is the service's to judge
        └─ FileService.createNewFile(dto, principalId, publicFile)          @Transactional
             ├─ targetFolderOf(dto): folderId → any folder but the root, else 400
             ├─ folderAccessService.requireWriteAccess(access, folder)
