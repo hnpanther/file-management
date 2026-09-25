@@ -9,6 +9,7 @@ Read this together with:
 * [docs/issues.md](docs/issues.md) — the known defects; **check this before "fixing" something**
 * [docs/target-architecture.md](docs/target-architecture.md) — where it is going
 * [docs/roadmap.md](docs/roadmap.md) — in what order
+* [docs/api-v1.md](docs/api-v1.md) — the v1 API as an integration (APEX) sees it, and how a client moves to the external ids
 * [docs/deployment.md](docs/deployment.md) — running it as a service, and backing it up
 
 ## Project in one paragraph

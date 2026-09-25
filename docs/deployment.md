@@ -673,6 +673,11 @@ No migration: a jar swap. Take the database backup first, as always. What change
   have it.
 * **Only an administrator changes a username.** Someone who may edit users but does not hold the
   ADMIN role sees the field read-only and is refused if they post a change.
+* **For the PL/SQL clients, one addition and nothing to change:** `GET
+  /api/v1/files/file-info/{fileInfoId}/download` downloads a file by the file's own id - its
+  latest version, or `?version=` / `?format=` - by number or by external id; and every v1
+  download now carries `X-File-*` headers saying which revision it served, with its SHA-256.
+  [api-v1.md](api-v1.md) is the guide for moving the clients to the external ids, one at a time.
 
 **Rollback** is the 1.8.0 jar: nothing in the schema changed. Roles the start created
 (`*_PREVIOUS`) and the reset of the fixed roles stay; 1.8.0 lets them be edited by hand again.

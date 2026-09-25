@@ -13,6 +13,7 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 | What is it becoming? | [docs/target-architecture.md](docs/target-architecture.md) |
 | In what order, and what is next? | [docs/roadmap.md](docs/roadmap.md) — start at "Where things stand, and what comes next" |
 | How is it deployed and backed up? | [docs/deployment.md](docs/deployment.md) |
+| What does an integration (APEX) call, and how does it move to the external ids? | [docs/api-v1.md](docs/api-v1.md) |
 | How do I work in it? | [AGENTS.md](AGENTS.md) |
 
 ## Verify, don't infer

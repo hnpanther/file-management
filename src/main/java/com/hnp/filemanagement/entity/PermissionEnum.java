@@ -253,6 +253,7 @@ public enum PermissionEnum {
 
 //    @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
 //    @GetMapping("file-details/{fileDetailsId}/download")  - the same download, by the version's id alone
+//    @GetMapping("file-info/{fileInfoId}/download")  - a revision chosen by the file's own id: the latest, or ?version=, ?format=
     API_DOWNLOAD_FILE
 
 

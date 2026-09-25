@@ -536,6 +536,7 @@ document, so a browser navigation still lands on a page.
 | DELETE | `/file-details/{fileDetailsId}` (the same delete by the version's id alone) | `API_DELETE_FILE_DETAILS` |
 | GET | `/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` |
 | GET | `/file-details/{fileDetailsId}/download` (the same download by the version's id alone) | `API_DOWNLOAD_FILE` |
+| GET | `/file-info/{fileInfoId}/download` (`?version=`, `?format=`) - a file by its own id: the latest version, or the one named; a version with several formats and no `format` is a 400 listing them (1.9.0) | `API_DOWNLOAD_FILE` |
 
 The id-only forms with `folderId` on the upload are the contract an integration keeps since Phase 7
 step 4: nothing in them names anything but a folder and a version. **Since 1.8.0 every id in these
@@ -543,7 +544,11 @@ paths is a number or an external id** - the file's or the revision's `external_i
 case (`IdReference`, converted like any path variable, so a segment that is neither is the same
 400 `InvalidParameter` a non-number always was). The upload answers `fileId`, `fileDetailsId`,
 `fileExternalId`, `fileDetailsExternalId` and `checksumSha256`; the first two are unchanged, and the
-numbers keep working. An external id is a name, not a permission: the folder check is the same. Both deletes are judged on the file's own folder
+numbers keep working. An external id is a name, not a permission: the folder check is the same.
+Every v1 download says which revision it served - `X-File-External-Id`, `X-File-Details-Id`,
+`X-File-Details-External-Id`, `X-File-Version`, `X-Checksum-SHA256` (`FileApi.serve`) - and a
+`HEAD` answers those alone. **The client-facing guide, and how to move a client to the external
+ids, is [api-v1.md](api-v1.md).** Both deletes are judged on the file's own folder
 (`requireWriteAccess` on the `FileInfo`), the same way a download and a new version are. The
 whole group accepts either credential: the shared account's Basic password, or a Bearer API key,
 which reaches its own folders only.
