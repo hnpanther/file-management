@@ -48,6 +48,7 @@ class MessageBundleTest {
             "file-management/files/save-file.html",
             "role/roles.html",
             "role/save-role.html",
+            "role/role-edit.html",
             "user/save-user.html",
             "user/user-change-password.html",
             "user/user-profile.html",

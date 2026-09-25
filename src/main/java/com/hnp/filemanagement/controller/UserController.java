@@ -49,6 +49,7 @@ public class UserController {
     private final UserService userService;
     private final UserHomeService userHomeService;
     private final FolderQuotaService folderQuotaService;
+    private final com.hnp.filemanagement.service.RoleService roleService;
 
     private final int defaultPageSize;
     private final int defaultElementSize;
@@ -57,12 +58,14 @@ public class UserController {
 
     public UserController(GlobalGeneralLogging globalGeneralLogging, UserService userService,
                           UserHomeService userHomeService, FolderQuotaService folderQuotaService,
+                          com.hnp.filemanagement.service.RoleService roleService,
                           FileManagementProperties properties,
                           UiMessages messages) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.userService = userService;
         this.userHomeService = userHomeService;
         this.folderQuotaService = folderQuotaService;
+        this.roleService = roleService;
         this.defaultPageSize = properties.defaults().pageSize();
         this.defaultElementSize = properties.defaults().elementSize();
         this.messages = messages;
@@ -144,6 +147,7 @@ public class UserController {
         model.addAttribute("valid", false);
         model.addAttribute("message", "");
         model.addAttribute("pageType", "update");
+        model.addAttribute("mayChangeUsername", roleService.isAdministrator(userDetails.getId()));
 
 
         return "user/save-user.html";
@@ -321,6 +325,10 @@ public class UserController {
                 message = e.getMessage().contains("under Profiles")
                         ? messages.get("user.home.renameTaken")
                         : messages.get("user.duplicate");
+            } catch (InvalidDataException e) {
+                globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
+                message = e.getMessageCode().map(code -> messages.get(code, e.getMessageArguments()))
+                        .orElseGet(() -> messages.get("form.invalid"));
             }
         }
 
@@ -331,6 +339,7 @@ public class UserController {
         model.addAttribute("valid", valid);
         model.addAttribute("message", message);
         model.addAttribute("pageType", "update");
+        model.addAttribute("mayChangeUsername", roleService.isAdministrator(principalId));
         return "user/save-user.html";
     }
 

@@ -2,12 +2,16 @@ package com.hnp.filemanagement.service;
 
 import com.hnp.filemanagement.dto.FolderGrantDTO;
 import com.hnp.filemanagement.dto.PermissionDTO;
+import com.hnp.filemanagement.dto.PermissionGroupDTO;
 import com.hnp.filemanagement.dto.RoleDTO;
 import com.hnp.filemanagement.entity.ActionEnum;
 import com.hnp.filemanagement.entity.EntityEnum;
+import com.hnp.filemanagement.entity.FixedRole;
 import com.hnp.filemanagement.entity.Folder;
 import com.hnp.filemanagement.entity.FolderPermission;
 import com.hnp.filemanagement.entity.Permission;
+import com.hnp.filemanagement.entity.PermissionEnum;
+import com.hnp.filemanagement.entity.PermissionGroup;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.RoleFolderGrant;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
@@ -22,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -48,41 +53,124 @@ import java.util.stream.Collectors;
  * conversions happen here, inside the transaction that loaded the data.
  *
  * <p>Phase 6 adds folder scope to a role, so it will carry both what its holder may do and where.
+ *
+ * <p><b>Two roles are fixed</b> ({@link FixedRole}): ADMIN and USER are defined in code, and every
+ * write here - permissions, folder grants - refuses them. A role that needs to differ is a copy
+ * ({@link #copyRole}). The role page saves permissions, folder grants and the upload policy as
+ * three separate requests, so each method here replaces exactly one of them.
  */
 @Service
 @Transactional(readOnly = true)
 public class RoleService {
 
+    /** The longest role name the column takes. */
+    private static final int MAX_ROLE_NAME = 100;
+
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
     private final FolderRepository folderRepository;
     private final ActionHistoryService actionHistoryService;
+    private final UploadPolicyService uploadPolicyService;
 
     public RoleService(RoleRepository roleRepository,
                        PermissionRepository permissionRepository,
                        FolderRepository folderRepository,
-                       ActionHistoryService actionHistoryService) {
+                       ActionHistoryService actionHistoryService,
+                       UploadPolicyService uploadPolicyService) {
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
         this.folderRepository = folderRepository;
         this.actionHistoryService = actionHistoryService;
+        this.uploadPolicyService = uploadPolicyService;
     }
 
+    /** Creates a role with these permissions, and answers its id. */
     @Transactional
-    public void createRole(String roleName, List<PermissionDTO> permissionDTOList, int principalId) {
+    public int createRole(String roleName, List<PermissionDTO> permissionDTOList, int principalId) {
 
-        if (roleRepository.existsByRoleNameIgnoreCase(roleName)) {
-            throw new DuplicateResourceException("role with name " + roleName + " exists");
-        }
+        String name = requireNewRoleName(roleName);
 
         Role role = new Role();
-        role.setRoleName(roleName);
+        role.setRoleName(name);
         role.setPermissions(resolvePermissions(selectedIds(permissionDTOList)));
 
         roleRepository.save(role);
 
         actionHistoryService.saveActionHistory(EntityEnum.Role, role.getId(), ActionEnum.CREATE, principalId,
                 "CREATE NEW ROLE", "CREATE NEW ROLE");
+        return role.getId();
+    }
+
+    /**
+     * A new role that starts as a copy of another: its permissions, its folder grants and its own
+     * upload policy, if it has one. Nothing links the two afterwards - editing either leaves the
+     * other as it was - and nobody holds the copy until it is given to someone.
+     *
+     * <p>A copy of ADMIN gets every assignable permission ({@link FixedRole#everything}), because
+     * ADMIN holds its reach by name, not by rows; what it cannot copy is that name's two
+     * privileges - the {@code ADMIN} wildcard and passing every folder check - so the copy reaches
+     * the folders its grants give it, like any role. A copy of USER gets USER's permissions.
+     *
+     * @return the new role's id
+     */
+    @Transactional
+    public int copyRole(int sourceRoleId, String newRoleName, int principalId) {
+        Role source = roleRepository.findByIdWithPermissions(sourceRoleId).orElseThrow(
+                () -> new ResourceNotFoundException("role with id=" + sourceRoleId + " doesn't exists"));
+        String name = requireNewRoleName(newRoleName);
+
+        Role copy = new Role();
+        copy.setRoleName(name);
+        if (FixedRole.of(source.getRoleName()).orElse(null) == FixedRole.ADMIN) {
+            copy.setPermissions(new LinkedHashSet<>(permissionRepository.findByPermissionNameIn(List.copyOf(FixedRole.everything()))));
+        } else {
+            copy.setPermissions(new LinkedHashSet<>(source.getPermissions()));
+        }
+        roleRepository.save(copy);
+
+        Role withFolders = roleRepository.findByIdWithFolders(sourceRoleId).orElseThrow();
+        copy.replaceFolderGrants(withFolders.getFolderGrants().stream()
+                .map(grant -> new RoleFolderGrant(copy, grant.getFolder(), grant.getPermission()))
+                .toList());
+        uploadPolicyService.copyRolePolicy(sourceRoleId, copy.getId(), principalId);
+
+        actionHistoryService.saveActionHistory(EntityEnum.Role, copy.getId(), ActionEnum.CREATE, principalId,
+                "COPY ROLE", "COPY ROLE from id=" + sourceRoleId + " (" + source.getRoleName() + ") as " + name);
+        return copy.getId();
+    }
+
+    /**
+     * Whether this person holds the ADMIN role - asked of the database, like the folder bypass
+     * ({@code FolderAccessService}), never read off a principal a caller could have built.
+     */
+    public boolean isAdministrator(int userId) {
+        return roleRepository.userHasRole(userId, FixedRole.ADMIN.roleName());
+    }
+
+    /** Whether a role is one of the fixed two, which no page may change. */
+    public boolean isFixed(int roleId) {
+        return FixedRole.isFixed(roleRepository.findById(roleId).orElseThrow(
+                () -> new ResourceNotFoundException("role with id=" + roleId + " doesn't exists")).getRoleName());
+    }
+
+    /** Refuses a change to a fixed role, naming it; the pages never offer one, so this is the guard. */
+    static void requireEditable(Role role) {
+        if (FixedRole.isFixed(role.getRoleName())) {
+            throw new InvalidDataException("role " + role.getRoleName() + " is fixed: copy it to change what it holds",
+                    "role.fixed", role.getRoleName());
+        }
+    }
+
+    /** A trimmed name of 1-100 characters that no role has, in any case. */
+    private String requireNewRoleName(String roleName) {
+        String name = roleName == null ? "" : roleName.trim();
+        if (name.isEmpty() || name.length() > MAX_ROLE_NAME) {
+            throw new InvalidDataException("a role name is 1-" + MAX_ROLE_NAME + " characters", "role.invalidName");
+        }
+        if (roleRepository.existsByRoleNameIgnoreCase(name)) {
+            throw new DuplicateResourceException("role with name " + name + " exists");
+        }
+        return name;
     }
 
     /**
@@ -91,19 +179,28 @@ public class RoleService {
      * <p>The ids are resolved through the repository rather than turned into references with
      * {@code EntityManager.getReference}, so an id that does not exist is rejected here with a 400
      * instead of surfacing later as a foreign-key violation with no useful message.
+     *
+     * <p>A null list is "none": a browser leaves the field out of the post when no box is ticked,
+     * and a role with no permissions is a legitimate thing to save. The permissions the page does
+     * not offer ({@link PermissionGroup#NOT_ASSIGNABLE}) are not in the post either way, so the ones
+     * the role already holds are kept rather than read as removed - and cannot be added from here.
      */
     @Transactional
     public void updatePermissionsOfRole(int roleId, List<Integer> permissionIds, int principalId) {
 
-        if (permissionIds == null) {
-            throw new InvalidDataException("permission list for update permission of role can not be null");
-        }
-
         Role role = roleRepository.findByIdWithPermissions(roleId).orElseThrow(
                 () -> new ResourceNotFoundException("role with id=" + roleId + " doesn't exists")
         );
+        requireEditable(role);
 
-        role.setPermissions(resolvePermissions(new LinkedHashSet<>(permissionIds)));
+        Set<Permission> requested = resolvePermissions(permissionIds == null ? Set.of() : new LinkedHashSet<>(permissionIds));
+        if (requested.stream().anyMatch(permission -> PermissionGroup.NOT_ASSIGNABLE.contains(permission.getPermissionName()))) {
+            throw new InvalidDataException("permission list holds one the role page does not offer");
+        }
+        role.getPermissions().stream()
+                .filter(permission -> PermissionGroup.NOT_ASSIGNABLE.contains(permission.getPermissionName()))
+                .forEach(requested::add);
+        role.setPermissions(requested);
 
         actionHistoryService.saveActionHistory(EntityEnum.PermissionRole, role.getId(), ActionEnum.UPDATE_VALUES,
                 principalId, "UPDATE PERMISSION_ROLE", "UPDATE PERMISSION_ROLE");
@@ -196,6 +293,7 @@ public class RoleService {
         Role role = roleRepository.findByIdWithFolders(roleId).orElseThrow(
                 () -> new ResourceNotFoundException("role with id=" + roleId + " doesn't exists")
         );
+        requireEditable(role);
 
         Map<Integer, FolderPermission> requested = parseGrants(folderGrants);
 
@@ -290,6 +388,45 @@ public class RoleService {
         permissions.forEach(permission -> permission.setSelected(held.contains(permission.getId())));
 
         return permissions;
+    }
+
+    /**
+     * The role page's first tab: every assignable permission, sorted into its {@link PermissionGroup}
+     * in the group's order, with {@code selected} set on the ones the role holds. For a fixed role
+     * the selection is its definition - which, after the start has reconciled it, is also what it
+     * holds; ADMIN shows everything selected, since its name reaches everything.
+     */
+    public List<PermissionGroupDTO> getPermissionGroupsOfRole(int roleId) {
+        Role role = getRoleWithPermissions(roleId);
+        Set<PermissionEnum> held = role.getPermissions().stream()
+                .map(Permission::getPermissionName)
+                .collect(Collectors.toSet());
+        FixedRole fixed = FixedRole.of(role.getRoleName()).orElse(null);
+        if (fixed == FixedRole.ADMIN) {
+            held = FixedRole.everything();
+        } else if (fixed == FixedRole.USER) {
+            held = FixedRole.USER_PERMISSIONS;
+        }
+
+        Map<PermissionEnum, PermissionDTO> byName = new EnumMap<>(PermissionEnum.class);
+        for (Permission permission : permissionRepository.findAll()) {
+            byName.put(permission.getPermissionName(), ModelConverterUtil.convertPermissionToPermissionDTO(permission));
+        }
+
+        List<PermissionGroupDTO> groups = new java.util.ArrayList<>();
+        for (PermissionGroup group : PermissionGroup.values()) {
+            List<PermissionDTO> members = new java.util.ArrayList<>();
+            for (PermissionEnum name : group.members()) {
+                PermissionDTO permission = byName.get(name);
+                // A constant with no row yet - the start seeds them - cannot be ticked, so it is left out.
+                if (permission != null) {
+                    permission.setSelected(held.contains(name));
+                    members.add(permission);
+                }
+            }
+            groups.add(new PermissionGroupDTO(group.name(), members));
+        }
+        return groups;
     }
 
     public List<RoleDTO> getAllRoles() {

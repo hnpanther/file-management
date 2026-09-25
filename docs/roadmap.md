@@ -38,9 +38,14 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: 1.8.0, written and tested, not yet deployed** - and 1.7.0 before it was not deployed
-either, so the next deployment takes both
-([deployment.md](deployment.md#upgrading-from-170-to-180--checksums-external-ids-and-persian-search)).
+**Now: 1.9.0, written and tested, not yet deployed** - and neither were 1.7.0 and 1.8.0, so the
+next deployment takes all three
+([deployment.md](deployment.md#upgrading-from-180-to-190--fixed-roles-a-tabbed-role-page-and-a-folder-check-on-four-writes)).
+1.9.0 is role administration, with no migration: ADMIN and USER defined in code and reset on
+every start without taking access from anyone (`FixedRole`), the role page in three tabs saved
+separately, permission groups on it as a shortcut (issue 19 eased, not fixed), copying a role,
+usernames changed by an administrator only, and a folder check on the four file writes that
+lacked one (issue 90).
 1.7.0 is PostgreSQL release A
 ([3.3](#33-release-a--what-to-neutralise-on-mysql-first--done-170)) - `app_user`, a 64-bit
 `file_size`, every name compared through `UPPER`, an empty search passed as `''` - together with
@@ -58,7 +63,7 @@ is therefore cheapest **before** B, where it is written once and lands in the `V
 
 | # | Step | Why it is here | Where it is specified |
 |---|---|---|---|
-| 1 | **Deploy 1.8.0** (with 1.7.0 in it) and let it run on MySQL for a while | the point of release A is that anything it broke shows up while there is no PostgreSQL in the picture; the rollback is a restore, not the old jar. The checksum backfill runs once after the first start and reports what it could not read | [deployment.md, 1.6.1 → 1.7.0](deployment.md#upgrading-from-161-to-170--ready-for-postgresql-still-on-mysql), [1.7.0 → 1.8.0](deployment.md#upgrading-from-170-to-180--checksums-external-ids-and-persian-search) |
+| 1 | **Deploy 1.9.0** (with 1.7.0 and 1.8.0 in it) and let it run on MySQL for a while - after checking what the USER role holds today, and that folder access is on | the point of release A is that anything it broke shows up while there is no PostgreSQL in the picture; the rollback is a restore, not the old jar. The checksum backfill runs once after the first start and reports what it could not read | [deployment.md, 1.6.1 → 1.7.0](deployment.md#upgrading-from-161-to-170--ready-for-postgresql-still-on-mysql), [1.7.0 → 1.8.0](deployment.md#upgrading-from-170-to-180--checksums-external-ids-and-persian-search) |
 | 2 | **Done (1.8.0).** **Real checksums and an external id**: a `checksum_sha256` column (`V2.16`), written on every upload, and a one-off job that reads every existing file and fills it in; in the same migration, `file_details.hash_id` - a random UUID despite its name - renamed `external_id`, and an `external_id` UUID added to `file_info`, so a client can name a file and a revision by something that is neither guessable nor a database row number. The v1 API takes either id and answers both, until the PL/SQL clients have moved over; the integer ids stay for the pages | the checksum: Phase 4 cannot verify that a file survived the copy to S3 without it, and 4.3 assigns the backfill to Phase 3. `StoredBlob` has computed the SHA-256 of every write since 1.6.0; only the column and the backfill are missing. The external id: sequential ids let anyone count the files and walk `/files/public-download/{id}`, and tie every client to this database's numbering. It is a second layer, never the access control - that stays the permission and the folder grant. Both are schema changes, so before B they are one migration instead of two | [issue 7](issues.md#7-hash_id-is-not-a-hash--s2), [4.3](#43-migrating-existing-bytes) |
 | 3 | **Restore CI**: one workflow, `./mvnw verify` on JDK 25 with a Docker daemon | release B's plan is "CI runs the suite twice"; there is no CI to run it once. Without it, every change in the dual period has to be tested by hand on both databases | [issue 38](issues.md#38-no-ci--s1), [issue 83](issues.md#83-the-docs-describe-a-ci-workflow-that-was-removed--s3) |
 | 4 | **Done (1.8.0).** **Digit, accent and half-space folding**: decided for a normalised copy of each searched column - `search_name`, `search_description`, `search_display_name` on `file_info`, `file_details` and `folder`, written by the entities through `SearchKey` and filled for existing rows by the Java migration `V2_17`. Persian and Arabic digits as ASCII, the half-space and the marks dropped, Arabic `ي`/`ك` as Persian (which MySQL never did), upper case; a search also drops the spaces. A file or folder name that folds to a sibling's is refused as a duplicate | MySQL found `۱۴۰۳` when `1403` was typed and treated a name with and without the half-space as one; PostgreSQL would not. A schema change, so before B | [issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2) |

@@ -192,6 +192,8 @@ public class UploadPolicyService {
     public void saveForRole(int roleId, Map<String, Long> limitsMb, int principalId) {
         Role role = roleRepository.findById(roleId).orElseThrow(
                 () -> new ResourceNotFoundException("role with id=" + roleId + " doesn't exists"));
+        // The fixed roles follow the system-wide policy, and nothing but that page changes it.
+        RoleService.requireEditable(role);
         Optional<UploadPolicy> existing = uploadPolicyRepository.findByRoleId(roleId);
 
         if (limitsMb == null) {
@@ -215,6 +217,29 @@ public class UploadPolicyService {
         actionHistoryService.saveActionHistory(EntityEnum.UploadPolicy, policy.getId(),
                 existing.isPresent() ? ActionEnum.UPDATE_VALUES : ActionEnum.CREATE,
                 principalId, "SAVE UPLOAD_POLICY", "SAVE UPLOAD_POLICY, role=" + role.getRoleName() + ", kinds=" + limitsMb.keySet());
+    }
+
+    /**
+     * Gives {@code targetRoleId} a copy of {@code sourceRoleId}'s own policy - the same kinds and
+     * limits, in a row of its own - or nothing, when the source follows the system-wide one. What a
+     * role copy ({@code RoleService.copyRole}) does with the third part of a role.
+     */
+    @Transactional
+    public void copyRolePolicy(int sourceRoleId, int targetRoleId, int principalId) {
+        Optional<UploadPolicy> source = uploadPolicyRepository.findByRoleId(sourceRoleId);
+        if (source.isEmpty()) {
+            return;
+        }
+        Role target = roleRepository.findById(targetRoleId).orElseThrow(
+                () -> new ResourceNotFoundException("role with id=" + targetRoleId + " doesn't exists"));
+        UploadPolicy copy = new UploadPolicy();
+        copy.setRole(target);
+        copy.setCreatedBy(userRepository.getReferenceById(principalId));
+        copy.replaceRules(source.get().limits());
+        copy = uploadPolicyRepository.save(copy);
+        actionHistoryService.saveActionHistory(EntityEnum.UploadPolicy, copy.getId(), ActionEnum.CREATE,
+                principalId, "COPY UPLOAD_POLICY", "COPY UPLOAD_POLICY from role id=" + sourceRoleId
+                        + " to role=" + target.getRoleName() + ", kinds=" + copy.limits().keySet());
     }
 
     // ---------------------------------------------------------------- pieces

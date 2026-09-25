@@ -45,7 +45,7 @@ import java.util.Set;
 @Transactional(readOnly = true)
 public class FolderAccessService {
 
-    private static final String ADMIN_ROLE = "ADMIN";
+    private static final String ADMIN_ROLE = com.hnp.filemanagement.entity.FixedRole.ADMIN.roleName();
 
     private final FolderRepository folderRepository;
     private final RoleRepository roleRepository;

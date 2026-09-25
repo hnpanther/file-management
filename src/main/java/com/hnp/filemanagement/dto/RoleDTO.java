@@ -20,6 +20,9 @@ public class RoleDTO {
 
     private boolean selected;
 
+    /** One of the two roles defined in code ({@code FixedRole}), which no page may change. */
+    private boolean fixed;
+
     List<PermissionDTO> permissionDTOS;
 
     @NotNull(groups = UpdateValidation.class)

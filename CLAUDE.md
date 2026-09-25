@@ -39,6 +39,12 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   PostgreSQL refuses ([issue 87](docs/issues.md#87-an-empty-search-box-is-a-null-postgresql-cannot-type--s1-for-the-migration)).
   The accounts table is `app_user`; the entity is still `User`. Details in
   [AGENTS.md](AGENTS.md#database-changes).
+* **ADMIN and USER are fixed roles, defined in `FixedRole`** and reset to that definition on every
+  start (`DataInitializer.reconcile`, which first copies anything extra into `USER_PREVIOUS` /
+  `ADMIN_PREVIOUS`). Do not change what they hold anywhere else; a different role is a copy
+  (`RoleService.copyRole`). Every account holds USER, so **a file operation that forgets
+  `folderAccessService.requireWriteAccess` on the file's folder lets everybody do it** (issue 90).
+  `PermissionGroup` is a role-page shortcut only - nothing stores a group.
 * **Log an id, not an entity.** `AbstractEntity.toString` prints `Type#id` and no longer recurses
   ([issue 2](docs/issues.md#2-data-on-bidirectional-jpa-entities--s1) is fixed), but an entity in a
   message says less than its id.
@@ -83,7 +89,8 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 
 Four things, all required (details in [AGENTS.md](AGENTS.md#conventions-in-this-codebase)):
 
-1. a constant in `PermissionEnum` with the endpoint named in a comment above it;
+1. a constant in `PermissionEnum` with the endpoint named in a comment above it, placed in exactly
+   one `PermissionGroup` (the role page's groups - `PermissionGroupTest` fails otherwise);
 2. `@PreAuthorize("hasAuthority('X') || hasAuthority('ADMIN')")` on the handler;
 3. an `actionHistoryService.saveActionHistory(...)` call for any mutation;
 4. a `globalGeneralLogging.detail(...)` line with what the request line cannot say (an id, a

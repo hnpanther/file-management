@@ -27,6 +27,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -93,15 +95,15 @@ class RoleFolderGrantPageTest extends MySqlSupport {
     @Test
     @DisplayName("posting the form saves the chosen folders, and the verb chosen with them")
     void postingTheFormSavesTheGrants() throws Exception {
-        mockMvc.perform(post("/roles/{roleId}", roleId)
-                        .param("id", String.valueOf(roleId))
-                        .param("roleName", roleRepository.findById(roleId).orElseThrow().getRoleName())
-                        .param("permissionDTOListId", "")
+        // The folder tab is its own form since 1.9.0, and answers with the page on that tab.
+        mockMvc.perform(post("/roles/{roleId}/folders", roleId)
                         .param("folderGrants", rootFolderId + ":WRITE")
                         .with(user(principal(PermissionEnum.ADMIN)))
                         .with(csrf())
                         .accept(MediaType.TEXT_HTML))
-                .andExpect(status().isOk());
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/roles/" + roleId + "?tab=folders"))
+                .andExpect(flash().attribute("valid", true));
 
         assertThat(roleRepository.findByIdWithFolders(roleId).orElseThrow().getFolderGrants())
                 .singleElement()

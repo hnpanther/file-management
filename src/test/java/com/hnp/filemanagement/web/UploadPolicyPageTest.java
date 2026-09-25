@@ -139,7 +139,7 @@ class UploadPolicyPageTest extends MySqlSupport {
     @DisplayName("posting OWN with a selection gives the role its own policy; posting GLOBAL takes it away")
     void postingTheRolePageSavesAndRemoves() throws Exception {
         postRole(principal(PermissionEnum.ADMIN), "OWN", "mp4", "12")
-                .andExpect(status().isOk());
+                .andExpect(status().is3xxRedirection());
         assertThat(uploadPolicyService.roleLimits(roleId)).contains(Map.of("mp4", 12 * MB));
 
         mockMvc.perform(get("/roles/{id}", roleId).with(user(principal(PermissionEnum.ADMIN))).accept(MediaType.TEXT_HTML))
@@ -147,16 +147,19 @@ class UploadPolicyPageTest extends MySqlSupport {
                 .andExpect(content().string(checkbox("uploadAllowed-mp4", true)));
 
         postRole(principal(PermissionEnum.ADMIN), "GLOBAL", "mp4", "12")
-                .andExpect(status().isOk());
+                .andExpect(status().is3xxRedirection());
         assertThat(uploadPolicyService.roleLimits(roleId)).isEmpty();
     }
 
+    /**
+     * The upload tab is its own request since 1.9.0: with the role's permission alone it is
+     * refused outright, rather than silently skipped inside a save of the whole role.
+     */
     @Test
-    @DisplayName("without SAVE_UPLOAD_POLICY the role's other fields save and the policy is left alone")
+    @DisplayName("without SAVE_UPLOAD_POLICY the upload tab's save is refused and the policy is left alone")
     void withoutThePermissionThePolicyIsUntouched() throws Exception {
         postRole(principal(PermissionEnum.SAVE_UPDATED_ROLE), "OWN", "mp4", "12")
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("success_message")));
+                .andExpect(status().isForbidden());
 
         assertThat(uploadPolicyService.roleLimits(roleId)).isEmpty();
     }
@@ -168,10 +171,7 @@ class UploadPolicyPageTest extends MySqlSupport {
     }
 
     private org.springframework.test.web.servlet.ResultActions postRole(UserDetailsImpl who, String mode, String ext, String mb) throws Exception {
-        return mockMvc.perform(post("/roles/{id}", roleId)
-                .param("id", String.valueOf(roleId))
-                .param("roleName", roleName)
-                .param("permissionDTOListId", "")
+        return mockMvc.perform(post("/roles/{id}/upload-policy", roleId)
                 .param("uploadPolicyMode", mode)
                 .param("uploadAllowed", ext).param("uploadMax[" + ext + "]", mb)
                 .with(user(who)).with(csrf()).accept(MediaType.TEXT_HTML));

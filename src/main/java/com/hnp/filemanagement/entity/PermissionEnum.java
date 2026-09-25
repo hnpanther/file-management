@@ -41,8 +41,13 @@ public enum PermissionEnum {
     SAVE_NEW_ROLE,
     //@GetMapping("/roles/{roleId}")
     UPDATE_ROLE_PAGE,
-    //@PostMapping("/roles/{roleId}")
+    //@PostMapping("/roles/{roleId}/permissions"), @PostMapping("/roles/{roleId}/folders") - the role page's
+    //first two tabs, each saved on its own; the third, @PostMapping("/roles/{roleId}/upload-policy"),
+    //needs SAVE_UPLOAD_POLICY as well. Refused for the fixed roles ADMIN and USER (FixedRole).
     SAVE_UPDATED_ROLE,
+    //@PostMapping("/roles/{roleId}/copy") - a new role with the source's permissions, folder grants
+    //and own upload policy; a copy of ADMIN gets every assignable permission (FixedRole.everything)
+    COPY_ROLE,
     //@GetMapping("/roles")
     GET_ALL_ROLE_PAGE,
 
