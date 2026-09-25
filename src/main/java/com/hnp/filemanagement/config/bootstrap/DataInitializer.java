@@ -1,11 +1,15 @@
 package com.hnp.filemanagement.config.bootstrap;
 
+import com.hnp.filemanagement.entity.FixedRole;
 import com.hnp.filemanagement.entity.Permission;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
+import com.hnp.filemanagement.entity.RoleFolderGrant;
+import com.hnp.filemanagement.entity.UploadPolicy;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.repository.PermissionRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
+import com.hnp.filemanagement.repository.UploadPolicyRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -50,19 +56,37 @@ import java.util.stream.Collectors;
  *
  * <p>Either way the account exists only when it is missing, so setting the property later does not
  * reset a password that has already been changed.
+ *
+ * <h2>The fixed roles</h2>
+ *
+ * <p>ADMIN and USER are defined in {@link FixedRole}, and every start brings them to that
+ * definition: USER holds exactly {@link FixedRole#USER_PERMISSIONS}, ADMIN no permission rows
+ * (its name is its reach), and neither has folder grants or an upload policy of its own. Before
+ * 1.9.0 both could be edited on the role page, so an installation may find them holding more.
+ * <b>Nothing is taken from anyone</b>: whatever a fixed role holds beyond its definition - a
+ * permission USER is not given, a folder grant, an own upload policy - is first copied into a new
+ * role, {@code USER_PREVIOUS} or {@code ADMIN_PREVIOUS}, which every holder of the fixed role is
+ * given as well; only then is the fixed role reset. What each person can do is therefore the same
+ * after the start as before it, and the administrator can see in one place what was set by hand
+ * and decide what to keep. A permission USER lacks is simply added. ADMIN's own permission rows
+ * and folder grants change nothing for its holders - the wildcard and the folder bypass reach
+ * further - so they are dropped without a copy; only an own upload policy of ADMIN's, which does
+ * narrow or widen what its holders may upload, is carried into {@code ADMIN_PREVIOUS}.
  */
 @Component
 public class DataInitializer {
 
     private static final Logger logger = LoggerFactory.getLogger(DataInitializer.class);
 
-    private static final String ADMIN_ROLE = "ADMIN";
-    private static final String USER_ROLE = "USER";
     private static final String ADMIN_USERNAME = "Admin";
+
+    /** What a fixed role's extras are copied into: {@code USER_PREVIOUS}, {@code ADMIN_PREVIOUS}. */
+    static final String PREVIOUS_SUFFIX = "_PREVIOUS";
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
+    private final UploadPolicyRepository uploadPolicyRepository;
     private final BCryptPasswordEncoder passwordEncoder;
 
     private final String configuredAdminPassword;
@@ -70,11 +94,13 @@ public class DataInitializer {
     public DataInitializer(UserRepository userRepository,
                            RoleRepository roleRepository,
                            PermissionRepository permissionRepository,
+                           UploadPolicyRepository uploadPolicyRepository,
                            BCryptPasswordEncoder passwordEncoder,
                            FileManagementProperties properties) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
+        this.uploadPolicyRepository = uploadPolicyRepository;
         this.passwordEncoder = passwordEncoder;
         this.configuredAdminPassword = properties.bootstrap().adminPassword();
     }
@@ -82,9 +108,90 @@ public class DataInitializer {
     @Transactional
     public void initialize() {
         seedPermissions();
-        Role adminRole = seedRole(ADMIN_ROLE);
-        seedRole(USER_ROLE);
+        Role adminRole = seedRole(FixedRole.ADMIN.roleName());
+        seedRole(FixedRole.USER.roleName());
+        reconcile(FixedRole.ADMIN);
+        reconcile(FixedRole.USER);
         seedAdministrator(adminRole);
+    }
+
+    /**
+     * Brings a fixed role to its definition, after copying whatever it holds beyond it into a
+     * {@code *_PREVIOUS} role its holders are given too (the class comment). Does nothing - and
+     * writes nothing - when the role is already as defined, which is every start after the first.
+     */
+    void reconcile(FixedRole fixed) {
+        Role role = roleRepository.findByRoleNameIgnoreCase(fixed.roleName()).orElseThrow();
+        role = roleRepository.findByIdWithPermissions(role.getId()).orElseThrow();
+        Role withGrants = roleRepository.findByIdWithFolders(role.getId()).orElseThrow();
+        Optional<UploadPolicy> ownPolicy = uploadPolicyRepository.findByRoleId(role.getId());
+
+        Set<PermissionEnum> held = role.getPermissions().stream()
+                .map(Permission::getPermissionName)
+                .collect(Collectors.toCollection(() -> EnumSet.noneOf(PermissionEnum.class)));
+        Set<PermissionEnum> extra = EnumSet.noneOf(PermissionEnum.class);
+        extra.addAll(held);
+        extra.removeAll(fixed.permissions());
+        boolean hasGrants = !withGrants.getFolderGrants().isEmpty();
+
+        // Worth keeping for somebody: for USER anything beyond the definition; for ADMIN only an
+        // upload policy, since its rows and grants are outreached by its name.
+        boolean preserve = ownPolicy.isPresent()
+                || (fixed == FixedRole.USER && (!extra.isEmpty() || hasGrants));
+        boolean differs = !held.equals(fixed.permissions()) || hasGrants || ownPolicy.isPresent();
+        if (!differs) {
+            return;
+        }
+
+        if (preserve) {
+            preserveInCopy(fixed, role, withGrants, ownPolicy);
+        }
+
+        role.setPermissions(new LinkedHashSet<>(permissionRepository.findByPermissionNameIn(List.copyOf(fixed.permissions()))));
+        withGrants.replaceFolderGrants(List.of());
+        ownPolicy.ifPresent(uploadPolicyRepository::delete);
+        logger.warn("fixed role {} brought to its definition: {} permission(s){}{}{}", fixed.roleName(),
+                fixed.permissions().size(),
+                extra.isEmpty() ? "" : ", removed " + extra,
+                hasGrants ? ", folder grants removed" : "",
+                ownPolicy.isPresent() ? ", own upload policy removed (the system-wide one applies)" : "");
+    }
+
+    /**
+     * A new role holding exactly what the fixed role held - permissions, folder grants, own upload
+     * policy - given to everybody who holds the fixed role.
+     */
+    private void preserveInCopy(FixedRole fixed, Role role, Role withGrants, Optional<UploadPolicy> ownPolicy) {
+        String name = unusedName(fixed.roleName() + PREVIOUS_SUFFIX);
+        Role copy = new Role();
+        copy.setRoleName(name);
+        copy.setPermissions(new LinkedHashSet<>(role.getPermissions()));
+        Role saved = roleRepository.save(copy);
+        saved.replaceFolderGrants(withGrants.getFolderGrants().stream()
+                .map(grant -> new RoleFolderGrant(saved, grant.getFolder(), grant.getPermission()))
+                .toList());
+        ownPolicy.ifPresent(policy -> {
+            UploadPolicy copied = new UploadPolicy();
+            copied.setRole(saved);
+            copied.replaceRules(policy.limits());
+            uploadPolicyRepository.save(copied);
+        });
+
+        List<User> holders = userRepository.findHoldersOfRole(role.getId());
+        holders.forEach(holder -> holder.getRoles().add(saved));
+        logger.warn("fixed role {} held more than its definition; kept in new role {} ({} permission(s), {} folder "
+                        + "grant(s), {}) and given to its {} holder(s) - review it on the role page",
+                fixed.roleName(), name, saved.getPermissions().size(), saved.getFolderGrants().size(),
+                ownPolicy.isPresent() ? "its own upload policy" : "no upload policy of its own", holders.size());
+    }
+
+    /** {@code base}, or {@code base_2}, {@code base_3} ... - the first no role has. */
+    private String unusedName(String base) {
+        String name = base;
+        for (int n = 2; roleRepository.existsByRoleNameIgnoreCase(name); n++) {
+            name = base + "_" + n;
+        }
+        return name;
     }
 
     /**

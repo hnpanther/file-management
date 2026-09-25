@@ -63,9 +63,9 @@ import java.util.stream.Collectors;
 public class UserService {
 
     /** Given to every newly created user, so a new account can do something before an admin acts. */
-    private static final String DEFAULT_ROLE = "USER";
+    private static final String DEFAULT_ROLE = com.hnp.filemanagement.entity.FixedRole.USER.roleName();
 
-    private static final String ADMIN_ROLE = "ADMIN";
+    private static final String ADMIN_ROLE = com.hnp.filemanagement.entity.FixedRole.ADMIN.roleName();
 
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
@@ -131,6 +131,12 @@ public class UserService {
     /**
      * Updates the mutable identity fields of a user.
      *
+     * <p><b>Only an administrator changes a username</b> - somebody holding the ADMIN role. The
+     * username is how a person signs in, what the audit history and the API clients know them by,
+     * and the name of their personal folder; holding {@code SAVE_UPDATED_USER} is enough to edit
+     * the rest of a person's details, not that. The form shows the field read-only to anyone else,
+     * and a post that changes it anyway is refused here, before anything is written.
+     *
      * <p>Each unique field is checked only when it actually changed, and only against its own
      * column. The previous version compared the four fields, packed the changed ones into
      * {@code ""} / {@code 0} sentinels, and passed all four to one
@@ -149,6 +155,11 @@ public class UserService {
         String newPhoneNumber = changedOrNull(user.getPhoneNumber(), userDTO.getPhoneNumber());
         Integer newPersonelCode = Objects.equals(user.getPersonelCode(), userDTO.getPersonelCode())
                 ? null : userDTO.getPersonelCode();
+
+        if (newUsername != null && !roleService.isAdministrator(principalId)) {
+            throw new InvalidDataException("only an administrator may change a username: user id=" + user.getId(),
+                    "user.usernameAdminOnly");
+        }
 
         requireNoDuplicate(newUsername, newPersonelCode, newNationalCode, newPhoneNumber, userDTO);
 

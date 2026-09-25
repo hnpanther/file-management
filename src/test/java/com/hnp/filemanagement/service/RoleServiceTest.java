@@ -140,11 +140,18 @@ class RoleServiceTest extends MySqlSupport {
         assertThat(underTest.getRoleDtoById(roleId).getPermissionDTOS()).isEmpty();
     }
 
+    /**
+     * The permissions tab is a form of its own since 1.9.0, and a browser leaves the field out of
+     * the post when no box is ticked - so null is "none", as it already was for folder grants.
+     */
     @Test
-    @DisplayName("a null list is a 400 - it is not the same as an empty one")
-    void aNullListIsRejected() {
-        assertThatThrownBy(() -> underTest.updatePermissionsOfRole(roleId, null, principalId))
-                .isInstanceOf(InvalidDataException.class);
+    @DisplayName("a null list clears the permissions, like an empty one - the post of a tab with nothing ticked")
+    void aNullListClearsThePermissions() {
+        underTest.updatePermissionsOfRole(roleId, somePermissionIds, principalId);
+
+        underTest.updatePermissionsOfRole(roleId, null, principalId);
+
+        assertThat(underTest.getRoleDtoById(roleId).getPermissionDTOS()).isEmpty();
     }
 
     @Test

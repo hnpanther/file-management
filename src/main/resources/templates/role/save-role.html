@@ -1,152 +1,42 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org"
-      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+      xmlns:th="http://www.thymeleaf.org">
 <head>
     <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
-    <title th:if="${#strings.equals(pageType, 'create')}" th:text="#{role.create.pageTitle}">ایجاد نقش</title>
-    <title th:if="${#strings.equals(pageType, 'update')}" th:text="#{role.edit.pageTitle}">ویرایش نقش</title>
+    <title th:text="#{role.create.pageTitle}">ایجاد نقش</title>
 </head>
 <body>
 <div th:replace="~{navbar.html :: navbar}"></div>
 
+<!--
+  Creating a role asks for its name only. A new role holds nothing; saving it opens its edit page
+  (role/role-edit.html) on the permissions tab, which is where what it may do is chosen. To start
+  from what another role already holds, copy that role instead (the roles list and the edit page).
+-->
 <main class="container-fluid app-content">
     <header class="page-header">
         <div class="page-kicker" th:text="#{role.form.kicker}">مدیریت دسترسی</div>
-        <h1 th:if="${#strings.equals(pageType, 'create')}" th:text="#{role.create.heading}">ایجاد نقش جدید</h1>
-        <h1 th:if="${#strings.equals(pageType, 'update')}" th:text="#{role.edit.heading}">ویرایش نقش</h1>
-        <p class="page-description" th:text="#{role.form.description}">
-            عنوان نقش و مجوزهای قابل استفاده را مدیریت کنید.
+        <h1 th:text="#{role.create.heading}">ایجاد نقش جدید</h1>
+        <p class="page-description" th:text="#{role.create.description}">
+            نام نقش را وارد کنید؛ پس از ذخیره، مجوزها و دسترسی‌ها را تعیین می‌کنید.
         </p>
     </header>
 
-    <section class="card mx-auto max-w-4xl" aria-labelledby="role-form-title">
+    <section class="card mx-auto max-w-2xl" aria-labelledby="role-form-title">
         <div class="card-body">
-            <h2 id="role-form-title" class="sr-only"
-                th:text="${#strings.equals(pageType, 'create')} ? #{role.create.heading} : #{role.edit.heading}">
-                اطلاعات نقش
-            </h2>
+            <h2 id="role-form-title" class="sr-only" th:text="#{role.create.heading}">ایجاد نقش جدید</h2>
 
-            <form th:action="@{${#strings.equals(pageType, 'create') ? '/roles' : '/roles/' + role.getId()}}"
-                  method="post" id="roleForm" th:object="${role}">
-                <input th:field="*{id}" type="hidden">
-                <input th:field="*{selected}" type="hidden">
-
+            <form th:action="@{/roles}" method="post" id="roleForm" th:object="${role}">
                 <div class="form-group">
                     <label for="roleName" th:text="#{field.roleTitle}">عنوان نقش</label>
-                    <input id="roleName" th:field="*{roleName}" class="form-control technical"
-                           type="text" required th:readonly="${#strings.equals(pageType, 'update')}">
+                    <input id="roleName" th:field="*{roleName}" class="form-control technical" dir="ltr"
+                           type="text" maxlength="100" required>
+                    <p class="form-text" th:text="#{role.create.nameHint}">
+                        یک نام یکتا، مثلاً DOCUMENT_EDITORS.
+                    </p>
                 </div>
 
-                <fieldset th:if="${#strings.equals(pageType, 'update')}" class="mt-6">
-                    <legend class="mb-1 text-base font-semibold text-ink-900" th:text="#{field.permissions}">مجوزها</legend>
-                    <p class="mb-4 text-sm text-ink-500" th:text="#{role.permissions.hint}">
-                        مجوزهای این نقش را انتخاب کنید.
-                    </p>
-
-                    <div th:if="${#lists.isEmpty(permissions)}" class="empty-state empty-state-panel"
-                         th:text="#{role.permissions.empty}">مجوزی برای انتخاب وجود ندارد.</div>
-
-                    <div th:unless="${#lists.isEmpty(permissions)}" class="permission-grid">
-                        <label th:each="p: ${permissions}" class="permission-option">
-                            <input th:checked="${p.isSelected()}" name="permissionDTOListId"
-                                   type="checkbox" th:value="${p.getId()}">
-                            <span class="permission-copy">
-                                <span class="permission-name technical" dir="ltr"
-                                      th:text="${p.getPermissionName()}"></span>
-                                <span th:if="${p.getDescription() != null && !#strings.isEmpty(p.getDescription())}"
-                                      class="permission-description" th:text="${p.getDescription()}"></span>
-                            </span>
-                        </label>
-                    </div>
-                </fieldset>
-
-                <!--
-                  Where the role may look and where it may write, next to what it may do. A grant
-                  covers everything beneath the folder it names, so setting a parent is enough - a
-                  folder already reached that way is marked "inherited" instead of being offered as
-                  another control to set.
-
-                  Three states, one <select>, rather than two checkboxes: "write but not read" is not
-                  a state the model has, and two boxes would let somebody ask for it.
-                -->
-                <fieldset th:if="${#strings.equals(pageType, 'update')}" class="mt-8">
-                    <legend class="mb-1 text-base font-semibold text-ink-900"
-                            th:text="#{field.folderAccess}">دسترسی پوشه‌ها</legend>
-                    <p class="mb-4 text-sm text-ink-500" th:text="#{role.folders.hint}">
-                        هر دسترسی‌ای که برای یک پوشه تعیین کنید، برای همهٔ زیرشاخه‌هایش هم اعمال می‌شود.
-                    </p>
-
-                    <div th:if="${#lists.isEmpty(folders)}" class="empty-state empty-state-panel"
-                         th:text="#{role.folders.empty}">هنوز پوشه‌ای ساخته نشده است.</div>
-
-                    <div th:unless="${#lists.isEmpty(folders)}" class="folder-grant-tree">
-                        <!-- The depth goes in as a plain integer and CSS does the arithmetic: a
-                             Thymeleaf expression doing it would have to format a decimal, and this
-                             page renders under a Persian locale. -->
-                        <label th:each="f: ${folders}" class="folder-grant-option"
-                               th:classappend="${!#strings.isEmpty(f.inherited)} ? 'is-covered' : ''"
-                               th:style="|--folder-depth:${f.depth}|">
-                            <i class="bi shrink-0 text-ink-400"
-                               th:classappend="${f.depth == 0 ? 'bi-house-door' : (f.depth == 1 ? 'bi-folder-fill' : (f.depth == 2 ? 'bi-folder' : 'bi-folder2'))}"
-                               aria-hidden="true"></i>
-                            <span class="folder-grant-copy">
-                                <span class="folder-grant-name" th:text="${f.getDisplayName()}"></span>
-                                <span class="folder-grant-technical technical" dir="ltr"
-                                      th:text="${f.getName()}"></span>
-                            </span>
-                            <span th:if="${!#strings.isEmpty(f.inherited)}" class="folder-grant-badge"
-                                  th:text="${f.inherited == 'WRITE'} ? #{role.folders.inheritedWrite} : #{role.folders.inherited}">از پوشهٔ بالاتر</span>
-                            <select name="folderGrants" class="folder-grant-select">
-                                <option value="" th:selected="${#strings.isEmpty(f.permission)}"
-                                        th:text="#{role.folders.none}">بدون دسترسی</option>
-                                <option th:value="|${f.id}:READ|" th:selected="${f.permission == 'READ'}"
-                                        th:text="#{role.folders.read}">خواندن</option>
-                                <option th:value="|${f.id}:WRITE|" th:selected="${f.permission == 'WRITE'}"
-                                        th:text="#{role.folders.write}">خواندن و نوشتن</option>
-                            </select>
-                        </label>
-                    </div>
-                </fieldset>
-
-                <!--
-                  What the role may upload. Governed by the system-wide policy unless "own" is
-                  chosen, in which case the table below is that role's policy and nothing else -
-                  an own policy with nothing ticked means the role may upload nothing. Only shown
-                  to somebody who may edit the system-wide policy too; without the section, the
-                  post carries no uploadPolicyMode and the policy is left as it was.
-                -->
-                <fieldset th:if="${#strings.equals(pageType, 'update')}"
-                          sec:authorize="hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('ADMIN')"
-                          class="mt-8" th:attr="x-data=|{ mode: '${uploadOwn ? 'OWN' : 'GLOBAL'}' }|">
-                    <legend class="mb-1 text-base font-semibold text-ink-900"
-                            th:text="#{field.uploadPolicy}">قوانین بارگذاری</legend>
-                    <p class="mb-4 text-sm text-ink-500" th:text="#{role.upload.hint}">
-                        نوع فایل‌های مجاز و حداکثر حجم هر نوع برای این نقش.
-                    </p>
-
-                    <div class="mb-4 flex flex-wrap gap-4">
-                        <label class="flex items-center gap-2 text-sm">
-                            <input type="radio" name="uploadPolicyMode" value="GLOBAL" x-model="mode">
-                            <span th:text="#{role.upload.global}">پیش‌فرض سامانه</span>
-                        </label>
-                        <label class="flex items-center gap-2 text-sm">
-                            <input type="radio" name="uploadPolicyMode" value="OWN" x-model="mode">
-                            <span th:text="#{role.upload.own}">اختصاصی این نقش</span>
-                        </label>
-                    </div>
-
-                    <p class="mb-3 text-xs text-ink-500" th:text="#{uploadPolicy.hint(${serverCapMb})}">
-                        سقف سرور برای هر فایل ۲۰ مگابایت است.
-                    </p>
-                    <div class="overflow-x-auto">
-                        <div th:replace="~{fragments.html :: upload-rules(rows=${uploadRows}, allowedName='uploadAllowed', maxName='uploadMax', serverCapMb=${serverCapMb})}"></div>
-                    </div>
-                </fieldset>
-
-                <div th:if="${showMessage && valid}" class="alert alert-success mt-5" role="status"
-                     id="success_message" th:text="#{message.saved}">اطلاعات با موفقیت ذخیره شد.</div>
                 <div th:if="${showMessage && !valid}" class="alert alert-warning mt-5" role="alert"
                      id="warning_message" th:text="${message}"></div>
 
@@ -157,7 +47,7 @@
                     </a>
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-check2" aria-hidden="true"></i>
-                        <span th:text="#{action.save}">ذخیره</span>
+                        <span th:text="#{role.create.submit}">ایجاد و تعیین مجوزها</span>
                     </button>
                 </div>
             </form>

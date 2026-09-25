@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{role.edit.pageTitle}">ویرایش نقش</title>
+</head>
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<!--
+  One role, three tabs, three forms: what it may do (permissions), where (folder grants) and what it
+  may upload (upload policy). Each tab posts only its own form to its own address and comes back
+  here on the same tab with its message (RoleController), so saving one never re-posts the others.
+
+  The fixed roles (ADMIN, USER - FixedRole) are shown with every control disabled and a notice;
+  the service refuses a change to them whatever is posted. They can still be copied.
+-->
+<main class="container-fluid app-content" th:with="fixed=${fixedRole != null}">
+    <header class="page-header role-header">
+        <div>
+            <div class="page-kicker" th:text="#{role.form.kicker}">مدیریت دسترسی</div>
+            <h1>
+                <span th:text="#{role.edit.heading}">ویرایش نقش</span>
+                <span class="technical" dir="ltr" th:text="${role.roleName}">ROLE</span>
+                <span th:if="${fixed}" class="badge badge-secondary" th:text="#{role.fixed.badge}">ثابت</span>
+            </h1>
+        </div>
+
+        <div class="role-header-actions" sec:authorize="hasAuthority('COPY_ROLE') || hasAuthority('ADMIN')"
+             x-data="{ open: false }" @keydown.escape="open = false" @click.outside="open = false">
+            <button type="button" class="btn btn-outline-secondary" id="copy-role-toggle"
+                    @click="open = !open" :aria-expanded="open" aria-controls="copy-role-form">
+                <i class="bi bi-copy" aria-hidden="true"></i>
+                <span th:text="#{role.copy.button}">کپی از این نقش</span>
+            </button>
+            <form id="copy-role-form" class="role-copy-form" method="post" x-show="open" x-cloak
+                  th:action="@{/roles/{id}/copy(id=${role.id})}">
+                <label for="newRoleName" th:text="#{role.copy.nameLabel}">نام نقش جدید</label>
+                <input id="newRoleName" name="newRoleName" class="form-control technical" dir="ltr" type="text"
+                       maxlength="100" required>
+                <p class="form-text" th:text="#{role.copy.hint}">
+                    مجوزها، دسترسی پوشه‌ها و قوانین بارگذاری این نقش در نقش جدید کپی می‌شوند.
+                </p>
+                <button type="submit" class="btn btn-primary" th:text="#{role.copy.submit}">ایجاد کپی</button>
+            </form>
+        </div>
+    </header>
+
+    <div th:if="${copyMessage}" class="alert alert-warning" role="alert" id="copy_message" th:text="${copyMessage}"></div>
+
+    <div th:if="${fixed}" class="alert alert-info" role="note" id="fixed_notice"
+         th:text="#{|role.fixed.notice.${fixedRole}|}">این نقش ثابت است.</div>
+
+    <div class="card" th:attr="x-data=|{ tab: '${activeTab}' }|">
+        <div class="page-tabs" role="tablist" th:aria-label="#{role.tabs.label}">
+            <button type="button" role="tab" id="tab-permissions" aria-controls="panel-permissions"
+                    class="page-tab" :class="tab === 'permissions' && 'is-active'"
+                    :aria-selected="tab === 'permissions'" @click="tab = 'permissions'">
+                <i class="bi bi-key" aria-hidden="true"></i>
+                <span th:text="#{field.permissions}">مجوزها</span>
+            </button>
+            <button type="button" role="tab" id="tab-folders" aria-controls="panel-folders"
+                    class="page-tab" :class="tab === 'folders' && 'is-active'"
+                    :aria-selected="tab === 'folders'" @click="tab = 'folders'">
+                <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                <span th:text="#{field.folderAccess}">دسترسی پوشه‌ها</span>
+            </button>
+            <button type="button" role="tab" id="tab-upload" aria-controls="panel-upload"
+                    sec:authorize="hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('ADMIN')"
+                    class="page-tab" :class="tab === 'upload' && 'is-active'"
+                    :aria-selected="tab === 'upload'" @click="tab = 'upload'">
+                <i class="bi bi-cloud-arrow-up" aria-hidden="true"></i>
+                <span th:text="#{field.uploadPolicy}">قوانین بارگذاری</span>
+            </button>
+        </div>
+
+        <!-- ============================================================ permissions -->
+        <section class="card-body" role="tabpanel" id="panel-permissions" aria-labelledby="tab-permissions"
+                 x-show="tab === 'permissions'" x-cloak>
+            <form method="post" th:action="@{/roles/{id}/permissions(id=${role.id})}" id="permissionsForm"
+                  x-data="rolePermissions()">
+                <p class="mb-4 text-sm text-ink-500" th:text="#{role.permissions.hint}">
+                    مجوزهای این نقش را انتخاب کنید.
+                </p>
+
+                <!-- Groups: a shortcut that ticks or unticks its members. Nothing stores a group;
+                     what posts is the members' boxes below (PermissionGroup). -->
+                <fieldset class="permission-groups">
+                    <legend class="mb-1 text-base font-semibold text-ink-900" th:text="#{role.groups.heading}">گروه‌های دسترسی</legend>
+                    <p class="mb-3 text-sm text-ink-500" th:text="#{role.groups.hint}">
+                        با انتخاب هر گروه، همهٔ مجوزهای آن گروه انتخاب می‌شوند.
+                    </p>
+                    <div class="permission-group-grid">
+                        <label th:each="g : ${permissionGroups}" class="permission-group-option"
+                               th:attr="data-group-toggle=${g.name()}">
+                            <input type="checkbox" th:checked="${g.isAllSelected()}" th:disabled="${fixed}"
+                                   th:attr="data-group=${g.name()}"
+                                   @change="setGroup($event.target.dataset.group, $event.target.checked)">
+                            <span class="permission-copy">
+                                <span class="permission-group-title">
+                                    <span th:text="#{|permissionGroup.${g.name()}.title|}">گروه</span>
+                                    <span class="technical text-xs text-ink-400" dir="ltr" th:text="${g.name()}">FILE_READ</span>
+                                </span>
+                                <span class="permission-description" th:text="#{|permissionGroup.${g.name()}.description|}">توضیح</span>
+                                <span class="permission-group-count"
+                                      th:attr="data-group-count=${g.name()}"
+                                      th:text="#{role.groups.count(${g.selectedCount()}, ${#lists.size(g.permissions())})}">۰ از ۰</span>
+                            </span>
+                        </label>
+                    </div>
+                </fieldset>
+
+                <div th:each="g : ${permissionGroups}" class="mt-6">
+                    <h3 class="mb-2 text-sm font-semibold text-ink-700" th:text="#{|permissionGroup.${g.name()}.title|}">گروه</h3>
+                    <div class="permission-grid">
+                        <label th:each="p : ${g.permissions()}" class="permission-option">
+                            <input type="checkbox" name="permissionIds" th:value="${p.id}" th:checked="${p.selected}"
+                                   th:disabled="${fixed}" th:attr="data-member-of=${g.name()}"
+                                   @change="refresh()">
+                            <span class="permission-copy">
+                                <span class="permission-name technical" dir="ltr" th:text="${p.permissionName}"></span>
+                                <span th:if="${p.description != null && !#strings.isEmpty(p.description)}"
+                                      class="permission-description" th:text="${p.description}"></span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <div th:if="${messageTab == 'permissions'}" class="alert mt-5"
+                     th:classappend="${valid} ? 'alert-success' : 'alert-warning'"
+                     th:attr="role=${valid} ? 'status' : 'alert'" id="permissions_message" th:text="${message}"></div>
+
+                <div class="form-actions" th:unless="${fixed}">
+                    <a th:href="@{/roles}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        <span th:text="#{action.backToRoles}">بازگشت به فهرست نقش‌ها</span>
+                    </a>
+                    <button type="submit" class="btn btn-primary" id="save-permissions">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{role.permissions.save}">ذخیرهٔ مجوزها</span>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- ============================================================ folders -->
+        <!--
+          Where the role may look and where it may write. A grant covers everything beneath the
+          folder it names, so setting a parent is enough - a folder already reached that way is
+          marked "inherited" instead of being offered as another control to set.
+
+          Three states, one <select>, rather than two checkboxes: "write but not read" is not a state
+          the model has, and two boxes would let somebody ask for it.
+        -->
+        <section class="card-body" role="tabpanel" id="panel-folders" aria-labelledby="tab-folders"
+                 x-show="tab === 'folders'" x-cloak>
+            <form method="post" th:action="@{/roles/{id}/folders(id=${role.id})}" id="foldersForm">
+                <p class="mb-4 text-sm text-ink-500" th:text="#{role.folders.hint}">
+                    هر دسترسی‌ای که برای یک پوشه تعیین کنید، برای همهٔ زیرشاخه‌هایش هم اعمال می‌شود.
+                </p>
+
+                <div th:if="${#lists.isEmpty(folders)}" class="empty-state empty-state-panel"
+                     th:text="#{role.folders.empty}">هنوز پوشه‌ای ساخته نشده است.</div>
+
+                <div th:unless="${#lists.isEmpty(folders)}" class="folder-grant-tree">
+                    <!-- The depth goes in as a plain integer and CSS does the arithmetic: a Thymeleaf
+                         expression doing it would have to format a decimal, and this page renders
+                         under a Persian locale. -->
+                    <label th:each="f: ${folders}" class="folder-grant-option"
+                           th:classappend="${!#strings.isEmpty(f.inherited)} ? 'is-covered' : ''"
+                           th:style="|--folder-depth:${f.depth}|">
+                        <i class="bi shrink-0 text-ink-400"
+                           th:classappend="${f.depth == 0 ? 'bi-house-door' : (f.depth == 1 ? 'bi-folder-fill' : (f.depth == 2 ? 'bi-folder' : 'bi-folder2'))}"
+                           aria-hidden="true"></i>
+                        <span class="folder-grant-copy">
+                            <span class="folder-grant-name" th:text="${f.getDisplayName()}"></span>
+                            <span class="folder-grant-technical technical" dir="ltr" th:text="${f.getName()}"></span>
+                        </span>
+                        <span th:if="${!#strings.isEmpty(f.inherited)}" class="folder-grant-badge"
+                              th:text="${f.inherited == 'WRITE'} ? #{role.folders.inheritedWrite} : #{role.folders.inherited}">از پوشهٔ بالاتر</span>
+                        <select name="folderGrants" class="folder-grant-select" th:disabled="${fixed}">
+                            <option value="" th:selected="${#strings.isEmpty(f.permission)}"
+                                    th:text="#{role.folders.none}">بدون دسترسی</option>
+                            <option th:value="|${f.id}:READ|" th:selected="${f.permission == 'READ'}"
+                                    th:text="#{role.folders.read}">خواندن</option>
+                            <option th:value="|${f.id}:WRITE|" th:selected="${f.permission == 'WRITE'}"
+                                    th:text="#{role.folders.write}">خواندن و نوشتن</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div th:if="${messageTab == 'folders'}" class="alert mt-5"
+                     th:classappend="${valid} ? 'alert-success' : 'alert-warning'"
+                     th:attr="role=${valid} ? 'status' : 'alert'" id="folders_message" th:text="${message}"></div>
+
+                <div class="form-actions" th:unless="${fixed}">
+                    <a th:href="@{/roles}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        <span th:text="#{action.backToRoles}">بازگشت به فهرست نقش‌ها</span>
+                    </a>
+                    <button type="submit" class="btn btn-primary" id="save-folders">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{role.folders.save}">ذخیرهٔ دسترسی پوشه‌ها</span>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- ============================================================ upload policy -->
+        <!--
+          What the role may upload: governed by the system-wide policy unless "own" is chosen, in
+          which case the table below is that role's policy and nothing else - an own policy with
+          nothing ticked means the role may upload nothing. Shown to whoever may see the upload
+          policy page; saving it needs SAVE_UPLOAD_POLICY too.
+        -->
+        <section class="card-body" role="tabpanel" id="panel-upload" aria-labelledby="tab-upload"
+                 sec:authorize="hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('ADMIN')"
+                 x-show="tab === 'upload'" x-cloak>
+            <form method="post" th:action="@{/roles/{id}/upload-policy(id=${role.id})}" id="uploadForm"
+                  th:attr="x-data=|{ mode: '${uploadOwn && !fixed ? 'OWN' : 'GLOBAL'}' }|">
+                <p class="mb-4 text-sm text-ink-500" th:text="#{role.upload.hint}">
+                    نوع فایل‌های مجاز و حداکثر حجم هر نوع برای این نقش.
+                </p>
+
+                <div class="mb-4 flex flex-wrap gap-4" th:unless="${fixed}">
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="radio" name="uploadPolicyMode" value="GLOBAL" x-model="mode">
+                        <span th:text="#{role.upload.global}">پیش‌فرض سامانه</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="radio" name="uploadPolicyMode" value="OWN" x-model="mode">
+                        <span th:text="#{role.upload.own}">اختصاصی این نقش</span>
+                    </label>
+                </div>
+                <p th:if="${fixed}" class="mb-4 text-sm text-ink-700" th:text="#{role.upload.fixed}">
+                    این نقش از قوانین بارگذاری سامانه پیروی می‌کند.
+                </p>
+
+                <p class="mb-3 text-xs text-ink-500" th:text="#{uploadPolicy.hint(${serverCapMb})}">
+                    سقف سرور برای هر فایل ۲۰ مگابایت است.
+                </p>
+                <div class="overflow-x-auto">
+                    <div th:replace="~{fragments.html :: upload-rules(rows=${uploadRows}, allowedName='uploadAllowed', maxName='uploadMax', serverCapMb=${serverCapMb})}"></div>
+                </div>
+
+                <div th:if="${messageTab == 'upload'}" class="alert mt-5"
+                     th:classappend="${valid} ? 'alert-success' : 'alert-warning'"
+                     th:attr="role=${valid} ? 'status' : 'alert'" id="upload_message" th:text="${message}"></div>
+
+                <div class="form-actions" th:unless="${fixed}"
+                     sec:authorize="(hasAuthority('SAVE_UPDATED_ROLE') && hasAuthority('SAVE_UPLOAD_POLICY')) || hasAuthority('ADMIN')">
+                    <a th:href="@{/roles}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        <span th:text="#{action.backToRoles}">بازگشت به فهرست نقش‌ها</span>
+                    </a>
+                    <button type="submit" class="btn btn-primary" id="save-upload">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{role.upload.save}">ذخیرهٔ قوانین بارگذاری</span>
+                    </button>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <p th:if="${fixed}" class="mt-4">
+        <a th:href="@{/roles}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-right" aria-hidden="true"></i>
+            <span th:text="#{action.backToRoles}">بازگشت به فهرست نقش‌ها</span>
+        </a>
+    </p>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+<script th:inline="javascript">
+    /*
+     * The permission groups on the first tab. A group's box ticks or unticks every member's box;
+     * a member ticked by hand updates its group's box - ticked when all are, partly ticked
+     * (indeterminate) when some are - and the "n of m" count. Only the members post.
+     */
+    window.rolePermissions = function () {
+        const countText = /*[[#{role.groups.count('{0}', '{1}')}]]*/ "{0} / {1}";
+        return {
+            init() {
+                this.refresh();
+            },
+            members(group) {
+                return Array.from(this.$root.querySelectorAll('input[data-member-of="' + group + '"]'));
+            },
+            setGroup(group, checked) {
+                this.members(group).forEach(box => { box.checked = checked; });
+                this.refresh();
+            },
+            refresh() {
+                this.$root.querySelectorAll('input[data-group]').forEach(toggle => {
+                    const group = toggle.dataset.group;
+                    const boxes = this.members(group);
+                    const ticked = boxes.filter(box => box.checked).length;
+                    toggle.checked = boxes.length > 0 && ticked === boxes.length;
+                    toggle.indeterminate = ticked > 0 && ticked < boxes.length;
+                    const count = this.$root.querySelector('[data-group-count="' + group + '"]');
+                    if (count) {
+                        count.textContent = countText
+                            .replace('{0}', ticked.toLocaleString('fa-IR'))
+                            .replace('{1}', boxes.length.toLocaleString('fa-IR'));
+                    }
+                });
+            }
+        };
+    };
+</script>
+</body>
+</html>

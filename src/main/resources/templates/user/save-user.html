@@ -37,8 +37,16 @@
                     </div>
                     <div class="form-group">
                         <label for="username" th:text="#{field.username}">نام کاربری</label>
+                        <!-- Only an administrator changes a username once the account exists
+                             (UserService.updateUser refuses anyone else); for others it is shown
+                             read-only, so what posts is the name as it stands. -->
                         <input id="username" th:field="*{username}" class="form-control technical"
-                            dir="ltr" type="text" autocomplete="username" required>
+                            dir="ltr" type="text" autocomplete="username" required
+                            th:readonly="${#strings.equals(pageType, 'update') && !(mayChangeUsername ?: false)}"
+                            th:attr="aria-describedby=${#strings.equals(pageType, 'update') && !(mayChangeUsername ?: false)} ? 'username-hint' : null">
+                        <p id="username-hint" class="form-text"
+                           th:if="${#strings.equals(pageType, 'update') && !(mayChangeUsername ?: false)}"
+                           th:text="#{user.usernameAdminOnlyHint}">فقط مدیر سامانه می‌تواند نام کاربری را تغییر دهد.</p>
                     </div>
                     <div class="form-group">
                         <label for="firstName" th:text="#{field.firstName}">نام</label>

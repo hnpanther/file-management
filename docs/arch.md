@@ -493,7 +493,12 @@ document, so a browser navigation still lands on a page.
 | GET | `/files/file-info`, `/files/file-info/{id}` | `GET_ALL_FILE_INFO_PAGE`, `FILE_INFO_PAGE` |
 | GET | `/files/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `DOWNLOAD_FILE` |
 | GET / POST | `/files/file-info/{fileInfoId}/file-details/create`, `.../file-details` | `SAVE_NEW_FILE_DETAILS_PAGE`, `SAVE_NEW_FILE_DETAILS` |
-| GET / POST | `/users/**`, `/roles/**` | one permission per handler; `POST /users/{id}/home` creates the user's personal folder (`CREATE_USER_HOME`), `POST /users/{id}/home/quota` sets or clears its quota in megabytes (`SET_FOLDER_QUOTA`) |
+| GET / POST | `/users/**` | one permission per handler; `POST /users/{id}/home` creates the user's personal folder (`CREATE_USER_HOME`), `POST /users/{id}/home/quota` sets or clears its quota in megabytes (`SET_FOLDER_QUOTA`). `POST /users/{id}` refuses a changed username unless the principal holds the ADMIN role |
+| GET | `/roles`, `/roles/create`, `/roles/{id}` (`?tab=permissions`, `folders` or `upload`) | `GET_ALL_ROLE_PAGE`, `CREATE_ROLE_PAGE`, `UPDATE_ROLE_PAGE` |
+| POST | `/roles` (a name only; answers with a redirect to the new role's page) | `SAVE_NEW_ROLE` |
+| POST | `/roles/{id}/permissions`, `/roles/{id}/folders` - the edit page's first two tabs, each saved alone, each the complete selection of its tab | `SAVE_UPDATED_ROLE` |
+| POST | `/roles/{id}/upload-policy` - the third tab (`GLOBAL`, or `OWN` with the ticked kinds) | `SAVE_UPDATED_ROLE` and `SAVE_UPLOAD_POLICY` |
+| POST | `/roles/{id}/copy` (`newRoleName`) - a new role with the source's permissions, folder grants and own upload policy | `COPY_ROLE` |
 | GET / POST | `/share/{token}` | permitAll — the landing page, and the download (a `POST`, with the password when the link has one); unknown, expired, revoked and used-up tokens are one 404 |
 | GET | `/files/share-links` | `SHARE_LINKS_PAGE` (one's own links; every link with `REVOKE_SHARE_LINK`) |
 
@@ -620,6 +625,37 @@ Authorities are **not** roles — they are `PermissionEnum` constants, one per h
 (~70 of them). `UserDetailsServiceImpl` loads a user's permissions through their roles and, if
 any role is named `ADMIN`, additionally grants the synthetic `ADMIN` authority. Every handler
 carries `@PreAuthorize("hasAuthority('X') || hasAuthority('ADMIN')")`.
+
+### Roles: two fixed, the rest edited on a three-tab page (1.9.0)
+
+* **`FixedRole`** defines the two roles every installation has, in code. **ADMIN** holds no
+  permission rows and no folder grants: its name is its reach (the `ADMIN` wildcard, and passing
+  every folder check in `FolderAccessService`). **USER** is what every new account is given
+  (`UserService.createUser`): `FixedRole.USER_PERMISSIONS`, which is the groups `FILE_READ`,
+  `FILE_WRITE`, `FILE_DELETE`, `FOLDER_MANAGE` and `SHARE_LINKS` - and no folder grants, so with
+  folder access on its holders reach their own personal folder (a direct `WRITE` grant from
+  `UserHomeService`) and whatever else they are granted, nothing more. **With folder access off,
+  USER's permissions apply to every folder.** Neither has an upload policy of its own. The
+  services refuse every change to either (`RoleService.requireEditable`, called for permissions,
+  folder grants and `UploadPolicyService.saveForRole`), and `DataInitializer.reconcile` brings
+  both back to the definition on every start - copying anything extra into `USER_PREVIOUS` /
+  `ADMIN_PREVIOUS` first and giving that copy to every holder, so no one loses access (section
+  "Bootstrap").
+* **`PermissionGroup`** sorts every assignable permission into exactly one group (`FILE_READ`,
+  `USERS_ADMIN`, ...). It is **for the role page only**: ticking a group ticks its members in the
+  browser, and what is saved is the members - no table stores a group and no `@PreAuthorize`
+  names one, so a group can be redrawn without a migration. `ADMIN` and `API_KEY` are
+  `NOT_ASSIGNABLE`: never offered, and kept as they are when a role's permissions are saved.
+  `PermissionGroupTest` fails when a new `PermissionEnum` constant is in no group.
+* **The edit page** (`role/role-edit.html`, `RoleController`) is three tabs - permissions, folder
+  access, upload policy - each its own form posting to its own address and answered with a
+  redirect back to the same tab with a flash message; saving one never touches the other two.
+* **Copying** (`RoleService.copyRole`, `COPY_ROLE`) makes an independent new role with the
+  source's permissions, folder grants and own upload policy, held by nobody. A copy of ADMIN gets
+  every assignable permission but not the name's two privileges (the wildcard, the folder bypass).
+* **Only an administrator changes a username** (`UserService.updateUser`): holding
+  `SAVE_UPDATED_USER` edits the rest of a person's details, not the name they sign in with. Asked
+  of the database (`RoleService.isAdministrator`, the ADMIN role), like the folder bypass.
 
 ### Folder access — the second question
 
@@ -812,8 +848,10 @@ keep their rows and are served as `application/octet-stream` attachments.
 ### Bootstrap
 
 `BootstrapConfig`'s runner runs only when `spring.profiles.active=prod`. `DataInitializer`
-inserts any missing `PermissionEnum` value, creates the `ADMIN` and `USER` roles, and creates the
-`Admin` account if absent (password from `filemanagement.bootstrap.admin-password`, or generated
+inserts any missing `PermissionEnum` value, creates the `ADMIN` and `USER` roles, brings both to
+their `FixedRole` definition (anything extra first copied into `USER_PREVIOUS` / `ADMIN_PREVIOUS`
+and given to the same people, with a WARN line saying so; nothing is written when they already
+match), and creates the `Admin` account if absent (password from `filemanagement.bootstrap.admin-password`, or generated
 and logged once). The pre-flight report that preceded step 4 is gone with the step: `V2.8`
 itself refuses to run on a database that would have failed it (section 10).
 

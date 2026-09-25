@@ -37,6 +37,7 @@ public class ModelConverterUtil {
         RoleDTO roleDTO = new RoleDTO();
         roleDTO.setId(role.getId());
         roleDTO.setRoleName(role.getRoleName());
+        roleDTO.setFixed(com.hnp.filemanagement.entity.FixedRole.isFixed(role.getRoleName()));
         roleDTO.setSelected(false);
         roleDTO.setPermissionDTOS(
                 role.getPermissions().stream().map(

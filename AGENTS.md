@@ -136,7 +136,22 @@ folder " + name + " under folderId=" + parentId)`: an id, a name, a decision - n
 `@PreAuthorize("hasAuthority('YOUR_CONSTANT') || hasAuthority('ADMIN')")`, and keep the comment above
 the constant naming the endpoint. `DataInitializer` (run by `BootstrapConfig` on the `prod`
 profile) seeds new constants on the next start; `PermissionNamesTest` fails the build if the
-string in an annotation or a template names no constant.
+string in an annotation or a template names no constant. **Then place the constant in exactly one
+`PermissionGroup`** - the role page's groups; `PermissionGroupTest` fails the build until you do -
+and give a new group a `permissionGroup.{NAME}.title` and `.description` in `messages.properties`.
+A group is a shortcut on the role page only: nothing stores it and no `@PreAuthorize` names it.
+
+**Roles: two are fixed, the rest are edited on three tabs.** `FixedRole` defines `ADMIN`
+(everything, by its name - no rows) and `USER` (what every new account gets:
+`FixedRole.USER_PERMISSIONS`, no folder grants, the system-wide upload policy). Never edit either
+in code paths that bypass `RoleService` - the services refuse it, and `DataInitializer.reconcile`
+resets both on every start, first copying anything extra into `USER_PREVIOUS` / `ADMIN_PREVIOUS`
+for the same people. **Adding a group to USER gives it to every account on the next start**;
+review `USER_PERMISSIONS` as a whole, and keep `PermissionGroupTest.theUserRole` in step. The role
+page (`role/role-edit.html`) saves permissions, folder grants and the upload policy as three
+separate posts (`/roles/{id}/permissions`, `/folders`, `/upload-policy`); `COPY_ROLE`
+(`/roles/{id}/copy`) makes a new role from any role, the fixed ones included. Only a holder of the
+ADMIN role changes a username (`UserService.updateUser`).
 
 **Every mutation writes audit history.** Call
 `actionHistoryService.saveActionHistory(EntityEnum.X, id, ActionEnum.Y, principalId, actionDesc, desc)`
@@ -161,8 +176,13 @@ the traversal cases in `ValidationUtilTest` are the ones never to relax.
   and `open-in-view` is off, so a field added to `ModelConverterUtil` that follows one either
   fails outside the transaction or costs a lazy load per row. Fetch it in the repository query
   (see the folder chain: `FolderService.ancestryOf`, one query per page).
-* **`hash_id` is a random UUID, not a hash.** Nothing verifies file integrity yet - the real
-  checksum is the next step after 1.7.0 (roadmap, "Where things stand").
+* **`external_id` is a random UUID, not a hash; `checksum_sha256` is the hash** (1.8.0). The
+  column was called `hash_id` until V2.16. The checksum is written on every upload and back-filled
+  for older revisions by `ChecksumBackfill`.
+* **A write to a file checks the file's folder**, every one of them: upload, new version, move,
+  delete (whole file or one version), description, public/private state - `requireWriteAccess` on
+  the `FileInfo` (issue 90). A new operation that changes a file does the same, or the USER role,
+  which every account holds, reaches files outside its owner's folders.
 * **A write goes through `StorageWriter`**, not through `BlobStore.put`: it is what removes the
   bytes again if the transaction rolls back, and what leaves the note in `file_storage_write` that
   `StorageSweeper` settles when a process is killed mid-upload (roadmap 2.3). Reads and deletes
@@ -313,7 +333,7 @@ A change is done when:
 
 * `./mvnw verify` is green;
 * new behaviour has a test, or you have stated explicitly that you could not run the suite and why;
-* any new endpoint has a `PermissionEnum` constant and a `@PreAuthorize`;
+* any new endpoint has a `PermissionEnum` constant, placed in a `PermissionGroup`, and a `@PreAuthorize`;
 * any new mutation writes an `ActionHistory` row;
 * any schema change has a migration, the matching entity update, *and* a regenerated [docs/schema.md](docs/schema.md) (`SchemaDocumentationTest` fails otherwise);
 * no credential, absolute developer path, or `TODO` without an owner was added;

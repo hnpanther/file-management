@@ -503,6 +503,42 @@ progress meter when a quota exists. Existing mutation handlers, confirmation pro
 bindings remain in place. These components use the shared compiled stylesheet and vendored
 assets only; they add no runtime dependencies.
 
+### The role pages
+
+`role/roles.html` lists every role with the two fixed ones (`ADMIN`, `USER`) badged, and a
+**copy** action per row: a small inline form asking for the new name, which posts to
+`/roles/{id}/copy` and opens the copy. `role/save-role.html` only creates: it asks for a name and
+answers with the new role's edit page.
+
+`role/role-edit.html` is one card with **three tabs** - permissions, folder access, upload policy
+- built from the `page-tabs` component (below). Each tab is its own `<form>` posting to its own
+address (`/roles/{id}/permissions`, `/folders`, `/upload-policy`); the controller answers with a
+redirect to `/roles/{id}?tab=...` and a flash message, so the page reopens on the tab that was
+saved, shows the message inside that tab only, and a reload does not post again. The upload tab is
+shown to `UPLOAD_POLICY_PAGE` and saved with `SAVE_UPLOAD_POLICY`, as before.
+
+The permissions tab starts with **permission groups** (`PermissionGroup`): one checkbox per group
+with its Persian title, its technical name, a description and an "n of m" count. An inline Alpine
+component (`window.rolePermissions`) keeps the two levels in step: ticking a group ticks every
+member below; ticking a member by hand sets its group to ticked, partly ticked (`indeterminate`) or
+unticked, and updates the count. **Only the members have a `name`**, so a group never reaches the
+server. Below the groups every permission is listed once, under its group's heading, each box
+carrying `data-member-of="{GROUP}"`.
+
+A fixed role renders the same page with an `alert-info` notice, every control `disabled`, and no
+save buttons; the service would refuse a post anyway. The copy form is a popover under the
+header's copy button (`role-copy-form`), closed by Escape or a click outside; it opens from the
+start edge on a phone, where the header wraps, and from the end edge wider.
+
+### Page tabs
+
+`page-tabs` is a `role="tablist"` strip of `page-tab` buttons at the top of a card; the active one
+has `is-active` and `aria-selected="true"`. The panels below are `role="tabpanel"` sections shown
+with Alpine (`x-show` with `x-cloak`) from one `tab` value on the card, which the server sets from
+the model so the right tab is open on the first paint. Use it where one record has independent
+parts that are saved separately; do not use it to split one form, which would post only the
+visible half.
+
 ## Legacy compatibility classes
 
 Some templates still contain class names inherited from the old Bootstrap UI, including `btn-block`,

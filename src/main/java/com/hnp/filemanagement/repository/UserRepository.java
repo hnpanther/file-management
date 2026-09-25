@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -69,6 +70,14 @@ public interface UserRepository extends JpaRepository<User, Integer> {
             WHERE u.id = :id
             """)
     Optional<User> findByIdWithRoles(@Param("id") int id);
+
+    /** Everybody who holds this role, with their roles - what a role's holders are given a copy by. */
+    @Query("""
+            SELECT DISTINCT u FROM User u
+            LEFT JOIN FETCH u.roles
+            WHERE u.id IN (SELECT h.id FROM User h JOIN h.roles r WHERE r.id = :roleId)
+            """)
+    List<User> findHoldersOfRole(@Param("roleId") int roleId);
 
     /**
      * The user list page. {@code search} matches the username or the full name, and

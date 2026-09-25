@@ -1,94 +1,87 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org">
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title th:text="#{role.list.pageTitle}">لیست نقش ها</title>
-
     <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
-
+    <title th:text="#{role.list.pageTitle}">لیست نقش ها</title>
 </head>
 <body>
-
 <div th:replace="~{navbar.html :: navbar}"></div>
 
-<div class="container-fluid">
-    <div class="row flex-lg-nowrap">
+<!--
+  Every role, with the two fixed ones (ADMIN, USER - FixedRole) marked. "Copy" makes a new role
+  from a row - its permissions, folder grants and own upload policy - and opens it; it is the way
+  to a role that differs from a fixed one, since those cannot be edited.
+-->
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{role.form.kicker}">مدیریت دسترسی</div>
+        <h1 th:text="#{field.roles}">نقش‌ها</h1>
+        <p class="page-description" th:text="#{role.list.description}">
+            نقش‌ها مجموعه‌ای از مجوزها، دسترسی پوشه‌ها و قوانین بارگذاری هستند.
+        </p>
+    </header>
 
+    <div th:if="${copyMessage}" class="alert alert-warning" role="alert" id="copy_message" th:text="${copyMessage}"></div>
 
-        <div class="col">
-            <div class="e-tabs mb-3 px-3">
-                <ul class="nav nav-tabs">
-                    <li class="nav-item"><a class="nav-link active" href="#" th:text="#{field.roles}">نقش ها</a></li>
-                </ul>
+    <section class="card">
+        <div class="card-body">
+            <div class="mb-4" sec:authorize="hasAuthority('CREATE_ROLE_PAGE') || hasAuthority('ADMIN')">
+                <a class="btn btn-primary" th:href="@{/roles/create}">
+                    <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                    <span th:text="#{role.createButton}">ایجاد نقش جدید</span>
+                </a>
             </div>
 
-            <div class="row flex-lg-nowrap">
-                <div class="col mb-3">
+            <div th:if="${#lists.isEmpty(roles)}" class="empty-state empty-state-panel" th:text="#{role.list.empty}">
+                هنوز نقشی تعریف نشده است.
+            </div>
 
-                    <div class="e-panel card">
-                        <div class="card-body">
-                            <div class="card-title">
-                                <a class="btn btn-success" type="button" th:href="@{/roles/create}" th:text="#{role.createButton}">ایجاد
-                                    نقش جدید
-                                </a>
+            <div th:unless="${#lists.isEmpty(roles)}" class="table-responsive">
+                <table class="table" id="roles-table">
+                    <thead>
+                    <tr>
+                        <th scope="col" th:text="#{field.id}">شناسه</th>
+                        <th scope="col" th:text="#{field.roleTitle}">عنوان نقش</th>
+                        <th scope="col" th:text="#{field.actions}">عملیات</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="r : ${roles}" th:attr="data-role=${r.roleName}">
+                        <td class="align-middle technical" th:text="${r.id}"></td>
+                        <td class="align-middle">
+                            <span class="technical" dir="ltr" th:text="${r.roleName}"></span>
+                            <span th:if="${r.fixed}" class="badge badge-secondary" th:text="#{role.fixed.badge}">ثابت</span>
+                        </td>
+                        <td class="align-middle">
+                            <div class="flex flex-wrap items-start gap-2" x-data="{ open: false }" @keydown.escape="open = false">
+                                <a class="btn btn-sm btn-outline-secondary" th:href="@{/roles/{id}(id=${r.id})}"
+                                   th:text="${r.fixed} ? #{action.view} : #{action.edit}">مشاهده</a>
+                                <th:block sec:authorize="hasAuthority('COPY_ROLE') || hasAuthority('ADMIN')">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" @click="open = !open"
+                                            :aria-expanded="open" th:text="#{role.copy.short}">کپی</button>
+                                    <form method="post" class="role-copy-inline" x-show="open" x-cloak
+                                          th:action="@{/roles/{id}/copy(id=${r.id})}">
+                                        <input type="hidden" name="from" value="list">
+                                        <label class="sr-only" th:for="|copy-name-${r.id}|" th:text="#{role.copy.nameLabel}">نام نقش جدید</label>
+                                        <input th:id="|copy-name-${r.id}|" name="newRoleName" class="form-control technical"
+                                               dir="ltr" type="text" maxlength="100" required
+                                               th:placeholder="#{role.copy.placeholder}">
+                                        <button type="submit" class="btn btn-sm btn-primary" th:text="#{role.copy.submit}">ایجاد کپی</button>
+                                    </form>
+                                </th:block>
                             </div>
-                            <div class="e-table">
-                                <div class="table-responsive table-lg mt-3">
-                                    <table class="table table-bordered">
-                                        <thead>
-                                        <tr>
-                                            <th class="max-width" th:text="#{field.id}">شناسه</th>
-                                            <th class="max-width" th:text="#{field.roleTitle}">عنوان نقش</th>
-                                            <th th:text="#{field.actions}">عملیات</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody>
-                                        <tr th:each="r: ${roles}">
-
-                                            <td class="text-nowrap align-middle" th:text="${r.getId()}"></td>
-                                            <td class="text-nowrap align-middle" th:text="${r.getRoleName()}"></td>
-                                            <td class="text-center align-middle">
-                                                <div class="btn-group align-top">
-                                                    <a class="btn btn-sm btn-outline-secondary badge" type="button"
-                                                       th:href="@{'/roles/' + ${r.id}}" th:text="#{action.view}">مشاهده
-                                                    </a>
-                                                </div>
-                                            </td>
-                                        </tr>
-
-
-                                        </tbody>
-                                    </table>
-                                </div>
-<!--                                <div class="d-flex justify-content-center">-->
-<!--                                    <ul class="pagination mt-3 mb-0">-->
-<!--                                        <li th:if="${pageNumber > 1}" class="page-item disabled"><a th:href="@{/sport/requests/manage(page-number=${pageNumber-1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}" th:text="#{action.previous}">Previous</a></li>-->
-
-<!--                                        <li th:if="${pageNumber > 1}" class="page-item"><a th:text="${pageNumber-1}" th:href="@{/sport/requests/manage(page-number=${pageNumber-1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}" class="page-link"></a></li>-->
-
-<!--                                        <li class="page-item active"><a th:text="${pageNumber}" href="#" class="page-link"></a></li>-->
-
-<!--                                        <li th:if="${(pageSize * pageNumber) < totalRequestNumber}" class="page-item"><a th:text="${pageNumber+1}" th:href="@{/sport/requests/manage(page-number=${pageNumber+1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}" class="page-link"></a></li>-->
-<!--                                        <li th:if="${(pageSize * pageNumber) < totalRequestNumber}" class="page-item">...</a></li>-->
-<!--                                        <li th:if="${(pageSize * pageNumber) < totalRequestNumber}" class="page-item"><a th:href="@{/sport/requests/manage(page-number=${pageNumber+1}, page-size=${pageSize}, search=${oldSearch}, state=${stateFilter})}" th:text="#{action.next}">Next</a></li>-->
-
-<!--                                    </ul>-->
-<!--                                </div>-->
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
-
-
-    </div>
-</div>
+    </section>
+</main>
 
 <th:block th:replace="~{fragments.html :: scripts}"></th:block>
-
 </body>
+</html>

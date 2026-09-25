@@ -433,6 +433,13 @@ table by `FileManagementApplication.initialize`. Adding an endpoint means touchi
 annotation string and the seed. Renaming one silently orphans the DB row. Nothing verifies that the
 annotation strings correspond to real enum constants.
 
+> **Eased, not fixed, in 1.9.0.** `PermissionNamesTest` now checks the annotation strings (issue
+> 84). And the role page groups the permissions (`PermissionGroup`: `FILE_READ`, `FILE_WRITE`,
+> `USERS_ADMIN` ...) so that one tick selects a job's worth of them - but only in the browser: a
+> role still stores single permissions and every handler still names one, so this changes nothing
+> in the data and needs no migration. The coarse verbs of roadmap 2.4 remain the fix, and would
+> have to land before PostgreSQL release B or after C (they migrate the `permission` rows).
+
 ### 20. Every `@ManyToOne` is `EAGER` — **S2**
 
 > **Fixed in the architecture pass.** Every association is `LAZY`, `spring.jpa.open-in-view` is off,
@@ -1531,6 +1538,9 @@ duplicate (409). It is not new with 1.7.0: before it, `existsByUsername` compare
 MySQL collation and found the same row. Release A kept the behaviour as it was on purpose - it
 changes nothing a user can see on MySQL. Found while reviewing release A's lookups.
 
+> **Narrowed in 1.9.0**: only a holder of the ADMIN role may change a username at all
+> (`UserService.updateUser`), so this now bites only an administrator. The bug itself is unchanged.
+
 The fix is one query that leaves the edited row out (`existsByUsernameIgnoreCaseAndIdNot`), and
 the same for the national code and the phone number, which are checked the same way; the home
 folder's rename, which follows, already compares siblings with
@@ -1566,3 +1576,23 @@ form had not).
 > itself. Through the API the same upload is still a 400; its detail now says `is not allowed`
 > (the policy) where it said `is not recognised` (the catalogue). `UploadErrorMessagesTest`
 > covers each case and that the generic sentence is gone from all of them.
+
+### 90. Four writes to a file checked the endpoint permission and not the file's folder — **S1**
+
+`FileService.deleteCompleteFileById` (the whole-file delete behind `DELETE /resource/files/file-info/{id}`),
+`updateFileInfoDescription`, `changeFileInfoState` and `changeFileDetailsState` asked nothing
+beyond the `@PreAuthorize` on their endpoints. With folder access on, anybody holding
+`REST_DELETE_FILE_INFO` could therefore delete any file in the system by its id - outside every
+folder they were granted - and anybody with the description or state permissions could rewrite a
+description or make a private file public anywhere. Every other write already checked the file's
+folder: uploads and new versions (issue 76), moves, and deleting one version. Found while defining
+the fixed USER role, which gives every account the delete and description permissions for its own
+personal folder - the gap would have become everybody's.
+
+> **Fixed in 1.9.0.** All four call `folderAccessService.requireWriteAccess(access, fileInfo)`
+> before changing anything, as the rest do: WRITE on the file's own folder, an administrator
+> passing as everywhere. The tree delete (`FolderTreeDeleteService`) keeps reaching the rows
+> through `deleteFileRows`, having judged the folder it removes as a whole. `FileWriteAccessTest`
+> covers no grant, a READ grant, a WRITE grant and an administrator for each of the four. With
+> folder access off nothing changes: the permissions still decide alone, as they do for every
+> other write.

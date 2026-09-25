@@ -610,6 +610,55 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 1.8.0 to 1.9.0 — fixed roles, a tabbed role page, and a folder check on four writes
+
+No migration: a jar swap. Take the database backup first, as always. What changes:
+
+* **ADMIN and USER become fixed.** Both are defined in code and can no longer be edited on the
+  role page. USER - what every new account is given - is: read, write and delete files, manage
+  folders, make share links; which folders is decided by folder access, so with it on (the
+  default) a USER holder reaches only their personal folder and whatever else they are granted.
+  ADMIN is everything, as before. **At the first start** each is brought to that definition, and if
+  either held anything more - a permission USER is not given, a folder grant, an upload policy of
+  its own - that is first copied into a new role, `USER_PREVIOUS` or `ADMIN_PREVIOUS`, which
+  everybody holding the fixed role is given as well. **Nobody can do less after the upgrade than
+  before it.** The start logs it at WARN:
+
+  ```
+  fixed role USER held more than its definition; kept in new role USER_PREVIOUS (...) and given to its N holder(s) - review it on the role page
+  fixed role USER brought to its definition: ... permission(s), removed [...]
+  ```
+
+  Then open the roles page, look at `USER_PREVIOUS`, keep it, trim it, or remove it from the
+  people who should not have it. To see beforehand what USER holds today:
+
+  ```sql
+  SELECT p.permission_name FROM permission p
+  JOIN permission_role pr ON pr.permission_id = p.id
+  JOIN role r ON r.id = pr.role_id WHERE UPPER(r.role_name) = 'USER' ORDER BY 1;
+  SELECT f.name, rf.permission FROM role_folder rf JOIN folder f ON f.id = rf.folder_id
+  JOIN role r ON r.id = rf.role_id WHERE UPPER(r.role_name) = 'USER';
+  ```
+
+  **One thing to decide deliberately**: USER now carries the permissions to delete files and
+  folders. With folder access **on** that is limited to what each person may write - their own
+  folder. With folder access **off** (`FILEMANAGEMENT_FOLDER_ACCESS_ENABLED=false`) permissions
+  decide alone, and every account could delete any file. Check the setting before deploying.
+* **A folder check on four writes** (issue 90): deleting a whole file, changing a description,
+  and making a file or a version public or private now need WRITE on the file's folder, like every
+  other write. With folder access on, somebody who used to do these outside their folders through
+  the endpoint permission alone is now refused (403); an administrator is not affected.
+* **The role page is three tabs** - permissions, folder access, upload policy - each saved on its
+  own. The permissions tab groups the permissions: ticking a group ticks all of its permissions.
+  **Roles can be copied** (the roles list and the role page); the new permission for that,
+  `COPY_ROLE`, is seeded at the start and has to be given to any role other than ADMIN that should
+  have it.
+* **Only an administrator changes a username.** Someone who may edit users but does not hold the
+  ADMIN role sees the field read-only and is refused if they post a change.
+
+**Rollback** is the 1.8.0 jar: nothing in the schema changed. Roles the start created
+(`*_PREVIOUS`) and the reset of the fixed roles stay; 1.8.0 lets them be edited by hand again.
+
 ### Upgrading from 1.7.0 to 1.8.0 — checksums, external ids and Persian search
 
 Roadmap steps 2 and 4, the last schema changes planned before PostgreSQL release B. A jar swap

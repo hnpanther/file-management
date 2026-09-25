@@ -152,7 +152,8 @@ class UiResourceTest {
     @Test
     void uiRegressionPatternsArePresent() throws IOException {
         String stylesheet = Files.readString(Path.of("src", "main", "frontend", "app.css"));
-        String roleForm = Files.readString(TEMPLATES.resolve("role/save-role.html"));
+        // The permission boxes live on the edit page since 1.9.0 (three tabs); the create page asks for a name only.
+        String roleForm = Files.readString(TEMPLATES.resolve("role/role-edit.html"));
         String fileTree = Files.readString(TEMPLATES.resolve("file-management/files/file-tree.html"));
         String fileForm = Files.readString(TEMPLATES.resolve("file-management/files/save-file.html"));
         String userForm = Files.readString(TEMPLATES.resolve("user/save-user.html"));

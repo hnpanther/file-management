@@ -475,6 +475,8 @@ public class FileService {
         }
 
         FileInfo fileInfo = getFileInfo(id);
+        // A write to the file, judged like one (issue 90): on its own folder, failing closed.
+        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), fileInfo);
         fileInfo.setDescription(description);
         fileInfo.setUpdatedBy(userRepository.getReferenceById(principalId));
 
@@ -524,6 +526,7 @@ public class FileService {
         requireValidState(newState);
 
         FileInfo fileInfo = getFileInfo(fileInfoId);
+        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), fileInfo);
         int oldState = fileInfo.getState();
         fileInfo.setState(newState);
         fileInfo.setUpdatedBy(userRepository.getReferenceById(principalId));
@@ -537,9 +540,10 @@ public class FileService {
 
         requireValidState(newState);
 
-        FileDetails fileDetails = fileDetailsRepository.findById(fileDetailsId).orElseThrow(
+        FileDetails fileDetails = fileDetailsRepository.findByIdWithFileInfo(fileDetailsId).orElseThrow(
                 () -> new ResourceNotFoundException("file details with id=" + fileDetailsId + " not exists")
         );
+        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), fileDetails.getFileInfo());
         int oldState = fileDetails.getState();
         fileDetails.setState(newState);
         fileDetails.setUpdatedBy(userRepository.getReferenceById(principalId));
@@ -555,6 +559,9 @@ public class FileService {
      */
     @Transactional
     public void deleteCompleteFileById(int id, int principalId) {
+        // Removing a file is a write into its folder (issue 90). The tree delete reaches the rows
+        // through deleteFileRows instead, having judged the folder it removes as a whole.
+        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), getFileInfo(id));
         String address = deleteFileRows(id, principalId);
         // The rows go to the database before a byte is touched, so that anything the database
         // would refuse - a foreign key, a deadlock - is refused while the file is still whole.
