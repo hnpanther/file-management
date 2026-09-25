@@ -19,6 +19,7 @@ import com.hnp.filemanagement.repository.ChildCount;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
+import com.hnp.filemanagement.util.PageRequests;
 import com.hnp.filemanagement.util.SearchKey;
 import com.hnp.filemanagement.util.SearchTerms;
 import org.springframework.data.domain.Page;
@@ -72,7 +73,7 @@ public class FolderContentService {
     static final int DEFAULT_SEARCH_PAGE_SIZE = 25;
 
     /** A client asking for more than this gets this. The cap is the point, not the number. */
-    static final int MAX_PAGE_SIZE = 200;
+    static final int MAX_PAGE_SIZE = PageRequests.MAX_PAGE_SIZE;
 
     private final FolderRepository folderRepository;
     private final FileInfoRepository fileInfoRepository;
@@ -587,9 +588,8 @@ public class FolderContentService {
     }
 
     private static PageRequest pageRequest(int page, int size, int fallbackSize) {
-        int number = Math.max(page, 0);
-        int pageSize = size < 1 ? fallbackSize : Math.min(size, MAX_PAGE_SIZE);
-        return PageRequest.of(number, pageSize, Sort.by(Sort.Direction.ASC, "fileName"));
+        return PageRequest.of(PageRequests.number(page), PageRequests.size(size, fallbackSize),
+                Sort.by(Sort.Direction.ASC, "fileName"));
     }
 
     private static PageInfo pageInfoOf(Page<FileInfo> files, PageRequest requested) {

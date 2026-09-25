@@ -29,8 +29,6 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     @Query("SELECT f FROM Folder f WHERE f.parent IS NULL")
     List<Folder> findRoots();
 
-
-
     Optional<Folder> findByPath(String path);
 
     /**
@@ -70,6 +68,15 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
 
     /** How many top-level folders carry this group - what stands in the way of deleting it. */
     long countByTagGroupId(Integer tagGroupId);
+
+    /** How many folders carry each tag group, in one query; a group with none has no row. */
+    @Query("""
+            SELECT new com.hnp.filemanagement.repository.ChildCount(f.tagGroup.id, COUNT(f.id))
+            FROM Folder f
+            WHERE f.tagGroup IS NOT NULL
+            GROUP BY f.tagGroup.id
+            """)
+    List<ChildCount> countFoldersPerTagGroup();
 
     /**
      * Folders found by id, or by a fragment of the name or the label - their folded keys, against
@@ -158,7 +165,6 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
               AND (f.path <> CONCAT(f.parent.path, f.id, '/') OR f.depth <> f.parent.depth + 1)
             """)
     List<Folder> findRowsWhoseDerivedColumnsDisagree();
-
 
     /**
      * Every folder at or below a path prefix, shallowest first — the prefix scan {@code path} was

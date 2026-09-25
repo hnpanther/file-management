@@ -41,10 +41,23 @@ public class ShareLinkResource {
      * @param maxDownloads optional cap on downloads
      */
     public record CreateShareLinkRequest(Integer minutes, String password, Integer maxDownloads) {
+
+        /** Without the password, which a record would otherwise print. */
+        @Override
+        public String toString() {
+            return "CreateShareLinkRequest[minutes=" + minutes + ", password=" + (password == null ? null : "***")
+                    + ", maxDownloads=" + maxDownloads + "]";
+        }
     }
 
     /** The link as created, plus the absolute URL to hand out. */
     public record CreatedShareLink(ShareLinkDTO link, String url) {
+
+        /** Without the URL, which carries the token. */
+        @Override
+        public String toString() {
+            return "CreatedShareLink[link=" + link + "]";
+        }
     }
 
     /**

@@ -10,6 +10,7 @@ import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.service.UploadPolicyService;
 import com.hnp.filemanagement.util.ContentDispositions;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
+import com.hnp.filemanagement.util.PageRequests;
 import com.hnp.filemanagement.util.UiMessages;
 import com.hnp.filemanagement.util.ModelConverterUtil;
 import com.hnp.filemanagement.validation.InsertValidation;
@@ -47,20 +48,14 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/files")
 public class FileController {
 
-    Logger logger = LoggerFactory.getLogger(FileController.class);
-
+    private static final Logger logger = LoggerFactory.getLogger(FileController.class);
 
     private final GlobalGeneralLogging globalGeneralLogging;
-
     private final FileService fileService;
     private final UploadPolicyService uploadPolicyService;
+    private final UiMessages messages;
 
     private final int defaultPageSize;
-
-    private final int defaultElementSize;
-
-
-    private final UiMessages messages;
 
     public FileController(GlobalGeneralLogging globalGeneralLogging, FileService fileService,
                           UploadPolicyService uploadPolicyService, FileManagementProperties properties,
@@ -69,7 +64,6 @@ public class FileController {
         this.fileService = fileService;
         this.uploadPolicyService = uploadPolicyService;
         this.defaultPageSize = properties.defaults().pageSize();
-        this.defaultElementSize = properties.defaults().elementSize();
         this.messages = messages;
     }
 
@@ -94,7 +88,6 @@ public class FileController {
                 UploadPolicyService.megabytesOf(e.getIncomingBytes()));
     }
 
-    /** The refusal in the page's language, with the facts the exception carries. */
     /** One debug line per upload, safe when the request carried no file part at all. */
     private void logUpload(MultipartFile file) {
         logger.debug("upload originalName={}, contentType={}, size={}",
@@ -206,10 +199,8 @@ public class FileController {
                               Model model) {
 
         int principalId = userDetails.getId();
-        globalGeneralLogging.detail("save new file=" + fileInfoDTO);
-
+        globalGeneralLogging.detail("save new file name=" + fileInfoDTO.getFileName() + ", folderId=" + fileInfoDTO.getFolderId());
         logUpload(fileInfoDTO.getMultipartFile());
-
 
         boolean showMessage = true;
         boolean valid = false;
@@ -217,10 +208,9 @@ public class FileController {
         // The file just stored, for the success message's links to its page and its place in the explorer.
         Integer savedFileId = null;
 
-
         if(bindingResult.hasErrors()) {
             message = bindingMessage(bindingResult);
-            globalGeneralLogging.detail("ValidationError:" + bindingResult);
+            globalGeneralLogging.invalid(bindingResult);
         } else {
 
             try {
@@ -271,25 +261,21 @@ public class FileController {
     }
 
 
-    //PUBLIC_FILE_PAGE
-//    @PreAuthorize("hasAuthority('PUBLIC_FILE_PAGE') || hasAuthority('ADMIN')")
+    /**
+     * The public file list. No permission: who may see it - everyone, or every signed-in person -
+     * is the administrator's switch on {@code /settings/general}, which {@code SecurityConfig}
+     * asks through {@code PublicFilesAuthorizationManager}.
+     */
     @GetMapping("public-files")
-    public String getAllPublicFile(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model,
+    public String getAllPublicFile(Model model,
                                    @RequestParam(name = "page-size", required = false) Integer pageSize,
                                    @RequestParam(name = "page-number", required = false) Integer pageNumber,
                                    @RequestParam(name = "search", required = false) String search) {
 
-
-        int principalId = userDetails == null ? 0 : userDetails.getId();
-
         globalGeneralLogging.detail("all public files, pageSize=" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search);
 
-        if(pageSize == null) {
-            pageSize = defaultPageSize;
-        }
-        if(pageNumber == null) {
-            pageNumber = 0;
-        }
+        pageSize = PageRequests.size(pageSize, defaultPageSize);
+        pageNumber = PageRequests.number(pageNumber);
 
         PageResponse<PublicFileDetailsDTO> files = fileService.getPagePublicFiles(pageSize, pageNumber, search);
 
@@ -315,14 +301,10 @@ public class FileController {
         return "file-management/files/file-info-page.html";
     }
 
-    //DOWNLOAD_PUBLIC_FILE
-//    @PreAuthorize("hasAuthority('DOWNLOAD_PUBLIC_FILE') || hasAuthority('ADMIN')")
+    /** A public file's bytes, under the same switch as the public list above. */
     @GetMapping("public-download/{id}")
-    public ResponseEntity<?> downloadPublicFile(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                                @PathVariable("id") int fileDetailsId,
+    public ResponseEntity<?> downloadPublicFile(@PathVariable("id") int fileDetailsId,
                                                 @RequestParam(value = "inline", required = false) String inline) {
-
-        int principalId = userDetails == null ? 0 : userDetails.getId();
 
         globalGeneralLogging.detail("download public fileDetails with id=" + fileDetailsId);
 
@@ -342,12 +324,8 @@ public class FileController {
         int principalId = userDetails.getId();
         globalGeneralLogging.detail("all file info, pageSize=" + pageSize + ",pageNumber=" + pageNumber + ",search=" + search);
 
-        if(pageSize == null) {
-            pageSize = defaultPageSize;
-        }
-        if(pageNumber == null) {
-            pageNumber = 0;
-        }
+        pageSize = PageRequests.size(pageSize, defaultPageSize);
+        pageNumber = PageRequests.number(pageNumber);
 
         PageResponse<FileInfoDTO> files = fileService.getPageFileInfo(pageSize, pageNumber, search, principalId);
 
@@ -415,7 +393,7 @@ public class FileController {
         String message = "";
 
         FileInfoDTO fileInfoDTO = fileService.getFileInfoDtoWithFileDetails(fileInfoId, principalId);
-        int lastVersion = fileService.getLastVersionOfFile(fileInfoId);
+        int lastVersion = fileInfoDTO.getLastVersion();
         FileUploadDTO fileUploadDTO = new FileUploadDTO();
         fileUploadDTO.setFileName(fileInfoDTO.getFileName());
         fileUploadDTO.setFileId(fileInfoDTO.getId());
@@ -449,16 +427,14 @@ public class FileController {
                                        Model model) {
 
         int principalId = userDetails.getId();
-        globalGeneralLogging.detail("save new file details, upload=" + fileUploadDTO);
+        globalGeneralLogging.detail("save new file details, fileId=" + fileUploadDTO.getFileId()
+                + ", type=" + fileUploadDTO.getType() + ", version=" + fileUploadDTO.getVersion());
 
         if(fileUploadDTO.getType() == null || !(fileUploadDTO.getType().equals("format") || fileUploadDTO.getType().equals("version"))) {
             throw new  InvalidDataException("type not correct, type=" + fileUploadDTO.getType());
         }
 
         logUpload(fileUploadDTO.getMultipartFile());
-
-
-
 
         boolean showMessage = true;
         boolean valid = false;
@@ -477,7 +453,7 @@ public class FileController {
                     : messages.get("upload.invalid.versionName",
                             fileUploadDTO.getMultipartFile().getOriginalFilename(), fileUploadDTO.getFileName());
             fileUploadDTO.setVersion(fileUploadDTO.getVersion() -1);
-            globalGeneralLogging.detail("ValidationError:" + bindingResult);
+            globalGeneralLogging.invalid(bindingResult);
         } else {
             try {
                 fileService.createNewFileDetails(fileUploadDTO, principalId);
@@ -512,10 +488,5 @@ public class FileController {
 
 
         return "file-management/files/new-file-details.html";
-
     }
-
-
-
-
 }

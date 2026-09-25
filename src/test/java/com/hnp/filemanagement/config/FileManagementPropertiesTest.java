@@ -32,7 +32,6 @@ class FileManagementPropertiesTest {
 
         assertThat(properties.baseDir()).isEqualTo("D:/files/");
         assertThat(properties.defaults().pageSize()).isEqualTo(50);
-        assertThat(properties.defaults().elementSize()).isEqualTo(50);
         assertThat(properties.folderAccess().enabled()).isFalse();
         assertThat(properties.folders().maxDepth()).isEqualTo(6);
         assertThat(properties.folders().maxDeleteFiles()).isEqualTo(1000);
@@ -63,7 +62,6 @@ class FileManagementPropertiesTest {
         FileManagementProperties properties = bind(Map.ofEntries(
                 Map.entry("filemanagement.base-dir", "E:/data/"),
                 Map.entry("filemanagement.default.page-size", "25"),
-                Map.entry("filemanagement.default.element-size", "10"),
                 Map.entry("filemanagement.folder-access.enabled", "true"),
                 Map.entry("filemanagement.folders.max-depth", "4"),
                 Map.entry("filemanagement.folders.max-delete-files", "50"),
@@ -85,7 +83,6 @@ class FileManagementPropertiesTest {
 
         assertThat(properties.baseDir()).isEqualTo("E:/data/");
         assertThat(properties.defaults().pageSize()).isEqualTo(25);
-        assertThat(properties.defaults().elementSize()).isEqualTo(10);
         assertThat(properties.folderAccess().enabled()).isTrue();
         assertThat(properties.folders().maxDepth()).isEqualTo(4);
         assertThat(properties.folders().maxDeleteFiles()).isEqualTo(50);

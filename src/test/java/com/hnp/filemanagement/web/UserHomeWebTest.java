@@ -173,7 +173,7 @@ class UserHomeWebTest extends MySqlSupport {
                         .accept(MediaType.TEXT_HTML))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/files/file-info"));
-        mockMvc.perform(get("/").with(user(principal(personId, PermissionEnum.PUBLIC_FILE_PAGE)))
+        mockMvc.perform(get("/").with(user(principal(personId)))
                         .accept(MediaType.TEXT_HTML))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/files/public-files"));

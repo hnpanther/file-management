@@ -3,19 +3,18 @@ package com.hnp.filemanagement.controller;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
 
 /**
- * The application root. Signed in or not, {@code /} lands on the public file list, which is the
- * only page that renders without a permission.
+ * The application root, open to everyone: it only decides where a visitor belongs. Anonymous
+ * visitors and people who may not browse the file list land on the public file list; everyone
+ * else on the file list.
  */
 @Controller
 public class HomeController {
-
 
     private final GlobalGeneralLogging globalGeneralLogging;
 
@@ -23,12 +22,8 @@ public class HomeController {
         this.globalGeneralLogging = globalGeneralLogging;
     }
 
-
-    //ACCESS_HOME
-//    @PreAuthorize("hasAuthority('ACCESS_HOME') || hasAuthority('ADMIN')")
     @GetMapping
     public String home(@AuthenticationPrincipal UserDetailsImpl userDetails) {
-        int principalId = userDetails == null ? 0 : userDetails.getId();
         globalGeneralLogging.detail("home page");
 
         if(userDetails == null) {
@@ -38,8 +33,8 @@ public class HomeController {
         // A personal folder does not change where anyone lands (roadmap 10.4): it is a link in
         // the navigation, offered to whoever has one (UserHomeAdvice), not a redirect.
         // Signed-in staff land on the working screen; everyone else on the public library. Without
-        // this check a user who only holds PUBLIC_FILE_PAGE would be redirected straight into a
-        // 403 after logging in.
+        // this check a user who may not list the files would be redirected straight into a 403
+        // after logging in.
         boolean canBrowseAllFiles = holds(userDetails, PermissionEnum.GET_ALL_FILE_INFO_PAGE);
 
         return canBrowseAllFiles ? "redirect:/files/file-info" : "redirect:/files/public-files";

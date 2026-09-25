@@ -154,9 +154,6 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     @Query("SELECT f.id FROM FileInfo f WHERE f.folder.path LIKE CONCAT(:pathPrefix, '%') ORDER BY f.id")
     List<Integer> findIdsBySubtree(@Param("pathPrefix") String pathPrefix);
 
-    @Query("SELECT f.lastVersion FROM FileInfo f WHERE f.id = :fileInfoId")
-    Integer getLastVersionNumberOfFile(@Param("fileInfoId") int fileInfoId);
-
     /**
      * Recomputes the denormalised {@code lastVersion} from the revisions that exist, as one
      * statement. Both flags matter: the pending removal of a version has to reach the database

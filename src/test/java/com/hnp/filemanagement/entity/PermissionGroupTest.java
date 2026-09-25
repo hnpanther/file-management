@@ -67,7 +67,7 @@ class PermissionGroupTest {
                 PermissionGroup.FILE_READ, PermissionGroup.FILE_WRITE, PermissionGroup.FILE_DELETE,
                 PermissionGroup.FOLDER_MANAGE, PermissionGroup.SHARE_LINKS);
         assertThat(FixedRole.USER_PERMISSIONS).contains(
-                PermissionEnum.ACCESS_HOME, PermissionEnum.FILE_EXPLORER_PAGE, PermissionEnum.REST_GET_FOLDER_CONTENT,
+                PermissionEnum.FILE_EXPLORER_PAGE, PermissionEnum.REST_GET_FOLDER_CONTENT,
                 PermissionEnum.DOWNLOAD_FILE, PermissionEnum.SAVE_NEW_FILE, PermissionEnum.REST_DELETE_FILE_INFO,
                 PermissionEnum.REST_CREATE_FOLDER, PermissionEnum.CREATE_SHARE_LINK);
 

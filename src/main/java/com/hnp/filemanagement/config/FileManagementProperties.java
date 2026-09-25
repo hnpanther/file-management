@@ -48,7 +48,7 @@ public record FileManagementProperties(
         @Valid Auth auth) {
 
     public FileManagementProperties {
-        defaults = defaults == null ? new Defaults(null, null) : defaults;
+        defaults = defaults == null ? new Defaults(null) : defaults;
         folderAccess = folderAccess == null ? new FolderAccess(null) : folderAccess;
         folders = folders == null ? new Folders(null, null) : folders;
         profiles = profiles == null ? new Profiles(null) : profiles;
@@ -69,11 +69,10 @@ public record FileManagementProperties(
                 storage, shareLinks, bootstrap, new Auth(new Ldap(activedirectory)));
     }
 
-    /** Rows per page in a list view, and items per dropdown. */
-    public record Defaults(@Min(1) Integer pageSize, @Min(1) Integer elementSize) {
+    /** Rows per page in a list view; a page never holds more than {@code PageRequests.MAX_PAGE_SIZE}. */
+    public record Defaults(@Min(1) Integer pageSize) {
         public Defaults {
             pageSize = pageSize == null ? 50 : pageSize;
-            elementSize = elementSize == null ? 50 : elementSize;
         }
     }
 
@@ -176,6 +175,12 @@ public record FileManagementProperties(
         public Bootstrap {
             adminPassword = adminPassword == null ? "" : adminPassword;
         }
+
+        /** Without the password, which a record would otherwise print. */
+        @Override
+        public String toString() {
+            return "Bootstrap[adminPassword=" + (adminPassword.isEmpty() ? "" : "***") + "]";
+        }
     }
 
     /** @param ldap the directory settings; {@code enabled} false means the provider stands aside */
@@ -213,6 +218,16 @@ public record FileManagementProperties(
             truststoreType = truststoreType == null || truststoreType.isBlank() ? "PKCS12" : truststoreType;
             verifyHostname = verifyHostname == null || verifyHostname;
             verifyCertificate = verifyCertificate == null || verifyCertificate;
+        }
+
+        /** Every setting but the truststore password, which a record would otherwise print. */
+        @Override
+        public String toString() {
+            return "ActiveDirectory[enabled=" + enabled + ", domain=" + domain + ", url=" + url
+                    + ", connectTimeoutMs=" + connectTimeoutMs + ", readTimeoutMs=" + readTimeoutMs
+                    + ", truststore=" + truststore + ", truststorePassword=" + (truststorePassword.isEmpty() ? "" : "***")
+                    + ", truststoreType=" + truststoreType + ", verifyHostname=" + verifyHostname
+                    + ", verifyCertificate=" + verifyCertificate + "]";
         }
     }
 }

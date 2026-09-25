@@ -200,7 +200,7 @@
                         let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "users/" + $(".userId").val();
                         window.location.replace(newUrl);
                     } else {
-                        alert(xhr.responseText);
+                        alert(xhr.responseJSON && xhr.responseJSON.detail ? xhr.responseJSON.detail : xhr.responseText);
                     }
                 }
             });
@@ -228,7 +228,7 @@
                         let newUrl = currentLocation.protocol + "//" + currentLocation.hostname + ":" + currentLocation.port + contextPath + "users/" + $(".userId").val();
                         window.location.replace(newUrl);
                     } else {
-                        alert([[#{js.cannotChangeLoginType}]]);
+                        alert(xhr.responseJSON && xhr.responseJSON.detail ? xhr.responseJSON.detail : [[#{js.cannotChangeLoginType}]]);
                     }
                 }
             });

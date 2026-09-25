@@ -10,6 +10,7 @@ import com.hnp.filemanagement.exception.DependencyResourceException;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.repository.ChildCount;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.TagRepository;
@@ -18,7 +19,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * The tag groups as a settings page manages them: the "general tags" of the old taxonomy, each a
@@ -59,11 +62,18 @@ public class TagGroupService {
 
     @Transactional(readOnly = true)
     public List<TagGroupRow> rows() {
+        // Three queries for the whole page, whatever the number of groups.
+        Map<Integer, Long> folders = totals(folderRepository.countFoldersPerTagGroup());
+        Map<Integer, Long> tags = totals(tagRepository.countTagsPerGroup());
         return tagGroupRepository.findAll().stream()
                 .sorted((a, b) -> a.getName().compareToIgnoreCase(b.getName()))
                 .map(g -> new TagGroupRow(g.getId(), g.getName(), g.getTitle(),
-                        folderRepository.countByTagGroupId(g.getId()), tagRepository.countByGroupId(g.getId())))
+                        folders.getOrDefault(g.getId(), 0L), tags.getOrDefault(g.getId(), 0L)))
                 .toList();
+    }
+
+    private static Map<Integer, Long> totals(List<ChildCount> counts) {
+        return counts.stream().collect(Collectors.toMap(ChildCount::parentId, ChildCount::total));
     }
 
     @Transactional(readOnly = true)

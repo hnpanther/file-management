@@ -11,7 +11,6 @@ import com.hnp.filemanagement.dto.FolderContentDTO;
 import java.util.ArrayList;
 import java.util.List;
 
-
 // file info state ===> 0 -> public, -1 -> private, 1 -> rule base
 @Data
 public class FileInfoDTO {
@@ -24,10 +23,8 @@ public class FileInfoDTO {
 
     private String fileName;
 
-
     @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
     private String description;
-
 
     private String fileNameDescription;
 
@@ -57,7 +54,5 @@ public class FileInfoDTO {
     private String createdBy;
 
     private List<FileDetailsDTO> fileDetailsDTOS = new ArrayList<>();
-
-
 
 }

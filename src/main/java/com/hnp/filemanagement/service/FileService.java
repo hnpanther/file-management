@@ -698,15 +698,6 @@ public class FileService {
 
     // ------------------------------------------------------------------ queries
 
-    /** The highest version a file has, from the denormalised column. */
-    public int getLastVersionOfFile(int fileInfoId) {
-        Integer lastVersion = fileInfoRepository.getLastVersionNumberOfFile(fileInfoId);
-        if (lastVersion == null) {
-            throw new ResourceNotFoundException("file info not exists, id=" + fileInfoId);
-        }
-        return lastVersion;
-    }
-
     /** The bytes of a publicly visible version — reachable without signing in. */
     public FileDownloadDTO downloadPublicFile(int fileDetailsId) {
         FileDetails fileDetails = fileDetailsRepository.findPublicFile(fileDetailsId).orElseThrow(

@@ -612,7 +612,8 @@ structure - but the content types it rewrote stay rewritten, which is harmless.
 
 ### Upgrading from 1.8.0 to 1.9.0 — fixed roles, a tabbed role page, and a folder check on four writes
 
-No migration: a jar swap. Take the database backup first, as always. What changes:
+One small migration, `V2.19`, which deletes three permissions nothing checked (below); otherwise a
+jar swap. Take the database backup first, as always. What changes:
 
 * **ADMIN and USER become fixed.** Both are defined in code and can no longer be edited on the
   role page. USER - what every new account is given - is: read, write and delete files, manage
@@ -673,6 +674,28 @@ No migration: a jar swap. Take the database backup first, as always. What change
   have it.
 * **Only an administrator changes a username.** Someone who may edit users but does not hold the
   ADMIN role sees the field read-only and is refused if they post a change.
+* **Only an administrator touches an administrator** (issue 91): giving or taking the ADMIN role,
+  and resetting the password of, disabling, editing or changing the login type of an account that
+  holds it, now needs ADMIN as well as the page's permission. And the last enabled administrator
+  can be neither disabled nor demoted - make a second one first. Before deploying, check that the
+  people who manage users hold ADMIN if they are meant to manage administrators too:
+
+  ```sql
+  SELECT u.username FROM app_user u JOIN user_role ur ON ur.user_id = u.id
+  JOIN role r ON r.id = ur.role_id WHERE UPPER(r.role_name) = 'ADMIN' AND u.enabled = 1;
+  ```
+* **Passwords no longer reach the log** (issue 92). Earlier versions wrote a new or edited user's
+  password to the application log at `DEBUG`, which the package logs at in every profile. After
+  the upgrade, **delete or rotate the old log files**, and consider any password set on the user
+  pages while they were written as seen by whoever could read them.
+* **Three permissions are gone** (issue 94): `ACCESS_HOME`, `PUBLIC_FILE_PAGE` and
+  `DOWNLOAD_PUBLIC_FILE`, which no endpoint checked - `/` is open, and the public files follow the
+  switch on `/settings/general` as before. `V2.19` deletes their rows; nothing anybody could do
+  changes. **Do not roll back to an older jar without restoring the backup**: an older jar seeds
+  them again at its start, which is harmless, but a restore is the rollback this procedure names.
+* **Lists take at most 200 rows a page**, whatever `page-size` a URL asks for, and a nonsensical
+  one is the default instead of an error page (issue 93). `filemanagement.default.element-size`
+  is no longer read; an environment file that still sets it is ignored.
 * **For the PL/SQL clients, one addition and nothing to change:** `GET
   /api/v1/files/file-info/{fileInfoId}/download` downloads a file by the file's own id - its
   latest version, or `?version=` / `?format=` - by number or by external id; and every v1
