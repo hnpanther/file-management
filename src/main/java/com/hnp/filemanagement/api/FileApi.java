@@ -50,7 +50,11 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p><b>Either id, since 1.8.0.</b> Every path segment that names a file or a revision takes its
  * number, as it always has, or its external id - a UUID, in any case (issue 7, {@link IdReference});
- * a segment that is neither is the same 400 a non-number always was. The upload answers
+ * a segment that is neither is the same 400 a non-number always was. A client that keeps only
+ * the file's id downloads with {@code file-info/{fileInfoId}/download}: the latest version, or
+ * the one {@code ?version=} names, in its only format or the one {@code ?format=} picks. Every
+ * download says which revision it served in {@code X-File-*} headers. The guide for moving a
+ * client over is {@code docs/api-v1.md}. The upload answers
  * both. The numbers keep working for as long as a client uses them; the external id is the one
  * that is neither guessable nor tied to this database's numbering, so it is the one to move to.
  */
@@ -185,12 +189,52 @@ public class FileApi {
         int fileDetailsId = fileService.fileDetailsIdOf(fileDetailsReference);
         globalGeneralLogging.detail("download file details id=" + fileDetailsId);
 
-        FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId, userDetails.getId());
+        return serve(fileService.downloadFile(fileDetailsId, userDetails.getId()));
+    }
 
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(fileDownloadDTO.getContentType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDispositions.attachment(fileDownloadDTO.getFileName()))
+    /**
+     * A file's bytes by the file's own id - the number or the external id - for a client that
+     * keeps that and not a revision's: the latest version unless {@code version} names another,
+     * in the version's only format unless {@code format} picks one ({@code pdf}, {@code .PDF}).
+     * 404 for a version or format the file does not have (the message lists the formats it does
+     * have); 400 when the version has several formats and none is chosen. The headers say which
+     * revision was served.
+     */
+    // API_DOWNLOAD_FILE (a revision chosen by the file's own id)
+    @PreAuthorize("hasAuthority('API_DOWNLOAD_FILE') || hasAuthority('ADMIN')")
+    @GetMapping("file-info/{fileInfoId}/download")
+    public ResponseEntity<Resource> downloadFileRevision(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                         @PathVariable("fileInfoId") IdReference fileInfoReference,
+                                                         @RequestParam(value = "version", required = false) Integer version,
+                                                         @RequestParam(value = "format", required = false) String format) {
+
+        int fileInfoId = fileService.fileInfoIdOf(fileInfoReference);
+        globalGeneralLogging.detail("download file info id=" + fileInfoId + " version=" + (version == null ? "latest" : version)
+                + (format == null ? "" : " format=" + format));
+
+        return serve(fileService.downloadFileRevision(fileInfoId, version, format, userDetails.getId()));
+    }
+
+    /**
+     * Every v1 download answers the same way: the type the extension says, as an attachment under
+     * the stored name ({@link ContentDispositions}), {@code nosniff}, and which revision it was -
+     * {@code X-File-External-Id}, {@code X-File-Details-Id}, {@code X-File-Details-External-Id},
+     * {@code X-File-Version}, and {@code X-Checksum-SHA256} when the checksum is known, so a client
+     * can check what it received. A {@code HEAD} to any download answers the headers alone - the
+     * cheap way for a client holding only the numbers to learn the external ids of what it has.
+     */
+    private static ResponseEntity<Resource> serve(FileDownloadDTO download) {
+        ResponseEntity.BodyBuilder response = ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(download.getContentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDispositions.attachment(download.getFileName()))
                 .header("X-Content-Type-Options", "nosniff")
-                .body(fileDownloadDTO.getResource());
+                .header("X-File-External-Id", download.getFileExternalId())
+                .header("X-File-Details-Id", String.valueOf(download.getFileDetailsId()))
+                .header("X-File-Details-External-Id", download.getFileDetailsExternalId())
+                .header("X-File-Version", String.valueOf(download.getVersion()));
+        if (download.getChecksumSha256() != null) {
+            response.header("X-Checksum-SHA256", download.getChecksumSha256());
+        }
+        return response.body(download.getResource());
     }
 }

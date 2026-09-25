@@ -747,6 +747,55 @@ public class FileService {
     }
 
     /**
+     * The bytes of a file named by the file's own id rather than a revision's - what a client that
+     * keeps only the file's id downloads with (the v1 {@code file-info/{id}/download}).
+     *
+     * <p>The revision is chosen in two steps. The version: the file's latest ({@code lastVersion})
+     * unless {@code version} names another. The format: the only one that version has, unless
+     * {@code format} picks one by extension (without case, with or without the dot). A version with
+     * several formats and no {@code format} is a 400 that lists them - picking one silently would
+     * hand a client a PDF one day and a DOCX the next.
+     *
+     * <p>Judged like every download, on the file's own folder, before anything about its versions
+     * is said: a caller who may not read the file learns nothing about which versions exist.
+     *
+     * @throws ResourceNotFoundException no such file, version or format
+     * @throws InvalidDataException      a version below 1, or several formats and none chosen
+     */
+    public FileDownloadDTO downloadFileRevision(int fileInfoId, Integer version, String format, int principalId) {
+        FileInfo fileInfo = getFileInfoWithFileDetails(fileInfoId);
+        folderAccessService.requireReadAccess(folderAccessService.accessFor(principalId), fileInfo);
+
+        if (version != null && version < 1) {
+            throw new InvalidDataException("version must be 1 or more, got " + version);
+        }
+        int wanted = version == null ? fileInfo.getLastVersion() : version;
+        List<FileDetails> atVersion = fileInfo.getFileDetailsList().stream()
+                .filter(details -> details.getVersion() == wanted)
+                .sorted(java.util.Comparator.comparing(FileDetails::getFileExtension, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+        if (atVersion.isEmpty()) {
+            throw new ResourceNotFoundException("file id=" + fileInfoId + " has no version " + wanted
+                    + "; its latest is " + fileInfo.getLastVersion());
+        }
+
+        String extension = format == null ? "" : format.trim().replaceFirst("^\\.", "");
+        List<FileDetails> chosen = extension.isEmpty() ? atVersion : atVersion.stream()
+                .filter(details -> details.getFileExtension().equalsIgnoreCase(extension))
+                .toList();
+        String formats = String.join(", ", atVersion.stream().map(FileDetails::getFileExtension).toList());
+        if (chosen.isEmpty()) {
+            throw new ResourceNotFoundException("version " + wanted + " of file id=" + fileInfoId
+                    + " has no format " + extension + "; it has: " + formats);
+        }
+        if (chosen.size() > 1) {
+            throw new InvalidDataException("version " + wanted + " of file id=" + fileInfoId
+                    + " has several formats (" + formats + "); name one with ?format=");
+        }
+        return toDownload(chosen.getFirst());
+    }
+
+    /**
      * The file list, restricted to what this person's folder grants reach.
      *
      * <p>The restriction goes into the query, never onto the fetched page: the page and its total
@@ -868,6 +917,13 @@ public class FileService {
                 .orElse(MediaType.APPLICATION_OCTET_STREAM_VALUE));
         fileDownloadDTO.setInlineSafe(ContentTypes.inlineSafe(fileDetails.getFileExtension()));
         fileDownloadDTO.setFileName(fileDetails.getFileName());
+        fileDownloadDTO.setFileDetailsId(fileDetails.getId());
+        fileDownloadDTO.setFileDetailsExternalId(fileDetails.getExternalId());
+        // Every caller of this loaded the revision with its file (findByIdWithFileInfo,
+        // findPublicFile, or the file with its revisions), so this reads no row.
+        fileDownloadDTO.setFileExternalId(fileDetails.getFileInfo().getExternalId());
+        fileDownloadDTO.setVersion(fileDetails.getVersion());
+        fileDownloadDTO.setChecksumSha256(fileDetails.getChecksumSha256());
         return fileDownloadDTO;
     }
 

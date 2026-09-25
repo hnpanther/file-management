@@ -462,18 +462,69 @@ nothing about the database. What moves is the tables, in foreign-key order, with
 (every id is referenced somewhere: `storage_key` directories, `action_history.entity_id`, the
 PL/SQL clients' `file_id` / `file_details_id` columns).
 
-**The copier.** `pgloader` if a Linux host or WSL can reach both servers (it maps the types,
-keeps ids, and does the whole thing in one command from a `.load` file); otherwise a one-off
-`copy` profile in the application itself — two `DataSource`s, `SELECT *` per table into
-`INSERT` batches in FK order — which is less magic and runs on the Windows host. Either way:
+**What the copy is, concretely.** Two databases with the same tables: MySQL full, and a
+PostgreSQL on which release B has run once, so that `V3.0` created every table empty with the
+same names and columns. Then, table by table, every row is read from MySQL and written to
+PostgreSQL **with the same values, its id included**:
 
-1. `flyway_schema_history` is **not** copied: PostgreSQL has its own, written by `V3.0`.
-2. `user` (MySQL, after release A: `app_user`) → `app_user`; every other table keeps its name.
-3. After the copy, every identity sequence is set past the copied ids:
+```sql
+SELECT * FROM file_info ORDER BY id;                                    -- from MySQL
+INSERT INTO file_info (id, external_id, file_name, search_name, folder_id, ...)
+VALUES (5, '086d6dc8-...', 'فایل راهنمای 1', 'فایل راهنمای 1', 2, ...);    -- to PostgreSQL, in batches
+```
+
+The ids must survive because they are written down outside these tables: in the storage keys
+(`files/s000/5/...`), in `action_history.entity_id`, and in the PL/SQL clients' own tables
+(`file_id`, `file_details_id`). Text, dates and numbers are converted by the two JDBC drivers -
+both sides are UTF-8, and `V3.0` declares the types the table below maps. The values 1.8.0 added
+are copied as they are, not recomputed: the search keys, the external ids, the checksums. The
+Java migration `V2_17` is never run on PostgreSQL; the rows it filled arrive filled.
+
+**The copier: a `copy` profile of the application itself**, not a separate script. Decided over
+`pgloader` (which needs Linux or WSL beside the Windows host) and over a Python script (a second
+language and a runtime to install on the production host, and a path the test suite does not
+cover):
+
+```
+java -jar file-management.jar --spring.profiles.active=copy
+```
+
+It starts no web server; it opens two `DataSource`s from the environment file (the MySQL one as
+today, `FILEMANAGEMENT_COPY_TARGET_URL` and its credentials for PostgreSQL), does the steps
+below, prints a report and exits with a non-zero status if anything did not match. It is written
+in release B, with a test that starts a MySQL and a PostgreSQL container, fills the MySQL one
+with awkward data - Persian names with the half-space, a folder tree at the maximum depth, a file
+with several versions and formats, share links, API keys - runs the copy and compares every
+table. The table list lives beside the code that defines the schema, and that test fails when a
+migration adds a table the copier does not know, so a new table cannot be forgotten.
+
+1. **Empty what `V3.0` seeded.** The baseline inserts `Home`, the permission catalogue, the
+   settings, so that an empty PostgreSQL boots; the copy brings the production rows for all of
+   them, so the seeded ones are removed first (`TRUNCATE ... RESTART IDENTITY CASCADE`, on the
+   target only).
+2. **Copy in foreign-key order**, so no row arrives before the row it points at:
+
+   ```
+   app_user → role → permission → permission_role → user_role → tag_group
+   → folder (by depth: every parent before its children) → tag → app_setting
+   → file_info → file_details → file_tag → user_folder → role_folder
+   → upload_policy → upload_policy_rule → content_kind → api_key → api_key_folder
+   → file_share_link → file_storage_write → action_history
+   ```
+
+   `folder` points at itself (`parent_id`), which is why it goes by depth. Rows go in batches
+   (1 000 per `INSERT`), one transaction per table. `flyway_schema_history` is **not** copied:
+   PostgreSQL has its own, written by `V3.0`. `user` is `app_user` on both sides since release A;
+   every other table keeps its name too.
+3. **Set every identity sequence past the copied ids** - otherwise the first upload after the
+   cut-over is given id 1 and fails as a duplicate:
    `SELECT setval(pg_get_serial_sequence('file_info', 'id'), (SELECT MAX(id) FROM file_info));`
-   — one line per table, or the first insert after cut-over fails with a duplicate key.
-4. The copy is run against a **rehearsal** PostgreSQL first, from a backup, days before; the
-   verification below is scripted then and re-run on the night.
+   - one per table with an id.
+4. **Verify** (below), on both sides, and refuse to finish on any difference.
+
+The copy is run against a **rehearsal** PostgreSQL first, from a backup, days before; the night
+is the rehearsal again. The bytes on disk are not touched at any point: `file_details.storage_key`
+is relative to `base-dir` and knows nothing about the database.
 
 **Verification, scripted (`tools/pg-verify.sql`, run on both sides and diffed):**
 
@@ -495,7 +546,8 @@ application host and the administrator's workstation (`pg_hba.conf`, the firewal
 the existing one).
 
 **Weeks before.**
-1. Release A is in production and has run for a while; `LOWER(...) LIKE` searches behave.
+1. Release A is in production and has run for a while; searches behave (names compared through
+   `UPPER(...)`, files and folders through the folded keys of 1.8.0).
 2. PostgreSQL 17 installed: `ENCODING 'UTF8'`, `shared_buffers` at a quarter of RAM,
    `max_connections` above the Hikari pool, `log_min_duration_statement` on. A role
    `file_management` with `CREATEDB` for the rehearsal only, `LOGIN` afterwards. The password goes
@@ -539,6 +591,38 @@ is the lighter choice here.
 
 Phase 2 already introduced `BlobStore` and its contract test, so this phase adds an implementation
 rather than restructuring anything.
+
+### Where this stands (1.9.0)
+
+**The groundwork is done; the adapter is not written.** What is in place, and what it means here:
+
+* **One port for every byte** (`BlobStore`, Phase 2): nothing outside `FilesystemBlobStore`
+  touches the filesystem, so S3 is a second implementation of five methods and nothing else in
+  the application changes. Its promises are `BlobStoreContractTest`, which an `S3BlobStore`
+  passes to be done.
+* **One opaque key per object** (`file_details.storage_key`), never rebuilt from the folders:
+  a rename or a move touches no byte, which is exactly the shape an object store wants.
+* **A checksum for every revision** (1.8.0, issue 7): what proves an object arrived whole. It was
+  the prerequisite 4.3 named.
+* **Writes that cannot outlive their transaction** (`StorageWriter`, `StorageSweeper`): store-agnostic.
+* The staging key and `copy` in 4.1 are obsolete: roadmap 2.3 decided on writing to the final key
+  and a journal, so the adapter needs no server-side copy.
+
+What is left: `S3BlobStore` (AWS SDK v2, path-style access for MinIO and self-hosted stores), the
+backend switch (`filemanagement.storage.backend`), the copying tool, a health indicator, and a new
+**backup procedure** - `deployment.md`'s backups copy the storage directory. One trap in the
+adapter: `deleteDirectory(prefix)` must list with the prefix **and a trailing `/`**, or deleting
+`files/s000/12` takes `files/s000/123` with it.
+
+**Two ways to move the bytes - choose by volume:**
+
+* **At once, in a maintenance window** (recommended at today's volume): stop the service, copy
+  every object with the checksum verified on both sides, switch `filemanagement.storage.backend`,
+  start. **No schema change**, so it does not interact with the PostgreSQL releases and can be
+  done before, between or after them.
+* **Gradually, with no downtime** (4.2, 4.3 below): new writes to S3, old rows moved in the
+  background. Needs `file_details.storage_backend` - a schema change, so before release B or
+  after C - and the `TieredBlobStore`. Worth it only when the copy would take hours.
 
 ### 4.1 `S3BlobStore`
 
