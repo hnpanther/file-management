@@ -135,7 +135,7 @@ class FileTreeSearchTest extends MySqlSupport {
     void refusesSomeoneWithoutThePermission() throws Exception {
         mockMvc.perform(get("/resource/files/tree/search")
                         .param("query", "anything")
-                        .with(user(principal(PermissionEnum.PUBLIC_FILE_PAGE)))
+                        .with(user(principal()))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());
     }

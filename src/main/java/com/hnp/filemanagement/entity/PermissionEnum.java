@@ -2,7 +2,6 @@ package com.hnp.filemanagement.entity;
 
 public enum PermissionEnum {
 
-
     ADMIN,
 
     // FileController @RequestMapping("/files") ===========================================================
@@ -10,25 +9,19 @@ public enum PermissionEnum {
     CREATE_FILE_PAGE,
     //@PostMapping
     SAVE_NEW_FILE,
-    //@GetMapping("public-files")
-    PUBLIC_FILE_PAGE,
     //@GetMapping("tree")
     FILE_TREE_PAGE,
     //@GetMapping("explorer")
     FILE_EXPLORER_PAGE,
     //@GetMapping("file-info/{id}")
     FILE_INFO_PAGE,
-    //@GetMapping("public-download/{id}")
-    DOWNLOAD_PUBLIC_FILE,
     //@GetMapping("file-info")
     GET_ALL_FILE_INFO_PAGE,
     //@GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
     DOWNLOAD_FILE,
 
-
     //@GetMapping("file-info/{fileInfoId}/file-details/create")
     SAVE_NEW_FILE_DETAILS_PAGE,
-
 
     SAVE_NEW_FILE_DETAILS,
 
@@ -51,7 +44,6 @@ public enum PermissionEnum {
     //@GetMapping("/roles")
     GET_ALL_ROLE_PAGE,
 
-
     // ===================================================================================================
 
     // UploadPolicyController @RequestMapping("/settings/upload") =======================================
@@ -60,7 +52,6 @@ public enum PermissionEnum {
     UPLOAD_POLICY_PAGE,
     //@PostMapping - saves the system-wide policy; with SAVE_UPDATED_ROLE, a role's own policy too
     SAVE_UPLOAD_POLICY,
-
 
     // ===================================================================================================
 
@@ -89,7 +80,6 @@ public enum PermissionEnum {
     //@PostMapping("/{id}/delete") - delete an unused group
     DELETE_TAG_GROUP,
 
-
     // ===================================================================================================
 
     // UserController @RequestMapping("/users")===========================================================
@@ -114,9 +104,6 @@ public enum PermissionEnum {
     SAVE_UPDATED_USER_ROLE,
     //@GetMapping
     GET_ALL_USER_PAGE,
-
-
-
 
     // ===================================================================================================
 
@@ -232,14 +219,7 @@ public enum PermissionEnum {
 
     // ===================================================================================================
 
-    // HomeController ====================================================================================
-    //@GetMapping
-    ACCESS_HOME,
-
-    // ===================================================================================================
-
     // FileApi @RequestMapping("api/v1/files") ==========================================================
-
 
 //    @GetMapping("/health-test")
     API_HEALTH_TEST,
@@ -256,9 +236,6 @@ public enum PermissionEnum {
 //    @GetMapping("file-info/{fileInfoId}/download")  - a revision chosen by the file's own id: the latest, or ?version=, ?format=
     API_DOWNLOAD_FILE
 
-
     // ===================================================================================================
-
-
 
 }

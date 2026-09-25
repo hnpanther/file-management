@@ -484,7 +484,7 @@ document, so a browser navigation still lands on a page.
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/` | `ACCESS_HOME` |
+| GET | `/` | permitAll - it only redirects: to the file list for whoever may see it, to the public files otherwise |
 | GET | `/login` | permitAll |
 | GET / POST | `/files/create`, `/files` | `CREATE_FILE_PAGE`, `SAVE_NEW_FILE` |
 | GET | `/files/public-files` | open to everyone, or to signed-in people only - the `public-files.anonymous` setting, asked on every request (`PublicFilesAuthorizationManager`); no permission beyond being signed in |
@@ -547,7 +547,8 @@ case (`IdReference`, converted like any path variable, so a segment that is neit
 numbers keep working. An external id is a name, not a permission: the folder check is the same.
 Every v1 download says which revision it served - `X-File-External-Id`, `X-File-Details-Id`,
 `X-File-Details-External-Id`, `X-File-Version`, `X-Checksum-SHA256` (`FileApi.serve`) - and a
-`HEAD` answers those alone. **The client-facing guide, and how to move a client to the external
+`HEAD` answers those alone, with the stored size as `Content-Length`, without opening the file
+(Spring would otherwise run the `GET` and read the whole file to discard it). **The client-facing guide, and how to move a client to the external
 ids, is [api-v1.md](api-v1.md).** Both deletes are judged on the file's own folder
 (`requireWriteAccess` on the `FileInfo`), the same way a download and a new version are. The
 whole group accepts either credential: the shared account's Basic password, or a Bearer API key,
@@ -596,8 +597,9 @@ the folder from environment variables and never holds a credential in the file.
   401 entry point. The filter never writes a response of its own.
 * **`@Order(2)` `securityFilterChain`** — everything else. CSRF **on** (all AJAX templates read
   `_csrf` / `_csrf_header` from `<meta>` tags and set the header), form login at `/login`,
-  logout at `/logout`. PermitAll list: `/`, `/favicon.ico`, `/webjars/**`, `/css/**`, `/js/**`,
-  `/public-pages/**`, `/files/public-files/**`, `/files/public-download/**`.
+  logout at `/logout`. PermitAll list: `/`, `/share/**`, `/favicon.ico`, `/css/**`, `/js/**`,
+  `/vendor/**`; `/files/public-files/**` and `/files/public-download/**` follow the
+  `public-files.anonymous` setting (`PublicFilesAuthorizationManager`).
   **Two entry points for an unauthenticated request**, chosen by what made it
   (`SecurityConfig.isScriptCall`): a script — `X-Requested-With: XMLHttpRequest`, or an `Accept`
   that asks for JSON and not HTML — gets `401` and no `Location`; a person navigating is sent to
@@ -666,6 +668,13 @@ carries `@PreAuthorize("hasAuthority('X') || hasAuthority('ADMIN')")`.
 * **Only an administrator changes a username** (`UserService.updateUser`): holding
   `SAVE_UPDATED_USER` edits the rest of a person's details, not the name they sign in with. Asked
   of the database (`RoleService.isAdministrator`, the ADMIN role), like the folder bypass.
+* **An administrator's account is an administrator's business** (issue 91). Whoever may reset an
+  administrator's password, disable them or hand out ADMIN holds ADMIN in effect, so `UserService`
+  refuses each of those - and every change to an account holding ADMIN, and every change that
+  gives or takes the role - unless the person making it holds ADMIN too
+  (`requireAdministratorFor`). The last **enabled** administrator can be neither disabled nor
+  demoted (`requireAnotherAdministrator`). Ordinary accounts are managed with the ordinary
+  permissions.
 
 ### Folder access — the second question
 
@@ -1008,7 +1017,7 @@ schema at startup but never modifies it.
 | `spring.flyway.baseline-on-migrate` | `true` | |
 | `file.management.base-dir` | `./TempFiles/files/main/` | `FilesystemBlobStore` |
 | `spring.servlet.multipart.max-file-size` / `max-request-size` | `20MB` | |
-| `filemanagement.default.page-size` / `element-size` | `30` | rows per list page and items per dropdown, read from `FileManagementProperties` |
+| `filemanagement.default.page-size` | `30` | rows per list page, read from `FileManagementProperties`; a `page-size` in the URL is clamped to 200 and a bad one falls back to this (`PageRequests`) |
 | `filemanagement.folders.max-depth` | `6` | `FolderService`: how deep the tree may go below `Home`; a create or a move past it is a 400 |
 | `filemanagement.folders.max-delete-files` | `1000` | `FolderTreeDeleteService`: the most files one recursive delete may remove; a larger tree is a 409 naming the count |
 | `filemanagement.profiles.default-quota-mb` | `0` | `UserHomeService`: the quota a new personal folder is created with, in megabytes; `0` for none. Changed per user on the user's page afterwards |

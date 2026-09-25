@@ -7,16 +7,16 @@ import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.service.FolderQuotaService;
+import com.hnp.filemanagement.service.RoleService;
 import com.hnp.filemanagement.service.UserHomeService;
 import com.hnp.filemanagement.service.UserService;
 import com.hnp.filemanagement.util.GlobalGeneralLogging;
+import com.hnp.filemanagement.util.PageRequests;
 import com.hnp.filemanagement.util.UiMessages;
 import com.hnp.filemanagement.validation.InsertValidation;
 import com.hnp.filemanagement.validation.UpdatePasswordValidation;
 import com.hnp.filemanagement.validation.UpdateValidation;
 import jakarta.validation.Valid;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import com.hnp.filemanagement.config.FileManagementProperties;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -43,22 +43,19 @@ import java.util.List;
 @RequestMapping("/users")
 public class UserController {
 
-    private final Logger logger = LoggerFactory.getLogger(UserController.class);
-
     private final GlobalGeneralLogging globalGeneralLogging;
     private final UserService userService;
     private final UserHomeService userHomeService;
     private final FolderQuotaService folderQuotaService;
-    private final com.hnp.filemanagement.service.RoleService roleService;
+    private final RoleService roleService;
 
     private final int defaultPageSize;
-    private final int defaultElementSize;
 
     private final UiMessages messages;
 
     public UserController(GlobalGeneralLogging globalGeneralLogging, UserService userService,
                           UserHomeService userHomeService, FolderQuotaService folderQuotaService,
-                          com.hnp.filemanagement.service.RoleService roleService,
+                          RoleService roleService,
                           FileManagementProperties properties,
                           UiMessages messages) {
         this.globalGeneralLogging = globalGeneralLogging;
@@ -67,7 +64,6 @@ public class UserController {
         this.folderQuotaService = folderQuotaService;
         this.roleService = roleService;
         this.defaultPageSize = properties.defaults().pageSize();
-        this.defaultElementSize = properties.defaults().elementSize();
         this.messages = messages;
     }
 
@@ -98,7 +94,7 @@ public class UserController {
     public String saveUser(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(InsertValidation.class) UserDTO userDTO, BindingResult bindingResult,
                            Model model) {
         int principalId = userDetails.getId();
-        globalGeneralLogging.detail("save new user=" + userDTO);
+        globalGeneralLogging.detail("save new user username=" + userDTO.getUsername());
 
         boolean showMessage = true;
         boolean valid = false;
@@ -106,7 +102,7 @@ public class UserController {
 
         if(bindingResult.hasErrors()) {
             message = messages.get("form.invalid");
-            globalGeneralLogging.detail("ValidationError:" + bindingResult);
+            globalGeneralLogging.invalid(bindingResult);
         } else {
             try {
                 userService.createUser(userDTO, principalId);
@@ -265,7 +261,7 @@ public class UserController {
     public String changeUserPassword(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(UpdatePasswordValidation.class) UserDTO userDTO, BindingResult bindingResult,
                                      @PathVariable("userId") int userId, Model model) {
         int principalId = userDetails.getId();
-        globalGeneralLogging.detail("user change password page with id=" + userId);
+        globalGeneralLogging.detail("change password of user id=" + userId);
 
         boolean showMessage = true;
         boolean valid = false;
@@ -273,7 +269,7 @@ public class UserController {
 
         if(bindingResult.hasErrors() || !userDTO.getId().equals(userId)) {
             message = messages.get("form.invalid");
-            globalGeneralLogging.detail("ValidationError:" + bindingResult);
+            globalGeneralLogging.invalid(bindingResult);
         } else {
             try {
                 userService.changePassword(userDTO, principalId);
@@ -282,7 +278,9 @@ public class UserController {
             } catch (ResourceNotFoundException e) {
                 globalGeneralLogging.detail("ResourceNotFoundException(probably user id not correct):" + e.getMessage());
                 message = messages.get("form.unexpected");
-
+            } catch (InvalidDataException e) {
+                globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
+                message = reasonOf(e);
             }
         }
 
@@ -302,7 +300,7 @@ public class UserController {
     public String saveupdatedUser(@AuthenticationPrincipal UserDetailsImpl userDetails, @ModelAttribute @Validated(UpdateValidation.class) UserDTO userDTO, BindingResult bindingResult,
                                   Model model) {
         int principalId = userDetails.getId();
-        globalGeneralLogging.detail("save updated user=" + userDTO);
+        globalGeneralLogging.detail("save updated user id=" + userDTO.getId());
 
         boolean showMessage = true;
         boolean valid = false;
@@ -310,7 +308,7 @@ public class UserController {
 
         if(bindingResult.hasErrors()) {
             message = messages.get("form.invalid");
-            globalGeneralLogging.detail("ValidationError:" + bindingResult);
+            globalGeneralLogging.invalid(bindingResult);
         } else {
             try {
                 userService.updateUser(userDTO, principalId);
@@ -327,8 +325,7 @@ public class UserController {
                         : messages.get("user.duplicate");
             } catch (InvalidDataException e) {
                 globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
-                message = e.getMessageCode().map(code -> messages.get(code, e.getMessageArguments()))
-                        .orElseGet(() -> messages.get("form.invalid"));
+                message = reasonOf(e);
             }
         }
 
@@ -371,7 +368,7 @@ public class UserController {
                                        Model model) {
 
         int principalId = userDetails.getId();
-        globalGeneralLogging.detail("save user roles for user with id=" + userId + " user roles=" + userRoleDTO);
+        globalGeneralLogging.detail("save roles of user id=" + userId + ", roleIds=" + userRoleDTO.getRolesIds());
 
         boolean showMessage = true;
         boolean valid = false;
@@ -379,7 +376,7 @@ public class UserController {
 
         if(bindingResult.hasErrors()) {
             message = messages.get("form.invalid");
-            globalGeneralLogging.detail("ValidationError:" + bindingResult);
+            globalGeneralLogging.invalid(bindingResult);
         } else {
             try {
                 userService.updateUserRoles(userId, userRoleDTO.getRolesIds(), principalId);
@@ -390,7 +387,7 @@ public class UserController {
                 message = messages.get("form.invalidShort");
             } catch (InvalidDataException e) {
                 globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
-                message = messages.get("form.invalidShort");
+                message = e.getMessageCode().isPresent() ? reasonOf(e) : messages.get("form.invalidShort");
             }
         }
 
@@ -416,13 +413,8 @@ public class UserController {
         globalGeneralLogging.detail("page of all user, search=" + search + ",pageSize=" + pageSize + ",pageNumber=" + pageNumber);
 
 
-        if(pageSize == null) {
-            pageSize = defaultPageSize;
-        }
-        if(pageNumber == null) {
-            pageNumber = 0;
-        }
-
+        pageSize = PageRequests.size(pageSize, defaultPageSize);
+        pageNumber = PageRequests.number(pageNumber);
 
         // One query answers both the rows and the total, so the pager can never disagree with the
         // list it pages - the two used to be separate calls that parsed the search term differently.
@@ -440,9 +432,9 @@ public class UserController {
         return "user/users.html";
     }
 
-
-
-
-
-
+    /** A refusal in the page's language when it carries a message code, the generic sentence otherwise. */
+    private String reasonOf(InvalidDataException e) {
+        return e.getMessageCode().map(code -> messages.get(code, e.getMessageArguments()))
+                .orElseGet(() -> messages.get("form.invalid"));
+    }
 }

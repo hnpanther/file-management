@@ -110,7 +110,8 @@ was served:
 | `X-Checksum-SHA256` | lower-case hex SHA-256 of the stored bytes - absent only for a revision stored before 1.8.0 that the start-up backfill could not read |
 
 A client can compare `X-Checksum-SHA256` with the SHA-256 of what it received. A **`HEAD`** to
-any download answers the same headers and no body.
+any download answers the same headers, with the file's size as `Content-Length`, and no body -
+the server does not read the file for it.
 
 ### Errors
 

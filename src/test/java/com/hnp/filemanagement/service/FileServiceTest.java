@@ -572,12 +572,12 @@ class FileServiceTest extends MySqlSupport {
     // ---------------------------------------------------------------- queries
 
     @Test
-    @DisplayName("lastVersion is readable, and a missing file is a 404")
+    @DisplayName("lastVersion is on the file's page, and a missing file is a 404")
     void readsTheLastVersion() {
         int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
 
-        assertThat(underTest.getLastVersionOfFile(fileInfoId)).isEqualTo(1);
-        assertThatThrownBy(() -> underTest.getLastVersionOfFile(0))
+        assertThat(underTest.getFileInfoDtoWithFileDetails(fileInfoId, principalId).getLastVersion()).isEqualTo(1);
+        assertThatThrownBy(() -> underTest.getFileInfoDtoWithFileDetails(0, principalId))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

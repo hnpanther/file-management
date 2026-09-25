@@ -26,6 +26,12 @@ public record ShareLinkDTO(int id, String token, String path, int fileDetailsId,
 
     public enum Status { ACTIVE, EXPIRED, REVOKED, EXHAUSTED }
 
+    /** Without the token or the path that carries it: either is the whole access to the file. */
+    @Override
+    public String toString() {
+        return "ShareLinkDTO[id=" + id + ", fileDetailsId=" + fileDetailsId + ", status=" + status + "]";
+    }
+
     public static ShareLinkDTO of(FileShareLink link, String token, LocalDateTime now) {
         Status status = link.isRevoked() ? Status.REVOKED
                 : link.isExhausted() ? Status.EXHAUSTED

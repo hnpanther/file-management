@@ -47,7 +47,7 @@ class UserRepositoryTest extends MySqlSupport {
 
     @BeforeEach
     void setUp() {
-        sharedPermission = permissionRepository.save(TestData.permission(PermissionEnum.PUBLIC_FILE_PAGE));
+        sharedPermission = permissionRepository.save(TestData.permission(PermissionEnum.FILE_TREE_PAGE));
         Permission other = permissionRepository.save(TestData.permission(PermissionEnum.FILE_INFO_PAGE));
 
         role = TestData.role("ROLE_" + TestData.nextSequence());
@@ -103,7 +103,7 @@ class UserRepositoryTest extends MySqlSupport {
                 Set.of(role.getId(), second.getId()));
 
         assertThat(permissions).extracting(Permission::getPermissionName)
-                .containsExactlyInAnyOrder(PermissionEnum.PUBLIC_FILE_PAGE, PermissionEnum.FILE_INFO_PAGE);
+                .containsExactlyInAnyOrder(PermissionEnum.FILE_TREE_PAGE, PermissionEnum.FILE_INFO_PAGE);
     }
 
     @Test

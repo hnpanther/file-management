@@ -80,6 +80,16 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     List<User> findHoldersOfRole(@Param("roleId") int roleId);
 
     /**
+     * How many enabled accounts other than this one hold the named role - what keeps the last
+     * enabled administrator from being disabled or demoted (issue 91).
+     */
+    @Query("""
+            SELECT COUNT(DISTINCT u) FROM User u JOIN u.roles r
+            WHERE UPPER(r.roleName) = UPPER(:roleName) AND u.enabled = 1 AND u.id <> :userId
+            """)
+    long countEnabledHoldersOfRoleOtherThan(@Param("roleName") String roleName, @Param("userId") int userId);
+
+    /**
      * The user list page. {@code search} matches the username or the full name, and
      * {@code searchNumber} the id or the personnel code. An empty box is the empty string and a
      * null number, and each matches everything. The text is never {@code null}: PostgreSQL cannot

@@ -174,7 +174,7 @@ class RestContractTest extends MySqlSupport {
     @Test
     void aMissingPermissionIs403WithAProblemDocument() throws Exception {
         mockMvc.perform(delete("/resource/files/file-info/{id}", MISSING_ID)
-                        .with(user(principal(PermissionEnum.PUBLIC_FILE_PAGE)))
+                        .with(user(principal()))
                         .with(csrf())
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden())
@@ -185,7 +185,7 @@ class RestContractTest extends MySqlSupport {
     @Test
     void theApiNeedsItsOwnPermissionToo() throws Exception {
         mockMvc.perform(get("/api/v1/files/health-test")
-                        .with(user(principal(PermissionEnum.PUBLIC_FILE_PAGE))))
+                        .with(user(principal())))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/api/v1/files/health-test")
@@ -261,7 +261,7 @@ class RestContractTest extends MySqlSupport {
                         org.hamcrest.Matchers.containsString("invalid value for parameter")));
 
         mockMvc.perform(delete("/resource/files/file-info/{id}", MISSING_ID)
-                        .with(user(principal(PermissionEnum.PUBLIC_FILE_PAGE)))
+                        .with(user(principal()))
                         .with(csrf())
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden())

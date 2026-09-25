@@ -34,8 +34,6 @@ import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
-import static org.springframework.security.config.Customizer.withDefaults;
-
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity(securedEnabled = true, prePostEnabled = true)
@@ -54,8 +52,6 @@ public class SecurityConfig {
     private static final String BASIC_CHALLENGE = "Basic realm=\"file-management\", charset=\"UTF-8\"";
 
     private final boolean activeDirectoryEnabled;
-
-
 
     private final BCryptPasswordEncoder passwordEncoder;
 
@@ -81,18 +77,6 @@ public class SecurityConfig {
         return daoAuthenticationProvider;
     }
 
-//    @Bean
-//    public AuthenticationProvider activeDirectoryLdapAuthenticationProvider() {
-//
-//        org.springframework.security.ldap.authentication.ad.ActiveDirectoryLdapAuthenticationProvider activeDirectoryLdapAuthenticationProvider =
-//                new org.springframework.security.ldap.authentication.ad.ActiveDirectoryLdapAuthenticationProvider( "hnp.local", "ldap://172.29.76.9");
-//
-//        // to parse AD failed credentails error message due to account - expiry,lock, credentialis - expiry,lock
-//        activeDirectoryLdapAuthenticationProvider.setConvertSubErrorCodesToExceptions(true);
-//
-//        return activeDirectoryLdapAuthenticationProvider;
-//    }
-
     @Bean
     public AuthenticationManager authenticationManager(HttpSecurity httpSecurity) throws Exception {
         AuthenticationManagerBuilder authenticationManagerBuilder = httpSecurity.getSharedObject(AuthenticationManagerBuilder.class);
@@ -100,45 +84,23 @@ public class SecurityConfig {
         if(activeDirectoryEnabled) {
             authenticationManagerBuilder.authenticationProvider(activeDirectoryCustomAuthenticationProvider)
                     .authenticationProvider(daoAuthenticationProvider());
-//                .authenticationProvider(activeDirectoryLdapAuthenticationProvider());
         } else {
             authenticationManagerBuilder.authenticationProvider(daoAuthenticationProvider());
         }
 
-
         return authenticationManagerBuilder.build();
     }
 
-
-
-
-//    @Bean
-//    public InMemoryUserDetailsManager userDetailsManager() {
-//        UserDetails user1= User.withUsername("user").password(passwordEncoder().encode("user")).roles("USER").build();
-//        UserDetails user2= User.withUsername("admin").password(passwordEncoder().encode("admin")).roles("ADMIN").build();
-//        return new InMemoryUserDetailsManager(user1, user2);
-//    }
-
-
+    /**
+     * The browser chain: form login, sessions and CSRF, for everything the other two chains do not
+     * claim. What is open without signing in is listed here and nowhere else.
+     */
     @Bean
     @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity, AuthenticationManager authenticationManager,
                                                    PublicFilesAuthorizationManager publicFilesAccess,
                                                    SessionRegistry sessionRegistry) throws Exception {
-
-//        return httpSecurity
-//                .csrf(csrf -> csrf.disable())
-//                .cors(cors -> cors.disable())
-//                .authorizeHttpRequests(
-//                        auth -> {
-//                            auth.requestMatchers("/**").permitAll();
-//                        }
-//                )
-//                .build();
-
         return httpSecurity
-//                .csrf(csrf -> csrf.disable())
-//                .cors(cors -> cors.disable())
                 .authorizeHttpRequests(
                         auth -> {
                             // Open to everyone, or to signed-in people only: the administrator's
@@ -151,12 +113,10 @@ public class SecurityConfig {
                             // whatever the public-files switch says; the token decides.
                             auth.requestMatchers("/share/**").permitAll();
                             auth.requestMatchers("/favicon.ico").permitAll();
-                            auth.requestMatchers("/webjars/**").permitAll();
                             auth.requestMatchers("/css/**").permitAll();
                             auth.requestMatchers("/js/**").permitAll();
                             // vendored third-party assets - stylesheets, scripts and the icon font
                             auth.requestMatchers("/vendor/**").permitAll();
-                            auth.requestMatchers("/public-pages/**").permitAll();
 
                             // The OpenAPI document and the Swagger page (roadmap 9.6). Behind a
                             // permission rather than public, and on this chain rather than the
@@ -204,11 +164,7 @@ public class SecurityConfig {
                                 new LoginUrlAuthenticationEntryPoint("/login"), AnyRequestMatcher.INSTANCE))
                 .authenticationManager(authenticationManager)
                 .build();
-
-
     }
-
-
 
     /**
      * A request made by a page's script rather than by a person navigating: jQuery sets
@@ -242,7 +198,6 @@ public class SecurityConfig {
                         PathPatternRequestMatcher.pathPattern("/vendor/**"),
                         PathPatternRequestMatcher.pathPattern("/css/**"),
                         PathPatternRequestMatcher.pathPattern("/js/**"),
-                        PathPatternRequestMatcher.pathPattern("/public-pages/**"),
                         PathPatternRequestMatcher.pathPattern("/favicon.ico"),
                         PathPatternRequestMatcher.pathPattern("/login"),
                         PathPatternRequestMatcher.pathPattern("/logout"))),
@@ -253,26 +208,6 @@ public class SecurityConfig {
         return requestCache;
     }
 
-    /**
-     * The machine-facing chain: HTTP Basic, stateless, no CSRF and no CORS.
-     *
-     * <p>The explicit {@link org.springframework.security.web.AuthenticationEntryPoint} is the whole
-     * point of the {@code exceptionHandling} block, and it fixes a defect that was invisible from
-     * the browser. {@code BasicAuthenticationEntryPoint} reports a failure with
-     * {@code response.sendError(401)}, and {@code sendError} asks the servlet container for an ERROR
-     * dispatch. That dispatch re-enters the filter chains as a request for {@code /error}, which no
-     * longer matches {@code /api/**} — so the <em>session</em> chain handled it and its form-login
-     * entry point turned the answer into {@code 302 Location: /login}. A caller with a bad password
-     * got a redirect carrying a stale {@code WWW-Authenticate} header.
-     *
-     * <p>That was not merely untidy. {@code GET /login} answers 200, so any client that follows
-     * redirects — Oracle's {@code UTL_HTTP}, which {@code apex_web_service} is built on, follows up
-     * to three by default and re-issues them as GET — would see a final 200 and conclude that its
-     * {@code DELETE} had succeeded when nothing had been deleted.
-     *
-     * <p>Writing the status with {@code setStatus} instead of {@code sendError} skips the error
-     * dispatch entirely, so 401 stays 401.
-     */
     /**
      * Health and info, before every other chain (roadmap 9.5).
      *
@@ -309,6 +244,26 @@ public class SecurityConfig {
                 .build();
     }
 
+    /**
+     * The machine-facing chain: HTTP Basic, stateless, no CSRF and no CORS.
+     *
+     * <p>The explicit {@link org.springframework.security.web.AuthenticationEntryPoint} is the whole
+     * point of the {@code exceptionHandling} block, and it fixes a defect that was invisible from
+     * the browser. {@code BasicAuthenticationEntryPoint} reports a failure with
+     * {@code response.sendError(401)}, and {@code sendError} asks the servlet container for an ERROR
+     * dispatch. That dispatch re-enters the filter chains as a request for {@code /error}, which no
+     * longer matches {@code /api/**} — so the <em>session</em> chain handled it and its form-login
+     * entry point turned the answer into {@code 302 Location: /login}. A caller with a bad password
+     * got a redirect carrying a stale {@code WWW-Authenticate} header.
+     *
+     * <p>That was not merely untidy. {@code GET /login} answers 200, so any client that follows
+     * redirects — Oracle's {@code UTL_HTTP}, which {@code apex_web_service} is built on, follows up
+     * to three by default and re-issues them as GET — would see a final 200 and conclude that its
+     * {@code DELETE} had succeeded when nothing had been deleted.
+     *
+     * <p>Writing the status with {@code setStatus} instead of {@code sendError} skips the error
+     * dispatch entirely, so 401 stays 401.
+     */
     @Bean
     @Order(1)
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity httpSecurity, AuthenticationManager authenticationManager,

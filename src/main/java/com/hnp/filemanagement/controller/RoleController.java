@@ -102,7 +102,7 @@ public class RoleController {
         String message;
         if (bindingResult.hasErrors()) {
             message = messages.get("form.invalid");
-            globalGeneralLogging.detail("ValidationError:" + bindingResult);
+            globalGeneralLogging.invalid(bindingResult);
         } else {
             try {
                 int id = roleService.createRole(roleDTO.getRoleName(), null, userDetails.getId());

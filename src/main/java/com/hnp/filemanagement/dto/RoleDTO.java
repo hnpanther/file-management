@@ -29,17 +29,13 @@ public class RoleDTO {
     List<Integer> permissionDTOListId;
 
     /**
-     * The folders this role is granted, posted by the edit page as the complete selection.
-     *
-     * <p>Deliberately not {@code @NotNull}: a browser omits a checkbox group entirely when nothing
-     * in it is ticked, and "this role reaches no folder" is a legitimate thing to save. Null is
-     * therefore read as an empty selection, not as a missing field.
-     */
-    /**
-     * The folder grants the role edit page posts, each {@code "{folderId}:{READ|WRITE}"}.
+     * The folder grants the role edit page posts as the complete selection, each
+     * {@code "{folderId}:{READ|WRITE}"}.
      *
      * <p>One field rather than a list of ids and a parallel list of verbs: the two would have to
-     * describe the same folders, and nothing could make them.
+     * describe the same folders, and nothing could make them. Deliberately not {@code @NotNull}: a
+     * browser omits a checkbox group entirely when nothing in it is ticked, and "this role reaches
+     * no folder" is a legitimate thing to save, so null is read as an empty selection.
      */
     List<String> folderGrants;
 

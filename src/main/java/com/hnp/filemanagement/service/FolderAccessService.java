@@ -140,8 +140,6 @@ public class FolderAccessService {
         return FolderAccess.of(folderRepository.findGrantsOfApiKey(apiKeyId));
     }
 
-
-
     /**
      * One folder by its own id, which is how the tree addresses a node.
      *
@@ -175,13 +173,6 @@ public class FolderAccessService {
         }
         return Optional.of(folderIds);
     }
-
-
-
-
-
-
-
 
     // ------------------------------------------------------------------ by the file's own folder (roadmap 7.2 step 3)
 

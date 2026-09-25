@@ -6,6 +6,7 @@ import com.hnp.filemanagement.dto.UserDTO;
 import com.hnp.filemanagement.config.security.ActiveUserSessions;
 import com.hnp.filemanagement.entity.ActionEnum;
 import com.hnp.filemanagement.entity.EntityEnum;
+import com.hnp.filemanagement.entity.FixedRole;
 import com.hnp.filemanagement.entity.Permission;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
@@ -25,6 +26,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -57,15 +60,23 @@ import java.util.stream.Collectors;
  *
  * <p>Passwords are hashed with BCrypt on the way in and never read back; {@code UserDTO} carries a
  * mask, not the hash.
+ *
+ * <p><b>An administrator's account is an administrator's business</b> (issue 91). Holding ADMIN
+ * reaches every permission and every folder, so whoever may reset its password, disable it, change
+ * its details or its login type, or hand the role out, holds it in effect. Every such change - to
+ * an account that holds ADMIN, or one that would give or take ADMIN - is refused unless the person
+ * making it holds ADMIN too ({@link #requireAdministratorFor}); and the last enabled administrator
+ * can be neither disabled nor demoted ({@link #requireAnotherAdministrator}), so the installation
+ * cannot lock itself out.
  */
 @Service
 @Transactional(readOnly = true)
 public class UserService {
 
     /** Given to every newly created user, so a new account can do something before an admin acts. */
-    private static final String DEFAULT_ROLE = com.hnp.filemanagement.entity.FixedRole.USER.roleName();
+    private static final String DEFAULT_ROLE = FixedRole.USER.roleName();
 
-    private static final String ADMIN_ROLE = com.hnp.filemanagement.entity.FixedRole.ADMIN.roleName();
+    private static final String ADMIN_ROLE = FixedRole.ADMIN.roleName();
 
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
@@ -160,6 +171,7 @@ public class UserService {
             throw new InvalidDataException("only an administrator may change a username: user id=" + user.getId(),
                     "user.usernameAdminOnly");
         }
+        requireAdministratorFor(user.getId(), principalId);
 
         requireNoDuplicate(newUsername, newPersonelCode, newNationalCode, newPhoneNumber, userDTO);
 
@@ -200,6 +212,15 @@ public class UserService {
             throw new InvalidDataException("invalid role for add to user, roleList=" + roleIds);
         }
 
+        boolean heldAdmin = includesAdmin(user.getRoles());
+        boolean keepsAdmin = includesAdmin(roles);
+        if ((heldAdmin || keepsAdmin) && !roleService.isAdministrator(principalId)) {
+            throw adminOnly(userId);
+        }
+        if (heldAdmin && !keepsAdmin) {
+            requireAnotherAdministrator(user);
+        }
+
         user.setRoles(new LinkedHashSet<>(roles));
 
         actionHistoryService.saveActionHistory(EntityEnum.UserRole, user.getId(), ActionEnum.UPDATE_VALUES, principalId,
@@ -210,6 +231,7 @@ public class UserService {
     public void changePassword(UserDTO userDTO, int principalId) {
 
         User user = getUser(userDTO.getId());
+        requireAdministratorFor(user.getId(), principalId);
         user.setPassword(bCryptPasswordEncoder.encode(userDTO.getPassword()));
 
         // The new password is never logged, here or in the history row.
@@ -233,6 +255,10 @@ public class UserService {
         }
 
         User user = getUser(userId);
+        requireAdministratorFor(userId, principalId);
+        if (enabled == 0 && roleService.isAdministrator(userId)) {
+            requireAnotherAdministrator(user);
+        }
         user.setEnabled(enabled);
 
         int endedSessions = enabled == 0 ? activeUserSessions.endSessionsOf(userId, user.getUsername()) : 0;
@@ -250,6 +276,7 @@ public class UserService {
         }
 
         User user = getUser(userId);
+        requireAdministratorFor(userId, principalId);
         int oldLoginType = user.getLoginType();
         user.setLoginType(type);
 
@@ -276,7 +303,7 @@ public class UserService {
                 () -> new ResourceNotFoundException("user not found. username=" + username)
         );
 
-        List<PermissionEnum> authorities = new java.util.ArrayList<>(
+        List<PermissionEnum> authorities = new ArrayList<>(
                 user.getRoles().stream()
                         .flatMap(role -> role.getPermissions().stream())
                         .map(Permission::getPermissionName)
@@ -325,7 +352,7 @@ public class UserService {
     }
 
     public UserDTO getUserDtoById(int id) {
-        return ModelConverterUtil.convertUserToUserDTO(getUserWithRoles(id));
+        return ModelConverterUtil.convertUserToUserDTO(getUser(id));
     }
 
     /** Every role in the system, with {@code selected} set on the ones this user holds. */
@@ -367,6 +394,35 @@ public class UserService {
     }
 
     // ------------------------------------------------------------------ internals
+
+    /** Refuses a change to an administrator's account unless an administrator makes it (issue 91). */
+    private void requireAdministratorFor(int userId, int principalId) {
+        if (roleService.isAdministrator(userId) && !roleService.isAdministrator(principalId)) {
+            throw adminOnly(userId);
+        }
+    }
+
+    /**
+     * Refuses to take the last enabled administrator away: disabling or demoting this account is
+     * allowed only while another enabled account holds ADMIN. A disabled administrator is not one
+     * the installation relies on, so demoting it is always allowed.
+     */
+    private void requireAnotherAdministrator(User user) {
+        if (Integer.valueOf(1).equals(user.getEnabled())
+                && userRepository.countEnabledHoldersOfRoleOtherThan(ADMIN_ROLE, user.getId()) == 0) {
+            throw new InvalidDataException("the last enabled administrator cannot be disabled or demoted: user id="
+                    + user.getId(), "user.lastAdministrator");
+        }
+    }
+
+    private static InvalidDataException adminOnly(int userId) {
+        return new InvalidDataException("only an administrator may change an administrator's account or "
+                + "who holds ADMIN: user id=" + userId, "user.adminOnly");
+    }
+
+    private static boolean includesAdmin(Collection<Role> roles) {
+        return roles.stream().anyMatch(role -> ADMIN_ROLE.equalsIgnoreCase(role.getRoleName()));
+    }
 
     private User getUser(int id) {
         return userRepository.findById(id).orElseThrow(

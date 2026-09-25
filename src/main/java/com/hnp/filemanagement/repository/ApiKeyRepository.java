@@ -2,6 +2,7 @@ package com.hnp.filemanagement.repository;
 
 import com.hnp.filemanagement.entity.ApiKey;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -19,7 +20,11 @@ public interface ApiKeyRepository extends JpaRepository<ApiKey, Integer> {
      */
     Optional<ApiKey> findByKeyId(String keyId);
 
-    /** The list page, newest first — a key that was just created is the one being looked for. */
+    /**
+     * The list page, newest first - a key that was just created is the one being looked for - each
+     * with the account that made it, so no row loads its creator alone.
+     */
+    @EntityGraph(attributePaths = "createdBy")
     List<ApiKey> findAllByOrderByCreatedAtDesc();
 
     /** One key with its folder grants, for the detail screen. */

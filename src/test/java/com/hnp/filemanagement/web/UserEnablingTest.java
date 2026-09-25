@@ -10,6 +10,7 @@ import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.UserService;
 import com.hnp.filemanagement.support.MySqlSupport;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.util.UiMessages;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,6 +56,8 @@ class UserEnablingTest extends MySqlSupport {
     private UserRepository userRepository;
     @Autowired
     private RoleRepository roleRepository;
+    @Autowired
+    private UiMessages messages;
 
     private int adminId;
     private User subject;
@@ -112,6 +115,24 @@ class UserEnablingTest extends MySqlSupport {
                         .with(user(principal(adminId, PermissionEnum.REST_CHANGE_USER_ENABLED))).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":7}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * Holding the permission is not enough for an administrator's account (issue 91), and the
+     * profile page shows why in its own language: the refusal carries a message code, which a page
+     * gets translated.
+     */
+    @Test
+    @DisplayName("somebody without ADMIN cannot disable an administrator, and is told so in Persian")
+    void anAdministratorIsDisabledOnlyByAnAdministrator() throws Exception {
+        int editorId = userRepository.save(TestData.user()).getId();
+
+        mockMvc.perform(put("/resource/users/{id}/change-enabled", adminId)
+                        .with(user(principal(editorId, PermissionEnum.REST_CHANGE_USER_ENABLED))).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(messages.get("user.adminOnly")));
+        assertThat(userRepository.findById(adminId).orElseThrow().getEnabled()).isEqualTo(1);
     }
 
     @Test

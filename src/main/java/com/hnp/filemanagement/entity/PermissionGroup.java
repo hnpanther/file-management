@@ -30,8 +30,8 @@ import static com.hnp.filemanagement.entity.PermissionEnum.*;
 public enum PermissionGroup {
 
     /** Seeing folders and files, opening a file's page, downloading - where the folder access allows. */
-    FILE_READ(ACCESS_HOME, FILE_EXPLORER_PAGE, FILE_TREE_PAGE, FILE_INFO_PAGE, GET_ALL_FILE_INFO_PAGE,
-            DOWNLOAD_FILE, PUBLIC_FILE_PAGE, DOWNLOAD_PUBLIC_FILE, REST_GET_FOLDER_CONTENT,
+    FILE_READ(FILE_EXPLORER_PAGE, FILE_TREE_PAGE, FILE_INFO_PAGE, GET_ALL_FILE_INFO_PAGE,
+            DOWNLOAD_FILE, REST_GET_FOLDER_CONTENT,
             REST_SEARCH_FOLDER_CONTENT, REST_GET_FILE_TREE, REST_SEARCH_FILE_TREE),
 
     /** Uploading, new versions and formats, editing a description, moving a file. */

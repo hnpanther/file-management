@@ -131,7 +131,9 @@ endpoints used to turn a missing field into a 500.
 **Logging a request is not the handler's job.** `LoggingInterceptor` writes one line for every
 request - method, path, the signed-in user, the handler Spring chose - and one for the answer.
 A handler adds only what the interceptor cannot know, with `globalGeneralLogging.detail("create
-folder " + name + " under folderId=" + parentId)`: an id, a name, a decision - never an entity.
+folder " + name + " under folderId=" + parentId)`: an id, a name, a decision - never an entity, and
+never a DTO, whose `toString` prints what the person typed, passwords included (issue 92). A form
+that did not bind is `globalGeneralLogging.invalid(bindingResult)`: field and constraint, no values.
 
 **Every handler needs a permission.** Add a constant to `PermissionEnum`, annotate the handler with
 `@PreAuthorize("hasAuthority('YOUR_CONSTANT') || hasAuthority('ADMIN')")`, and keep the comment above
@@ -273,6 +275,13 @@ Hibernate will refuse to start on a mismatch.
   - without a byte signature (or the text rule) to verify it by. `html`, `svg`, `xml`, `js` and
   their relatives are refused as kinds outright (`ContentTypes.isBrowserActive`); keep it so.
 * **Do not widen the `permitAll` list** in `SecurityConfig` without saying why in the commit message.
+* **ADMIN is changed by ADMIN.** Giving or taking the role, and any change to an account that holds
+  it, is refused to anyone else, and the last enabled administrator stays
+  (`UserService.requireAdministratorFor` / `requireAnotherAdministrator`, issue 91). A new user
+  operation calls the first.
+* **A secret never reaches `toString`.** A record prints every component: one that carries a
+  password, a token or a key overrides `toString` (`ApiKeyCreatedDTO`, `ShareLinkDTO`), and a Lombok
+  class marks the field `@ToString.Exclude` (`UserDTO.password`). `SecretsInToStringTest`.
 * **Do not add `inline` content disposition** to any new download path. The four download
   responses - `FileController.download` (the file page and the public files), `ShareLinkController.attachment`,
   `FileApi` and `ObjectStoreApi` - all send `nosniff`, and only the first honours `?inline=1`,

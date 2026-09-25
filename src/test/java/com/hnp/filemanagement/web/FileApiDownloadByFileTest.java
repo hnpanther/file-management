@@ -217,18 +217,20 @@ class FileApiDownloadByFileTest extends MySqlSupport {
 
     /**
      * How a client holding only the numbers of what it stored learns their external ids: a HEAD
-     * to the download it already makes. The container sends the headers and no body for a HEAD
-     * (Tomcat drops it); MockMvc does not stand in for the container there, so only the headers
-     * are asserted.
+     * to the download it already makes. {@code FileApi} answers it with no body at all rather than
+     * letting Spring run the GET and drop the bytes, so the empty body here is the handler's, not
+     * the container's - and the length is the stored file's.
      */
     @Test
-    @DisplayName("a HEAD to a download by the old numbers answers both external ids")
+    @DisplayName("a HEAD to a download by the old numbers answers both external ids, and the size without the bytes")
     void aHeadRequestTellsTheExternalIds() throws Exception {
         String revisionExternalId = mockMvc.perform(head("/api/v1/files/file-details/{d}/download", v1Id)
                         .with(user(principal(adminId, PermissionEnum.API_DOWNLOAD_FILE))))
                 .andExpect(status().isOk())
                 .andExpect(header().string("X-File-External-Id", fileExternalId))
                 .andExpect(header().string("X-File-Version", "1"))
+                .andExpect(header().longValue(HttpHeaders.CONTENT_LENGTH, V1.length))
+                .andExpect(content().bytes(new byte[0]))
                 .andReturn().getResponse().getHeader("X-File-Details-External-Id");
 
         mockMvc.perform(get("/api/v1/files/file-details/{d}/download", revisionExternalId)

@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -31,6 +32,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.util.OptionalLong;
 
 /**
  * The programmatic API, for callers that are not this application's own pages.
@@ -175,8 +179,9 @@ public class FileApi {
     @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
     public ResponseEntity<Resource> downloadFile(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                                  @PathVariable("fileInfoId") IdReference fileInfoReference,
-                                                 @PathVariable("fileDetailsId") IdReference fileDetailsReference) {
-        return downloadFileById(userDetails, fileDetailsReference);
+                                                 @PathVariable("fileDetailsId") IdReference fileDetailsReference,
+                                                 HttpMethod method) {
+        return downloadFileById(userDetails, fileDetailsReference, method);
     }
 
     /** The same download, by the version's id alone. */
@@ -184,12 +189,13 @@ public class FileApi {
     @PreAuthorize("hasAuthority('API_DOWNLOAD_FILE') || hasAuthority('ADMIN')")
     @GetMapping("file-details/{fileDetailsId}/download")
     public ResponseEntity<Resource> downloadFileById(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                                     @PathVariable("fileDetailsId") IdReference fileDetailsReference) {
+                                                     @PathVariable("fileDetailsId") IdReference fileDetailsReference,
+                                                     HttpMethod method) {
 
         int fileDetailsId = fileService.fileDetailsIdOf(fileDetailsReference);
         globalGeneralLogging.detail("download file details id=" + fileDetailsId);
 
-        return serve(fileService.downloadFile(fileDetailsId, userDetails.getId()));
+        return serve(fileService.downloadFile(fileDetailsId, userDetails.getId()), method);
     }
 
     /**
@@ -206,13 +212,14 @@ public class FileApi {
     public ResponseEntity<Resource> downloadFileRevision(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                                          @PathVariable("fileInfoId") IdReference fileInfoReference,
                                                          @RequestParam(value = "version", required = false) Integer version,
-                                                         @RequestParam(value = "format", required = false) String format) {
+                                                         @RequestParam(value = "format", required = false) String format,
+                                                         HttpMethod method) {
 
         int fileInfoId = fileService.fileInfoIdOf(fileInfoReference);
         globalGeneralLogging.detail("download file info id=" + fileInfoId + " version=" + (version == null ? "latest" : version)
                 + (format == null ? "" : " format=" + format));
 
-        return serve(fileService.downloadFileRevision(fileInfoId, version, format, userDetails.getId()));
+        return serve(fileService.downloadFileRevision(fileInfoId, version, format, userDetails.getId()), method);
     }
 
     /**
@@ -222,8 +229,12 @@ public class FileApi {
      * {@code X-File-Version}, and {@code X-Checksum-SHA256} when the checksum is known, so a client
      * can check what it received. A {@code HEAD} to any download answers the headers alone - the
      * cheap way for a client holding only the numbers to learn the external ids of what it has.
+     *
+     * <p>The {@code HEAD} is answered here, without a body, rather than left to Spring: Spring
+     * would run the {@code GET} and discard the body, reading the whole file from disk to throw it
+     * away - as {@code ObjectStoreApi}'s explicit {@code HEAD} says too.
      */
-    private static ResponseEntity<Resource> serve(FileDownloadDTO download) {
+    private static ResponseEntity<Resource> serve(FileDownloadDTO download, HttpMethod method) {
         ResponseEntity.BodyBuilder response = ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(download.getContentType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDispositions.attachment(download.getFileName()))
@@ -235,6 +246,19 @@ public class FileApi {
         if (download.getChecksumSha256() != null) {
             response.header("X-Checksum-SHA256", download.getChecksumSha256());
         }
+        if (method == HttpMethod.HEAD) {
+            contentLengthOf(download.getResource()).ifPresent(response::contentLength);
+            return response.build();
+        }
         return response.body(download.getResource());
+    }
+
+    /** The stored size, read from the file system and not from the bytes; none if it cannot be read. */
+    private static OptionalLong contentLengthOf(Resource resource) {
+        try {
+            return OptionalLong.of(resource.contentLength());
+        } catch (IOException e) {
+            return OptionalLong.empty();
+        }
     }
 }

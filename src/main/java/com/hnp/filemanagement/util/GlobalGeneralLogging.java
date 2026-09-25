@@ -7,9 +7,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+
+import java.util.stream.Collectors;
 
 /**
  * What a handler adds to the line every request already writes.
@@ -54,9 +58,17 @@ public class GlobalGeneralLogging {
                 message);
     }
 
-    /** What a service says about itself; the request line is the interceptor's. */
-    public void serviceLogging(String methodName, String className, String message) {
-        logger.debug("[GlobalGeneralLogging-Service][class={}][method={}]: {}", className, methodName, message);
+    /**
+     * A form that did not bind, said by field and constraint - {@code password NotEmpty}. Never the
+     * {@link BindingResult} itself: its {@code toString} carries every rejected value, and on the
+     * user forms one of them is a password.
+     */
+    public void invalid(BindingResult bindingResult) {
+        detail("ValidationError: " + bindingResult.getAllErrors().stream()
+                .map(error -> (error instanceof FieldError field ? field.getField() : error.getObjectName())
+                        + " " + error.getCode())
+                .distinct()
+                .collect(Collectors.joining(", ")));
     }
 
     /** Request URI with its query string, which is what makes a logged path reproducible. */

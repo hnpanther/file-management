@@ -193,8 +193,7 @@ database **and** `base-dir` together.
 | `file.management.base-dir` | `./TempFiles/files/main/` | storage root; must exist and end with a separator |
 | `spring.servlet.multipart.max-file-size` | `20MB` | per-file upload cap |
 | `spring.servlet.multipart.max-request-size` | `20MB` | per-request upload cap |
-| `filemanagement.default.page-size` | `30` | rows per page in list views |
-| `filemanagement.default.element-size` | `30` | items per dropdown |
+| `filemanagement.default.page-size` | `30` | rows per page in list views (at most 200) |
 | `filemanagement.folder-access.enabled` | `false` | whether a person's folder grants are enforced as well as their permissions (API keys are always scoped) |
 | `filemanagement.folders.max-depth` | `6` | how deep the tree may go below `Home` |
 | `filemanagement.folders.max-delete-files` | `1000` | the most files one "delete this folder with everything in it" may remove |

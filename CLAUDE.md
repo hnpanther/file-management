@@ -48,9 +48,20 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   (`RoleService.copyRole`). Every account holds USER, so **a file operation that forgets
   `folderAccessService.requireWriteAccess` on the file's folder lets everybody do it** (issue 90).
   `PermissionGroup` is a role-page shortcut only - nothing stores a group.
-* **Log an id, not an entity.** `AbstractEntity.toString` prints `Type#id` and no longer recurses
-  ([issue 2](docs/issues.md#2-data-on-bidirectional-jpa-entities--s1) is fixed), but an entity in a
-  message says less than its id.
+* **Log an id, not an entity - and never a DTO.** `AbstractEntity.toString` prints `Type#id` and no
+  longer recurses ([issue 2](docs/issues.md#2-data-on-bidirectional-jpa-entities--s1) is fixed), but
+  an entity in a message says less than its id. A form DTO's `toString` prints what the person
+  typed, which is how a password reached the log
+  ([issue 92](docs/issues.md#92-a-user-form-wrote-the-password-it-carried-to-the-log--s1)); a failed
+  binding is logged with `globalGeneralLogging.invalid(bindingResult)`, never by concatenation, and
+  a new record holding a secret overrides `toString`.
+* **An administrator's account is changed by an administrator only**
+  ([issue 91](docs/issues.md#91-anybody-who-could-manage-users-could-make-themselves-an-administrator--s1)):
+  a new user operation that changes an account, or who holds ADMIN, calls
+  `UserService.requireAdministratorFor` first.
+* **A page size from a URL goes through `PageRequests`** (at most 200 rows, never a 500), and a
+  list converts nothing per row that its query did not fetch - `ListQueryCountTest` counts the
+  statements.
 * **Bytes are written through `StorageWriter`, never through `BlobStore.put` directly.** It is
   what makes a write disappear with a transaction that does not commit, and what records it in
   `file_storage_write` so `StorageSweeper` can settle what a killed process left (roadmap 2.3,
@@ -124,6 +135,6 @@ This repository has a lot of visible debt and an explicit plan for it. When aske
 ## Language
 
 Code, comments, commit messages and documentation are in English. User-facing UI strings are in
-Persian and currently hardcoded in the controllers
-([issue 26](docs/issues.md#26-persian-ui-strings-hardcoded-in-java--s3)) — match the surrounding
-style when editing an existing file.
+Persian and live in `messages.properties` - `UiMessages` in a controller, `#{...}` in a template;
+no Persian sentence goes into Java ([issue 26](docs/issues.md#26-persian-ui-strings-hardcoded-in-java--s3)
+is resolved). A refusal the person should read is an `InvalidDataException` with a message code.

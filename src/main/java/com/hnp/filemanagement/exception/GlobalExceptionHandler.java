@@ -71,8 +71,14 @@ public class GlobalExceptionHandler {
         HttpStatus status = statusOf(e);
         log(principal, request, e.getClass().getSimpleName() + ": " + e.getMessage(), status);
 
-        // A domain message names what the caller got wrong, so it is safe and useful to return.
-        return respond(request, status, e.getMessage(), e.getClass().getSimpleName());
+        // A domain message names what the caller got wrong, so it is safe and useful to return -
+        // in the page's language when the exception carries a message code and a page asked.
+        String detail = e instanceof InvalidDataException invalid && invalid.getMessageCode().isPresent()
+                && !isMachineApi(request)
+                ? messageSource.getMessage(invalid.getMessageCode().get(), invalid.getMessageArguments(),
+                        LocaleContextHolder.getLocale())
+                : e.getMessage();
+        return respond(request, status, detail, e.getClass().getSimpleName());
     }
 
     /**

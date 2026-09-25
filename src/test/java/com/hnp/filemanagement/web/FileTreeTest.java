@@ -50,7 +50,7 @@ class FileTreeTest extends MySqlSupport {
     @Test
     void thePermissionIsRequired() throws Exception {
         mockMvc.perform(get("/files/tree")
-                        .with(user(principal(PermissionEnum.PUBLIC_FILE_PAGE)))
+                        .with(user(principal()))
                         .accept(MediaType.TEXT_HTML))
                 .andExpect(status().isForbidden());
     }
@@ -123,7 +123,7 @@ class FileTreeTest extends MySqlSupport {
         mockMvc.perform(get("/resource/files/tree/children")
                         .param("type", "FOLDER")
                         .param("id", "1")
-                        .with(user(principal(PermissionEnum.PUBLIC_FILE_PAGE)))
+                        .with(user(principal()))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());
     }

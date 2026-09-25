@@ -67,7 +67,7 @@ class UserServiceTest extends MySqlSupport {
 
         Role role = TestData.role("ROLE_" + TestData.nextSequence());
         role.getPermissions().addAll(permissionRepository.findByPermissionNameIn(
-                List.of(PermissionEnum.PUBLIC_FILE_PAGE, PermissionEnum.FILE_INFO_PAGE)));
+                List.of(PermissionEnum.FILE_TREE_PAGE, PermissionEnum.FILE_INFO_PAGE)));
         roleId = roleRepository.save(role).getId();
     }
 
@@ -84,9 +84,7 @@ class UserServiceTest extends MySqlSupport {
         assertThat(created.getEnabled()).isEqualTo(1);
         assertThat(created.getPassword()).isNotEqualTo(request.getPassword());
         assertThat(passwordEncoder.matches(request.getPassword(), created.getPassword())).isTrue();
-        assertThat(underTest.getUserDtoById(created.getId()).getRoleList())
-                .extracting(RoleDTO::getRoleName)
-                .containsExactly("USER");
+        assertThat(roleNamesOf(created.getId())).containsExactly("USER");
     }
 
     @Test
@@ -234,12 +232,10 @@ class UserServiceTest extends MySqlSupport {
     @DisplayName("roles are replaced wholesale, and an unknown id rejects the call")
     void updatesUserRoles() {
         underTest.updateUserRoles(subjectId, List.of(roleId), principalId);
-        assertThat(underTest.getUserDtoById(subjectId).getRoleList())
-                .extracting(RoleDTO::getId)
-                .containsExactly(roleId);
+        assertThat(roleIdsOf(subjectId)).containsExactly(roleId);
 
         underTest.updateUserRoles(subjectId, List.of(), principalId);
-        assertThat(underTest.getUserDtoById(subjectId).getRoleList()).isEmpty();
+        assertThat(roleIdsOf(subjectId)).isEmpty();
 
         assertThatThrownBy(() -> underTest.updateUserRoles(subjectId, List.of(0), principalId))
                 .isInstanceOf(InvalidDataException.class);
@@ -263,7 +259,7 @@ class UserServiceTest extends MySqlSupport {
         Role second = TestData.role("ROLE_" + TestData.nextSequence());
         // Deliberately overlapping, so a role sharing a permission cannot produce it twice.
         second.getPermissions().addAll(permissionRepository.findByPermissionNameIn(
-                List.of(PermissionEnum.PUBLIC_FILE_PAGE, PermissionEnum.ADMIN)));
+                List.of(PermissionEnum.FILE_TREE_PAGE, PermissionEnum.ADMIN)));
         int secondId = roleRepository.save(second).getId();
 
         underTest.updateUserRoles(subjectId, List.of(roleId, secondId), principalId);
@@ -273,7 +269,7 @@ class UserServiceTest extends MySqlSupport {
                 .toList();
 
         assertThat(permissions).containsExactlyInAnyOrder(
-                PermissionEnum.PUBLIC_FILE_PAGE, PermissionEnum.FILE_INFO_PAGE, PermissionEnum.ADMIN);
+                PermissionEnum.FILE_TREE_PAGE, PermissionEnum.FILE_INFO_PAGE, PermissionEnum.ADMIN);
     }
 
     @Test
@@ -297,7 +293,11 @@ class UserServiceTest extends MySqlSupport {
     @DisplayName("holding the ADMIN role adds the synthetic ADMIN authority")
     void grantsTheAdminAuthorityToAdmins() {
         Role admin = roleRepository.findByRoleNameIgnoreCase("ADMIN").orElseThrow();
-        underTest.updateUserRoles(subjectId, List.of(admin.getId()), principalId);
+        // Only an administrator hands out ADMIN (issue 91).
+        User administrator = TestData.user();
+        administrator.getRoles().add(admin);
+        int administratorId = userRepository.save(administrator).getId();
+        underTest.updateUserRoles(subjectId, List.of(admin.getId()), administratorId);
         String username = userRepository.findById(subjectId).orElseThrow().getUsername();
 
         UserDetailsImpl principal = underTest.createUserDetailsFromUser(username);
@@ -345,6 +345,14 @@ class UserServiceTest extends MySqlSupport {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    private List<String> roleNamesOf(int userId) {
+        return userRepository.findByIdWithRoles(userId).orElseThrow().getRoles().stream().map(Role::getRoleName).toList();
+    }
+
+    private List<Integer> roleIdsOf(int userId) {
+        return userRepository.findByIdWithRoles(userId).orElseThrow().getRoles().stream().map(Role::getId).toList();
+    }
 
     private static UserDTO request() {
         int n = TestData.nextSequence();

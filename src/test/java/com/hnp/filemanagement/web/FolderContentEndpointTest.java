@@ -64,7 +64,7 @@ class FolderContentEndpointTest extends MySqlSupport {
     @Test
     void anotherPermissionIsNotThisOne() throws Exception {
         mockMvc.perform(get("/resource/folders/children")
-                        .with(user(principal(PermissionEnum.PUBLIC_FILE_PAGE)))
+                        .with(user(principal()))
                         .header("X-Requested-With", "XMLHttpRequest")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());

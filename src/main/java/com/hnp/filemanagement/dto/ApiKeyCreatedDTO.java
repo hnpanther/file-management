@@ -11,4 +11,10 @@ package com.hnp.filemanagement.dto;
  * @param credential the full {@code fmk_{keyId}_{secret}} string to hand to the integration
  */
 public record ApiKeyCreatedDTO(int id, String keyId, String credential) {
+
+    /** Without the credential: a record prints every component, and this one is a secret. */
+    @Override
+    public String toString() {
+        return "ApiKeyCreatedDTO[id=" + id + ", keyId=" + keyId + ", credential=***]";
+    }
 }

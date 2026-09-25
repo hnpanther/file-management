@@ -525,6 +525,12 @@ in every `catch`. Converting them means injecting `MessageSource` into eight con
 the same edit as the logging-aspect work in [issue 25](#25-sixty-copies-of-the-same-logging-preamble--s3) —
 worth doing in one pass, in Phase 2.
 
+> **Resolved.** Every sentence a page shows comes from `messages.properties`, through `UiMessages`
+> in the controllers and `#{...}` in the templates; no Java source holds a Persian string any more
+> except `JalaliDate`'s table of Persian digits, which is data. A refusal a service raises with a
+> message code (`InvalidDataException`) reaches a page in Persian and an `/api/**` client in
+> English (`GlobalExceptionHandler`).
+
 ### 27. No `@ConfigurationProperties` — **S3**
 
 `${file.management.base-dir}` is `@Value`-injected into five separate beans; page sizes into every
@@ -1596,3 +1602,69 @@ personal folder - the gap would have become everybody's.
 > covers no grant, a READ grant, a WRITE grant and an administrator for each of the four. With
 > folder access off nothing changes: the permissions still decide alone, as they do for every
 > other write.
+
+### 91. Anybody who could manage users could make themselves an administrator — **S1**
+
+Holding ADMIN reaches every permission and every folder, and nothing kept a person without it away
+from it. `SAVE_UPDATED_USER_ROLE` let its holder give the ADMIN role to anyone - themselves
+included; `CHANGE_USER_PASSWORD` let them reset an administrator's password and sign in as them;
+`REST_CHANGE_USER_ENABLED` and `REST_CHANGE_USER_LOGIN_TYPE` let them disable an administrator or
+tie them to a directory that is down. Each of those permissions was therefore ADMIN in effect, and
+the role page did not say so. Nothing stopped the last administrator being disabled or demoted
+either, which locks an installation out of its own role and settings pages.
+
+> **Fixed in 1.9.0.** `UserService` refuses every change to an account that holds ADMIN - roles,
+> password, enabled, login type, details - and every change that gives or takes ADMIN, unless the
+> person making it holds ADMIN too (`requireAdministratorFor`, message `user.adminOnly`); and it
+> refuses to disable or demote the last **enabled** administrator (`requireAnotherAdministrator`,
+> `user.lastAdministrator`). Ordinary accounts are managed with the ordinary permissions, as
+> before. A refusal with a message code now reaches a page in Persian (`GlobalExceptionHandler`),
+> so the profile page's switches say why. The role page warns on the three groups whose holders
+> can still widen what a role reaches - `USERS_ADMIN`, `ROLES_ADMIN` (any permission and folder to
+> any role, their own included) and `API_KEYS_ADMIN` (a key may be given any folder): those are
+> trust decisions, not bugs. `AdministratorAccountTest`, `UserEnablingTest`.
+
+### 92. A user form wrote the password it carried to the log — **S1**
+
+`UserController` logged a new or edited user with `"save new user=" + userDTO`, and `UserDTO` is
+Lombok `@Data`: its `toString` printed the password in the clear, with the national code and the
+phone number. The package logs at `DEBUG` in every profile. Every form handler also logged a failed
+binding with `"ValidationError:" + bindingResult`, whose `toString` quotes each rejected value - a
+password too short for its rule included. Several records holding secrets would have printed them
+the same way the first time one reached a log line: an API key's credential, a share link's token
+and password, the bootstrap and truststore passwords.
+
+> **Fixed in 1.9.0.** Handlers log ids and names only (`save new user username=...`); a failed form
+> is logged by `GlobalGeneralLogging.invalid` as field and constraint (`password Length`), never a
+> value; `UserDTO.password` is `@ToString.Exclude`, and `ApiKeyCreatedDTO`, `ShareLinkDTO`,
+> `CreateShareLinkRequest`, `CreatedShareLink`, `Bootstrap` and `ActiveDirectory` print `***` for
+> their secrets. Logs written before the fix may hold passwords: rotate the log files, and treat
+> any password set through the user pages while `DEBUG` was on as disclosed to whoever reads them.
+> `GlobalGeneralLoggingTest`, `SecretsInToStringTest`.
+
+### 93. A list page took any page size from the URL, and three lists queried once per row — **S3**
+
+`/users`, `/files/file-info` and `/files/public-files` passed `page-size` and `page-number` from
+the URL to `PageRequest.of` as they came: `page-size=0` or a negative page was a 500, and
+`page-size=1000000` a query for a million rows. And three lists cost a query per row: the user
+list converted every user's roles and every role's permissions for a page that shows neither, the
+tag groups page counted each group's folders and tags separately, and the API key list loaded
+each key's creator on its own.
+
+> **Fixed in 1.9.0.** `PageRequests` makes a requested page safe - the default for a missing or
+> non-positive size, at most 200 rows, the first page for a negative number - for those three lists
+> and the explorer, which had its own copy of the rule. The user list converts no roles
+> (`UserDTO` has no role list any more), the tag groups page asks two grouped counts
+> (`countFoldersPerTagGroup`, `countTagsPerGroup`), and the key list fetches the creators with the
+> keys. `ListQueryCountTest` counts the statements each list prepares, whatever the rows.
+
+### 94. Three permissions that no endpoint checked — **S3**
+
+`ACCESS_HOME`, `PUBLIC_FILE_PAGE` and `DOWNLOAD_PUBLIC_FILE` were offered on the role page, and
+held by USER, but their `@PreAuthorize` lines had been commented out: `/` is open by design and
+the public pages follow the `/settings/general` switch. Ticking them granted nothing and unticking
+them took nothing away - a box that says a role can be kept off the public files when it cannot.
+
+> **Fixed in 1.9.0.** The constants are gone, and `V2.19` deletes their rows (the role links
+> first). `@Enumerated(STRING)` cannot load a row whose name is no constant, so the migration and
+> the constants go together.

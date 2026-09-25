@@ -1,6 +1,5 @@
 package com.hnp.filemanagement.util;
 
-
 import com.hnp.filemanagement.dto.*;
 import com.hnp.filemanagement.entity.*;
 import java.util.List;
@@ -23,12 +22,6 @@ public class ModelConverterUtil {
         userDTO.setEnabled(user.getEnabled());
         userDTO.setState(user.getState());
         userDTO.setLoginType(user.getLoginType());
-        userDTO.setRoleList(
-                user.getRoles().stream().map(
-                        role -> convertRoleToRoleDTO(role)
-                ).toList()
-        );
-
         return userDTO;
     }
 
@@ -37,7 +30,7 @@ public class ModelConverterUtil {
         RoleDTO roleDTO = new RoleDTO();
         roleDTO.setId(role.getId());
         roleDTO.setRoleName(role.getRoleName());
-        roleDTO.setFixed(com.hnp.filemanagement.entity.FixedRole.isFixed(role.getRoleName()));
+        roleDTO.setFixed(FixedRole.isFixed(role.getRoleName()));
         roleDTO.setSelected(false);
         roleDTO.setPermissionDTOS(
                 role.getPermissions().stream().map(
@@ -46,7 +39,6 @@ public class ModelConverterUtil {
         );
 
         return roleDTO;
-
 
     }
 
@@ -136,7 +128,6 @@ public class ModelConverterUtil {
 
         fileInfoDTO.setFileDetailsDTOS(fileInfo.getFileDetailsList().stream().map(ModelConverterUtil::covertFileDetailsToFileDetailsDTO).toList());
 
-
         return fileInfoDTO;
     }
 
@@ -190,28 +181,8 @@ public class ModelConverterUtil {
         return fileUploadOutputDTO;
     }
 
-
     public static String getFileNameWithoutExtension(String fileName) {
         return fileName.replaceFirst("[.][^.]+$", "");
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 }

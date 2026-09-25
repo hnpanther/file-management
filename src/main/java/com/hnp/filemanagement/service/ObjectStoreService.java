@@ -54,7 +54,6 @@ import java.util.stream.Collectors;
 @Service
 public class ObjectStoreService {
 
-    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ObjectStoreService.class);
 
     /** A listing returns at most this many keys, whatever the caller asks for. */
     static final int MAX_KEYS_LIMIT = 1000;

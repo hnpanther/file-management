@@ -41,11 +41,14 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 **Now: 1.9.0, written and tested, not yet deployed** - and neither were 1.7.0 and 1.8.0, so the
 next deployment takes all three
 ([deployment.md](deployment.md#upgrading-from-180-to-190--fixed-roles-a-tabbed-role-page-and-a-folder-check-on-four-writes)).
-1.9.0 is role administration, with no migration: ADMIN and USER defined in code and reset on
-every start without taking access from anyone (`FixedRole`), the role page in three tabs saved
-separately, permission groups on it as a shortcut (issue 19 eased, not fixed), copying a role,
-usernames changed by an administrator only, and a folder check on the four file writes that
-lacked one (issue 90).
+1.9.0 is role administration: ADMIN and USER defined in code and reset on every start without
+taking access from anyone (`FixedRole`), the role page in three tabs saved separately, permission
+groups on it as a shortcut (issue 19 eased, not fixed), copying a role, usernames changed by an
+administrator only, and a folder check on the four file writes that lacked one (issue 90). A
+review of the whole codebase went into it as well: administrators' accounts managed by
+administrators only (issue 91), no password in the log (issue 92), bounded list pages without a
+query per row (issue 93), and three permissions nothing checked removed by the one migration,
+`V2.19` (issue 94).
 1.7.0 is PostgreSQL release A
 ([3.3](#33-release-a--what-to-neutralise-on-mysql-first--done-170)) - `app_user`, a 64-bit
 `file_size`, every name compared through `UPPER`, an empty search passed as `''` - together with

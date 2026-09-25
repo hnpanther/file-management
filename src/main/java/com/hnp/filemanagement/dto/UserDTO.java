@@ -8,9 +8,8 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
+import lombok.ToString;
 import org.hibernate.validator.constraints.Length;
-
-import java.util.List;
 
 @Data
 public class UserDTO {
@@ -24,6 +23,7 @@ public class UserDTO {
 
     @NotNull(groups = {InsertValidation.class, UpdatePasswordValidation.class})
     @NotEmpty(groups = {InsertValidation.class, UpdatePasswordValidation.class})
+    @ToString.Exclude
     private String password;
 
     @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
@@ -56,8 +56,6 @@ public class UserDTO {
     private Integer state;
 
     private Integer loginType;
-
-    private List<RoleDTO> roleList;
 
     /**
      * On the new-user form: whether to create the user's personal folder with the user

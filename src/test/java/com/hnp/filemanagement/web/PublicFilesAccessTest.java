@@ -82,9 +82,9 @@ class PublicFilesAccessTest extends MySqlSupport {
                 .andExpect(content().string(Matchers.not(Matchers.containsString("/files/public-files"))));
 
         // No particular permission: being signed in is enough, as it always was for the sidebar link.
-        mockMvc.perform(get("/files/public-files").with(user(principal(PermissionEnum.ACCESS_HOME))).accept(MediaType.TEXT_HTML))
+        mockMvc.perform(get("/files/public-files").with(user(principal())).accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk());
-        mockMvc.perform(get("/files/public-download/{id}", 999_999).with(user(principal(PermissionEnum.ACCESS_HOME))))
+        mockMvc.perform(get("/files/public-download/{id}", 999_999).with(user(principal())))
                 .andExpect(status().isNotFound());
 
         appSettingService.setPublicFilesAnonymous(true, userId);

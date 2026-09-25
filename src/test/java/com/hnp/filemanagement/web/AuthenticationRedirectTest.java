@@ -154,7 +154,7 @@ class AuthenticationRedirectTest extends MySqlSupport {
 
     @Test
     void aUserWithoutFileListAccessLandsOnThePublicLibraryInsteadOfA403() throws Exception {
-        mockMvc.perform(get("/").with(user(principal(PermissionEnum.PUBLIC_FILE_PAGE))).accept(MediaType.TEXT_HTML))
+        mockMvc.perform(get("/").with(user(principal())).accept(MediaType.TEXT_HTML))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/files/public-files"));
     }
@@ -176,7 +176,7 @@ class AuthenticationRedirectTest extends MySqlSupport {
 
     @Test
     void missingPermissionGivesA403RatherThanA200ErrorPage() throws Exception {
-        mockMvc.perform(get("/users").with(user(principal(PermissionEnum.PUBLIC_FILE_PAGE))).accept(MediaType.TEXT_HTML))
+        mockMvc.perform(get("/users").with(user(principal())).accept(MediaType.TEXT_HTML))
                 .andExpect(status().isForbidden());
     }
 
