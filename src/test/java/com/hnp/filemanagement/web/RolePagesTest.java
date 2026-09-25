@@ -195,6 +195,18 @@ class RolePagesTest extends MySqlSupport {
         assertThat(permissionNamesOf(userRoleId)).isEqualTo(FixedRole.USER_PERMISSIONS);
     }
 
+    @Test
+    @DisplayName("ADMIN's upload tab shows every catalogued kind ticked at the server's cap; USER's shows the system-wide policy")
+    void theFixedRolesUploadTabs() throws Exception {
+        String adminPage = page("/roles/" + adminRoleId);
+        assertThat(adminPage).contains("id=\"upload_fixed_notice\"").contains("همهٔ نوع‌های فایلی");
+        for (String extension : com.hnp.filemanagement.validation.ContentTypes.knownExtensions()) {
+            assertThat(adminPage).as(extension)
+                    .containsPattern("id=\"uploadAllowed-" + extension + "\"[^>]*checked=\"checked\"");
+        }
+        assertThat(page("/roles/" + userRoleId)).contains("از قوانین بارگذاری سامانه پیروی می‌کند");
+    }
+
     // ================================================================ copying and creating
 
     @Test

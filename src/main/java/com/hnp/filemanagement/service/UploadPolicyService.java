@@ -3,6 +3,7 @@ package com.hnp.filemanagement.service;
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.dto.UploadRuleRowDTO;
 import com.hnp.filemanagement.entity.ActionEnum;
+import com.hnp.filemanagement.entity.FixedRole;
 import com.hnp.filemanagement.entity.EntityEnum;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.UploadPolicy;
@@ -39,10 +40,14 @@ import java.util.Optional;
  * own policy if it has one, the system-wide policy otherwise. The person may upload what any of
  * those sets allows, up to the largest limit any of them gives for that kind - the union, which
  * is how permissions combine across roles too. A person with no role at all has the system-wide
- * limits. An API key holds no role and has the system-wide limits. Nobody is exempt, the
- * administrator included: the policy can only narrow the catalogue of kinds the application can
- * recognise ({@link ContentTypes#knownExtensions()}), never widen it, so being governed by it costs
- * an administrator nothing they could otherwise have.
+ * limits. An API key holds no role and has the system-wide limits.
+ *
+ * <p><b>The administrator is the exception</b> (1.9.0): a holder of the ADMIN role may upload every
+ * kind the catalogue recognises ({@link ContentTypes#knownExtensions()}), built-in and custom, each
+ * up to the server's cap ({@link #administratorLimits}). Computed on every upload rather than
+ * stored, so a custom kind added on the content-kinds page is theirs at once, with no policy to
+ * edit and nothing to migrate. The catalogue itself still bounds it: a kind the application does
+ * not recognise is refused for everyone.
  *
  * <p><b>Where it is enforced.</b> {@link #requireAllowed} is called once, in
  * {@code FileService.newFileDetails}, which every route that stores a file - the form, v1, v2, a
@@ -110,6 +115,9 @@ public class UploadPolicyService {
         if (currentRequestIsAnApiKey()) {
             return globalLimits();
         }
+        if (roleRepository.userHasRole(principalId, FixedRole.ADMIN.roleName())) {
+            return administratorLimits();
+        }
         List<Integer> roleIds = uploadPolicyRepository.findRoleIdsOfUser(principalId);
         if (roleIds.isEmpty()) {
             return globalLimits();
@@ -126,6 +134,19 @@ public class UploadPolicyService {
             contribution.forEach((extension, limit) -> union.merge(extension, limit, Math::max));
         }
         return inCatalogueOrder(union);
+    }
+
+    /**
+     * What a holder of the ADMIN role may upload: every kind the catalogue recognises - the
+     * built-in ones and every custom kind registered now - each up to the server's cap, which the
+     * container enforces before this is asked anyway. Also what the ADMIN role's upload tab shows.
+     */
+    public Map<String, Long> administratorLimits() {
+        Map<String, Long> everything = new LinkedHashMap<>();
+        for (String extension : ContentTypes.knownExtensions()) {
+            everything.put(extension, serverCap.toBytes());
+        }
+        return everything;
     }
 
     /**

@@ -142,11 +142,15 @@ and give a new group a `permissionGroup.{NAME}.title` and `.description` in `mes
 A group is a shortcut on the role page only: nothing stores it and no `@PreAuthorize` names it.
 
 **Roles: two are fixed, the rest are edited on three tabs.** `FixedRole` defines `ADMIN`
-(everything, by its name - no rows) and `USER` (what every new account gets:
-`FixedRole.USER_PERMISSIONS`, no folder grants, the system-wide upload policy). Never edit either
-in code paths that bypass `RoleService` - the services refuse it, and `DataInitializer.reconcile`
-resets both on every start, first copying anything extra into `USER_PREVIOUS` / `ADMIN_PREVIOUS`
-for the same people. **Adding a group to USER gives it to every account on the next start**;
+(everything: the wildcard and the folder bypass by its name, **every assignable permission row**,
+and **every catalogued file type up to the server's cap**, above the upload policy) and `USER`
+(what every new account gets: `FixedRole.USER_PERMISSIONS`, no folder grants, the system-wide
+upload policy). **A new `PermissionEnum` constant reaches ADMIN by itself** - the start seeds the
+row and `DataInitializer.reconcile` gives it to ADMIN - and **a new content kind reaches ADMIN by
+itself** (`UploadPolicyService.administratorLimits` reads the live catalogue); neither needs a
+migration, and a migration must not try, since it would run only once. Never edit either role in
+code paths that bypass `RoleService` - the services refuse it, and the reconcile resets both on
+every start, first copying anything extra of USER's into `USER_PREVIOUS` for the same people. **Adding a group to USER gives it to every account on the next start**;
 review `USER_PERMISSIONS` as a whole, and keep `PermissionGroupTest.theUserRole` in step. The role
 page (`role/role-edit.html`) saves permissions, folder grants and the upload policy as three
 separate posts (`/roles/{id}/permissions`, `/folders`, `/upload-policy`); `COPY_ROLE`

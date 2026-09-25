@@ -45,6 +45,8 @@ class UploadPolicyServiceTest extends MySqlSupport {
     private RoleRepository roleRepository;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private ContentKindService contentKindService;
 
     private int adminId;
 
@@ -225,6 +227,49 @@ class UploadPolicyServiceTest extends MySqlSupport {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    // ---------------------------------------------------------------- the administrator (1.9.0)
+
+    @Test
+    @DisplayName("a holder of ADMIN may upload every catalogued kind up to the server cap, whatever the system-wide policy says")
+    void theAdministratorIsAboveThePolicy() {
+        underTest.saveGlobal(mb("pdf", 1), adminId);
+        User admin = TestData.user();
+        admin.getRoles().add(roleRepository.findByRoleNameIgnoreCase("ADMIN")
+                .orElseGet(() -> roleRepository.save(TestData.role("ADMIN"))));
+        int administrator = userRepository.save(admin).getId();
+        long cap = underTest.serverCapMb() * MB;
+
+        Map<String, Long> limits = underTest.effectiveLimitsFor(administrator);
+
+        assertThat(limits.keySet()).containsExactlyElementsOf(ContentTypes.knownExtensions());
+        assertThat(limits.values()).containsOnly(cap);
+        assertThat(underTest.administratorLimits()).isEqualTo(limits);
+        underTest.requireAllowed(administrator, new MockMultipartFile("f", "movie.mp4", "video/mp4", new byte[10]));
+        // Everybody else is still held to the policy.
+        assertThatThrownBy(() -> underTest.requireAllowed(adminId, new MockMultipartFile("f", "movie.mp4", "video/mp4", new byte[10])))
+                .isInstanceOf(UploadRefusedException.class);
+    }
+
+    @Test
+    @DisplayName("a custom kind registered later is the administrator's at once, with no policy edited")
+    void aNewKindReachesTheAdministrator() {
+        User admin = TestData.user();
+        admin.getRoles().add(roleRepository.findByRoleNameIgnoreCase("ADMIN")
+                .orElseGet(() -> roleRepository.save(TestData.role("ADMIN"))));
+        int administrator = userRepository.save(admin).getId();
+        assertThat(underTest.effectiveLimitsFor(administrator)).doesNotContainKey("vsdx");
+        try {
+            ContentTypes.registerCustom(List.of(new ContentTypes.CustomKind("vsdx", "application/vnd.ms-visio.drawing",
+                    new byte[]{'P', 'K', 3, 4}, 0, false)));
+
+            assertThat(underTest.effectiveLimitsFor(administrator)).containsEntry("vsdx", underTest.serverCapMb() * MB);
+            assertThat(underTest.globalLimits()).as("nobody else's").doesNotContainKey("vsdx");
+        } finally {
+            // The registry is static: back to what the table says, for the tests that follow.
+            contentKindService.refreshRegistry();
+        }
+    }
 
     private static Map<String, Long> mb(Object... pairs) {
         Map<String, Long> limits = new LinkedHashMap<>();

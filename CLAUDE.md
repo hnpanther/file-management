@@ -40,8 +40,10 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   The accounts table is `app_user`; the entity is still `User`. Details in
   [AGENTS.md](AGENTS.md#database-changes).
 * **ADMIN and USER are fixed roles, defined in `FixedRole`** and reset to that definition on every
-  start (`DataInitializer.reconcile`, which first copies anything extra into `USER_PREVIOUS` /
-  `ADMIN_PREVIOUS`). Do not change what they hold anywhere else; a different role is a copy
+  start (`DataInitializer.reconcile`, which first copies anything extra of USER's into
+  `USER_PREVIOUS`). ADMIN holds every assignable permission and may upload every catalogued file
+  type up to the server's cap; a new permission or content kind reaches it by itself, at the next
+  start or at once - **do not write a migration for that**. Do not change what they hold anywhere else; a different role is a copy
   (`RoleService.copyRole`). Every account holds USER, so **a file operation that forgets
   `folderAccessService.requireWriteAccess` on the file's folder lets everybody do it** (issue 90).
   `PermissionGroup` is a role-page shortcut only - nothing stores a group.

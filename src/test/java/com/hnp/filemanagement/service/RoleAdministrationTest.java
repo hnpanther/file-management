@@ -99,10 +99,10 @@ class RoleAdministrationTest extends MySqlSupport {
     class Fixed {
 
         @Test
-        @DisplayName("after the start USER holds exactly its definition, ADMIN no rows, and neither a grant or an own policy")
+        @DisplayName("after the start USER holds exactly its definition, ADMIN every assignable permission, and neither a grant or an own policy")
         void theStartDefinesThem() {
             assertThat(permissionsOf(user.getId())).isEqualTo(FixedRole.USER_PERMISSIONS);
-            assertThat(permissionsOf(admin.getId())).isEmpty();
+            assertThat(permissionsOf(admin.getId())).isEqualTo(FixedRole.everything());
             for (Role role : List.of(admin, user)) {
                 assertThat(roleRepository.findByIdWithFolders(role.getId()).orElseThrow().getFolderGrants()).isEmpty();
                 assertThat(uploadPolicyRepository.findByRoleId(role.getId())).isEmpty();
@@ -317,22 +317,40 @@ class RoleAdministrationTest extends MySqlSupport {
         }
 
         @Test
-        @DisplayName("ADMIN's rows and grants are dropped without a copy; its own upload policy goes into ADMIN_PREVIOUS")
+        @DisplayName("ADMIN's folder grants, own upload policy and non-assignable rows are dropped without a copy - its holders already reach everything")
         void adminExtras() {
-            handEdit(admin, EnumSet.of(PermissionEnum.GET_ALL_USER_PAGE), true, false);
-            dataInitializer.initialize();
-            flushAndClear();
-            assertThat(permissionsOf(admin.getId())).isEmpty();
-            assertThat(roleRepository.findByIdWithFolders(admin.getId()).orElseThrow().getFolderGrants()).isEmpty();
-            assertThat(roleRepository.findByRoleNameIgnoreCase("ADMIN_PREVIOUS")).as("nothing worth keeping").isEmpty();
+            Role entity = roleRepository.findByIdWithPermissions(admin.getId()).orElseThrow();
+            entity.getPermissions().add(permissionRepository.findByPermissionName(PermissionEnum.API_KEY).orElseThrow());
+            handEdit(admin, EnumSet.noneOf(PermissionEnum.class), true, true);
 
-            handEdit(admin, EnumSet.noneOf(PermissionEnum.class), false, true);
             dataInitializer.initialize();
             flushAndClear();
-            Role previous = roleRepository.findByRoleNameIgnoreCase("ADMIN_PREVIOUS").orElseThrow();
-            assertThat(uploadPolicyService.roleLimits(previous.getId())).contains(Map.of("mp4", 7 * MB));
+
+            assertThat(permissionsOf(admin.getId())).isEqualTo(FixedRole.everything());
+            assertThat(roleRepository.findByIdWithFolders(admin.getId()).orElseThrow().getFolderGrants()).isEmpty();
             assertThat(uploadPolicyService.roleLimits(admin.getId())).isEmpty();
-            assertThat(userRepository.findHoldersOfRole(previous.getId())).extracting(User::getId).contains(principalId);
+            assertThat(roleRepository.findByRoleNameIgnoreCase("ADMIN_PREVIOUS")).as("nothing worth keeping").isEmpty();
+        }
+
+        /**
+         * What happens on the start after a release adds a constant to PermissionEnum: the seeding
+         * inserts its row and the reconcile gives it to ADMIN. Simulated by taking rows away,
+         * which leaves ADMIN in the same state a new constant would.
+         */
+        @Test
+        @DisplayName("a permission ADMIN lacks - a new one, after an upgrade - is given to it by the next start, without a copy")
+        void aNewPermissionReachesAdmin() {
+            Role entity = roleRepository.findByIdWithPermissions(admin.getId()).orElseThrow();
+            entity.getPermissions().removeIf(p -> p.getPermissionName() == PermissionEnum.COPY_ROLE
+                    || p.getPermissionName() == PermissionEnum.REST_DELETE_FOLDER_TREE);
+            flushAndClear();
+            assertThat(permissionsOf(admin.getId())).doesNotContain(PermissionEnum.COPY_ROLE);
+
+            dataInitializer.initialize();
+            flushAndClear();
+
+            assertThat(permissionsOf(admin.getId())).isEqualTo(FixedRole.everything());
+            assertThat(roleRepository.findByRoleNameIgnoreCase("ADMIN_PREVIOUS")).isEmpty();
         }
 
         @Test

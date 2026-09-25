@@ -628,19 +628,24 @@ carries `@PreAuthorize("hasAuthority('X') || hasAuthority('ADMIN')")`.
 
 ### Roles: two fixed, the rest edited on a three-tab page (1.9.0)
 
-* **`FixedRole`** defines the two roles every installation has, in code. **ADMIN** holds no
-  permission rows and no folder grants: its name is its reach (the `ADMIN` wildcard, and passing
-  every folder check in `FolderAccessService`). **USER** is what every new account is given
+* **`FixedRole`** defines the two roles every installation has, in code. **ADMIN** is
+  everything, and says so: the name gives its holders the `ADMIN` wildcard and passes every folder
+  check (`FolderAccessService`); the role *holds* every assignable permission row
+  (`FixedRole.everything()`, computed from `PermissionEnum`, so a constant added in a release is
+  ADMIN's on the next start); and its holders may upload every kind the content catalogue knows,
+  built-in and custom, up to the server's cap (`UploadPolicyService.administratorLimits`, computed
+  on each upload, so a kind added on the content-kinds page is theirs at once). It has no folder
+  grants and no upload policy row - it needs neither. **USER** is what every new account is given
   (`UserService.createUser`): `FixedRole.USER_PERMISSIONS`, which is the groups `FILE_READ`,
   `FILE_WRITE`, `FILE_DELETE`, `FOLDER_MANAGE` and `SHARE_LINKS` - and no folder grants, so with
   folder access on its holders reach their own personal folder (a direct `WRITE` grant from
   `UserHomeService`) and whatever else they are granted, nothing more. **With folder access off,
-  USER's permissions apply to every folder.** Neither has an upload policy of its own. The
+  USER's permissions apply to every folder.** USER follows the system-wide upload policy. The
   services refuse every change to either (`RoleService.requireEditable`, called for permissions,
   folder grants and `UploadPolicyService.saveForRole`), and `DataInitializer.reconcile` brings
-  both back to the definition on every start - copying anything extra into `USER_PREVIOUS` /
-  `ADMIN_PREVIOUS` first and giving that copy to every holder, so no one loses access (section
-  "Bootstrap").
+  both back to the definition on every start - copying anything extra of USER's into
+  `USER_PREVIOUS` first and giving that copy to every holder of USER, so no one loses access;
+  nothing of ADMIN's needs keeping (section "Bootstrap").
 * **`PermissionGroup`** sorts every assignable permission into exactly one group (`FILE_READ`,
   `USERS_ADMIN`, ...). It is **for the role page only**: ticking a group ticks its members in the
   browser, and what is saved is the members - no table stores a group and no `@PreAuthorize`
@@ -810,9 +815,12 @@ that role alone. The rules:
   alone.** An own policy that lists nothing means the role may upload nothing.
 * **Across several roles, the union**: a person may upload what any of their roles allows, up to
   the largest limit any of them gives for that kind — the same way permissions combine. A person
-  with no role, and an API key (which holds none), have the system-wide limits. Nobody is exempt,
-  the administrator included: being governed by a policy that can only narrow the catalogue costs
-  nothing that could otherwise be had.
+  with no role, and an API key (which holds none), have the system-wide limits.
+* **The administrator is above the policy** (1.9.0): a holder of the ADMIN role may upload every
+  catalogued kind - built-in and custom - up to the server's cap (`administratorLimits`),
+  whatever the policies say. Computed on each upload, not stored: a custom kind added on the
+  content-kinds page is the administrator's immediately, with no policy to edit. A copy of the
+  ADMIN role does not inherit this; it follows the policies like any role.
 * **One enforcement point.** `UploadPolicyService.requireAllowed` is called in
   `FileService.newFileDetails`, which every route that stores a file passes through — the form,
   v1, v2, a new version. A refusal is `UploadRefusedException` (a 400 whose `detail` names the
@@ -849,9 +857,10 @@ keep their rows and are served as `application/octet-stream` attachments.
 
 `BootstrapConfig`'s runner runs only when `spring.profiles.active=prod`. `DataInitializer`
 inserts any missing `PermissionEnum` value, creates the `ADMIN` and `USER` roles, brings both to
-their `FixedRole` definition (anything extra first copied into `USER_PREVIOUS` / `ADMIN_PREVIOUS`
-and given to the same people, with a WARN line saying so; nothing is written when they already
-match), and creates the `Admin` account if absent (password from `filemanagement.bootstrap.admin-password`, or generated
+their `FixedRole` definition - which is how a permission added in a release reaches ADMIN: the
+seeding inserts its row and the reconcile gives it to ADMIN, in the same start (anything extra of
+USER's is first copied into `USER_PREVIOUS` and given to the same people, with a WARN line saying
+so; nothing is written when both already match) - and creates the `Admin` account if absent (password from `filemanagement.bootstrap.admin-password`, or generated
 and logged once). The pre-flight report that preceded step 4 is gone with the step: `V2.8`
 itself refuses to run on a database that would have failed it (section 10).
 

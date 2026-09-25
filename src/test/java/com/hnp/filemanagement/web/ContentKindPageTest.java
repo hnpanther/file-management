@@ -70,6 +70,8 @@ class ContentKindPageTest extends MySqlSupport {
     private RoleRepository roleRepository;
 
     private int adminId;
+    /** Uploads through v1: a person with no role, so the system-wide policy governs them. */
+    private int clerkId;
     private int tagFolderId;
 
     @BeforeEach
@@ -77,6 +79,7 @@ class ContentKindPageTest extends MySqlSupport {
         User admin = TestData.user();
         admin.getRoles().add(roleRepository.save(TestData.role("ADMIN")));
         adminId = userRepository.save(admin).getId();
+        clerkId = userRepository.save(TestData.user()).getId();
 
         tagFolderId = FolderFixture.chain(folderRepository, tagGroupRepository, admin).tagId();
     }
@@ -141,6 +144,10 @@ class ContentKindPageTest extends MySqlSupport {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value(containsString("not allowed")));   // catalogued, not yet allowed
 
+        // ... except for the administrator, who may upload every catalogued kind from the moment
+        // it exists, with no policy edited (1.9.0).
+        upload(adminId, "admin-plan.dwg", DWG).andExpect(status().isOk());
+
         uploadPolicyService.saveGlobal(Map.of("dwg", 10L), adminId);
 
         String body = upload("plan.dwg", DWG)
@@ -182,11 +189,17 @@ class ContentKindPageTest extends MySqlSupport {
     // ---------------------------------------------------------------- helpers
 
     private org.springframework.test.web.servlet.ResultActions upload(String fileName, byte[] bytes) throws Exception {
+        return upload(clerkId, fileName, bytes);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions upload(int asUser, String fileName, byte[] bytes) throws Exception {
+        UserDetailsImpl uploader = principal(PermissionEnum.API_SAVE_NEW_FILE);
+        uploader.setId(asUser);
         return mockMvc.perform(multipart("/api/v1/files")
                 .file(new MockMultipartFile("multipartFile", fileName, "application/octet-stream", bytes))
                 .param("description", "uploaded through v1")
                 .param("folderId", String.valueOf(tagFolderId))
-                .with(user(principal(PermissionEnum.API_SAVE_NEW_FILE)))
+                .with(user(uploader))
                 .accept(MediaType.APPLICATION_JSON));
     }
 

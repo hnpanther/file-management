@@ -161,13 +161,17 @@ public class RoleController {
         globalGeneralLogging.detail("update role page with id=" + roleId);
 
         RoleDTO role = roleService.getRoleDtoById(roleId);
+        FixedRole fixed = FixedRole.of(role.getRoleName()).orElse(null);
         model.addAttribute("role", role);
-        model.addAttribute("fixedRole", FixedRole.of(role.getRoleName()).map(Enum::name).orElse(null));
+        model.addAttribute("fixedRole", fixed == null ? null : fixed.name());
         model.addAttribute("permissionGroups", roleService.getPermissionGroupsOfRole(roleId));
         model.addAttribute("folders", roleService.getFolderTreeForRole(roleId));
         Optional<Map<String, Long>> own = uploadPolicyService.roleLimits(roleId);
         model.addAttribute("uploadOwn", own.isPresent());
-        model.addAttribute("uploadRows", uploadPolicyService.rowsFor(own.orElseGet(uploadPolicyService::globalLimits)));
+        // ADMIN is above the policy: every catalogued kind, each up to the server's cap.
+        model.addAttribute("uploadRows", uploadPolicyService.rowsFor(fixed == FixedRole.ADMIN
+                ? uploadPolicyService.administratorLimits()
+                : own.orElseGet(uploadPolicyService::globalLimits)));
         model.addAttribute("serverCapMb", uploadPolicyService.serverCapMb());
         // A tab named by a flash (after a save) wins over the address, which is the same tab anyway.
         if (!model.containsAttribute("activeTab")) {
