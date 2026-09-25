@@ -60,18 +60,23 @@ import java.util.stream.Collectors;
  * <h2>The fixed roles</h2>
  *
  * <p>ADMIN and USER are defined in {@link FixedRole}, and every start brings them to that
- * definition: USER holds exactly {@link FixedRole#USER_PERMISSIONS}, ADMIN no permission rows
- * (its name is its reach), and neither has folder grants or an upload policy of its own. Before
- * 1.9.0 both could be edited on the role page, so an installation may find them holding more.
- * <b>Nothing is taken from anyone</b>: whatever a fixed role holds beyond its definition - a
- * permission USER is not given, a folder grant, an own upload policy - is first copied into a new
- * role, {@code USER_PREVIOUS} or {@code ADMIN_PREVIOUS}, which every holder of the fixed role is
- * given as well; only then is the fixed role reset. What each person can do is therefore the same
- * after the start as before it, and the administrator can see in one place what was set by hand
- * and decide what to keep. A permission USER lacks is simply added. ADMIN's own permission rows
- * and folder grants change nothing for its holders - the wildcard and the folder bypass reach
- * further - so they are dropped without a copy; only an own upload policy of ADMIN's, which does
- * narrow or widen what its holders may upload, is carried into {@code ADMIN_PREVIOUS}.
+ * definition: ADMIN holds every assignable permission row - so <b>a permission added to
+ * {@link PermissionEnum} is seeded above and given to ADMIN in the same start</b>, with nothing to
+ * migrate - USER holds exactly {@link FixedRole#USER_PERMISSIONS}, and neither has folder grants
+ * or an upload policy row of its own (ADMIN may upload every catalogued kind anyway,
+ * {@code UploadPolicyService.administratorLimits}). This is done here, on every start, and not in
+ * a Flyway migration, because a migration runs once and the permissions and the content kinds
+ * keep growing after it.
+ *
+ * <p>Before 1.9.0 both roles could be edited on the role page, so an installation may find them
+ * holding more. <b>Nothing is taken from anyone</b>: whatever USER holds beyond its definition - a
+ * permission it is not given, a folder grant, an own upload policy - is first copied into a new
+ * role, {@code USER_PREVIOUS}, which every holder of USER is given as well; only then is USER
+ * reset. What each person can do is therefore the same after the start as before it, and the
+ * administrator can see in one place what was set by hand and decide what to keep. A permission
+ * either role lacks is simply added. Nothing of ADMIN's needs keeping - it already reaches every
+ * endpoint, every folder and every kind of file - so its folder grants, its own upload policy and
+ * the wildcard and key rows the page never offers are dropped without a copy.
  */
 @Component
 public class DataInitializer {
@@ -80,7 +85,7 @@ public class DataInitializer {
 
     private static final String ADMIN_USERNAME = "Admin";
 
-    /** What a fixed role's extras are copied into: {@code USER_PREVIOUS}, {@code ADMIN_PREVIOUS}. */
+    /** What USER's extras are copied into: {@code USER_PREVIOUS}. */
     static final String PREVIOUS_SUFFIX = "_PREVIOUS";
 
     private final UserRepository userRepository;
@@ -134,10 +139,9 @@ public class DataInitializer {
         extra.removeAll(fixed.permissions());
         boolean hasGrants = !withGrants.getFolderGrants().isEmpty();
 
-        // Worth keeping for somebody: for USER anything beyond the definition; for ADMIN only an
-        // upload policy, since its rows and grants are outreached by its name.
-        boolean preserve = ownPolicy.isPresent()
-                || (fixed == FixedRole.USER && (!extra.isEmpty() || hasGrants));
+        // Worth keeping for somebody: for USER anything beyond the definition; for ADMIN nothing,
+        // since its holders already reach every endpoint, folder and kind of file.
+        boolean preserve = fixed == FixedRole.USER && (!extra.isEmpty() || hasGrants || ownPolicy.isPresent());
         boolean differs = !held.equals(fixed.permissions()) || hasGrants || ownPolicy.isPresent();
         if (!differs) {
             return;

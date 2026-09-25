@@ -526,7 +526,8 @@ server. Below the groups every permission is listed once, under its group's head
 carrying `data-member-of="{GROUP}"`.
 
 A fixed role renders the same page with an `alert-info` notice, every control `disabled`, and no
-save buttons; the service would refuse a post anyway. The copy form is a popover under the
+save buttons; the service would refuse a post anyway. ADMIN's upload tab shows every catalogued
+kind ticked at the server's cap (it is above the policy); USER's shows the system-wide policy. The copy form is a popover under the
 header's copy button (`role-copy-form`), closed by Escape or a click outside; it opens from the
 start edge on a phone, where the header wraps, and from the end edge wider.
 

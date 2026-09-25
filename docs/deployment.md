@@ -618,11 +618,15 @@ No migration: a jar swap. Take the database backup first, as always. What change
   role page. USER - what every new account is given - is: read, write and delete files, manage
   folders, make share links; which folders is decided by folder access, so with it on (the
   default) a USER holder reaches only their personal folder and whatever else they are granted.
-  ADMIN is everything, as before. **At the first start** each is brought to that definition, and if
-  either held anything more - a permission USER is not given, a folder grant, an upload policy of
-  its own - that is first copied into a new role, `USER_PREVIOUS` or `ADMIN_PREVIOUS`, which
-  everybody holding the fixed role is given as well. **Nobody can do less after the upgrade than
-  before it.** The start logs it at WARN:
+  ADMIN is everything, and now also shows it: the role holds every permission, and its holders
+  may upload **every file type the application recognises, up to the server's size cap**,
+  whatever the upload policy says - a custom type added later on the content-kinds page
+  included, the moment it is added. **At the first start** each role is brought to that
+  definition. If USER held anything more - a permission it is not given, a folder grant, an
+  upload policy of its own - that is first copied into a new role, `USER_PREVIOUS`, which
+  everybody holding USER is given as well. **Nobody can do less after the upgrade than before
+  it.** Whatever ADMIN held beyond its definition (folder grants, an own upload policy) is simply
+  dropped: its holders already reach everything. The start logs it at WARN:
 
   ```
   fixed role USER held more than its definition; kept in new role USER_PREVIOUS (...) and given to its N holder(s) - review it on the role page
@@ -630,7 +634,21 @@ No migration: a jar swap. Take the database backup first, as always. What change
   ```
 
   Then open the roles page, look at `USER_PREVIOUS`, keep it, trim it, or remove it from the
-  people who should not have it. To see beforehand what USER holds today:
+  people who should not have it.
+
+  **This is done by the application at every start, not by a Flyway migration**, on purpose:
+  a migration runs once, and the two things ADMIN must always have keep growing after it. So:
+
+  | When | What reaches ADMIN, and how |
+  |---|---|
+  | a release adds a permission (`PermissionEnum`) | the start seeds its row and, in the same transaction, gives it to ADMIN (`DataInitializer.reconcile`) - no migration, nothing to click |
+  | an administrator adds a file type on the content-kinds page | ADMIN's holders may upload it at once, up to the server's cap (`UploadPolicyService.administratorLimits`, computed on every upload) - nothing stored, nothing to migrate |
+  | the server's cap (`spring.servlet.multipart.max-file-size`) is raised | ADMIN's limit follows it on the next start |
+
+  Other roles get neither automatically: a new permission is ticked for them on the role page,
+  and a new file type is allowed in the upload policy.
+
+  To see beforehand what USER holds today:
 
   ```sql
   SELECT p.permission_name FROM permission p

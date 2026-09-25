@@ -106,10 +106,11 @@ public class RoleService {
      * upload policy, if it has one. Nothing links the two afterwards - editing either leaves the
      * other as it was - and nobody holds the copy until it is given to someone.
      *
-     * <p>A copy of ADMIN gets every assignable permission ({@link FixedRole#everything}), because
-     * ADMIN holds its reach by name, not by rows; what it cannot copy is that name's two
-     * privileges - the {@code ADMIN} wildcard and passing every folder check - so the copy reaches
-     * the folders its grants give it, like any role. A copy of USER gets USER's permissions.
+     * <p>A copy of ADMIN gets every assignable permission ({@link FixedRole#everything}), as
+     * ADMIN holds them; what it cannot copy are the three privileges of the name itself - the
+     * {@code ADMIN} wildcard, passing every folder check, and uploading every kind of file above the
+     * policy - so the copy reaches the folders its grants give it and follows the system-wide
+     * upload policy, like any role. A copy of USER gets USER's permissions.
      *
      * @return the new role's id
      */

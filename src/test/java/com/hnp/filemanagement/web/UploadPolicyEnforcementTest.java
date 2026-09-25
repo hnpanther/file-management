@@ -50,8 +50,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * web form and a new version - from the one call in {@code FileService.newFileDetails}, and the
  * form tells the person what they may upload before they try.
  *
- * <p>Two people: an administrator whose role has no policy of its own (so the system-wide one
- * governs them), and a member of a restricted role whose own policy allows PDF only, and small.
+ * <p>Three people: an administrator, who is above the policy (1.9.0: every catalogued kind, up to
+ * the server's cap); a member of a plain role with no policy of its own, whom the system-wide one
+ * governs; and a member of a restricted role whose own policy allows PDF only, and small.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -78,6 +79,7 @@ class UploadPolicyEnforcementTest extends MySqlSupport {
     private RoleRepository roleRepository;
 
     private int adminId;
+    private int plainId;
     private int restrictedId;
     private String bucket;
     private String subCategoryName;
@@ -96,6 +98,10 @@ class UploadPolicyEnforcementTest extends MySqlSupport {
         restricted.getRoles().add(restrictedRole);
         restrictedId = userRepository.save(restricted).getId();
         uploadPolicyService.saveForRole(restrictedRole.getId(), Map.of("pdf", 1L), adminId);
+
+        User plain = TestData.user();
+        plain.getRoles().add(roleRepository.save(TestData.role("READERS" + TestData.nextSequence())));
+        plainId = userRepository.save(plain).getId();
 
         FolderFixture.Chain chain = FolderFixture.chain(folderRepository, tagGroupRepository, admin);
         bucket = chain.category().getName();
@@ -126,17 +132,27 @@ class UploadPolicyEnforcementTest extends MySqlSupport {
     }
 
     @Test
-    @DisplayName("v1: the administrator's role has no policy of its own, so the system-wide one governs it - including its changes")
+    @DisplayName("v1: a role with no policy of its own follows the system-wide one - including its changes")
     void v1FollowsTheGlobalPolicyForARoleWithoutItsOwn() throws Exception {
-        uploadV1(adminId, "photo.png", TestData.bytesFor("photo.png")).andExpect(status().isOk());
-        uploadV1(adminId, "bundle.zip", TestData.bytesFor("bundle.zip"))
+        uploadV1(plainId, "photo.png", TestData.bytesFor("photo.png")).andExpect(status().isOk());
+        uploadV1(plainId, "bundle.zip", TestData.bytesFor("bundle.zip"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value(containsString("not allowed")));
 
         uploadPolicyService.saveGlobal(Map.of("zip", 5L), adminId);
 
+        uploadV1(plainId, "bundle.zip", TestData.bytesFor("bundle.zip")).andExpect(status().isOk());
+        uploadV1(plainId, "other.png", TestData.bytesFor("other.png")).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("v1: the administrator is above the policy - a kind the system-wide policy leaves out is still theirs")
+    void v1TheAdministratorIsAboveThePolicy() throws Exception {
+        uploadPolicyService.saveGlobal(Map.of("pdf", 1L), adminId);
+
         uploadV1(adminId, "bundle.zip", TestData.bytesFor("bundle.zip")).andExpect(status().isOk());
-        uploadV1(adminId, "other.png", TestData.bytesFor("other.png")).andExpect(status().isBadRequest());
+        uploadV1(adminId, "photo.png", TestData.bytesFor("photo.png")).andExpect(status().isOk());
+        uploadV1(plainId, "plain.png", TestData.bytesFor("plain.png")).andExpect(status().isBadRequest());
     }
 
     // ---------------------------------------------------------------- v2

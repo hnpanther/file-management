@@ -235,7 +235,8 @@
                         <span th:text="#{role.upload.own}">اختصاصی این نقش</span>
                     </label>
                 </div>
-                <p th:if="${fixed}" class="mb-4 text-sm text-ink-700" th:text="#{role.upload.fixed}">
+                <p th:if="${fixed}" class="mb-4 text-sm text-ink-700" id="upload_fixed_notice"
+                   th:text="#{|role.upload.fixed.${fixedRole}|}">
                     این نقش از قوانین بارگذاری سامانه پیروی می‌کند.
                 </p>
 

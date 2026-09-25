@@ -78,10 +78,15 @@ class PermissionGroupTest {
                 .doesNotContain(PermissionEnum.ADMIN, PermissionEnum.API_KEY);
     }
 
+    /**
+     * Derived from the enum, never listed: a constant added to {@link PermissionEnum} and placed in
+     * a group is ADMIN's without anyone adding it here.
+     */
     @Test
-    @DisplayName("ADMIN holds no rows - its name is its reach - and shows every group; a copy of it gets every assignable permission")
+    @DisplayName("ADMIN holds every assignable permission - computed from the enum - and shows every group")
     void theAdminRole() {
-        assertThat(FixedRole.ADMIN.permissions()).isEmpty();
+        assertThat(FixedRole.ADMIN.permissions()).isEqualTo(PermissionGroup.assignable())
+                .doesNotContain(PermissionEnum.ADMIN, PermissionEnum.API_KEY);
         assertThat(FixedRole.ADMIN.groups()).containsExactly(PermissionGroup.values());
         assertThat(FixedRole.everything()).isEqualTo(PermissionGroup.assignable())
                 .doesNotContain(PermissionEnum.ADMIN, PermissionEnum.API_KEY);
