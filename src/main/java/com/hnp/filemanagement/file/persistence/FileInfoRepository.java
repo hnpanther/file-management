@@ -39,9 +39,12 @@ import java.util.Optional;
  * space and none all meet. MySQL's {@code unicode_ci} collation did part of this by itself and
  * PostgreSQL does none of it (issue 86); with the keys folded in Java, no collation has to.
  * Whether a folder already holds a name compares the keys too, spaces kept
- * ({@link #existsByFolderIdAndSearchName}). The v2 API's lookup of an object by its key is exact
- * but for case, {@code UPPER(column) = UPPER(:name)}. Path prefixes are digits and slashes and stay
- * as they are.
+ * ({@link #existsByFolderIdAndSearchName}). {@code REPLACE(x.searchName, ' ', '')} is also,
+ * character for character, the expression of a trigram index on each searched column
+ * ({@code V3.2}, issue 21), which is what lets PostgreSQL answer a {@code LIKE '%term%'} without
+ * reading every row; write it any other way and the index is not used ({@code SearchIndexTest}).
+ * The v2 API's lookup of an object by its key is exact but for case,
+ * {@code UPPER(column) = UPPER(:name)}. Path prefixes are digits and slashes and stay as they are.
  *
  * <p><b>Reads that a converter will walk fetch the folder.</b> {@code FileMapper} goes
  * from a file to its folder and from there to every folder above it; the folder is fetched with
@@ -79,27 +82,60 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     Optional<FileInfo> findByFolderIdAndFileNameWithDetails(@Param("folderId") int folderId, @Param("name") String name);
 
     /**
-     * The file list page: one query, one row per file, its folder attached. The folders above
-     * it are loaded for the page as a batch by {@code FolderService.ancestryOf}, since a chain
-     * of any depth cannot be fetch-joined.
-     *
-     * <p>An empty {@code search} matches everything, so the page needs no second query for the
-     * unfiltered case - the empty string, never {@code null}, which PostgreSQL cannot type there and
-     * which finds nothing here ({@code SearchTerms.blankToEmpty}, issue 87). The term is matched
-     * against the file and every folder above it, found
-     * by the path prefix — a {@code LIKE '%term%'} across the graph, which no index can serve;
-     * replacing it with a real search index is issue 21.
+     * The file list page with no search: one query, one row per file, its folder attached. The
+     * folders above it are loaded for the page as a batch by {@code FolderService.ancestryOf},
+     * since a chain of any depth cannot be fetch-joined.
      */
-    @Query("""
+    @Query(value = """
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
-            WHERE :search = ''
-               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
-               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
-               OR EXISTS (SELECT a FROM Folder a
-                          WHERE t.path LIKE CONCAT(a.path, '%') AND a.depth > 0
-                            AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
-                                 OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%')))
+            """,
+            countQuery = "SELECT COUNT(f) FROM FileInfo f")
+    Page<FileInfo> findPageWithFolder(Pageable pageable);
+
+    /**
+     * The file list page, searched: the files whose name or description holds the term, and the
+     * files anywhere under a folder whose name or label holds it (never the root's).
+     *
+     * <p>Written as a {@code UNION} of the ids each of those finds, not as one {@code WHERE} with
+     * {@code OR}: each arm is then a trigram index scan ({@code V3.2}, issue 21), and PostgreSQL
+     * reads only the files that match. The same condition as an {@code OR} with an {@code EXISTS}
+     * over the folders above each file - what this was until 2.2.0 - reads every file and, for
+     * each, every folder: 73 seconds for 200,000 files, 5 milliseconds as it is written here.
+     *
+     * <p>For an empty term the caller uses {@link #findPageWithFolder}; here it would match every
+     * row the slow way. {@code null} matches nothing - the empty string is what means "all", and
+     * PostgreSQL cannot type a {@code null} in {@code LIKE CONCAT(...)} where no column sits beside
+     * it (issue 87).
+     */
+    @Query(value = """
+            SELECT f FROM FileInfo f
+            JOIN FETCH f.folder t
+            WHERE f.id IN (SELECT g.id FROM FileInfo g
+                           WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                           UNION
+                           SELECT g.id FROM FileInfo g
+                           WHERE REPLACE(g.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
+                           UNION
+                           SELECT g.id FROM FileInfo g
+                           WHERE g.folder.id IN (SELECT d.id FROM Folder d, Folder a
+                                                 WHERE a.depth > 0 AND d.path LIKE CONCAT(a.path, '%')
+                                                   AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                                                        OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%'))))
+            """,
+            countQuery = """
+            SELECT COUNT(f) FROM FileInfo f
+            WHERE f.id IN (SELECT g.id FROM FileInfo g
+                           WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                           UNION
+                           SELECT g.id FROM FileInfo g
+                           WHERE REPLACE(g.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
+                           UNION
+                           SELECT g.id FROM FileInfo g
+                           WHERE g.folder.id IN (SELECT d.id FROM Folder d, Folder a
+                                                 WHERE a.depth > 0 AND d.path LIKE CONCAT(a.path, '%')
+                                                   AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                                                        OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%'))))
             """)
     Page<FileInfo> search(@Param("search") String search, Pageable pageable);
 
@@ -110,21 +146,49 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
      * the fetched page in Java would leave a pager counting rows the person cannot see. Must not
      * be called with an empty set, which is not valid SQL for {@code IN}.
      */
-    @Query("""
+    @Query(value = """
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
             WHERE t.id IN (:folderIds)
-              AND (:search = ''
-               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
-               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
-               OR EXISTS (SELECT a FROM Folder a
-                          WHERE t.path LIKE CONCAT(a.path, '%') AND a.depth > 0
-                            AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
-                                 OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%'))))
+              AND f.id IN (SELECT g.id FROM FileInfo g
+                           WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                           UNION
+                           SELECT g.id FROM FileInfo g
+                           WHERE REPLACE(g.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
+                           UNION
+                           SELECT g.id FROM FileInfo g
+                           WHERE g.folder.id IN (SELECT d.id FROM Folder d, Folder a
+                                                 WHERE a.depth > 0 AND d.path LIKE CONCAT(a.path, '%')
+                                                   AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                                                        OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%'))))
+            """,
+            countQuery = """
+            SELECT COUNT(f) FROM FileInfo f
+            WHERE f.folder.id IN (:folderIds)
+              AND f.id IN (SELECT g.id FROM FileInfo g
+                           WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                           UNION
+                           SELECT g.id FROM FileInfo g
+                           WHERE REPLACE(g.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
+                           UNION
+                           SELECT g.id FROM FileInfo g
+                           WHERE g.folder.id IN (SELECT d.id FROM Folder d, Folder a
+                                                 WHERE a.depth > 0 AND d.path LIKE CONCAT(a.path, '%')
+                                                   AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                                                        OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%'))))
             """)
     Page<FileInfo> searchWithinFolders(@Param("search") String search,
                                        @Param("folderIds") Collection<Integer> folderIds,
                                        Pageable pageable);
+
+    /** {@link #findPageWithFolder} restricted to a set of folders; must not be called with an empty set. */
+    @Query(value = """
+            SELECT f FROM FileInfo f
+            JOIN FETCH f.folder t
+            WHERE t.id IN (:folderIds)
+            """,
+            countQuery = "SELECT COUNT(f) FROM FileInfo f WHERE f.folder.id IN (:folderIds)")
+    Page<FileInfo> findPageWithinFolders(@Param("folderIds") Collection<Integer> folderIds, Pageable pageable);
 
     /**
      * Tree "find a file" search — see issue 73: two nodes at different depths of the same category

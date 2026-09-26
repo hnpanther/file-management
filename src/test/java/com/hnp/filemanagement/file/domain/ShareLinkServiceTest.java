@@ -32,7 +32,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -103,12 +103,12 @@ class ShareLinkServiceTest extends DatabaseSupport {
     @Test
     @DisplayName("a link is a random token whose hash alone is stored, to one revision, for the minutes asked - defaulted, and clamped to the cap")
     void makesALink() {
-        LocalDateTime now = LocalDateTime.now(clock);
+        Instant now = Instant.now(clock);
 
         ShareLinkDTO link = underTest.create(revision.getId(), 5, null, null, adminId);
         assertThat(link.token()).hasSize(43).doesNotContain("=", "+", "/");
         assertThat(link.path()).isEqualTo("/share/" + link.token());
-        assertThat(link.expiresAt()).isEqualTo(now.plusMinutes(5));
+        assertThat(link.expiresAt()).isEqualTo(now.plus(Duration.ofMinutes(5)));
         assertThat(link.status()).isEqualTo(ShareLinkDTO.Status.ACTIVE);
         assertThat(link.passwordProtected()).isFalse();
         assertThat(link.maxDownloads()).isNull();
@@ -122,9 +122,9 @@ class ShareLinkServiceTest extends DatabaseSupport {
         assertThat(actionHistoryService.getActionHistoriesOfEntity(link.id(), EntityEnum.FileShareLink)).hasSize(1);
 
         assertThat(underTest.create(revision.getId(), null, null, null, adminId).expiresAt())
-                .as("the default").isEqualTo(now.plusMinutes(3));
+                .as("the default").isEqualTo(now.plus(Duration.ofMinutes(3)));
         assertThat(underTest.create(revision.getId(), 10_000, null, null, adminId).expiresAt())
-                .as("clamped, silently").isEqualTo(now.plusMinutes(10));
+                .as("clamped, silently").isEqualTo(now.plus(Duration.ofMinutes(10)));
         assertThat(underTest.create(revision.getId(), 7, "  ", 2, adminId))
                 .satisfies(l -> {
                     assertThat(l.passwordProtected()).as("blank is no password").isFalse();
@@ -196,7 +196,7 @@ class ShareLinkServiceTest extends DatabaseSupport {
         assertThat(underTest.listMine(adminId)).filteredOn(l -> l.id() == fresh.id()).singleElement()
                 .satisfies(l -> {
                     assertThat(l.status()).isEqualTo(ShareLinkDTO.Status.REVOKED);
-                    assertThat(l.revokedAt()).isEqualTo(LocalDateTime.now(clock));
+                    assertThat(l.revokedAt()).isEqualTo(Instant.now(clock));
                 });
         underTest.revoke(revokable.id(), adminId, false);
         assertThat(underTest.usable(revokable.token())).isEmpty();
@@ -219,7 +219,7 @@ class ShareLinkServiceTest extends DatabaseSupport {
         assertThat(underTest.download(link.token(), "wrong").outcome()).isEqualTo(Outcome.WRONG_PASSWORD);
         Attempt locked = underTest.download(link.token(), "wrong again");
         assertThat(locked.outcome()).as("the second wrong guess locks").isEqualTo(Outcome.LOCKED);
-        assertThat(locked.lockedUntil()).isEqualTo(LocalDateTime.now(clock).plusMinutes(5));
+        assertThat(locked.lockedUntil()).isEqualTo(Instant.now(clock).plus(Duration.ofMinutes(5)));
         assertThat(underTest.download(link.token(), "s3cret").outcome()).as("even the right password, while locked").isEqualTo(Outcome.LOCKED);
         assertThat(underTest.usable(link.token())).as("locked is not dead: the page still shows it").isPresent();
 

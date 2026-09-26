@@ -257,8 +257,8 @@ mismatch. PostgreSQL only since release C (2.1.0): `V3.0__Baseline.sql` in
   column, set `nullable = false` on the mapping too, or you will get a runtime insert failure
   ([issue 33](docs/issues.md#33-schema-and-entity-mappings-disagree--s2)).
 * **A name unique without regard to case is a unique index on `upper(column)`**, as the eight in
-  `V3.0` are, and is compared through `UPPER(...)` in the query; a timestamp is `TIMESTAMP(0)`; a
-  foreign key gets its own index (PostgreSQL does not make one). Two differences from MySQL the
+  `V3.0` are, and is compared through `UPPER(...)` in the query; a timestamp is `TIMESTAMPTZ(0)`
+  and an `Instant` in Java (2.2.0); a foreign key gets its own index (PostgreSQL does not make one). Two differences from MySQL the
   suite has met: the default isolation is `READ COMMITTED` (a transaction sees what others
   committed after it began), and a NUL character in a string is refused.
 * **A query does not lean on a collation** (release A, 1.7.0). MySQL's `utf8mb4_unicode_ci` made a
@@ -268,6 +268,19 @@ mismatch. PostgreSQL only since release C (2.1.0): `V3.0__Baseline.sql` in
   for in another
   ([issue 86](docs/issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2)).
   Tokens, keys and paths stay exact.
+* **A time is an instant; only a person's view of it has a zone** (2.2.0, issue 24). `Instant` in
+  entities and DTOs, `Instant.now(clock)` for "now" with the `Clock` bean - never
+  `LocalDateTime.now()`, `LocalDate.now()` or `ZoneId.systemDefault()`, which read the server's
+  zone. Turning one into a wall clock or a date goes through the clock's zone
+  (`filemanagement.time-zone`): `JalaliDate` on a page, `appDateTime` / `appTimeZone()` in a
+  script, `LocalDate.ofInstant(x, clock.getZone())` in a service.
+* **A search goes through its trigram index** (2.2.0, issue 21). The predicate is
+  `REPLACE(x.searchKey, ' ', '') LIKE CONCAT('%', :term, '%')`, written exactly so, because a
+  `V3.2` index is on that expression; matching a file through another table is a `UNION` of ids
+  (`FileInfoRepository.search`), never an `OR` with an `EXISTS`, which reads every row; an empty
+  term goes to a query that does not search. A new searched column gets its index in a migration
+  and a case in `SearchIndexTest`, which plans the SQL Hibernate writes and fails if the index is
+  not used.
 * **A file or folder search compares the folded keys, not the names** (1.8.0). `search_name`,
   `search_description` and `search_display_name` hold `SearchKey` of the column beside them - set
   by the entity's setter, never by hand; a query compares `REPLACE(x.searchName, ' ', '') LIKE

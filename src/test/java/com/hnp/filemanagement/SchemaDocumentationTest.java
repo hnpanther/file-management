@@ -118,6 +118,7 @@ class SchemaDocumentationTest extends DatabaseSupport {
             String type = switch (text(column.get("data_type"))) {
                 case "character varying" -> "varchar(" + column.get("character_maximum_length") + ")";
                 case "timestamp without time zone" -> "timestamp(" + column.get("datetime_precision") + ")";
+                case "timestamp with time zone" -> "timestamptz(" + column.get("datetime_precision") + ")";
                 default -> text(column.get("data_type"));
             };
             String defaultValue = plainDefault(column.get("column_default"));
@@ -152,6 +153,10 @@ class SchemaDocumentationTest extends DatabaseSupport {
                 // The operator class is what lets a B-tree serve a prefix LIKE under a linguistic
                 // collation; without it every subtree query is a sequential scan.
                 columns += ", for prefix `LIKE` (`varchar_pattern_ops`)";
+            }
+            if (text(index.get("definition")).contains("gin_trgm_ops")) {
+                // A trigram GIN index: what serves a LIKE '%term%', which no B-tree can (issue 21).
+                columns += ", trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`)";
             }
             if (Boolean.TRUE.equals(index.get("primary_key"))) {
                 lines.add("* **primary key** " + columns);

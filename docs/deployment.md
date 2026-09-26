@@ -86,6 +86,7 @@ Do this **before** the first start.
 | `FILEMANAGEMENT_DB_PASSWORD` | `file_management` | A password published in this repository |
 | `FILEMANAGEMENT_BASE_DIR` | `./TempFiles/files/main/` | Where every uploaded file is written. The default is inside the working tree, **and `TempFiles/` is in `.gitignore`** — so on a real host the data lands in a directory the repository deliberately ignores ([issue 45](issues.md#45-the-prod-profile-writes-into-the-working-tree--s3)) |
 | `FILEMANAGEMENT_LOG_PATH` | `./logs` | Same problem: relative to the working directory |
+| `FILEMANAGEMENT_TIME_ZONE` | `Asia/Tehran` | The zone the pages show times in and the day an API key expires on is read in (2.2.0). Leave it unless the people using the system are elsewhere; the database stores instants and the server's own zone is never used for either. An unknown zone stops the start |
 | `filemanagement.bootstrap.admin-password` | *(empty)* | With nothing set, `DataInitializer` generates a random password for the `Admin` account and prints it **once**, at WARN, on the first boot. Miss that line and the account is unusable |
 
 > **`FILEMANAGEMENT_BASE_DIR` with or without a trailing separator - both work, since 1.1.0.**
@@ -171,7 +172,7 @@ sudo nano /etc/file-management.env
 
 ```ini
 # /etc/file-management.env  — chmod 640, owned root:filemgmt
-FILEMANAGEMENT_DB_URL=jdbc:mysql://localhost:3306/file_management
+FILEMANAGEMENT_DB_URL=jdbc:postgresql://localhost:5432/file_management?sslmode=disable
 FILEMANAGEMENT_DB_USERNAME=file_management
 FILEMANAGEMENT_DB_PASSWORD=<a real password>
 
@@ -609,6 +610,78 @@ the `seeded 5 new permission(s)` line.
 
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
+
+### Upgrading from 2.1.0 to 2.2.0 — instants and indexed search
+
+The first release that uses what only PostgreSQL has (roadmap step 9). **Two migrations**, both run
+by the first start: `V3.1` makes every timestamp an instant (issue 24) and `V3.2` indexes the
+searches (issue 21). On a copy of production's data they took 0.3 seconds (8 seconds on the same
+data scaled to 205,000 files); the service is stopped for the upgrade anyway. Deploy it **after 2.1.0**, never in its place while the MySQL rollback window
+is open.
+
+**Before the start**
+
+1. **The backup**, as always - and here it is the rollback: once `V3.1` has run, 2.1.0 no longer
+   starts on this database (Flyway refuses a history with migrations it does not know).
+2. **Nothing to configure** for an installation in Iran. `FILEMANAGEMENT_TIME_ZONE` exists
+   ([the settings](#the-settings-that-must-not-stay-as-they-ship)) and defaults to `Asia/Tehran`.
+3. **Only if the database's owner is not the account the application connects as** - one made by
+   a superuser and granted to it, not the way [below](#creating-the-database-and-its-account)
+   creates it: `V3.2` creates the `pg_trgm` extension, which the owner may do without being a
+   superuser (it is a *trusted* extension) and another account may not. Create it first, as the
+   owner or a superuser; the migration then finds it there:
+
+   ```sql
+   \c file_management
+   CREATE EXTENSION IF NOT EXISTS pg_trgm;
+   ```
+
+**What the start says**, in order:
+
+```
+Migrating schema "public" to version "3.1 - Timestamps with time zone"
+Migrating schema "public" to version "3.2 - Trigram search indexes"
+Successfully applied 2 migrations to schema "public", now at version v3.2
+```
+
+**What `V3.1` does to the times already there.** Every timestamp so far is the wall clock of the
+server that wrote it, and every server so far ran on Tehran time (the service definition passes
+`-Duser.timezone=Asia/Tehran`); the migration reads each value as Tehran time and stores the
+instant it was - with the +04:30 of the summer time Iran kept until 1401 for the times before
+then. Checked before it was written: the time recorded for every one of 1,370 revisions of a
+production-like copy matched the modification time of its bytes, read as Tehran time. Nothing
+the pages show moves.
+
+**What people will notice**
+
+* **Searching is fast**: the file list, the public list, the explorer and the tree search through
+  indexes. On production's 1,360 files a search took about 45 ms; on 205,000 it took 73 seconds
+  and now takes a few milliseconds. What a search finds is unchanged.
+* **Times are the same times.** A server or container on UTC would now show them right too:
+  `-Duser.timezone` in the service definition decides only the log's timestamps from here on.
+* The explorer's search, paged by name, no longer repeats or skips a file when two files in two
+  folders share a name (issue 95).
+
+**For the clients**: the v1 API carries no times and does not change ([api-v1.md](api-v1.md)). The v2
+API's JSON gives `lastModified` as an instant in UTC (`2026-09-19T13:03:55Z`) where it gave the
+server's wall clock without a zone (`2026-09-19T16:33:55`); the `Last-Modified` header was already
+GMT.
+
+**Check after the start**, with `psql` as the application's account:
+
+```sql
+SELECT version, success FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 2;  -- 3.2, 3.1: t
+SELECT count(*) FROM information_schema.columns
+ WHERE table_schema = 'public' AND data_type = 'timestamp without time zone'
+   AND table_name <> 'flyway_schema_history';                                             -- 0
+SELECT count(*) FROM pg_indexes WHERE indexname LIKE '%\_trgm';                          -- 6
+```
+
+`psql` shows a `timestamptz` in its session's zone (`SHOW timezone;`): `SET timezone = 'Asia/Tehran';`
+to read them as the pages do.
+
+**Rollback** is the backup restored and the 2.1.0 jar, in the same operation
+([Rollback](#7-rollback)). No setting has to be taken back.
 
 ### Upgrading from 2.0.0 to 2.1.0 — PostgreSQL only
 
@@ -1300,7 +1373,7 @@ not optional.
     <workingdirectory>D:\MyApp\file-management</workingdirectory>
     <env name="JAVA_HOME" value="C:\Program Files\Eclipse Adoptium\jdk-25.0.3.9-hotspot"/>
 
-    <env name="FILEMANAGEMENT_DB_URL" value="jdbc:mysql://localhost:3306/file_management"/>
+    <env name="FILEMANAGEMENT_DB_URL" value="jdbc:postgresql://localhost:5432/file_management?sslmode=disable"/>
     <env name="FILEMANAGEMENT_DB_USERNAME" value="file_management"/>
     <env name="FILEMANAGEMENT_DB_PASSWORD" value="a real password"/>
     <!-- Must end with a separator. -->

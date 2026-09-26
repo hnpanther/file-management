@@ -90,6 +90,15 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   from the tree, and `files` is a reserved top-level name. Do not move bytes on a rename or a
   move — what each operation may touch (tree, keys, bytes, tags) is tabulated in
   [docs/arch.md](docs/arch.md#what-each-operation-touches); keep it true.
+* **Times are `Instant`s; a zone appears only where a person reads or types one**, and it is
+  `filemanagement.time-zone` - the `Clock` bean's zone - never the server's (2.2.0,
+  [issue 24](docs/issues.md#24-timestamps-are-hand-set-localdatetime--s2)). No
+  `LocalDateTime.now()`, `LocalDate.now()` or `ZoneId.systemDefault()`; `Instant.now(clock)`, and
+  `JalaliDate` / `appDateTime` to show one.
+* **A search must hit its trigram index** (2.2.0,
+  [issue 21](docs/issues.md#21-search-is-like-term-across-the-whole-graph--s2)): keep
+  `REPLACE(x.searchName, ' ', '')` exactly as written, match through another table with a `UNION`
+  of ids rather than `OR EXISTS`, and give a new search a case in `SearchIndexTest`.
 * **Adding a field to a mapper (`FileMapper`, `UserMapper`, ...) that follows an association costs a query per row** -
   every association is `LAZY` and `open-in-view` is off. Fetch it in the repository query.
 * **Flyway owns the schema; `docs/schema.md` describes it.** The old `schema-db/schema.sql`

@@ -5,8 +5,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -18,7 +21,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class JalaliDateTest {
 
-    private final JalaliDate underTest = new JalaliDate();
+    private static final ZoneId TEHRAN = ZoneId.of("Asia/Tehran");
+
+    private final JalaliDate underTest = new JalaliDate(Clock.system(TEHRAN));
 
     @ParameterizedTest(name = "{0} is {1}")
     @DisplayName("known dates convert to what the almanac says")
@@ -46,7 +51,8 @@ class JalaliDateTest {
     @Test
     @DisplayName("the rendering carries the time, in Persian digits")
     void renderingWithTime() {
-        assertThat(underTest.format(LocalDateTime.of(2026, 9, 15, 7, 27, 33)))
+        // 07:27:33 in Tehran, +03:30
+        assertThat(underTest.format(Instant.parse("2026-09-15T03:57:33Z")))
                 .isEqualTo("۱۴۰۵/۰۶/۲۴ ۰۷:۲۷");
         assertThat(underTest.format(LocalDate.of(2024, 3, 20)))
                 .isEqualTo("۱۴۰۳/۰۱/۰۱");
@@ -55,8 +61,9 @@ class JalaliDateTest {
     @Test
     @DisplayName("a missing value renders as nothing rather than failing the page")
     void nullIsEmpty() {
-        assertThat(underTest.format((LocalDateTime) null)).isEmpty();
+        assertThat(underTest.format((Instant) null)).isEmpty();
         assertThat(underTest.format((LocalDate) null)).isEmpty();
+        assertThat(underTest.local(null)).isNull();
     }
 
     /**
@@ -83,5 +90,30 @@ class JalaliDateTest {
                     .isTrue();
             previous = current;
         }
+    }
+
+    @Test
+    @DisplayName("an instant is shown in the installation's zone, whatever zone the server runs in")
+    void theInstallationsZoneDecides() {
+        // 21:00 UTC on the 14th is half past midnight on the 15th in Tehran: the date moves too.
+        Instant lateInUtc = Instant.parse("2026-09-14T21:00:00Z");
+
+        assertThat(underTest.format(lateInUtc)).isEqualTo("۱۴۰۵/۰۶/۲۴ ۰۰:۳۰");
+        assertThat(underTest.local(lateInUtc)).isEqualTo(LocalDateTime.of(2026, 9, 15, 0, 30));
+        assertThat(underTest.zone()).isEqualTo("Asia/Tehran");
+
+        JalaliDate onUtc = new JalaliDate(Clock.systemUTC());
+        assertThat(onUtc.format(lateInUtc)).isEqualTo("۱۴۰۵/۰۶/۲۳ ۲۱:۰۰");
+        assertThat(onUtc.zone()).isEqualTo("Z");
+    }
+
+    @Test
+    @DisplayName("a time from before 1401 is shown with the summer time Iran then kept")
+    void historicalSummerTime() {
+        // Iran kept daylight saving time until 2022: +04:30 in June 2021, +03:30 in June 2023.
+        assertThat(underTest.local(Instant.parse("2021-06-01T12:00:00Z")))
+                .isEqualTo(LocalDateTime.of(2021, 6, 1, 16, 30));
+        assertThat(underTest.local(Instant.parse("2023-06-01T12:00:00Z")))
+                .isEqualTo(LocalDateTime.of(2023, 6, 1, 15, 30));
     }
 }

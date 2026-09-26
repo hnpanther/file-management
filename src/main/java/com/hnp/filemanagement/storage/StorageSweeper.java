@@ -9,7 +9,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -87,8 +88,8 @@ public class StorageSweeper {
      * operator can act on.
      */
     public int sweep() {
-        LocalDateTime before = LocalDateTime.now(clock)
-                .minusMinutes(properties.storage().unfinishedAfterMinutes());
+        Instant before = Instant.now(clock)
+                .minus(Duration.ofMinutes(properties.storage().unfinishedAfterMinutes()));
         int batchSize = properties.storage().sweepBatchSize();
 
         int removed = 0;

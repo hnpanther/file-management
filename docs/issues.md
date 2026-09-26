@@ -464,6 +464,42 @@ joins. The abandoned `origin/elasticsearch` branch suggests this was already fel
 Fix: PostgreSQL full-text search (`tsvector` + GIN) as part of the Postgres migration — cheaper than
 running Elasticsearch, and enough for this data volume.
 
+> **Fixed in 2.2.0**, with trigram indexes rather than full-text search. By then every search
+> compared folded keys (`SearchKey`, 1.8.0) with `REPLACE(key, ' ', '') LIKE '%term%'`, and the file
+> list and the public list matched each file against every folder above it through a correlated
+> `EXISTS`. On a copy of production's data scaled to 205,000 files and 2,200 folders one such
+> search took **73 seconds**; on production's own 1,360 files about 45 milliseconds.
+>
+> * `V3.2` creates `pg_trgm` (a trusted extension: the database's owner may, no superuser needed)
+>   and a GIN trigram index on `replace(column, ' ', '')` for each searched column - the names and
+>   descriptions of `file_info` and `file_details`, the name and label of `folder`. The expression
+>   is the one Hibernate writes for the queries, character for character, or the planner would not
+>   use it.
+> * The file list's and the public list's searches are a `UNION` of the ids each arm finds - the
+>   name, the description, the files under a matching folder - instead of an `OR` with an
+>   `EXISTS`, so each arm is an index scan: **1 to 8 ms** for a selective term on the 205,000
+>   files, 70 ms for a three-letter one that matches 34,000, and 370 ms for a single letter that
+>   no trigram can narrow (it matches nearly everything). The explorer's, the tree's and the
+>   folder searches were single-table `OR`s already, which PostgreSQL answers with a `BitmapOr`
+>   of the indexes: 1 to 10 ms. Generic plans - what a prepared statement gets after five runs -
+>   were measured too, and stay on the indexes.
+> * End to end, over HTTP, signed in: on a copy of production's data every list and search page
+>   returned **the same rows as 2.1.0** and was as fast or faster (a file-list search 121-276 ms
+>   before, 41-115 ms after); on the 205,000 files a selective search answers in 70-175 ms, a
+>   three-letter one in about 430 ms, a single letter in 1.7 s.
+> * An empty search no longer goes through the search query at all: `findPageWithFolder`,
+>   `findPageWithinFolders` and `findPublicFiles` list without it.
+> * What matches is exactly what matched before: the index only narrows the rows, and PostgreSQL
+>   checks every candidate against the `LIKE`. The result counts of eleven terms - Latin, Persian,
+>   digits, one letter, none - were compared old query against new on production's data: equal.
+> * `SearchIndexTest` records the SQL Hibernate writes for every search and asks PostgreSQL for
+>   its plan with only bitmap scans allowed: each must use its indexes. An index on a different
+>   expression fails five of its six tests - tried.
+>
+> Full-text search is not this: it matches words and their stems, not fragments of a name
+> (`1403` would no longer find `report-1403-final`), and PostgreSQL has no Persian dictionary to
+> stem with. It is the tool for the text inside documents, which is Phase 8's.
+
 ### 22. `state` / `enabled` are untyped magic numbers — **S2**
 
 `Integer` columns with meanings documented only in a comment on `FileInfoDTO`. `1` ("rule base") is
@@ -488,6 +524,31 @@ with an `AuditorAware`).
 > **Fixed in the architecture pass.** `AuditableEntity` writes them with Hibernate's
 > `@CreationTimestamp` and `@UpdateTimestamp`, so an update cannot forget to touch `updated_at` —
 > which several did.
+>
+> **The time zone, fixed in 2.2.0.** Until then every timestamp was the wall clock of the server
+> that wrote it (`TIMESTAMP(0)` and `LocalDateTime`), which held only because every server had run
+> on Iran Standard Time; a host or container left on UTC - the default of both - would have
+> written new rows three and a half hours off the old ones, silently. Now:
+>
+> * **Stored as instants.** `V3.1` makes all 28 timestamp columns `TIMESTAMPTZ(0)`, reading the
+>   values already there as `Asia/Tehran` - checked first: the `created_at` of all 1,370 revisions
+>   of production-like data matched the modification time of their bytes, read as Tehran time,
+>   within five seconds. The named zone, so a time from before 1401 is read with the +04:30 of the
+>   summer time Iran then kept. The entities and DTOs hold `Instant`.
+> * **Shown in a zone of the installation's choosing**, never the server's:
+>   `filemanagement.time-zone` (`FILEMANAGEMENT_TIME_ZONE`, `Asia/Tehran` by default) is the zone of
+>   the application's `Clock`. `JalaliDate` renders the server-side pages in it; the pages' scripts
+>   get it from a `<meta name="app-time-zone">` and hand it to `Intl.DateTimeFormat`.
+> * **Read in it.** The day an API key "expires on" ends at midnight in that zone, not the
+>   server's; `LocalDate.now()` and `LocalDateTime.now()` are gone from the code - every "now" is
+>   `Instant.now(clock)`.
+> * **What changed on the wire**: the JSON of the pages and of the v2 API carries instants
+>   (`2026-09-19T13:03:55Z`) where it carried a wall clock without a zone
+>   (`2026-09-19T16:33:55`); `Last-Modified` was already GMT. The v1 API carries no times.
+> * **Tests**: `MigrationTest` migrates rows written at `V3.0` - after 1401, in the summer of 1400
+>   and in its winter - and gets their instants; `JalaliDateTest` shows one instant on a Tehran
+>   and on a UTC clock and across the old summer time; `ApiKeyServiceTest` checks where the expiry
+>   day ends. The whole suite passes with the JVM on Tehran and on UTC.
 
 `LocalDateTime.now()` written by hand in every create/update method across every service. No time
 zone: `LocalDateTime` + MySQL `DATETIME` means the value is ambiguous the moment the server moves or
@@ -1715,3 +1776,27 @@ Fix: a tie-breaker in each sort - `Sort.by("createdAt").descending().and(Sort.by
 > and a record's history (`ORDER BY created_at DESC, id DESC`). `ListOrderTieBreakTest` gives five
 > rows one `created_at` and pages through them one at a time: every row once, newest id first.
 > Without the tie-breakers all four of its tests failed on PostgreSQL.
+>
+> **One more, found in 2.2.0**: the explorer's file search paged by `fileName` alone. Names are
+> unique inside a folder but not across folders, and a search spans them, so two files named alike
+> could come back in either order between two pages. It sorts by name, then id
+> (`FolderContentService.pageRequest`).
+
+## Found while building 2.2.0
+
+### 96. `%` and `_` typed into a search box are `LIKE` wildcards — **S3**
+
+Every search binds the folded term into `LIKE CONCAT('%', :term, '%')` (`FileInfoRepository`,
+`FileDetailsRepository`, `FolderRepository`), and `SearchKey.forSearch` leaves `%` and `_` as they
+are, so they keep their `LIKE` meaning: a search for `%` lists every file (1,360 of 1,360 on
+production's data, through the explorer), and `CM_EDU` also finds `CMXEDU`. Hibernate writes the
+predicate with `escape ''`, so there is no escape character either.
+
+Not a security problem - every result is still filtered by the endpoint permission and folder
+access, and the term is a bound parameter - and nobody has been seen to rely on it. It over-matches,
+most visibly on names with an underscore, which uploads keep.
+
+Fix: escape `\`, `%` and `_` in the term (`SearchKey.forSearch`, or beside it) and write
+`LIKE CONCAT('%', :term, '%') ESCAPE '\'` in every search; the trigram indexes (`V3.2`) are on the
+column's expression and are unaffected. `SearchIndexTest` then checks the new SQL still plans onto
+them.

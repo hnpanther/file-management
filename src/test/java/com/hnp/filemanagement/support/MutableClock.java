@@ -52,7 +52,7 @@ public class MutableClock extends Clock {
         @Bean
         @Primary
         public MutableClock mutableClock() {
-            return new MutableClock(Instant.parse("2026-09-22T08:00:00Z"), ZoneId.systemDefault());
+            return new MutableClock(Instant.parse("2026-09-22T08:00:00Z"), ZoneId.of("Asia/Tehran"));
         }
     }
 }

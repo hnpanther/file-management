@@ -28,7 +28,7 @@ import org.springframework.test.context.TestPropertySource;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -86,7 +86,7 @@ class StorageSweeperTest extends DatabaseSupport {
     @DisplayName("bytes no revision claims are removed, once the write is old enough to be abandoned")
     void removesOrphanedBytes() {
         String key = orphan("lost.txt");
-        noteFrom(key, LocalDateTime.now(clock).minusMinutes(31));
+        noteFrom(key, Instant.now(clock).minus(Duration.ofMinutes(31)));
 
         assertThat(underTest.sweep()).isEqualTo(1);
 
@@ -99,7 +99,7 @@ class StorageSweeperTest extends DatabaseSupport {
     void keepsTheBytesOfACommittedRevision() {
         FileDetailsDTO uploaded = upload("kept.txt");
         String key = fileDetailsRepository.findById(uploaded.getId()).orElseThrow().getStorageKey();
-        FileStorageWrite stale = noteFrom(key, LocalDateTime.now(clock).minusMinutes(31));
+        FileStorageWrite stale = noteFrom(key, Instant.now(clock).minus(Duration.ofMinutes(31)));
 
         assertThat(underTest.sweep()).as("nothing removed").isZero();
 
@@ -115,7 +115,7 @@ class StorageSweeperTest extends DatabaseSupport {
     @DisplayName("a write that is merely slow is not touched")
     void leavesAWriteInFlightAlone() {
         String key = orphan("in-flight.txt");
-        noteFrom(key, LocalDateTime.now(clock).minusMinutes(29));
+        noteFrom(key, Instant.now(clock).minus(Duration.ofMinutes(29)));
 
         assertThat(underTest.sweep()).isZero();
 
@@ -131,7 +131,7 @@ class StorageSweeperTest extends DatabaseSupport {
     @Test
     @DisplayName("a note whose bytes were never written is settled without complaint")
     void settlesANoteWithNoBytes() {
-        noteFrom("files/s000/999999/never/v1/never.txt", LocalDateTime.now(clock).minusMinutes(31));
+        noteFrom("files/s000/999999/never/v1/never.txt", Instant.now(clock).minus(Duration.ofMinutes(31)));
 
         assertThat(underTest.sweep()).as("there was nothing to remove").isZero();
         assertThat(journal.count()).isZero();
@@ -142,7 +142,7 @@ class StorageSweeperTest extends DatabaseSupport {
     void settlesMoreThanOneBatch() {
         // The batch size is two; five notes make three reads, and the last one is short.
         for (int i = 0; i < 5; i++) {
-            noteFrom(orphan("lost-" + i + ".txt"), LocalDateTime.now(clock).minusMinutes(31 + i));
+            noteFrom(orphan("lost-" + i + ".txt"), Instant.now(clock).minus(Duration.ofMinutes(31 + i)));
         }
 
         assertThat(underTest.sweep()).isEqualTo(5);
@@ -153,7 +153,7 @@ class StorageSweeperTest extends DatabaseSupport {
     @DisplayName("the scheduled run does nothing where the sweep is switched off")
     void theScheduleCanBeSwitchedOff() {
         String key = orphan("lost.txt");
-        noteFrom(key, LocalDateTime.now(clock).minusMinutes(31));
+        noteFrom(key, Instant.now(clock).minus(Duration.ofMinutes(31)));
 
         StorageSweeper switchedOff = new StorageSweeper(journal, fileDetailsRepository, blobStore,
                 sweepDisabled(), clock);
@@ -173,7 +173,7 @@ class StorageSweeperTest extends DatabaseSupport {
         return key;
     }
 
-    private FileStorageWrite noteFrom(String storageKey, LocalDateTime startedAt) {
+    private FileStorageWrite noteFrom(String storageKey, Instant startedAt) {
         FileStorageWrite note = new FileStorageWrite();
         note.setStorageKey(storageKey);
         note.setCreatedAt(startedAt);
@@ -190,7 +190,7 @@ class StorageSweeperTest extends DatabaseSupport {
     }
 
     private FileManagementProperties sweepDisabled() {
-        return new FileManagementProperties(baseDir, null, null, null, null,
+        return new FileManagementProperties(baseDir, null, null, null, null, null,
                 new FileManagementProperties.Storage(false, null, null, null, false, null), null, null, null);
     }
 }

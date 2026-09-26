@@ -64,6 +64,36 @@
      * CSRF token for hand-written fetch/AJAX calls, read from the meta tags the shared head
      * fragment renders. Exposed so page scripts do not each re-implement the lookup.
      */
+    /**
+     * The installation's time zone (filemanagement.time-zone), from the page's head. Every time
+     * the server sends is an instant; it is shown on this wall clock, never the browser's or the
+     * server's (issue 24). Undefined - the browser's own zone - only on a page without the head.
+     */
+    window.appTimeZone = function () {
+        var meta = document.querySelector("meta[name='app-time-zone']");
+        return (meta && meta.getAttribute("content")) || undefined;
+    };
+
+    /** "2026-09-22 11:30" for an ISO instant, on the installation's clock; the value as it came if it cannot be read. */
+    window.appDateTime = function (value) {
+        if (!value) {
+            return "";
+        }
+        try {
+            var parts = {};
+            new Intl.DateTimeFormat("en-CA", {
+                timeZone: window.appTimeZone(), calendar: "gregory", numberingSystem: "latn",
+                year: "numeric", month: "2-digit", day: "2-digit",
+                hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+            }).formatToParts(new Date(value)).forEach(function (part) {
+                parts[part.type] = part.value;
+            });
+            return parts.year + "-" + parts.month + "-" + parts.day + " " + parts.hour + ":" + parts.minute;
+        } catch (e) {
+            return String(value);
+        }
+    };
+
     window.appCsrf = function () {
         var token = document.querySelector("meta[name='_csrf']");
         var header = document.querySelector("meta[name='_csrf_header']");
@@ -225,6 +255,10 @@
             close: function () {
                 this.open = false;
                 this.result = null;
+            },
+
+            expiry: function () {
+                return this.result ? window.appDateTime(this.result.expiresAt) : "";
             },
 
             submit: async function () {

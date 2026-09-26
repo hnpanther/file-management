@@ -926,6 +926,38 @@ beside it, which a status code cannot do.
 `ActionHistoryMapper`, 2.1.0, issue 29), each saying which associations must be loaded before it
 is called, each unit-tested with no Spring and no database (`MappersTest`).
 
+**Time** (2.2.0, issue 24) — every time is an instant: `TIMESTAMPTZ(0)` in the database, `Instant`
+in the entities and DTOs, `Instant.now(clock)` for "now". A wall clock exists only where a person
+reads or types one, and its zone is `filemanagement.time-zone` (`Asia/Tehran`), which is the zone
+of the application's `Clock` (`ClockConfig`) - never the server's, so a host or container on UTC
+changes nothing but the log's timestamps.
+
+* Server-rendered pages format through `JalaliDate` (`@jalali.format(instant)`, or
+  `@jalali.local(instant)` for a Gregorian page);
+* the pages' scripts read the zone from `<meta name="app-time-zone">` (`fragments.html`) and hand it
+  to `Intl.DateTimeFormat` - the explorer's dates, the share dialog's expiry (`appDateTime`);
+* a date a person types - the day an API key expires on - is a day in that zone
+  (`ApiKeyService.endOf`).
+
+JSON carries instants as ISO-8601 in UTC (`2026-09-19T13:03:55Z`); the v1 API carries no times.
+
+**Search** (1.8.0, 2.2.0, issues 86 and 21) — a search is a fragment of a folded key:
+`SearchKey` folds names, descriptions and folder labels in Java (case, Persian and Arabic digits,
+the half-space, the marks) into `search_*` columns, and a query asks
+`REPLACE(key, ' ', '') LIKE '%term%'` with the term folded the same way. `V3.2` puts a trigram
+GIN index (`pg_trgm`) on exactly that expression for every searched column, so PostgreSQL reads
+only the rows that can match and then checks each against the `LIKE` - the results are what they
+would be without the index. Two rules keep it that way:
+
+* **write the expression as the index has it** - `REPLACE(x.searchName, ' ', '')` - or the planner
+  will not use the index; `SearchIndexTest` plans every search's actual SQL and fails if one does
+  not;
+* **match across tables with a `UNION` of ids, not an `OR` with an `EXISTS`** - a file matched
+  through the folders above it (`FileInfoRepository.search`, `FileDetailsRepository.searchPublicFiles`)
+  is found per arm through an index; the same condition as an `OR` reads every file and, for each,
+  every folder (73 seconds for 205,000 files, against a few milliseconds). An empty search goes to a
+  query that does not search at all (`findPageWithFolder`, `findPublicFiles`).
+
 ## 9. Request flow — uploading a new file
 
 ```
@@ -965,6 +997,12 @@ since the cut-over of 2026-09-26 - starts from it; a schema change is the next `
 What it does differently from the MySQL history below is written at its top (and in
 [schema.md](schema.md)): `TIMESTAMP(0)`, identities, a unique index on `upper(column)` for each name
 MySQL compared without case, an index on every foreign key.
+
+| Version | Contents |
+|---|---|
+| `V3.0__Baseline.sql` | the whole schema and its seed rows (release B, 2.0.0) |
+| `V3.1__Timestamps_with_time_zone.sql` | 2.2.0, issue 24: all 28 timestamp columns `TIMESTAMPTZ(0)`, the values already there read as `Asia/Tehran` (the summer time before 1401 included); refuses to finish if a timestamp without a zone is left |
+| `V3.2__Trigram_search_indexes.sql` | 2.2.0, issue 21: `pg_trgm` (trusted - the database's owner may create it) and a GIN trigram index on `replace(column, ' ', '')` for the name and description keys of `file_info` and `file_details` and the name and label keys of `folder` |
 
 The MySQL history, `V1.0` to `V2.19`, retired with MySQL in release C - kept here because it is how
 the schema came to be:
@@ -1014,9 +1052,9 @@ Flyway stops with nothing half-applied; find them with the matching
 All of it is MySQL-specific: `ENGINE = InnoDB`, `DEFAULT CHARSET = utf8mb4 COLLATE utf8mb4_unicode_ci`,
 `AUTO_INCREMENT`, `DATETIME`, `#` line comments, `ADD COLUMN ... AFTER`.
 
-`schema-db/schema.sql` is a **separate, hand-maintained duplicate** of the same schema that begins
-with `DROP DATABASE IF EXISTS file_management;` and also drops `flyway_schema_history`. It is not
-wired into the build.
+`schema-db/schema.sql`, a hand-maintained duplicate of the schema that began with
+`DROP DATABASE IF EXISTS file_management;`, was deleted in Phase 0 (issue 32); Flyway is the only
+source of the schema.
 
 `spring.jpa.hibernate.ddl-auto=validate` — Hibernate verifies the mapping against the Flyway-built
 schema at startup but never modifies it.
@@ -1027,10 +1065,11 @@ schema at startup but never modifies it.
 |---|---|---|
 | `spring.profiles.active` | `prod` | gates the admin / permission seeding |
 | `server.port` | `8122` | |
-| `spring.datasource.*` | `jdbc:mysql://localhost:3306/file_management`, user/pass `file_management` | |
+| `spring.datasource.*` | `jdbc:postgresql://localhost:5434/file_management?sslmode=disable` (the port `compose.yaml` publishes), user/pass `file_management` | |
 | `spring.jpa.hibernate.ddl-auto` | `validate` | |
 | `spring.flyway.baseline-on-migrate` | `true` | |
 | `file.management.base-dir` | `./TempFiles/files/main/` | `FilesystemBlobStore` |
+| `filemanagement.time-zone` | `Asia/Tehran` | the zone of the application's `Clock`: what the pages show times in, and what a typed date is read in (§8, "Time"). Never the server's zone; an unknown zone fails the start |
 | `spring.servlet.multipart.max-file-size` / `max-request-size` | `20MB` | |
 | `filemanagement.default.page-size` | `30` | rows per list page, read from `FileManagementProperties`; a `page-size` in the URL is clamped to 200 and a bad one falls back to this (`PageRequests`) |
 | `filemanagement.folders.max-depth` | `6` | `FolderService`: how deep the tree may go below `Home`; a create or a move past it is a 400 |
@@ -1056,19 +1095,20 @@ installation that sets it.
 
 ## 12. Tests
 
-`./mvnw verify` runs 812 tests and needs only a working Docker daemon: `DatabaseSupport` points the
+`./mvnw verify` runs 824 tests and needs only a working Docker daemon: `DatabaseSupport` points the
 application at one PostgreSQL 18 container per JVM (`support/TestDatabases`, created as production's
 database is: UTF-8, ICU's root locale), and `StorageRootSupport` gives each test a clean storage
 root. Test classes sit in the package of what they test; the ones that span features
 (`PortableQueriesTest`, `ListQueryCountTest`, `ListOrderTieBreakTest`, `PersianNameFoldingTest`,
-`MappersTest`) sit at the root.
+`MappersTest`, `SearchIndexTest`, `MigrationTest`) sit at the root. The suite passes with the JVM
+on any zone - `./mvnw verify -DargLine=-Duser.timezone=UTC` is how a container would run it.
 
 Four kinds, and the kind is the point — each answers something the others cannot.
 
 | Kind | How | What only it can answer |
 |---|---|---|
 | **Unit** | plain JUnit, or Mockito with every collaborator mocked | that a guard clause rejects before anything is written: `FileServiceUnitTest` asserts the storage service is never touched on a rejected upload. `EntityIdentityTest` and `ValidationUtilTest` need neither Spring nor Docker |
-| **Repository** | `@DataJpaTest` + real MySQL | that a fetch plan actually resolved (`Hibernate.isInitialized`), that a bulk update reached the database, that a cascade removed what it should, and that the schema enforces its constraints |
+| **Repository** | `@DataJpaTest` + real PostgreSQL | that a fetch plan actually resolved (`Hibernate.isInitialized`), that a bulk update reached the database, that a cascade removed what it should, and that the schema enforces its constraints |
 | **Service** | `@ServiceIntegrationTest` — `@SpringBootTest` + `@Transactional` | that the whole path works through the real Spring beans, so the transaction annotations are live |
 | **Web** | `@SpringBootTest` + MockMvc | status codes, response shapes, redirects and authorization, through the real security chain |
 
@@ -1112,6 +1152,8 @@ generates the unique ones, so a test overrides only what it is actually about.
 | `MessageBundleTest` | every `#{...}` key is backed, and no Persian is hardcoded in a template |
 | `DependencyPinTest` | the pinned versions that clear known advisories stay pinned |
 | `FileManagementApplicationTests` | the context starts |
+| `SearchIndexTest` | every search's actual SQL is planned by PostgreSQL onto its trigram indexes (issue 21) |
+| `MigrationTest` | `V3.1` turns times already written into their instants; every migration runs as a database owner that is no superuser, as production's |
 
 ## 13. Known structural weaknesses
 

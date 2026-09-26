@@ -63,23 +63,57 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
             """)
     Optional<FileDetails> findByIdWithFileInfo(@Param("id") int id);
 
-    /**
-     * The public file list. Only active versions of active files, filtered by a term matched
-     * against the version, the file, and the display name of every folder above it - their folded
-     * keys, against a term folded by {@code SearchKey.forSearch} (issue 86). An empty term matches
-     * everything; never {@code null} (issue 87).
-     */
-    @Query("""
+    /** The public file list with no search: only active versions of active files. */
+    @Query(value = """
             SELECT fd FROM FileDetails fd
             JOIN FETCH fd.fileInfo fi
             JOIN FETCH fi.folder t
             WHERE fd.state = 0 AND fi.state = 0
-              AND (:search = ''
-                   OR REPLACE(fd.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
-                   OR REPLACE(fd.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
-                   OR EXISTS (SELECT a FROM Folder a
-                              WHERE t.path LIKE CONCAT(a.path, '%') AND a.depth > 0
-                                AND REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%')))
+            """,
+            countQuery = """
+            SELECT COUNT(fd) FROM FileDetails fd
+            WHERE fd.state = 0 AND fd.fileInfo.state = 0
+            """)
+    Page<FileDetails> findPublicFiles(Pageable pageable);
+
+    /**
+     * The public file list, searched: the active versions of active files whose name or
+     * description holds the term, or that sit anywhere under a folder whose display name holds it
+     * - their folded keys, against a term folded by {@code SearchKey.forSearch} (issue 86).
+     *
+     * <p>A {@code UNION} of the ids each arm finds, so that each is a trigram index scan (issue 21);
+     * {@code FileInfoRepository.search} says why, with the numbers. For an empty term the caller
+     * uses {@link #findPublicFiles}; {@code null} matches nothing (issue 87).
+     */
+    @Query(value = """
+            SELECT fd FROM FileDetails fd
+            JOIN FETCH fd.fileInfo fi
+            JOIN FETCH fi.folder t
+            WHERE fd.state = 0 AND fi.state = 0
+              AND fd.id IN (SELECT e.id FROM FileDetails e
+                            WHERE REPLACE(e.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                            UNION
+                            SELECT e.id FROM FileDetails e
+                            WHERE REPLACE(e.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
+                            UNION
+                            SELECT e.id FROM FileDetails e
+                            WHERE e.fileInfo.folder.id IN (SELECT d.id FROM Folder d, Folder a
+                                                           WHERE a.depth > 0 AND d.path LIKE CONCAT(a.path, '%')
+                                                             AND REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%')))
+            """,
+            countQuery = """
+            SELECT COUNT(fd) FROM FileDetails fd
+            WHERE fd.state = 0 AND fd.fileInfo.state = 0
+              AND fd.id IN (SELECT e.id FROM FileDetails e
+                            WHERE REPLACE(e.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                            UNION
+                            SELECT e.id FROM FileDetails e
+                            WHERE REPLACE(e.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
+                            UNION
+                            SELECT e.id FROM FileDetails e
+                            WHERE e.fileInfo.folder.id IN (SELECT d.id FROM Folder d, Folder a
+                                                           WHERE a.depth > 0 AND d.path LIKE CONCAT(a.path, '%')
+                                                             AND REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%')))
             """)
     Page<FileDetails> searchPublicFiles(@Param("search") String search, Pageable pageable);
 

@@ -2,7 +2,7 @@ package com.hnp.filemanagement.file.domain;
 
 import lombok.Data;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 public class FileDetailsDTO {
@@ -47,7 +47,7 @@ public class FileDetailsDTO {
 
     private Integer fileInfoId;
 
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     /**
      * Whether a browser may show this inline - the allow-list {@code ContentTypes} keeps, judged on

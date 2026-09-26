@@ -140,7 +140,7 @@ byte-delete is retried, never silently dropped.
 | `state`/`enabled` `Integer` → `Visibility` and `LifecycleStatus` enums, `@Enumerated(STRING)` + CHECK constraints | 22 | `PUBLIC`, `PRIVATE`, `RESTRICTED`; `ACTIVE`, `PENDING`, `DELETING`, `DISABLED` |
 | `file_size INT` → `BIGINT`, `Integer` → `long` | 6 | **done** (`V2.15`, 1.7.0) |
 | add `checksum_sha256`, `storage_key`, `storage_backend` | 7, 35 | drop `file_path` / `relative_path` |
-| `LocalDateTime` → `Instant`, `DATETIME` → `TIMESTAMPTZ` | 24 | with JPA auditing |
+| `LocalDateTime` → `Instant`, `DATETIME` → `TIMESTAMPTZ` | 24 | **done** (`V3.1`, 2.2.0); the timestamps written by Hibernate since the architecture pass, the zone they are shown in a setting (`filemanagement.time-zone`) |
 | `@Data` → `@Getter @Setter` + explicit `equals`/`hashCode` on id | 2 | |
 | all `@ManyToOne` → `LAZY`, add `@EntityGraph` per use case | 20 | |
 | `Integer` ids → keep (no gain in churning them), but add a public `external_id UUID` | 7 | API exposes the UUID, never the sequence value |

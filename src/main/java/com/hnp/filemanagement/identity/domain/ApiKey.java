@@ -11,7 +11,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -60,14 +60,14 @@ public class ApiKey extends AuditableEntity {
 
     /** Null means it does not expire, which has to be expressible. */
     @Column(name = "expires_at")
-    private LocalDateTime expiresAt;
+    private Instant expiresAt;
 
     /** Set once and never unset: a revoked key stays, so the log still resolves. */
     @Column(name = "revoked_at")
-    private LocalDateTime revokedAt;
+    private Instant revokedAt;
 
     @Column(name = "last_used_at")
-    private LocalDateTime lastUsedAt;
+    private Instant lastUsedAt;
 
     /**
      * The folders this key reaches and what it may do there — the same inheritance as a role's
@@ -84,7 +84,7 @@ public class ApiKey extends AuditableEntity {
      * switched off, burned, and past its date — and an interface that showed only "inactive" would
      * make an administrator guess which.
      */
-    public boolean isUsableAt(LocalDateTime now) {
+    public boolean isUsableAt(Instant now) {
         return enabled != null && enabled == 1
                 && revokedAt == null
                 && (expiresAt == null || expiresAt.isAfter(now));

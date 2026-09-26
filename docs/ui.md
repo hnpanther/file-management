@@ -224,17 +224,22 @@ Persian unless a technical term must retain its established English form.
 
 Dates are shown in the Jalali (Solar Hijri) calendar with Persian digits, and the time alongside
 where the value has one - `1405/06/24 07:27`, rendered in Persian digits. The database and every
-DTO stay Gregorian; only the rendering changes, at the point of use.
+DTO hold instants (2.2.0); only the rendering has a calendar and a zone, at the point of use, and
+the zone is the installation's (`filemanagement.time-zone`, `Asia/Tehran`), never the server's or
+the browser's.
 
 * Server-rendered pages call the `jalali` bean: `th:text="${@jalali.format(fd.getCreatedAt())}"`.
   It is `JalaliDate` in `util/`, a port of the *jalaali-js* arithmetic with no dependency, and
   returns an empty string for a missing value so a page never fails on one.
 * Pages that render from JSON in the browser (the explorer) use `Intl.DateTimeFormat("fa-IR")`,
-  which the browser ships with - no locale data is downloaded.
+  which the browser ships with - no locale data is downloaded - with `timeZone:
+  window.appTimeZone()`, read from the `<meta name="app-time-zone">` every page's head carries. A
+  Gregorian date and time in a script is `window.appDateTime(iso)` (`app.js`).
 
 Give a date cell `dir="ltr"`: the digits are Persian but the order of the parts is left-to-right.
-Never print a raw `LocalDateTime` into a template; the ISO form is what an unformatted value
-looks like, and `FilePreviewPageTest` fails the file page if one appears.
+Never print a raw `Instant` into a template, nor slice an ISO string in a script; the ISO form is
+what an unformatted value looks like - in UTC, three and a half hours off what people expect - and
+`FilePreviewPageTest` fails the file page if one appears.
 
 ## Interface copy
 

@@ -12,7 +12,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * A temporary share link ({@code V2.12}, roadmap 10.5): one stored revision, downloadable at
@@ -37,7 +37,7 @@ public class FileShareLink extends AbstractEntity {
     private FileDetails fileDetails;
 
     @Column(name = "expires_at", nullable = false)
-    private LocalDateTime expiresAt;
+    private Instant expiresAt;
 
     /** BCrypt, or null for a link without a password. */
     @Column(name = "password_hash", length = 100)
@@ -54,14 +54,14 @@ public class FileShareLink extends AbstractEntity {
     private int failedAttempts;
 
     @Column(name = "locked_until")
-    private LocalDateTime lockedUntil;
+    private Instant lockedUntil;
 
     @Column(name = "revoked_at")
-    private LocalDateTime revokedAt;
+    private Instant revokedAt;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "created_by", nullable = false, updatable = false)
@@ -75,7 +75,7 @@ public class FileShareLink extends AbstractEntity {
         return revokedAt != null;
     }
 
-    public boolean isExpiredAt(LocalDateTime now) {
+    public boolean isExpiredAt(Instant now) {
         return !now.isBefore(expiresAt);
     }
 
@@ -83,12 +83,12 @@ public class FileShareLink extends AbstractEntity {
         return maxDownloads != null && downloadCount >= maxDownloads;
     }
 
-    public boolean isLockedAt(LocalDateTime now) {
+    public boolean isLockedAt(Instant now) {
         return lockedUntil != null && now.isBefore(lockedUntil);
     }
 
     /** Whether the link answers a download right now, the password aside. */
-    public boolean isUsableAt(LocalDateTime now) {
+    public boolean isUsableAt(Instant now) {
         return !isRevoked() && !isExpiredAt(now) && !isExhausted();
     }
 }

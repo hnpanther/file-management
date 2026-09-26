@@ -2,15 +2,23 @@ package com.hnp.filemanagement.shared.util;
 
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /**
- * Gregorian to Jalali (Solar Hijri) conversion, for the dates the pages show.
+ * Gregorian to Jalali (Solar Hijri) conversion, for the dates the pages show - and the one place
+ * a stored instant becomes a wall clock.
  *
- * <p>The database and every DTO stay Gregorian; only the rendering changes. The templates reach
- * this as {@code ${@jalali.format(...)}}, so a page that shows a date says which calendar it is in
- * at the point of use rather than through a converter registered somewhere else.
+ * <p>The database and every DTO hold instants (2.2.0, issue 24); only the rendering has a zone,
+ * and it is the installation's ({@code filemanagement.time-zone}, the zone of the application's
+ * {@code Clock}), never the server's. The templates reach this as {@code ${@jalali.format(...)}},
+ * so a page that shows a date says which calendar it is in at the point of use rather than
+ * through a converter registered somewhere else; a page that shows a Gregorian date formats
+ * {@link #local} instead, and the explorer's script gets {@link #zone} to hand to
+ * {@code Intl.DateTimeFormat}.
  *
  * <p>The arithmetic is the algorithm of <i>jalaali-js</i> (Behrang Noruzi Niya, based on Kazimierz
  * Borkowski's 33-year-cycle breaks), which is exact for the years 1178 to 3177 AP — it does not
@@ -26,18 +34,35 @@ public class JalaliDate {
 
     private static final char[] PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹".toCharArray();
 
-    /** {@code ۱۴۰۵/۰۶/۲۴ ۰۷:۲۷}, or an empty string for a missing value. */
-    public String format(LocalDateTime value) {
+    private final ZoneId zone;
+
+    public JalaliDate(Clock clock) {
+        this.zone = clock.getZone();
+    }
+
+    /** {@code ۱۴۰۵/۰۶/۲۴ ۰۷:۲۷} in the installation's zone, or an empty string for a missing value. */
+    public String format(Instant value) {
         if (value == null) {
             return "";
         }
+        LocalDateTime local = local(value);
         return persianDigits(String.format("%s %02d:%02d",
-                date(value.toLocalDate()), value.getHour(), value.getMinute()));
+                date(local.toLocalDate()), local.getHour(), local.getMinute()));
     }
 
-    /** {@code ۱۴۰۵/۰۶/۲۴}, or an empty string for a missing value. */
+    /** {@code ۱۴۰۵/۰۶/۲۴}, or an empty string for a missing value. A date has no zone to apply. */
     public String format(LocalDate value) {
         return value == null ? "" : persianDigits(date(value));
+    }
+
+    /** The wall clock this instant was in the installation's zone, or null - for a Gregorian page. */
+    public LocalDateTime local(Instant value) {
+        return value == null ? null : LocalDateTime.ofInstant(value, zone);
+    }
+
+    /** The installation's zone, as an IANA id ({@code Asia/Tehran}) - what a browser's {@code Intl} takes. */
+    public String zone() {
+        return zone.getId();
     }
 
     private static String date(LocalDate value) {

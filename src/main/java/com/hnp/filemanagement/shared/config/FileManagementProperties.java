@@ -7,6 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.Name;
 import org.springframework.validation.annotation.Validated;
 
+import java.time.ZoneId;
+
 /**
  * Every setting this application owns, in one tree ({@code docs/issues.md} issue 27, roadmap 2.1).
  *
@@ -23,6 +25,11 @@ import org.springframework.validation.annotation.Validated;
  * policy must not exceed, so it is read as what it is: Spring's.
  *
  * @param baseDir      the storage root; every stored byte is under it. Must exist and be writable
+ * @param timeZone     the zone people read and type times in - the pages, the Jalali dates, the
+ *                     day an API key expires on. Stored times are instants and need none; this
+ *                     is only where they become a wall clock. {@code Asia/Tehran} unless set, and
+ *                     never taken from the server, whose zone is whatever its host or container
+ *                     was given (issue 24). An unknown zone fails the start
  * @param defaults     page sizes for the list views. Bound from {@code filemanagement.default.*},
  *                     the name it has always had - renaming a published setting silently changes
  *                     behaviour on every installation that sets it
@@ -38,6 +45,7 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "filemanagement")
 public record FileManagementProperties(
         @NotNull String baseDir,
+        ZoneId timeZone,
         @Name("default") @Valid Defaults defaults,
         @Valid FolderAccess folderAccess,
         @Valid Folders folders,
@@ -47,7 +55,11 @@ public record FileManagementProperties(
         @Valid Bootstrap bootstrap,
         @Valid Auth auth) {
 
+    /** The zone of every installation so far, whose times before 2.2.0 were written in it. */
+    public static final ZoneId DEFAULT_TIME_ZONE = ZoneId.of("Asia/Tehran");
+
     public FileManagementProperties {
+        timeZone = timeZone == null ? DEFAULT_TIME_ZONE : timeZone;
         defaults = defaults == null ? new Defaults(null) : defaults;
         folderAccess = folderAccess == null ? new FolderAccess(null) : folderAccess;
         folders = folders == null ? new Folders(null, null) : folders;
@@ -60,12 +72,12 @@ public record FileManagementProperties(
 
     /** The tree with nothing set but the storage root: every other value its documented default. */
     public static FileManagementProperties defaults(String baseDir) {
-        return new FileManagementProperties(baseDir, null, null, null, null, null, null, null, null);
+        return new FileManagementProperties(baseDir, null, null, null, null, null, null, null, null, null);
     }
 
     /** The same tree with different directory settings - what a test varies. */
     public FileManagementProperties withActiveDirectory(ActiveDirectory activedirectory) {
-        return new FileManagementProperties(baseDir, defaults, folderAccess, folders, profiles,
+        return new FileManagementProperties(baseDir, timeZone, defaults, folderAccess, folders, profiles,
                 storage, shareLinks, bootstrap, new Auth(new Ldap(activedirectory)));
     }
 

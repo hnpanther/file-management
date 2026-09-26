@@ -2,7 +2,7 @@ package com.hnp.filemanagement.audit.domain;
 
 import lombok.Data;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 public class ActionHistoryDTO {
@@ -25,7 +25,7 @@ public class ActionHistoryDTO {
 
     private Integer state;
 
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     private String username;
 

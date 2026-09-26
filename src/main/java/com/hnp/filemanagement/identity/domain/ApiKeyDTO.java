@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,9 +38,9 @@ public class ApiKeyDTO {
     private LocalDate expiresAt;
 
     private Integer enabled;
-    private LocalDateTime revokedAt;
-    private LocalDateTime lastUsedAt;
-    private LocalDateTime createdAt;
+    private Instant revokedAt;
+    private Instant lastUsedAt;
+    private Instant createdAt;
     private String createdBy;
 
     /** Whether it would be accepted right now — enabled, not revoked, not past its date. */

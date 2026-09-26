@@ -579,9 +579,14 @@ public class FolderContentService {
         return pageRequest(page, size, DEFAULT_PAGE_SIZE);
     }
 
+    /**
+     * By name, then by id: inside one folder the names are unique, but a search spans folders, and
+     * two files of one name in two folders would otherwise come back in either order - a page could
+     * repeat one and skip the other (issue 95, found again in 2.2.0).
+     */
     private static PageRequest pageRequest(int page, int size, int fallbackSize) {
         return PageRequest.of(PageRequests.number(page), PageRequests.size(size, fallbackSize),
-                Sort.by(Sort.Direction.ASC, "fileName"));
+                Sort.by(Sort.Direction.ASC, "fileName").and(Sort.by(Sort.Direction.ASC, "id")));
     }
 
     private static PageInfo pageInfoOf(Page<FileInfo> files, PageRequest requested) {

@@ -1,6 +1,6 @@
 package com.hnp.filemanagement.file.domain;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * What {@code HEAD} answers about one object, and what {@code PUT} answers about the one it just
@@ -16,5 +16,5 @@ public record ObjectMetadataDTO(String bucket,
                                 long size,
                                 String contentType,
                                 String eTag,
-                                LocalDateTime lastModified) {
+                                Instant lastModified) {
 }

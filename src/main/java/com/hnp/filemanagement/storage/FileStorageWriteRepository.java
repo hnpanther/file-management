@@ -5,7 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 /** Byte writes that are under way ({@code V2.13}). Only {@code StorageSweeper} reads them. */
@@ -16,5 +16,5 @@ public interface FileStorageWriteRepository extends JpaRepository<FileStorageWri
      * first, because a sweep must not load an unbounded number of rows into one transaction.
      */
     @Query("SELECT w FROM FileStorageWrite w WHERE w.createdAt < :before ORDER BY w.createdAt")
-    List<FileStorageWrite> findStarted(@Param("before") LocalDateTime before, Pageable batch);
+    List<FileStorageWrite> findStarted(@Param("before") Instant before, Pageable batch);
 }
