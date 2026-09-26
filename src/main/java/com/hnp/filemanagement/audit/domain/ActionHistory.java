@@ -69,4 +69,12 @@ public class ActionHistory extends AbstractEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false, updatable = false)
     private User user;
+
+    /**
+     * The id of the API key the action was taken with, or null for a person (2.3.0). {@link #user}
+     * is then the key's creator, in whose name a key acts. An id rather than an association: the
+     * trail is written, not navigated, and a key is never deleted, so the id always names one.
+     */
+    @Column(name = "api_key_id", updatable = false)
+    private Integer apiKeyId;
 }

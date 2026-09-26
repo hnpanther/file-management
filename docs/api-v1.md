@@ -159,6 +159,7 @@ whatever it is when the request is made.
 | 1.7.0 | a Persian file name arrives intact; **uploads private unless `public-file=1`**; a refused upload says why in `detail` |
 | 1.8.0 | external ids and `checksumSha256` in the upload's answer; every id segment takes the external id |
 | 1.9.0 | `file-info/{id}/download` by the file's id, with `?version=` and `?format=`; the `X-File-*` and `X-Checksum-SHA256` headers on every download; deleting or changing a file checks the file's folder (issue 90) |
+| 2.3.0 | nothing. (What a request made with an API key uploads or deletes is now recorded as that key's, and the file page names the key.) |
 | 2.2.0 | nothing: the v1 API carries no times. (The v2 API's JSON now gives `lastModified` as an instant in UTC - `2026-09-19T13:03:55Z` rather than the server's wall clock `2026-09-19T16:33:55`; see [deployment.md](deployment.md#upgrading-from-210-to-220--instants-and-indexed-search).) |
 | 2.1.0 | nothing |
 | 2.0.0 | nothing: the same API whichever database runs behind it. When the service moves to PostgreSQL, every id and external id a client holds is copied unchanged, and the next id continues after the largest one |

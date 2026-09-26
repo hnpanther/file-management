@@ -45,6 +45,9 @@ public class FileDetailsDTO {
 
     private String createdBy;
 
+    /** The title of the API key that created the revision, or null when a person did (2.3.0); set for the file page only. */
+    private String createdByApiKey;
+
     private Integer fileInfoId;
 
     private Instant createdAt;

@@ -95,6 +95,10 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   [issue 24](docs/issues.md#24-timestamps-are-hand-set-localdatetime--s2)). No
   `LocalDateTime.now()`, `LocalDate.now()` or `ZoneId.systemDefault()`; `Instant.now(clock)`, and
   `JalaliDate` / `appDateTime` to show one.
+* **A request with an API key runs as the key's creator; the key is recorded beside them** (2.3.0,
+  [issue 97](docs/issues.md#97-what-an-api-key-did-was-recorded-as-its-creators-doing-with-nothing-to-say-a-key-did-it--s2)):
+  `ActingApiKey.currentId()`. The audit trail takes it by itself; a new way to create a file or a
+  revision sets `createdByApiKey` as `FileService` does.
 * **A search must hit its trigram index** (2.2.0,
   [issue 21](docs/issues.md#21-search-is-like-term-across-the-whole-graph--s2)): keep
   `REPLACE(x.searchName, ' ', '')` exactly as written, match through another table with a `UNION`

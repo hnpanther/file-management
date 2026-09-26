@@ -50,7 +50,7 @@
                     </div>
                     <div>
                         <dt th:text="#{field.createdBy}"></dt>
-                        <dd th:text="${file.getCreatedBy()}"></dd>
+                        <dd th:text="${file.createdByApiKey != null} ? #{field.createdByApiKey(${file.createdByApiKey})} : ${file.getCreatedBy()}"></dd>
                     </div>
                     <div class="md:col-span-2">
                         <dt th:text="#{field.folder}"></dt>
@@ -156,7 +156,7 @@
                         </div>
                         <div>
                             <dt th:text="#{field.createdBy}"></dt>
-                            <dd th:text="${fd.getCreatedBy()}"></dd>
+                            <dd th:text="${fd.createdByApiKey != null} ? #{field.createdByApiKey(${fd.createdByApiKey})} : ${fd.getCreatedBy()}"></dd>
                         </div>
                     </dl>
                     <div sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')">

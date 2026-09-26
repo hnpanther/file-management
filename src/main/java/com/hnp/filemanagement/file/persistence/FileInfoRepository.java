@@ -58,15 +58,19 @@ import java.util.Optional;
 public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
 
     /**
-     * One file with its revisions and its folder, by id.
+     * One file with its revisions and its folder, by id - and the API keys that created them, which
+     * the file page names (2.3.0).
      *
      * <p>{@code LEFT JOIN FETCH} on the revisions, not {@code JOIN FETCH}: an inner join drops a
      * file that has no versions, and this method is used on the delete path, where a file whose
-     * last version has just gone still has to be found in order to be removed.
+     * last version has just gone still has to be found in order to be removed. The keys are
+     * {@code LEFT} for the same reason: most rows were created by a person, with no key.
      */
     @Query("""
             SELECT DISTINCT f FROM FileInfo f
-            LEFT JOIN FETCH f.fileDetailsList
+            LEFT JOIN FETCH f.createdByApiKey
+            LEFT JOIN FETCH f.fileDetailsList d
+            LEFT JOIN FETCH d.createdByApiKey
             JOIN FETCH f.folder t
             WHERE f.id = :id
             """)

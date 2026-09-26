@@ -2,6 +2,7 @@ package com.hnp.filemanagement.audit.domain;
 
 import com.hnp.filemanagement.audit.persistence.ActionHistoryRepository;
 import com.hnp.filemanagement.identity.persistence.UserRepository;
+import com.hnp.filemanagement.identity.security.ActingApiKey;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +42,9 @@ public class ActionHistoryService {
      * @param entityName the kind of row that changed
      * @param entityId   which row — not a foreign key, so it may outlive what it points at
      * @param action     what was done to it
-     * @param userId     who did it
+     * @param userId     who did it - for a request made with an API key, the key's creator; the
+     *                   key itself is taken from the request ({@code ActingApiKey}) and recorded
+     *                   beside it (2.3.0)
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void saveActionHistory(EntityEnum entityName, int entityId, ActionEnum action, int userId,
@@ -53,6 +56,9 @@ public class ActionHistoryService {
         actionHistory.setEntityId(entityId);
         actionHistory.setAction(action);
         actionHistory.setUser(userRepository.getReferenceById(userId));
+        // The key the request acted with, if any: read here, once, rather than by every one of the
+        // callers - none of them can then forget it.
+        actionHistory.setApiKeyId(ActingApiKey.currentId());
         actionHistory.setActionDescription(actionDescription);
         actionHistory.setDescription(description);
         actionHistory.setEnabled(1);

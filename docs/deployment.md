@@ -611,6 +611,33 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 2.2.0 to 2.3.0 — which API key did it
+
+**One migration**, `V3.3`, run by the first start: three nullable columns with their foreign keys
+and indexes (`file_info.created_by_api_key_id`, `file_details.created_by_api_key_id`,
+`action_history.api_key_id`). It adds, rewrites nothing, and takes well under a second. Deploy it
+after 2.2.0; take the backup first - it is the rollback.
+
+**What the start says**: `Migrating schema "public" to version "3.3 - Record the acting api key"`,
+then `now at version v3.3`.
+
+**What people will notice**: a file or a revision an integration uploaded with an API key shows,
+on the file page, «از طریق API با کلید «…»» in place of the person who created the key - the
+key's title as it is now, so renaming a key renames it there too. Everything uploaded before the
+upgrade keeps showing its creator: which key did it was never recorded, and is not guessed. Uploads
+through the shared v1 account (HTTP Basic) show that account, as before.
+
+**For the clients**: nothing changes, in v1 or v2 ([api-v1.md](api-v1.md)).
+
+**Check after the start**, once an integration has uploaded something:
+
+```sql
+SELECT k.title, count(*) FROM file_details d JOIN api_key k ON k.id = d.created_by_api_key_id GROUP BY k.title;
+SELECT k.title, h.action, count(*) FROM action_history h JOIN api_key k ON k.id = h.api_key_id GROUP BY 1, 2;
+```
+
+**Rollback** is the backup restored and the 2.2.0 jar, in the same operation ([Rollback](#7-rollback)).
+
 ### Upgrading from 2.1.0 to 2.2.0 — instants and indexed search
 
 The first release that uses what only PostgreSQL has (roadmap step 9). **Two migrations**, both run

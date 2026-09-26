@@ -53,6 +53,9 @@ public class FileInfoDTO {
     private Instant createdAt;
     private String createdBy;
 
+    /** The title of the API key that created the file, or null when a person did (2.3.0); set for the file page only. */
+    private String createdByApiKey;
+
     private List<FileDetailsDTO> fileDetailsDTOS = new ArrayList<>();
 
 }

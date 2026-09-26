@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.2`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.3`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -129,9 +129,12 @@ _As of migration `V3.2`. Types and defaults are PostgreSQL's own; every table is
 | `enabled` | `integer` | no |  |  |
 | `state` | `integer` | no |  |  |
 | `created_at` | `timestamptz(0)` | no |  |  |
+| `api_key_id` | `integer` | yes |  |  |
 
 * **primary key** `id`
+* **foreign key** `fk_action_history_api_key` `api_key_id` → `api_key` (`id`)
 * **foreign key** `fk_action_history_user_id` `user_id` → `app_user` (`id`)
+* **index** `fk_action_history_api_key` (`api_key_id`)
 * **index** `fk_action_history_user_id` (`user_id`)
 * **index** `ix_action_history_entity` (`entity_name`, `entity_id`)
 
@@ -265,13 +268,16 @@ _As of migration `V3.2`. Types and defaults are PostgreSQL's own; every table is
 | `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | no |  |  |
 | `updated_by` | `integer` | yes |  |  |
+| `created_by_api_key_id` | `integer` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_file_details_external_id` (`external_id`)
 * **unique** `uq_file_details_version_format` (`file_info_id`, `version`, `upper(file_extension)`)
+* **foreign key** `fk_file_details_created_by_api_key` `created_by_api_key_id` → `api_key` (`id`)
 * **foreign key** `fk_file_details_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_file_details_file_info_id` `file_info_id` → `file_info` (`id`)
 * **foreign key** `fk_file_details_updated_by_user` `updated_by` → `app_user` (`id`)
+* **index** `fk_file_details_created_by_api_key` (`created_by_api_key_id`)
 * **index** `fk_file_details_created_by_user` (`created_by`)
 * **index** `fk_file_details_updated_by_user` (`updated_by`)
 * **index** `ix_file_details_file_info_version` (`file_info_id`, `version`)
@@ -300,13 +306,16 @@ _As of migration `V3.2`. Types and defaults are PostgreSQL's own; every table is
 | `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | no |  |  |
 | `updated_by` | `integer` | yes |  |  |
+| `created_by_api_key_id` | `integer` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_file_info_external_id` (`external_id`)
 * **unique** `uq_file_info_name_per_folder` (`folder_id`, `upper(file_name)`)
+* **foreign key** `fk_file_info_created_by_api_key` `created_by_api_key_id` → `api_key` (`id`)
 * **foreign key** `fk_file_info_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_file_info_folder` `folder_id` → `folder` (`id`)
 * **foreign key** `fk_file_info_updated_by_user` `updated_by` → `app_user` (`id`)
+* **index** `fk_file_info_created_by_api_key` (`created_by_api_key_id`)
 * **index** `fk_file_info_created_by_user` (`created_by`)
 * **index** `fk_file_info_updated_by_user` (`updated_by`)
 * **index** `ix_file_info_created_at` (`created_at`)

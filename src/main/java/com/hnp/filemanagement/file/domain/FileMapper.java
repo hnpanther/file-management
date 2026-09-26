@@ -2,8 +2,11 @@ package com.hnp.filemanagement.file.domain;
 
 import com.hnp.filemanagement.folder.domain.FolderContentDTO;
 import com.hnp.filemanagement.folder.domain.Folder;
+import com.hnp.filemanagement.identity.domain.ApiKey;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -75,6 +78,28 @@ public final class FileMapper {
         dto.setCreatedBy(file.getCreatedBy().getUsername());
         dto.setFileDetailsDTOS(file.getFileDetailsList().stream().map(FileMapper::toDto).toList());
         return dto;
+    }
+
+    /**
+     * The file page's "created by" for what an API key created: the key's title as it is now, on
+     * the file and on each revision (2.3.0). Kept out of {@link #toDto(FileInfo, List)}, which the
+     * lists use too: the keys have to be fetched with the file - {@code findByIdAndFetchFileDetails}
+     * does - or each would be one more query.
+     */
+    public static FileInfoDTO withApiKeyTitles(FileInfoDTO dto, FileInfo file) {
+        dto.setCreatedByApiKey(titleOf(file.getCreatedByApiKey()));
+        Map<Integer, String> titles = new HashMap<>();
+        for (FileDetails revision : file.getFileDetailsList()) {
+            titles.put(revision.getId(), titleOf(revision.getCreatedByApiKey()));
+        }
+        for (FileDetailsDTO revision : dto.getFileDetailsDTOS()) {
+            revision.setCreatedByApiKey(titles.get(revision.getId()));
+        }
+        return dto;
+    }
+
+    private static String titleOf(ApiKey key) {
+        return key == null ? null : key.getTitle();
     }
 
     /** A publicly listed revision: less than {@link #toDto(FileDetails)}, and the folder as one line. */
