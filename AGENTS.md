@@ -15,7 +15,7 @@ Read this together with:
 ## Project in one paragraph
 
 Spring Boot MVC application. Thymeleaf UI plus a REST API. Files go on the local filesystem, metadata
-in MySQL. One folder tree of any depth up to a limit (`Folder`, one `ROOT`), with files
+in PostgreSQL. One folder tree of any depth up to a limit (`Folder`, one `ROOT`), with files
 (`FileInfo → FileDetails`) in any folder below the root, stored on disk **by the file's own id**
 (`StorageLayout`, sharded); a top-level folder carries a `TagGroup` (the old "general tag", which
 is a label group and **not** a folder), and `Home/Profiles/{username}` is a user's own folder,
@@ -23,19 +23,18 @@ optionally with a quota. Authorities are fine-grained per-endpoint permissions, 
 permission's *name* in a `@PreAuthorize` is checked against `PermissionEnum` by
 `PermissionNamesTest`, because a drifted string silently locks an endpoint to administrators. On
 top of them sits folder access: `READ` or `WRITE` grants on folders, inherited downward. The
-database is MySQL today and PostgreSQL is on the way (roadmap Phase 3; release A, 1.7.0, is
-done). Package root `com.hnp.filemanagement`.
+database is PostgreSQL since 2026-09-26 (roadmap Phase 3; MySQL removed from the code in release C,
+2.1.0). Package root `com.hnp.filemanagement`, sliced by feature.
 
 ## Commands
 
 ```bash
-./mvnw verify                 # build + all tests on MySQL; needs only a Docker daemon (no Node)
-./mvnw verify -Ddb=postgresql # the same suite on PostgreSQL - run both before committing (release B)
+./mvnw verify                 # build + all tests on PostgreSQL; needs only a Docker daemon (no Node)
 npm run build:css             # only if you edited src/main/frontend/app.css
 ./mvnw clean package          # build → target/file-management.jar (executable)
 ./mvnw spring-boot:run        # run on :8122
 ./mvnw test -Dtest=FileServiceTest
-docker compose up -d          # MySQL for running the application (NOT for tests)
+docker compose up -d          # PostgreSQL for running the application (NOT for tests)
 ```
 
 **Always stop the application when you are finished.** `spring-boot:run` holds port 8122 for as
@@ -52,8 +51,7 @@ Get-NetTCPConnection -LocalPort 8122 -State Listen -ErrorAction SilentlyContinue
 lsof -ti tcp:8122 | xargs -r kill
 ```
 
-The tests start their own database through Testcontainers (`support/DatabaseSupport`, MySQL or,
-with `-Ddb=postgresql`, PostgreSQL) and use
+The tests start their own PostgreSQL through Testcontainers (`support/DatabaseSupport`) and use
 `./target/test-storage/` as the storage root (`support/StorageRootSupport`). There is nothing to
 provision. **Run them.** If something prevents you from running them, say so rather than claiming a
 change is verified.
@@ -75,9 +73,29 @@ change is verified.
 
 Match what is already there unless the roadmap says to change it.
 
-**Layers.** `controller/` returns Thymeleaf view names. `resource/` is REST for the UI's own AJAX
-(session auth, CSRF). `api/` is REST for machines (HTTP Basic, stateless). Business logic goes in
-`service/`, never in a controller.
+**Packages by feature** (2.1.0, roadmap 2.3). Each feature keeps its own layers:
+
+```
+com.hnp.filemanagement
+├── audit/      action history: who did what to which record
+├── file/       files and revisions, upload and download, content kinds, the upload policy,
+│               share links, the v1 and v2 APIs
+├── folder/     the tree, folder access (grants), tags and tag groups, quotas, personal folders
+├── identity/   users, roles, permissions, API keys; security/ (sign-in, Active Directory,
+│               the filter chains) and bootstrap/ (the fixed roles and the first administrator)
+├── settings/   the general settings page and its app_setting rows
+├── storage/    the BlobStore port, its filesystem adapter, the storage write journal and sweeper
+└── shared/     config/, domain/ (AbstractEntity), exception/, util/ (SearchKey, SearchTerms),
+                validation/, web/ (the logging interceptor, the exception advice, ApiResult,
+                PageResponse)
+```
+
+Inside a feature, `domain/` holds the entities, the services, their DTOs and the feature's mapper;
+`persistence/` the repositories; `web/` what serves HTTP - a `*Controller` returns a Thymeleaf view
+name, a `*Resource` is REST for the pages' own AJAX (session, CSRF) and a `*Api` is REST for
+machines (HTTP Basic or an API key, stateless). A change to how revisions work stays in `file/`.
+One feature may call another's services; business logic stays in services, never in a
+controller.
 
 **Constructor injection only.** No field `@Autowired`. Every dependency is `private final` and set
 in the constructor. Services take repositories, not `EntityManager`; where you need a foreign-key
@@ -90,8 +108,9 @@ is `Propagation.MANDATORY`, so calling it outside a transaction fails loudly ins
 history row that outlives a rolled-back change. Inside a transaction a loaded entity needs no
 `save()`; the dirty check writes it.
 
-**Entity → DTO** conversion goes through `util/ModelConverterUtil`, and it happens **inside the
-service**, in the transaction that loaded the data. `spring.jpa.open-in-view` is off, so an entity
+**Entity → DTO** conversion goes through the feature's mapper (`UserMapper`, `RoleMapper`,
+`FileMapper`, `ActionHistoryMapper` - issue 29), and it happens **inside the service**, in the
+transaction that loaded the data. `spring.jpa.open-in-view` is off, so an entity
 that reaches a controller is a lazy graph with no persistence context behind it. No service method
 returns an entity; the few that must share one with a sibling service are package-private
 (`FolderService.requireWithChain`, `FolderAccessService.requireFolder`, …).
@@ -120,13 +139,14 @@ person can fix what an `InvalidDataException` refuses, give it a message code as
 keeps the English. A page that answers "enter the information correctly" for something it could
 have named is the bug of [issue 89](docs/issues.md#89-the-upload-form-answered-every-refusal-with-enter-the-information-correctly--s2).
 
-**REST handlers do not catch.** A method in `resource/` or `api/` throws and lets the advice answer.
+**REST handlers do not catch.** A method of a `*Resource` or `*Api` throws and lets the advice answer.
 Catching locally is what used to flatten 404, 409 and 417 into one 400 with the body
 `"invalid data"`. Return `ApiResult.created/updated/deleted/stateChanged(...)` for a mutation and a
 DTO for a lookup; success is 200, because the pages branch only on `xhr.status === 200`. Full
 contract in [arch.md §6](docs/arch.md#the-rest-contract).
 
-**Bind request bodies, never parse them.** Add a small record to `dto/` (see `StateChangeRequest`)
+**Bind request bodies, never parse them.** Add a small record to the feature's `domain/` - or
+`shared/web/` if every feature uses it (see `StateChangeRequest`) -
 and take it as `@RequestBody`. `JsonParserFactory` plus `map.get("x").toString()` is how these
 endpoints used to turn a missing field into a 500.
 
@@ -182,7 +202,7 @@ the traversal cases in `ValidationUtilTest` are the ones never to relax.
 * **`state` and `enabled` are magic integers.** `state`: `0` public, `-1` private. `enabled`: `1`
   active. There is no enum and no constraint.
 * **A mapper that walks an association issues a query per row.** Every association is `LAZY`
-  and `open-in-view` is off, so a field added to `ModelConverterUtil` that follows one either
+  and `open-in-view` is off, so a field added to a mapper that follows one either
   fails outside the transaction or costs a lazy load per row. Fetch it in the repository query
   (see the folder chain: `FolderService.ancestryOf`, one query per page).
 * **`external_id` is a random UUID, not a hash; `checksum_sha256` is the hash** (1.8.0). The
@@ -202,10 +222,10 @@ the traversal cases in `ValidationUtilTest` are the ones never to relax.
   trailing separator when the configured value lacks one (it did not always: 1.1.0's first
   deployment stored files under `main\IMS\…` and deleted from `mainIMS/…`), so both spellings
   work - but write it with the separator.
-* **Hand-written SQL must match table names exactly.** MySQL folds identifiers on Windows but not on
-  Linux, so a typo like `file_Info` passes locally and fails in production. `compose.yaml` sets
-  `--lower-case-table-names=0` and the test container is Linux, so both now catch it — do not work
-  around either. See [issue 47](docs/issues.md#47-maintagfiledao-queried-file_info-which-does-not-exist-on-linux--s1).
+* **Hand-written SQL must match table names exactly.** MySQL folded identifiers on Windows but not
+  on Linux, so a typo like `file_Info` once passed locally and failed in production. PostgreSQL
+  folds an unquoted name to lower case everywhere, so the same typo now works everywhere - and a
+  quoted one (`"file_Info"`) fails everywhere. Do not quote table names. See [issue 47](docs/issues.md#47-maintagfiledao-queried-file_info-which-does-not-exist-on-linux--s1).
 * **Lombok needs an explicit `annotationProcessorPaths` entry.** JDK 23 dropped implicit annotation
   processing; without the entry in `pom.xml` every generated getter vanishes and the build fails
   with hundreds of `cannot find symbol`. Do not remove it.
@@ -225,32 +245,23 @@ the traversal cases in `ValidationUtilTest` are the ones never to relax.
 ## Database changes
 
 Schema is owned by **Flyway**, and `ddl-auto=validate` means Hibernate will refuse to start on a
-mismatch. **There are two migration directories until release C** (roadmap 3.4), one per database:
-`src/main/resources/db/migration/mysql` (`V1.0` to `V2.19`, and the Java `V2_17` in
-`src/main/java/db/migration/mysql`) and `src/main/resources/db/migration/postgresql` (`V3.0`, the
-baseline). Nothing goes in `db/migration` itself - it would run on neither database
-(`VendorMigrationLayoutTest`).
+mismatch. PostgreSQL only since release C (2.1.0): `V3.0__Baseline.sql` in
+`src/main/resources/db/migration` is where every database starts, and a schema change is the next
+`V3.x__Description.sql` beside it. The MySQL history (`V1.0` to `V2.19`) went with MySQL.
 
-* **A schema change is written twice**: the next `V2.x__Description.sql` in `mysql/` and the next
-  `V3.x__Description.sql` in `postgresql/`, in the same commit, with the same effect.
-  `SchemaParityTest` compares the two migrated schemas - tables, columns, defaults, keys, foreign
-  keys, indexes, seed rows - and fails on any difference it was not told about. A new table goes
-  into `DatabaseCopy.TABLES` too, in foreign-key order (`DatabaseCopyTest`). Never edit an applied
-  migration.
+* **Never edit an applied migration** - not even a comment. Flyway checksums the whole file, and
+  production refuses to start on a mismatch.
 * Flyway is the only source of schema. There is no schema dump to keep in sync any more.
 * Update the entity in the same commit.
 * `ddl-auto=validate` checks types and existence but **not** nullability — if you add a `NOT NULL`
   column, set `nullable = false` on the mapping too, or you will get a runtime insert failure
   ([issue 33](docs/issues.md#33-schema-and-entity-mappings-disagree--s2)).
-* Migrations are MySQL-specific today. If you are writing one during the PostgreSQL migration, see
-  [roadmap Phase 3](docs/roadmap.md#phase-3--postgresql-migration) for the vendor-directory layout.
-* **Run the suite on both databases** before committing anything that touches a query or the
-  schema: `./mvnw verify` and `./mvnw verify -Ddb=postgresql`. `@MySqlOnly` is for a test about
-  MySQL itself, never for one that fails on PostgreSQL - that failure is what release B exists to
-  find. Two differences the suite has already met: PostgreSQL's default isolation is
-  `READ COMMITTED`, not MySQL's `REPEATABLE READ` (a transaction sees what others committed after
-  it began), and it refuses a NUL character in a string, which MySQL stores.
-* **A query must not lean on MySQL's collation** (release A, 1.7.0). `utf8mb4_unicode_ci` makes a
+* **A name unique without regard to case is a unique index on `upper(column)`**, as the eight in
+  `V3.0` are, and is compared through `UPPER(...)` in the query; a timestamp is `TIMESTAMP(0)`; a
+  foreign key gets its own index (PostgreSQL does not make one). Two differences from MySQL the
+  suite has met: the default isolation is `READ COMMITTED` (a transaction sees what others
+  committed after it began), and a NUL character in a string is refused.
+* **A query does not lean on a collation** (release A, 1.7.0). MySQL's `utf8mb4_unicode_ci` made a
   bare `=` or `LIKE` on text case-insensitive; PostgreSQL does not. Compare a name or search a
   text through `UPPER(...)` on both sides - in a derived query, `IgnoreCase`, which renders the
   same - and give the new query its case in `PortableQueriesTest`, stored in one case and asked
@@ -271,7 +282,7 @@ baseline). Nothing goes in `db/migration` itself - it would run on neither datab
   ([issue 7](docs/issues.md#7-hash_id-is-not-a-hash--s2)).
 * **A search term that means "everything" is `''`, never `null`**: write `:search = '' OR ...`
   and pass `SearchTerms.blankToEmpty`. A `null` inside `LIKE CONCAT(...)` has no type PostgreSQL
-  accepts, and `CAST` cannot fix it without breaking MySQL's collations
+  accepts
   ([issue 87](docs/issues.md#87-an-empty-search-box-is-a-null-postgresql-cannot-type--s1-for-the-migration)).
 * The accounts table is **`app_user`** since `V2.14` - `user` is reserved in PostgreSQL. The entity
   is still `User`.
@@ -361,7 +372,7 @@ Rules for new tests:
 
 A change is done when:
 
-* `./mvnw verify` is green, and `./mvnw verify -Ddb=postgresql` too;
+* `./mvnw verify` is green;
 * new behaviour has a test, or you have stated explicitly that you could not run the suite and why;
 * any new endpoint has a `PermissionEnum` constant, placed in a `PermissionGroup`, and a `@PreAuthorize`;
 * any new mutation writes an `ActionHistory` row;

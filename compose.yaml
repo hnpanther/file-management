@@ -2,38 +2,41 @@
 #
 #   docker compose up -d
 #
-# The test suite does NOT use this - it starts its own throwaway MySQL through Testcontainers
-# (see src/test/java/com/hnp/filemanagement/support/MySqlSupport.java). This file is only for
-# running the application itself against something persistent.
+# The test suite does NOT use this - it starts its own throwaway PostgreSQL through Testcontainers
+# (src/test/java/com/hnp/filemanagement/support/TestDatabases.java). This file is only for running
+# the application itself against something persistent, on the port and with the account the
+# default spring.datasource.* in application.properties expects.
 #
-# PostgreSQL replaces MySQL here in roadmap Phase 3, and MinIO joins it in Phase 4.
+# PostgreSQL since release C (2.1.0); MinIO joins it in Phase 4.
+#
+# Development only: the account below is the server's superuser. In production the application
+# signs in as an account that owns its database and nothing else - docs/deployment.md,
+# "Creating the database and its account".
 
 services:
-  mysql:
-    image: mysql:8.0.36
-    container_name: file-management-mysql
+  postgres:
+    image: postgres:18.4
+    container_name: file-management-db
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: file_management
-      MYSQL_USER: file_management
-      MYSQL_PASSWORD: ${FILEMANAGEMENT_DB_PASSWORD:-file_management}
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      # Match Linux production behaviour on every host: table names stay case-sensitive, so a
-      # query that misspells a table fails here rather than in production. This is exactly the
-      # class of bug that hid in MainTagFileDAO ('file_Info') until the suite ran on Linux.
-      - --lower-case-table-names=0
+      POSTGRES_DB: file_management
+      POSTGRES_USER: file_management
+      POSTGRES_PASSWORD: ${FILEMANAGEMENT_DB_PASSWORD:-file_management}
+      # As production's database is created: UTF-8, and ICU's root locale - upper() folds all of
+      # Unicode and names sort as MySQL's utf8mb4_unicode_ci did. V3.0 refuses a database whose
+      # upper() folds only ASCII.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale=und --locale=en_US.utf8"
     ports:
-      - "${FILEMANAGEMENT_DB_PORT:-3306}:3306"
+      # Loopback only: nothing but this machine reaches it.
+      - "127.0.0.1:${FILEMANAGEMENT_DB_PORT:-5434}:5432"
     volumes:
-      - mysql-data:/var/lib/mysql
+      # PostgreSQL 18's image keeps its data under /var/lib/postgresql/18/docker.
+      - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      test: ["CMD", "pg_isready", "-U", "file_management", "-d", "file_management"]
       interval: 5s
       timeout: 5s
       retries: 20
 
 volumes:
-  mysql-data:
+  postgres-data:

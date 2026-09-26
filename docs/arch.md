@@ -32,25 +32,29 @@ programmatic upload, download and delete, and an S3-style one (`/api/v2`) after 
 
 ## 3. Package layout
 
+**Packages by feature** (2.1.0, roadmap 2.3). Each feature keeps its own layers:
+
 ```
 com.hnp.filemanagement
-├── FileManagementApplication      entry point + CommandLineRunner that seeds permissions/roles/admin
-├── api/                           FileApi — machine-facing REST, HTTP Basic, stateless
-├── config/
-│   ├── logging/                   LoggingInterceptor + MyWebMvcConfigurer
-│   └── security/                  SecurityConfig, UserDetailsImpl/ServiceImpl,
-│                                  ActiveDirectoryCustomAuthenticationProvider, SecurityController
-├── controller/                    Thymeleaf page controllers (return view names)
-├── resource/                      REST endpoints consumed by the pages' own jQuery (session auth)
-├── service/                       business logic
-├── storage/                       the BlobStore port and its filesystem adapter
-├── repository/                    Spring Data JPA interfaces + two hand-written JdbcClient DAOs
-├── entity/                        JPA entities and the ActionEnum/EntityEnum/PermissionEnum enums
-├── dto/                           form-binding, paging and response DTOs
-├── exception/                     custom exceptions + two @ControllerAdvice handlers
-├── util/                          ModelConverterUtil (entity→DTO), GlobalGeneralLogging
-└── validation/                    ContentTypes (the catalogue), validation groups, ValidationUtil
+├── audit/      action history: who did what to which record
+├── file/       files and revisions, upload and download, content kinds, the upload policy,
+│               share links, the v1 and v2 APIs
+├── folder/     the tree, folder access (grants), tags and tag groups, quotas, personal folders
+├── identity/   users, roles, permissions, API keys; security/ (sign-in, Active Directory,
+│               the filter chains) and bootstrap/ (the fixed roles and the first administrator)
+├── settings/   the general settings page and its app_setting rows
+├── storage/    the BlobStore port, its filesystem adapter, the storage write journal and sweeper
+└── shared/     config/, domain/ (AbstractEntity), exception/, util/ (SearchKey, SearchTerms),
+                validation/, web/ (the logging interceptor, the exception advice, ApiResult,
+                PageResponse)
 ```
+
+Inside a feature, `domain/` holds the entities, the services, their DTOs and the feature's mapper;
+`persistence/` the repositories; `web/` what serves HTTP - a `*Controller` returns a Thymeleaf view
+name, a `*Resource` is REST for the pages' own AJAX (session, CSRF) and a `*Api` is REST for
+machines (HTTP Basic or an API key, stateless). A change to how revisions work stays in `file/`.
+One feature may call another's services; business logic stays in services, never in a
+controller.
 
 ## 4. The domain model
 
@@ -409,12 +413,12 @@ What follows from the table:
 
 There are four parallel HTTP surfaces over the same services:
 
-| Package | Base path | Returns | Auth | Purpose |
+| Kind (in a feature's `web/`) | Base path | Returns | Auth | Purpose |
 |---|---|---|---|---|
-| `controller/` | `/files`, `/users`, `/roles`, `/api-keys`, `/settings/upload`, `/settings/content-kinds`, `/settings/tag-groups`, `/settings/general`, `/files/explorer`, `/` | Thymeleaf view names | form login, session | the UI |
-| `resource/` | `/resource/**` | JSON (`ApiResult` or a DTO) | form login, session, CSRF | AJAX called by the pages themselves |
-| `api/` | `/api/v1/files` | JSON | HTTP Basic, stateless | external integrations (the shared machine account) |
-| `api/` | `/api/v2/{bucket}` | JSON, S3-style | `Authorization: Bearer fmk_…` (an API key), stateless | external integrations, scoped to folders |
+| `*Controller` | `/files`, `/users`, `/roles`, `/api-keys`, `/settings/upload`, `/settings/content-kinds`, `/settings/tag-groups`, `/settings/general`, `/files/explorer`, `/` | Thymeleaf view names | form login, session | the UI |
+| `*Resource` | `/resource/**` | JSON (`ApiResult` or a DTO) | form login, session, CSRF | AJAX called by the pages themselves |
+| `FileApi` | `/api/v1/files` | JSON | HTTP Basic, stateless | external integrations (the shared machine account) |
+| `ObjectStoreApi` | `/api/v2/{bucket}` | JSON, S3-style | `Authorization: Bearer fmk_…` (an API key), stateless | external integrations, scoped to folders |
 
 The v2 surface is described by an OpenAPI document at `/api-docs/v2-object-store` and a Swagger
 page at `/swagger-ui/index.html`, both behind `VIEW_API_DOCS` on the browser chain and switchable
@@ -918,7 +922,9 @@ each caught their own exceptions and flattened them. Both are gone; see §6, "Th
 The page controllers still catch, and should: they re-render the submitted form with a message
 beside it, which a status code cannot do.
 
-**Mapping** — `ModelConverterUtil` holds ~300 lines of static entity→DTO methods.
+**Mapping** — one mapper per feature (`UserMapper`, `RoleMapper`, `FileMapper`,
+`ActionHistoryMapper`, 2.1.0, issue 29), each saying which associations must be loaded before it
+is called, each unit-tested with no Spring and no database (`MappersTest`).
 
 ## 9. Request flow — uploading a new file
 
@@ -953,13 +959,15 @@ outlives one that does not commit (§5, "Writing bytes inside a transaction",
 The tables as they stand after every migration — columns, keys, indexes — are in
 [schema.md](schema.md), generated from the migrated database and checked on every build.
 
-**Two directories of migrations since 2.0.0** (roadmap 3.4), one per database, picked by the driver
-the JDBC URL names (`spring.flyway.locations=classpath:db/migration/{vendor}`):
-`db/migration/mysql/` holds the history below, unchanged, and the Java `V2_17` moved with it to
-`db.migration.mysql`; `db/migration/postgresql/` holds `V3.0__Baseline.sql`, the same schema written
-once in PostgreSQL's terms, with its seed rows. `SchemaParityTest` holds the two to each other
-table by table, column by column and index by index; until release C a schema change is written in
-both. The MySQL history, in `src/main/resources/db/migration/mysql`:
+**PostgreSQL only since release C (2.1.0).** `src/main/resources/db/migration/V3.0__Baseline.sql` is
+the whole schema, written in PostgreSQL's terms with its seed rows, and every database - production
+since the cut-over of 2026-09-26 - starts from it; a schema change is the next `V3.x` beside it.
+What it does differently from the MySQL history below is written at its top (and in
+[schema.md](schema.md)): `TIMESTAMP(0)`, identities, a unique index on `upper(column)` for each name
+MySQL compared without case, an index on every foreign key.
+
+The MySQL history, `V1.0` to `V2.19`, retired with MySQL in release C - kept here because it is how
+the schema came to be:
 
 | Version | Contents |
 |---|---|
@@ -1048,14 +1056,12 @@ installation that sets it.
 
 ## 12. Tests
 
-`./mvnw verify` runs 826 tests and needs only a working Docker daemon: `DatabaseSupport` points the
-application at one database container per JVM, and `StorageRootSupport` gives each test a clean
-storage root. **The suite runs on either database** (roadmap 3.4): MySQL 8.0.36 by default, and
-PostgreSQL 17 with `./mvnw verify -Ddb=postgresql` (`support/TestDatabases`); both are run before a
-change is committed until release C. The three classes about MySQL itself are `@MySqlOnly` and
-skipped on the PostgreSQL run. Two classes need both databases whichever run it is, and start the
-second container themselves: `SchemaParityTest` (the two schemas agree) and `DatabaseCopyTest` (the
-data copy of the cut-over).
+`./mvnw verify` runs 812 tests and needs only a working Docker daemon: `DatabaseSupport` points the
+application at one PostgreSQL 18 container per JVM (`support/TestDatabases`, created as production's
+database is: UTF-8, ICU's root locale), and `StorageRootSupport` gives each test a clean storage
+root. Test classes sit in the package of what they test; the ones that span features
+(`PortableQueriesTest`, `ListQueryCountTest`, `ListOrderTieBreakTest`, `PersianNameFoldingTest`,
+`MappersTest`) sit at the root.
 
 Four kinds, and the kind is the point — each answers something the others cannot.
 
@@ -1093,15 +1099,15 @@ generates the unique ones, so a test overrides only what it is actually about.
 
 | Class | Covers |
 |---|---|
-| `entity/EntityIdentityTest` | `equals` / `hashCode` / `toString`, and both sides of the `FileInfo` ↔ `FileDetails` link |
-| `validation/ValidationUtilTest` | the naming rules, including path traversal |
-| `repository/FileInfoRepositoryTest` | fetch plans, the `lastVersion` recompute, orphan removal, the `V1.3` constraints |
-| `repository/UserRepositoryTest` | the login fetch, permission de-duplication, the search page |
-| `service/FileServiceUnitTest` | the upload guard clauses, and that a rejected request writes nothing |
-| `service/*ServiceTest` (7 classes) | each service end to end against a real database |
-| `web/RestContractTest` | the REST contract of §6 |
-| `web/AuthenticationRedirectTest` | where an anonymous, a signed-in and an unauthorized visitor land |
-| `web/FileTreeTest` | the tree page and its children endpoint |
+| `shared/domain/EntityIdentityTest` | `equals` / `hashCode` / `toString`, and both sides of the `FileInfo` ↔ `FileDetails` link |
+| `shared/validation/ValidationUtilTest` | the naming rules, including path traversal |
+| `file/persistence/FileInfoRepositoryTest` | fetch plans, the `lastVersion` recompute, orphan removal, the `V1.3` constraints |
+| `identity/persistence/UserRepositoryTest` | the login fetch, permission de-duplication, the search page |
+| `file/domain/FileServiceUnitTest` | the upload guard clauses, and that a rejected request writes nothing |
+| `*/domain/*ServiceTest` | each service end to end against a real database |
+| `shared/web/RestContractTest` | the REST contract of §6 |
+| `identity/security/AuthenticationRedirectTest` | where an anonymous, a signed-in and an unauthorized visitor land |
+| `folder/web/FileTreeTest` | the tree page and its children endpoint |
 | `UiResourceTest` | every asset the templates reference exists locally — no CDN, no network at runtime |
 | `MessageBundleTest` | every `#{...}` key is backed, and no Persian is hardcoded in a template |
 | `DependencyPinTest` | the pinned versions that clear known advisories stay pinned |
@@ -1121,8 +1127,11 @@ Catalogued in full in [issues.md](issues.md). The ones that shape the architectu
    `StorageSweeper` settles what a killed process left (§5, roadmap 2.3). A delete keeps the order
    it had: rows first, bytes last, a byte that cannot be removed logged and left rather than
    undoing the rows (§4, "What each operation touches").
-4. `@Table(name = "user")` — a reserved word in PostgreSQL.
-5. Every `@ManyToOne` is `EAGER`; `ModelConverterUtil` walks the full graph on every list page.
+4. ~~`@Table(name = "user")` — a reserved word in PostgreSQL~~ — the table is `app_user` since
+   `V2.14` (1.7.0), and the application runs on PostgreSQL since 2026-09-26.
+5. ~~Every `@ManyToOne` is `EAGER`; `ModelConverterUtil` walks the full graph on every list page~~ —
+   every association is `LAZY` (issue 20), a list's query fetches what its mapper reads
+   (`ListQueryCountTest` counts the statements), and the mappers are per feature (issue 29, 2.1.0).
 6. Authorization is per-endpoint **and** per-folder since Phase 6 (§7), but never per-file: a grant
    names a folder and covers everything beneath it. A temporary share link is the one way a single
    revision is reachable on its own, and it is deliberately short-lived.

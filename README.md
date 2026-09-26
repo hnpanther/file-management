@@ -5,7 +5,7 @@ new **versions** and alternative **formats** of the same logical file, publishin
 publicly, handing out temporary links to individual revisions, and downloading them again — with
 a per-endpoint permission model, folder-level access control and a full audit trail.
 
-Files are stored on the local filesystem; metadata lives in MySQL. A small REST API
+Files are stored on the local filesystem; metadata lives in PostgreSQL. A small REST API
 (`/api/v1/files`) exists for programmatic access, with API keys as well as passwords.
 
 > **Status.** This branch (`redesign-arch`) is being restructured. Before adding features, read
@@ -27,7 +27,7 @@ Files are stored on the local filesystem; metadata lives in MySQL. A small REST 
 
 * **Java 25** — the build targets 25 (`-release 25`) on Spring Boot 4.1.1; a JDK 25 on every host
 * **Docker** — required to run the tests, optional for running the application
-* **MySQL 8** to run the application (being migrated to PostgreSQL). `compose.yaml` provides one
+* **PostgreSQL 17 or 18** to run the application. `compose.yaml` provides one
 * Maven — use the bundled wrapper, no local install needed
 
 ## Running locally
@@ -38,9 +38,11 @@ Files are stored on the local filesystem; metadata lives in MySQL. A small REST 
 docker compose up -d
 ```
 
-That starts MySQL 8 on port 3306 with the `file_management` database and user already created.
-Flyway creates the tables on first application start. If you prefer your own MySQL, create the
-database and user yourself — nothing else is needed.
+That starts PostgreSQL 18 on `127.0.0.1:5434` - the port the default `spring.datasource.url`
+expects - with the `file_management` database and user already created, UTF-8 with ICU's root
+locale. Flyway creates the tables on first application start. For your own PostgreSQL, create the
+database and its owner account as [docs/deployment.md](docs/deployment.md#creating-the-database-and-its-account)
+says - nothing else is needed.
 
 ### 2. Configuration
 
@@ -100,16 +102,14 @@ java -jar target/file-management.jar
 ## Running the tests
 
 ```bash
-./mvnw verify                  # on MySQL
-./mvnw verify -Ddb=postgresql  # the same suite on PostgreSQL 17
+./mvnw verify
 ```
 
-**A running Docker daemon is the only requirement.** The suite starts its own throwaway database -
-MySQL, or PostgreSQL with `-Ddb=postgresql` (release B, 2.0.0: the application runs on either) -
+**A running Docker daemon is the only requirement.** The suite starts its own throwaway PostgreSQL
 through Testcontainers and uses `./target/test-storage/` as the storage root, so there is nothing
 to provision and nothing machine-specific to configure.
 
-Over six hundred tests: unit tests that need nothing, repository tests against a real MySQL,
+Over eight hundred tests: unit tests that need nothing, repository tests against a real PostgreSQL,
 service tests through the real Spring beans, web tests through the real security chain, and a
 few that read the repository's own sources (every `hasAuthority` names a real permission; the
 externalised templates hold no Persian). The shared plumbing lives in
@@ -190,7 +190,7 @@ database **and** `base-dir` together.
 |---|---|---|
 | `server.port` | `8122` | |
 | `spring.profiles.active` | `prod` | `prod` seeds permissions, roles and the admin user |
-| `spring.datasource.*` | — | MySQL connection |
+| `spring.datasource.*` | — | PostgreSQL connection (`FILEMANAGEMENT_DB_URL`, `_USERNAME`, `_PASSWORD`) |
 | `spring.jpa.hibernate.ddl-auto` | `validate` | schema is owned by Flyway |
 | `file.management.base-dir` | `./TempFiles/files/main/` | storage root; must exist and end with a separator |
 | `spring.servlet.multipart.max-file-size` | `20MB` | per-file upload cap |
@@ -239,13 +239,15 @@ Validation currently trusts the `Content-Type` the client sends — see
 
 ```
 ├── docs/                 architecture, issues, roadmap
-├── compose.yaml          MySQL for local runs
+├── compose.yaml          PostgreSQL for local runs
 ├── src/main/java/        application code
 ├── src/main/resources/
-│   ├── db/migration/     Flyway migrations — the only source of schema: mysql/ and postgresql/
+│   ├── db/migration/     Flyway migrations — the only source of schema (V3.0 onward)
 │   ├── templates/        Thymeleaf views
 │   └── static/           CSS and the public landing page
+├── src/main/java/…/      one package per feature: audit, file, folder, identity,
+│                         settings, storage, shared - each with domain/, persistence/, web/
 └── src/test/java/
     ├── support/          Testcontainers and storage-root plumbing
-    └── service/          service integration tests
+    └── …                 each test in the package of what it tests
 ```

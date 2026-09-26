@@ -1,7 +1,7 @@
 package com.hnp.filemanagement.storage;
 
-import com.hnp.filemanagement.config.FileManagementProperties;
-import com.hnp.filemanagement.exception.BusinessException;
+import com.hnp.filemanagement.shared.config.FileManagementProperties;
+import com.hnp.filemanagement.shared.exception.BusinessException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

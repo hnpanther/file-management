@@ -610,6 +610,33 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 2.0.0 to 2.1.0 — PostgreSQL only
+
+Release C (roadmap 3.2): MySQL is gone from the code. **A jar swap with no migration** and nothing
+to configure; take the database backup first, as always, and watch the start for
+`Schema "public" is up to date. No migration necessary.`
+
+* **Deploy it after 2026-10-10**, when the rollback window of the cut-over closes. Until then the
+  way back to MySQL is the 2.0.0 jar with the MySQL URL - 2.1.0 has no MySQL driver and no MySQL
+  migrations, and cannot start on MySQL at all. Keep the 2.0.0 jar until the MySQL is gone.
+* **The baseline moved** inside the jar, from `db/migration/postgresql/V3.0__Baseline.sql` to
+  `db/migration/V3.0__Baseline.sql`, byte for byte. Flyway records a migration by its file name
+  and checksum, not its path, so the history of 2026-09-26 validates as it is. A
+  `Validate failed` at the start means the jar is not the one built from this release: stop, put
+  2.0.0 back, report it - nothing will have been changed.
+* **The copy tool is gone** (`--spring.profiles.active=copy`): it did its one job on the night of
+  the cut-over. If `copy-to-postgresql.ps1` is still on the host, delete it - it holds both
+  databases' passwords.
+* **What people will notice**: lists that page by date - the files, the public files, the users -
+  no longer show a row twice or skip one when several were written in the same second (issue 95),
+  and a record's history is always in the same order. An administrator can change only the case
+  of a username (`ali` to `Ali`), which was refused as a duplicate of itself (issue 88).
+* Nothing changes for the PL/SQL clients ([api-v1.md](api-v1.md)).
+
+**Rollback** is the 2.0.0 jar, on the same PostgreSQL: no schema, no data and no setting changed.
+
+**After it, the MySQL** can be decommissioned: [MySQL, until it is decommissioned](#mysql-until-it-is-decommissioned).
+
 ### Upgrading from 1.9.0 to 2.0.0 — able to run on PostgreSQL, still on MySQL
 
 PostgreSQL release B (roadmap 3.4). **A jar swap with no migration** and nothing to configure: on
@@ -1478,41 +1505,29 @@ New-NetFirewallRule -DisplayName "File Management 8122" -Direction Inbound -Loca
 
 ---
 
-## MySQL as a service
+## MySQL, until it is decommissioned
 
-Both installers register the database themselves; there is nothing to write. What matters is that it
-starts **before** the application, which the unit's `After=mysql.service` handles on Linux and
-Windows handles through automatic-start ordering plus the service's own restart-on-failure.
+Production has run on PostgreSQL since 2026-09-26 ([below](#postgresql-the-database-and-the-copy)),
+and from 2.1.0 on the application cannot use MySQL at all. What is left of MySQL is the copy of the
+data as it stood on the night of the cut-over, kept **read-only** for the rollback window, which
+closes on **2026-10-10**; the way back inside the window is the 2.0.0 jar (roadmap 3.6, "Rollback").
 
-```bash
-sudo systemctl enable --now mysql
-```
+After the window, and once 2.1.0 is in production:
 
-```powershell
-Set-Service MySQL80 -StartupType Automatic
-Start-Service MySQL80
-```
+1. Keep the last MySQL dump - the one taken on the night of the cut-over - with the backups, as the
+   record of the data before the move; it restores into MySQL only.
+2. Stop the service and take it off automatic start:
 
-Create the database and a dedicated user — the application must not connect as `root`:
+   ```powershell
+   Stop-Service MySQL80
+   Set-Service MySQL80 -StartupType Disabled
+   ```
 
-```sql
-CREATE DATABASE file_management
-  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE USER 'file_management'@'localhost' IDENTIFIED BY 'a real password';
-GRANT ALL PRIVILEGES ON file_management.* TO 'file_management'@'localhost';
-FLUSH PRIVILEGES;
-```
-
-Why each line is what it is — the collation, the scope of the grant, when `@'localhost'` is wrong —
-is in [schema.md](schema.md#creating-the-database-and-its-user). Flyway creates the schema on
-first boot. Nothing else is run by hand.
-
-> **Set `lower-case-table-names=0`.** MySQL folds identifiers on Windows but not on Linux, so a
-> query that misspells a table works on one and fails on the other — which is exactly how
-> [issue 47](issues.md) hid until the suite ran on Linux. `compose.yaml` and the test containers
-> both set it; a hand-installed server should match. It can only be set when the data directory is
-> initialised, not afterwards.
+   ```bash
+   sudo systemctl disable --now mysql
+   ```
+3. Remove it when nothing else on the host uses it - the installer's own uninstaller, and the data
+   directory after that. Nothing of this application reads it.
 
 ---
 
@@ -1658,7 +1673,9 @@ night they are set in step 5 of roadmap 3.6, after the copy.
 Do not start the service against this database before the copy, either: the copy prepares it
 itself, and refuses a database that already holds a file.
 
-**The copy** - on the night, with the service stopped, from a console on the application host:
+**The copy** - on the night, with the service stopped, from a console on the application host.
+*This is the 2.0.0 jar's*: it did its job on 2026-09-26, and 2.1.0 no longer carries it (release
+C). It is kept here as the record of how production moved.
 
 ```powershell
 # The source: the MySQL, exactly as the service's definition has it.
