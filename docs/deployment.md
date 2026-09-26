@@ -1518,9 +1518,9 @@ first boot. Nothing else is run by hand.
 
 ## PostgreSQL: the database and the copy
 
-From 2.0.0 the jar runs on PostgreSQL (17 or 18) as well as on MySQL; which one is
-`FILEMANAGEMENT_DB_URL`. Production stays on MySQL until the cut-over night, planned and rehearsed
-as roadmap 3.6 describes. This section is what that plan refers to: how the PostgreSQL database and
+From 2.0.0 the jar runs on PostgreSQL (17 or 18) as well as on MySQL; which one is the datasource
+URL. **Production moved to PostgreSQL on 2026-09-26** (roadmap 3.6); the MySQL stays, read-only,
+until the rollback window closes on 2026-10-10, and goes with release C. This section is what that plan refers to: how the PostgreSQL database and
 its account are created, what goes into the configuration, and how the copy is run. Nothing here is
 done on the MySQL.
 
@@ -1624,17 +1624,30 @@ Three values, in the same place the MySQL ones are today - the service definitio
 
 | Setting | Environment variable | Value |
 |---|---|---|
-| `spring.datasource.url` | `FILEMANAGEMENT_DB_URL` | `jdbc:postgresql://localhost:5432/file_management` - host, port and database as created |
+| `spring.datasource.url` | `FILEMANAGEMENT_DB_URL` | `jdbc:postgresql://localhost:5432/file_management?sslmode=disable` - host, **port** and database as created; see below for `sslmode` |
 | `spring.datasource.username` | `FILEMANAGEMENT_DB_USERNAME` | `file_management` |
 | `spring.datasource.password` | `FILEMANAGEMENT_DB_PASSWORD` | the password of `CREATE ROLE` |
 
 In `config\application.properties` that is:
 
 ```properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/file_management
+spring.datasource.url=jdbc:postgresql://localhost:5432/file_management?sslmode=disable
 spring.datasource.username=file_management
 spring.datasource.password=a long random password
 ```
+
+**Write the whole URL, not only its scheme.** Changing `jdbc:mysql` to `jdbc:postgresql` and keeping
+the rest points the PostgreSQL driver at MySQL's port - which is what happened on the night of the
+cut-over, and what the errors `An error occurred while setting up the SSL connection` and
+`Protocol error. Session setup failed` mean ([When it will not start](#when-it-will-not-start)).
+
+**`sslmode`.** Without it the driver asks for TLS first and falls back to plain if the server has
+none (`prefer`). With PostgreSQL **on the same host**, `?sslmode=disable` is right: the connection
+never leaves the machine, so TLS protects nothing, and the service's JVM options for Active
+Directory's LDAPS (`-Djavax.net.ssl.trustStore...`) stay out of the database connection. With
+PostgreSQL **on another host**, do the opposite - `?sslmode=verify-full`, with the server's CA in
+the service account's `%APPDATA%\postgresql\root.crt` (or `sslrootcert=` in the URL) - so the
+password never crosses the network in the clear and the server is the one it claims to be.
 
 Nothing else changes: the driver is chosen from the URL, Flyway picks `db/migration/postgresql`
 from it, and Hibernate its dialect. The pool stays at 20 connections
@@ -1691,8 +1704,9 @@ The MySQL is only read. The files on disk are not touched: `file_details.storage
 
 ## Backups — one job, both halves
 
-The data lives in **two places and neither is complete without the other**: the rows in MySQL, and
-the uploaded files under `FILEMANAGEMENT_BASE_DIR`, laid out as
+The data lives in **two places and neither is complete without the other**: the rows in the
+database - PostgreSQL since the cut-over of 2026-09-26 - and the uploaded files under
+`FILEMANAGEMENT_BASE_DIR`, laid out as
 `files/s{id ÷ 1000}/{file id}/{FileName}/v{n}/{file}.{ext}` since 1.5.0 - and, for older files,
 `files/{file id}/…` (1.4.0) or `{Category}/{SubCategory}/…` before it. `file_details.storage_key`
 holds the *path*, never the content, and it is the only record of where a file's bytes are: the
@@ -1701,6 +1715,12 @@ a system in which every download is a broken reference; a backup of the files al
 anonymous bytes that nothing can place.
 
 **Both halves, one run, restored as the pair they were taken as.**
+
+> **The MySQL after the cut-over** is read-only until the rollback window closes, so it no longer
+> changes and needs no nightly dump: the one taken on the night of the cut-over is its backup,
+> kept until MySQL is decommissioned (release C). The scripts below dump PostgreSQL. A dump taken
+> *before* the cut-over (`db.sql`, from `mysqldump`) restores into MySQL only, and only matters
+> for a rollback inside the window (roadmap 3.6).
 
 ### Order: database first, then files
 
@@ -1719,18 +1739,21 @@ removes it. That is a tidiness problem, where the other order is a data-loss pro
 
 > **Never pipe a dump through PowerShell.**
 > ```powershell
-> mysqldump ... | Out-File -Encoding utf8   # WRONG — corrupts the dump
+> pg_dump ... | Out-File db.sql   # WRONG - corrupts the dump
 > ```
 > A PowerShell pipe carries **text**, not bytes: the output is re-encoded, a BOM is prepended and
 > line endings become CRLF. On a database full of Persian text the result is a plausible-looking
-> file that fails on restore, and you find out on the day you need it. Use
-> `--result-file=<path>` and let `mysqldump` write the file itself.
+> file that fails on restore, and you find out on the day you need it. Let `pg_dump` write the file
+> itself with `--file=<path>`.
 
-Always pass `--default-character-set=utf8mb4`. Without it the client may negotiate `latin1` and the
-Persian text in the dump is mangled without any error.
+`--format=custom` is the format to take: compressed, restored with `pg_restore`, and readable in
+parts (`pg_restore --list` shows its table of contents, which is how the scripts below prove it
+complete). `pg_dump` takes one consistent snapshot of the whole database without blocking the
+service - it holds nothing heavier than what a `SELECT` holds - so no downtime is needed. The
+encoding is the database's own, UTF-8; there is no client character set to get wrong.
 
-`--single-transaction` takes a consistent snapshot without locking the application out, so no
-downtime is needed. It works because every table is InnoDB.
+`pg_dump` must be of the server's major version or newer: the PostgreSQL 18 client dumps a 17
+server, not the other way round. Use the one installed with the server.
 
 ### Linux
 
@@ -1754,12 +1777,12 @@ mkdir -p "$RUN"
 exec > >(tee -a "$RUN/backup.log") 2>&1
 echo "run $stamp — previous: ${PREV:-none}"
 
-# 1) Database first. Credentials come from ~/.my.cnf (chmod 600), never the command line —
-#    anything passed as an argument is visible in the host process list.
-mysqldump --defaults-file=/opt/file-management/.my.cnf \
-    --single-transaction --quick --default-character-set=utf8mb4 \
-    --databases "$DB_NAME" --result-file="$RUN/db.sql"
-gzip "$RUN/db.sql"
+# 1) Database first. The password comes from the .pgpass file (chmod 600), never the command
+#    line - anything passed as an argument is visible in the host process list. pg_dump writes
+#    the file itself, in the custom (compressed) format pg_restore reads.
+PGPASSFILE=/opt/file-management/.pgpass pg_dump \
+    --host=127.0.0.1 --port=5432 --username=file_management_backup --dbname="$DB_NAME" \
+    --format=custom --no-password --file="$RUN/db.dump"
 
 # 2) Files second. --link-dest makes an unchanged file a hardlink to the previous run's copy
 #    instead of a second copy of the bytes: the folder is still a complete tree, at the cost of
@@ -1770,8 +1793,15 @@ else
     rsync -a --delete "$APPFILES/" "$RUN/files/"
 fi
 
-# 3) Prove the dump is readable now, not on the day it is needed.
-gzip -t "$RUN/db.sql.gz"
+# 3) Prove the dump is complete now, not on the day it is needed: every table in its table of
+#    contents has its data, and the whole archive reads to the end (a truncated or damaged one
+#    fails here).
+tables=$(pg_restore --list "$RUN/db.dump" | grep -c ' TABLE public ')
+data=$(pg_restore --list "$RUN/db.dump" | grep -c ' TABLE DATA public ')
+if [ "$tables" -lt 20 ] || [ "$data" -ne "$tables" ]; then
+    echo "dump is incomplete: $tables table(s), data for $data"; exit 1
+fi
+pg_restore --file=/dev/null "$RUN/db.dump"
 
 # 4) Rotation — whole run folders.
 find "$DEST" -mindepth 1 -maxdepth 1 -type d -name '20*' -mtime +"$KEEP_DAYS" -exec rm -rf {} +
@@ -1779,21 +1809,13 @@ find "$DEST" -mindepth 1 -maxdepth 1 -type d -name '20*' -mtime +"$KEEP_DAYS" -e
 echo "BACKUP OK $stamp — $RUN"
 ```
 
-```ini
-# /opt/file-management/.my.cnf  — chmod 600, owned by the user the timer runs as
-[mysqldump]
-user=file_management_backup
-password=a real password
-host=127.0.0.1
+```text
+# /opt/file-management/.pgpass  - chmod 600, owned by the user the timer runs as
+# host:port:database:user:password
+127.0.0.1:5432:file_management:file_management_backup:a real password
 ```
 
-Give the job its own read-only account:
-
-```sql
-CREATE USER 'file_management_backup'@'localhost' IDENTIFIED BY '…';
-GRANT SELECT, LOCK TABLES, SHOW VIEW, EVENT, TRIGGER
-  ON file_management.* TO 'file_management_backup'@'localhost';
-```
+Give the job its own read-only account ([below](#the-backup-account)).
 
 **A systemd timer, not cron.** The timer records the last run's status, sends output to the journal,
 `Persistent=true` makes up a run the machine was off for, and `Type=oneshot` prevents two copies
@@ -1816,54 +1838,52 @@ WantedBy=timers.target
 ### Windows
 
 Everything the script needs is in the block at the top: the same database URL and files
-directory the service runs with (copy them from the WinSW `<env>` block), a backup account and
-its password, and where the runs go. Nothing else has to exist beforehand - no defaults file,
-no `pgpass`-style lookup.
+directory the service runs with (copy them from `conf\application.properties` or the WinSW
+`<env>` block), a backup account and its password, and where the runs go. Nothing else has to
+exist beforehand - no `pgpass` file.
 
 ```powershell
 # D:\MyApp\scripts\backup-file-management.ps1
 $ErrorActionPreference = 'Stop'
 
 # ---------------- settings ----------------------------------------------------------------
-$MySqlBin   = 'C:\Program Files\MySQL\MySQL Server 8.0\bin'
-$DbUrl      = 'jdbc:mysql://localhost:3306/file_management'   # the service's FILEMANAGEMENT_DB_URL, verbatim
-$DbUser     = 'file_management_backup'                        # a read-only account - see below
+$PgBin      = 'C:\Program Files\PostgreSQL\18\bin'           # pg_dump.exe / pg_restore.exe of the server's version
+$DbUrl      = 'jdbc:postgresql://localhost:5432/file_management?sslmode=disable'   # the service's spring.datasource.url, verbatim
+$DbUser     = 'file_management_backup'                       # a read-only account - see below
 $DbPassword = 'a real password'
-$AppFiles   = 'D:\MyApp\file-management\files'                # the service's FILEMANAGEMENT_BASE_DIR
-$Dest       = 'D:\Backup\file-management'                     # where every run goes, one folder each
+$AppFiles   = 'D:\MyApp\file-management\files'               # the service's FILEMANAGEMENT_BASE_DIR
+$Dest       = 'D:\Backup\file-management'                    # where every run goes, one folder each
 $KeepDays   = 7
 # ------------------------------------------------------------------------------------------
 
-# Host, port and database come out of the JDBC URL, so the value is copied from the service
-# definition rather than typed a second time and allowed to drift from it.
-if ($DbUrl -notmatch '^jdbc:mysql://([^:/]+)(?::(\d+))?/([^?]+)') { throw "cannot parse DbUrl: $DbUrl" }
+# The same URL the service uses, taken apart - so the backup can never quietly point at a
+# different database from the one the service writes to.
+if ($DbUrl -notmatch '^jdbc:postgresql://([^:/?]+)(?::(\d+))?/([^?]+)') {
+    throw "cannot parse DbUrl, expected jdbc:postgresql://host:port/database - $DbUrl"
+}
 $DbHost = $Matches[1]
-$DbPort = if ($Matches[2]) { $Matches[2] } else { '3306' }
+$DbPort = if ($Matches[2]) { $Matches[2] } else { '5432' }
 $DbName = $Matches[3]
 
-# Date and time to the second. Everything this run produces goes in here and nowhere else,
-# so a run can neither disturb nor be confused with any other.
 $stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 $Run   = "$Dest\$stamp"
 New-Item -ItemType Directory -Force -Path $Run | Out-Null
 Start-Transcript -Path "$Run\backup.log" | Out-Null
 
 try {
-    # 1) Database first (see "Order" above). --result-file, never a pipe: a PowerShell pipe
-    #    re-encodes the dump. The password reaches mysqldump through MYSQL_PWD, an environment
-    #    variable only the child process sees - never as --password=, which every user on the
-    #    host can read from the process list for as long as the dump runs.
-    $dump = "$Run\db.sql"
-    $env:MYSQL_PWD = $DbPassword
+    # 1) Database first. pg_dump writes the file itself (--file): nothing passes through a
+    #    PowerShell pipe, which would re-encode it. The password reaches pg_dump through
+    #    PGPASSWORD, an environment variable of this process only - never the command line,
+    #    which the process list shows.
+    $dump = "$Run\db.dump"
+    $env:PGPASSWORD = $DbPassword
     try {
-        & "$MySqlBin\mysqldump.exe" `
-            --host=$DbHost --port=$DbPort --user=$DbUser `
-            --single-transaction --quick --default-character-set=utf8mb4 `
-            --databases $DbName --result-file=$dump
-        if ($LASTEXITCODE -ne 0) { throw "mysqldump failed with $LASTEXITCODE" }
+        & "$PgBin\pg_dump.exe" --host=$DbHost --port=$DbPort --username=$DbUser --dbname=$DbName `
+            --format=custom --no-password --file=$dump
+        if ($LASTEXITCODE -ne 0) { throw "pg_dump failed with $LASTEXITCODE" }
     }
     finally {
-        Remove-Item Env:MYSQL_PWD -ErrorAction SilentlyContinue
+        Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
     }
 
     # 2) Files second, into this run's own folder - a full copy.
@@ -1877,12 +1897,20 @@ try {
     if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
     $global:LASTEXITCODE = 0
 
-    # 3) Prove the dump is complete now, not on the day it is needed. mysqldump writes its
-    #    last line only after every table went out; a dump cut short by a lost connection or a
-    #    full disk has the right name, a plausible size, and no such line.
-    $last = Get-Content -Path $dump -Tail 1
-    if ($last -notmatch '^-- Dump completed') { throw "dump is incomplete: $dump (last line: $last)" }
-    if ((Get-Item $dump).Length -lt 10KB) { throw "dump is implausibly small: $((Get-Item $dump).Length) bytes" }
+    # 3) Prove the dump is complete now, not on the day it is needed. A dump cut short by a
+    #    lost connection or a full disk has the right name and a plausible size. So: every table
+    #    in its table of contents must have its data, and the whole archive must read to the end
+    #    (pg_restore renders it to a scratch file; a truncated or damaged archive fails here).
+    $list = & "$PgBin\pg_restore.exe" --list $dump
+    if ($LASTEXITCODE -ne 0) { throw "pg_restore cannot read the table of contents of $dump" }
+    $tables = @($list | Select-String -SimpleMatch ' TABLE public ').Count
+    $data   = @($list | Select-String -SimpleMatch ' TABLE DATA public ').Count
+    if ($tables -lt 20 -or $data -ne $tables) { throw "dump is incomplete - $tables table(s), data for $data" }
+    $check = "$Run\db-check.sql"
+    & "$PgBin\pg_restore.exe" --file=$check $dump
+    if ($LASTEXITCODE -ne 0) { throw "the dump does not read to the end - $dump" }
+    Remove-Item $check
+    if ((Get-Item $dump).Length -lt 10KB) { throw "dump is implausibly small - $((Get-Item $dump).Length) bytes" }
 
     # 4) Rotation - whole run folders.
     #    Age comes from the folder NAME, not its timestamp: a directory's LastWriteTime changes
@@ -1910,7 +1938,7 @@ Each run produces one folder:
 
 ```text
 D:\Backup\file-management\2026-09-16_010000\
-├── db.sql           the database, one consistent snapshot, utf8mb4
+├── db.dump          the database, one consistent snapshot (pg_dump, custom format)
 ├── files\           every uploaded file, the tree as it is under FILEMANAGEMENT_BASE_DIR
 ├── backup.log       everything the script printed
 └── robocopy.log     what was copied
@@ -1924,11 +1952,25 @@ icacls "D:\MyApp\scripts\backup-file-management.ps1" /inheritance:r `
   /grant "Administrators:(R,W)" "SYSTEM:(R)"
 ```
 
+#### The backup account
+
+Read-only, and not the application's. As a PostgreSQL superuser:
+
 ```sql
-CREATE USER 'file_management_backup'@'localhost' IDENTIFIED BY '...';
-GRANT SELECT, LOCK TABLES, SHOW VIEW, EVENT, TRIGGER
-  ON file_management.* TO 'file_management_backup'@'localhost';
+CREATE ROLE file_management_backup LOGIN PASSWORD 'a long random password';
+-- Reads every table, view and sequence, including tables a later migration adds (PostgreSQL 14+).
+GRANT pg_read_all_data TO file_management_backup;
+-- The database was closed to everyone but its owner (REVOKE CONNECT ... FROM PUBLIC).
+GRANT CONNECT ON DATABASE file_management TO file_management_backup;
 ```
+
+`pg_read_all_data` reads every database on the server; on a server that holds other databases
+too, grant this one alone instead - `GRANT USAGE ON SCHEMA public`, `GRANT SELECT ON ALL TABLES IN
+SCHEMA public` and `ALL SEQUENCES`, and `ALTER DEFAULT PRIVILEGES FOR ROLE file_management IN
+SCHEMA public GRANT SELECT ON TABLES` (and `ON SEQUENCES`) so that tables a migration adds later
+are covered. Checked on PostgreSQL 18.4: the dump taken by such an account restored, as the
+application's account, into a new database with the same counts, every table owned by the owner,
+and every identity continuing where it stood.
 
 Run it once by hand before scheduling it and read `backup.log`; the first run is the one that
 finds a wrong path or a refused login, and it should find it while somebody is watching.
@@ -1980,15 +2022,34 @@ broke, copy the current state aside first — a broken system sometimes holds da
 1. **Stop the service.** A running application keeps writing, and Flyway may apply a migration
    mid-restore.
 
-2. **Restore the database.** Recreating it is the reliable way — a restore over a live schema leaves
-   whatever the dump does not mention.
-   ```bash
-   mysql -u root -p -e "DROP DATABASE file_management;
-                        CREATE DATABASE file_management
-                          CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-   gunzip -c /backup/file-management/2026-09-11_010007/db.sql.gz \
-     | mysql -u root -p --default-character-set=utf8mb4 file_management
+2. **Restore the database.** Recreating it is the reliable way - a restore over a live schema leaves
+   whatever the dump does not mention. As a PostgreSQL superuser, with the service stopped (a
+   database with a connection open cannot be dropped):
+   ```sql
+   DROP DATABASE file_management;
+   CREATE DATABASE file_management OWNER file_management TEMPLATE template0
+       ENCODING 'UTF8' LOCALE_PROVIDER icu ICU_LOCALE 'und';
+   REVOKE CONNECT, TEMPORARY ON DATABASE file_management FROM PUBLIC;
+   GRANT CONNECT ON DATABASE file_management TO file_management_backup;
    ```
+   Then restore **as the application's own account**, with `--no-owner`: every table then belongs
+   to that account, which is what Flyway needs to run the next migration on it.
+   ```powershell
+   $env:PGPASSWORD = 'the file_management password'
+   & "C:\Program Files\PostgreSQL\18\bin\pg_restore.exe" --host=localhost --port=5432 `
+       --username=file_management --dbname=file_management `
+       --no-owner --no-privileges --exit-on-error `
+       "D:\Backup\file-management\2026-09-27_010000\db.dump"
+   Remove-Item Env:PGPASSWORD
+   ```
+   ```bash
+   PGPASSWORD='the file_management password' pg_restore --host=127.0.0.1 --username=file_management \
+       --dbname=file_management --no-owner --no-privileges --exit-on-error \
+       /backup/file-management/2026-09-27_010007/db.dump
+   ```
+   A `db.sql` from before the cut-over is a MySQL dump, and restores into MySQL only:
+   `mysql -u root -p --default-character-set=utf8mb4 file_management < db.sql`, into a database
+   recreated `CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`.
 
 3. **Restore the files** to whatever `FILEMANAGEMENT_BASE_DIR` points at.
    ```bash
@@ -2016,7 +2077,7 @@ UNION ALL SELECT 'folder',       COUNT(*) FROM folder
 UNION ALL SELECT 'app_user',     COUNT(*) FROM app_user;   -- `user` for a jar older than 1.7.0
 
 SELECT version, description, success
-FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 3;
+FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 3;   -- 3.0 on PostgreSQL
 ```
 
 Then check that every stored version has its file. `storage_key` is the path under
@@ -2058,7 +2119,12 @@ could be restored. Once a month, half an hour:
 | Uploads over ~20 MB rejected | `spring.servlet.multipart.max-file-size` — 20 MB by default |
 | Every non-administrator sees an empty tree | `filemanagement.folder-access.enabled=true` with no grants made yet |
 | Cannot sign in as `Admin` on a fresh install | The generated password was printed once at WARN on first boot; search `app_log.log` for "random password was generated" |
-| Persian text renders as `????` | The connection or the dump negotiated `latin1` — check `--default-character-set=utf8mb4` and the database collation |
+| Persian text renders as `????` | MySQL: the connection or the dump negotiated `latin1` - check `--default-character-set=utf8mb4` and the database collation. PostgreSQL: the database is not `UTF8`, which the first migration refuses; check `SHOW server_encoding` |
+| `An error occurred while setting up the SSL connection`, and with `sslmode=disable` `Protocol error. Session setup failed` | **The URL's port is not PostgreSQL's.** Both are the driver meeting another protocol on that port - typically MySQL's `3306`, left in the URL when only `jdbc:mysql` was changed to `jdbc:postgresql`. It happened on the night of the cut-over. Take host, port and database from the URL the copy used, and check which process listens: `Get-NetTCPConnection -LocalPort 5432 -State Listen` |
+| `password authentication failed for user` | The password in the configuration. In a `.properties` file a backslash is an escape character: a `\` in the password is written `\\` |
+| `no pg_hba.conf entry for host ...` | PostgreSQL on another host, with no line in `pg_hba.conf` for the application host, database and account - [Creating the database and its account](#creating-the-database-and-its-account) |
+| `permission denied for database` / `database ... does not exist` | The database name in the URL; or `REVOKE CONNECT ... FROM PUBLIC` run on a database the account does not own |
+| `this database's LC_CTYPE (...) folds ASCII only` | The first migration refusing a database created with the `C` locale. Recreate it as [Creating the database and its account](#creating-the-database-and-its-account) says |
 
 ---
 
