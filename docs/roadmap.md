@@ -11,7 +11,7 @@ working, and to depend only on what came before.
 | 0 | Safety net — CI, smoke test, containerised dev environment | — | **done** |
 | 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done**; the language level moved to 25 in 1.4.0, on its own, once every host ran a JDK 25 |
 | 2 | Architectural restructuring | 1 | **partly done**: 2.1, 2.2, the two-phase write of 2.3 and most of 2.4 (issues 8, 12, 13; 14 by Phase 6); left: the package re-slice and one REST surface (issue 18), per-feature mappers (issue 29), coarse permission verbs (issue 19) - none of them needed by Phase 3 |
-| 3 | PostgreSQL migration | 1, partly 2, **and 7** | three releases, the middle one runs on both databases (3.2); **release A done** (1.7.0, in production), **release B done** (2.0.0, not yet deployed); the cut-over and C to come |
+| 3 | PostgreSQL migration | 1, partly 2, **and 7** | three releases, the middle one runs on both databases (3.2); **release A done** (1.7.0), **release B done** (2.0.0), **cut-over done 2026-09-26** - production runs on PostgreSQL; MySQL read-only until the rollback window closes on 2026-10-10; release C to come |
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done**; the move it needs **done** (7.2 step 5d, 1.4.0); the drag handlers are what is left |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**; enforcement switched on per installation, after the grants exist |
@@ -38,15 +38,14 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: 2.0.0, PostgreSQL release B, written and tested, not yet deployed; 1.9.0 is in production**
-(with 1.7.0 and 1.8.0, deployed together and running well). 2.0.0 is the jar that runs on either
-database, chosen by `FILEMANAGEMENT_DB_URL` alone ([3.4](#34-release-b--the-dual-database-jar--done-200)):
-the MySQL migrations moved to `db/migration/mysql/`, the PostgreSQL baseline `V3.0` beside them,
-the whole suite run against both, a schema parity test holding the two to each other, and the data
-copy of the cut-over night ([3.5](#35-copying-the-data)). **On the MySQL it is deployed to, it
-changes nothing** - no migration, no behaviour; the rollback is the 1.9.0 jar
-([deployment.md](deployment.md#upgrading-from-190-to-200--able-to-run-on-postgresql-still-on-mysql)).
-The rehearsal and the cut-over (step 7) come after 2.0.0 has run in production for a while.
+**Now: production runs on PostgreSQL, since 2026-09-26** - 2.0.0, moved from MySQL by the copy of
+[3.5](#35-copying-the-data), verified row by row, on the night the runbook of
+[3.6](#36-production-runbook) describes. The MySQL is kept, read-only, for the **rollback window,
+which closes on 2026-10-10**; until then no migration may be added (it would have to be written for
+both, and a rollback would not have it). The nightly backup dumps PostgreSQL
+([deployment.md](deployment.md#backups--one-job-both-halves)). **Next: release C** (step 8), after
+the window: the MySQL driver, its migrations and `MySqlSupport`'s successor go, and the suite runs
+on PostgreSQL only.
 
 1.9.0 is role administration: ADMIN and USER defined in code and reset on every start without
 taking access from anyone (`FixedRole`), the role page in three tabs saved separately, permission
@@ -69,7 +68,7 @@ is therefore cheapest **before** B, where it is written once and lands in the `V
 | 4 | **Done (1.8.0).** **Digit, accent and half-space folding**: decided for a normalised copy of each searched column - `search_name`, `search_description`, `search_display_name` on `file_info`, `file_details` and `folder`, written by the entities through `SearchKey` and filled for existing rows by the Java migration `V2_17`. Persian and Arabic digits as ASCII, the half-space and the marks dropped, Arabic `ي`/`ك` as Persian (which MySQL never did), upper case; a search also drops the spaces. A file or folder name that folds to a sibling's is refused as a duplicate | MySQL found `۱۴۰۳` when `1403` was typed and treated a name with and without the half-space as one; PostgreSQL would not. A schema change, so before B | [issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2) |
 | 5 | **Only if planned soon**: coarse permission verbs | it migrates the `permission` rows, so before B or after C, never in between | [issue 19](issues.md#19-permissionenum-is-a-hardcoded-list-of-endpoint-names--s2), [2.4](#24-authorization) |
 | 6 | **Done (2.0.0, not yet deployed).** **Release B (2.0.0)**: migrations moved to `db/migration/mysql/`, the hand-written PostgreSQL baseline `V3.0` (with the `upper(column)` unique indexes, the `varchar_pattern_ops` index on `folder.path`, the seed rows), the PostgreSQL driver and Flyway module, the suite on both databases | the jar that can run on either, chosen by `FILEMANAGEMENT_DB_URL` - nothing is switched yet | [3.4](#34-release-b--the-dual-database-jar--done-200) |
-| 7 | **Rehearsal, then the cut-over** - the data copied, sequences set, verified, the service pointed at PostgreSQL | the one irreversible-feeling step; taken only when decided, with the rollback window announced | [3.5](#35-copying-the-data), [3.6](#36-production-runbook) |
+| 7 | **Done (2026-09-26).** Rehearsed on production-like data the same morning (3.6), then carried out in production. One thing went wrong, and it was the configuration: the datasource URL kept MySQL's port when its scheme was changed, and the driver's two errors did not say so - now in the runbook and in [deployment.md](deployment.md#when-it-will-not-start). **Rehearsal, then the cut-over** - the data copied, sequences set, verified, the service pointed at PostgreSQL | the one irreversible-feeling step; taken only when decided, with the rollback window announced | [3.5](#35-copying-the-data), [3.6](#36-production-runbook) |
 | 8 | **Release C (2.1.0)**: MySQL removed, after the rollback window | from here migrations are PostgreSQL-only | [3.2](#32-strategy-one-release-that-runs-on-both-then-a-cut-over-that-is-only-data) |
 | 9 | **After C**: `TIMESTAMPTZ`, full-text search (`tsvector`, issue 21), then Phase 4 (S3) | these use what only PostgreSQL has, and Phase 4 needs step 2 | [Phase 4](#phase-4--s3-as-a-storage-backend) |
 
@@ -612,7 +611,10 @@ the existing one).
    `file_management` with `CREATEDB` for the rehearsal only, `LOGIN` afterwards. The password goes
    in the environment file as today, never in a script.
 3. The nightly backup job gains a `pg_dump -Fc` beside the `mysqldump` it has, and the restore
-   is rehearsed once (`deployment.md`, "Backups").
+   is rehearsed once (`deployment.md`, "Backups"). *As done:* the job dumps PostgreSQL only
+   from the cut-over on (the MySQL is read-only by then, and its cut-over dump is its backup);
+   the dump is proven complete on every run - every table has its data, the archive reads to the
+   end - and a restore as the application's account into a new database was checked.
 4. **Rehearsal:** restore last night's MySQL backup to a scratch schema, create a new, empty
    PostgreSQL database ([deployment.md](deployment.md#postgresql-the-database-and-the-copy)), run
    the copy against the two (3.5 - it migrates the target and verifies), start the application
@@ -658,7 +660,10 @@ the existing one).
    emptied by mistake.
 4. Run the copy (3.5): it migrates the target to `V3.0`, copies, sets the sequences and verifies,
    in one transaction. Exit status `0` and `copy VERIFIED` are the only go-ahead.
-5. Point `FILEMANAGEMENT_DB_URL` at PostgreSQL in the environment file; start the service.
+5. Point the datasource at PostgreSQL where the service reads it (the environment file, or
+   `conf\application.properties`) - **the whole URL, host, port and database, not only the
+   scheme**: `jdbc:postgresql://localhost:5432/file_management?sslmode=disable` for a server on the
+   same host. Start the service; the log says `Schema "public" is up to date` (at `3.0`).
 6. Walk the checklist in 3.5; watch the log for `SQLGrammarException` for the first hour; the
    PL/SQL clients download one file each.
 7. MySQL stays up, **read-only** (`FLUSH TABLES WITH READ LOCK` is not persistent — revoke the
