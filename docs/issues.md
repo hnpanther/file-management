@@ -1800,3 +1800,62 @@ Fix: escape `\`, `%` and `_` in the term (`SearchKey.forSearch`, or beside it) a
 `LIKE CONCAT('%', :term, '%') ESCAPE '\'` in every search; the trigram indexes (`V3.2`) are on the
 column's expression and are unaffected. `SearchIndexTest` then checks the new SQL still plans onto
 them.
+
+### 97. What an API key did was recorded as its creator's doing, with nothing to say a key did it — **S2**
+
+A request made with an API key runs as the key's creator (`ApiKeyAuthenticationFilter`): that
+user's id is the principal, so `created_by` on the file and the revision and `action_history.user_id`
+on every action were the creator's, and the key's id - carried in the request only for folder
+access - was written nowhere. The file page showed an integration's upload as the creator's own,
+and after a delete through a key nothing in the database said a key had done it; only the log
+(`userId/keyId`) did.
+
+> **Fixed in 2.3.0.** `V3.3` adds `created_by_api_key_id` to `file_info` and `file_details` and
+> `api_key_id` to `action_history`, each a foreign key to `api_key` with its index. The key is read
+> from the request in one place (`ActingApiKey`) and set where a file and a revision are created
+> (`FileService.createNewFile`, `newFileDetails` - the form, v1 and v2 alike) and on every audit row
+> (`ActionHistoryService`), so none of the callers can forget it. The file page shows
+> «از طریق API با کلید «title»» in place of the creator, the key's title as it is now.
+> `ApiKeyAttributionTest` uploads, adds a version and deletes through v1 and v2 with a real
+> `Bearer` key, and checks the rows, the audit trail and the page - and that a person's upload
+> records no key; four of its five tests fail with the key lookup switched off. Recording
+> downloads and a page of one key's activity are in the roadmap (9.2), not done.
+
+### 98. The cut-over set each sequence after the largest id left, so the ids of the last deleted rows are handed out again — **S2**
+
+The copy of 2.0.0 (roadmap 3.5 step 3) moved every identity sequence past the largest id *in the
+copied rows*. MySQL's `AUTO_INCREMENT` counter had gone further: past every row ever inserted,
+deleted ones included. So the ids of rows deleted above the highest surviving one - typically the
+last test uploads before the cut-over - are free again on PostgreSQL, and the next rows get them.
+
+Found in 2.3.0's rehearsal on the local copy: the first upload got `file_info.id = 1581` and
+`file_details.id = 1594`, and `action_history` already held a file 1581 and a revision 1594,
+created and deleted in MySQL on 2026-09-23. On that copy `file_info_id_seq` and
+`file_details_id_seq` stand at 1581 and 1594.
+
+What follows from it:
+
+* **The audit trail joins two files.** `action_history.entity_id` is not a foreign key; the new
+  file's history begins with the old file's creation and deletion.
+* **A client that kept an old numeric id reaches a new file.** An integration that uploaded, kept
+  `fileDetailsId` and deleted the file expects 404 for that id; after the reuse it downloads - or
+  deletes - someone else's revision. External ids (UUIDs) are not affected.
+* The bytes are not mixed: the old file's were deleted with it, and a new file is stored under its
+  own id with its own name.
+
+Check production, read-only - any row here means ids have been or will be reused:
+
+```sql
+SELECT 'file_info' AS t, (SELECT max(entity_id) FROM action_history WHERE entity_name = 'FileInfo') AS max_in_history,
+       (SELECT last_value FROM file_info_id_seq) AS sequence
+UNION ALL
+SELECT 'file_details', (SELECT max(entity_id) FROM action_history WHERE entity_name = 'FileDetails'),
+       (SELECT last_value FROM file_details_id_seq);
+-- a problem where max_in_history >= sequence
+```
+
+Fix: a migration that moves each sequence past the largest id the table *or its audit rows* have
+ever held - `setval(seq, greatest(max(id), max(action_history.entity_id)))` per entity - which only
+ever moves a sequence forward and is safe to run on any database. Ids already reused on
+production, if the check finds any, are listed by comparing the new rows' `created_at` with the
+old history rows' and are reported, not rewritten: a client may already hold them.

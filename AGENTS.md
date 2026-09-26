@@ -274,6 +274,10 @@ mismatch. PostgreSQL only since release C (2.1.0): `V3.0__Baseline.sql` in
   zone. Turning one into a wall clock or a date goes through the clock's zone
   (`filemanagement.time-zone`): `JalaliDate` on a page, `appDateTime` / `appTimeZone()` in a
   script, `LocalDate.ofInstant(x, clock.getZone())` in a service.
+* **What an API key does is recorded as the key's** (2.3.0, issue 97). A key acts as its creator
+  - `principalId` is that person - and `ActingApiKey.currentId()` says which key; `ActionHistoryService`
+  records it on every row by itself, and a new place that creates a file or a revision (today only
+  `FileService.createNewFile` and `newFileDetails`) sets `createdByApiKey` too.
 * **A search goes through its trigram index** (2.2.0, issue 21). The predicate is
   `REPLACE(x.searchKey, ' ', '') LIKE CONCAT('%', :term, '%')`, written exactly so, because a
   `V3.2` index is on that expression; matching a file through another table is a `UNION` of ids

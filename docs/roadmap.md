@@ -38,8 +38,14 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: 2.2.0 and 2.1.0, written and tested, neither deployed; production runs 2.0.0 on PostgreSQL
-since 2026-09-26.** 2.2.0 is the first release that uses what only PostgreSQL has (step 9):
+**Now: 2.3.0, 2.2.0 and 2.1.0, written and tested, none deployed; production runs 2.0.0 on
+PostgreSQL since 2026-09-26.** 2.3.0 records **which API key did it** (9.2): what a key uploads,
+adds or deletes carried only its creator's name, and on the file page an integration's upload read
+as the creator's own. `V3.3` records the key on the file, on the revision and on every audit row,
+and the file page says «از طریق API با کلید «…»» - the key's title as it is now - in the person's
+place. Next to it, in 9.2 below: recording downloads, and a page of what one key has done.
+
+2.2.0 is the first release that uses what only PostgreSQL has (step 9):
 
 * **Times are instants** (issue 24): `V3.1` makes every timestamp `TIMESTAMPTZ(0)`, reading what
   is there as Tehran time (checked against the bytes' modification times first), and the code holds
@@ -50,9 +56,10 @@ since 2026-09-26.** 2.2.0 is the first release that uses what only PostgreSQL ha
   searched key, and the file list's and the public list's searches are rewritten to use them - 73
   seconds to a few milliseconds on 205,000 files, with exactly the same results.
 
-**Deploy them in order**: 2.1.0 after 2026-10-10, when the rollback window closes; then 2.2.0,
-whose rollback is a database restore, since it changes the schema
-([deployment.md](deployment.md#upgrading-from-210-to-220--instants-and-indexed-search)).
+**Deploy them in order**: 2.1.0 after 2026-10-10, when the rollback window closes; then 2.2.0 and
+2.3.0, whose rollback is a database restore, since each changes the schema
+([deployment.md](deployment.md#upgrading-from-210-to-220--instants-and-indexed-search),
+[2.2.0 to 2.3.0](deployment.md#upgrading-from-220-to-230--which-api-key-did-it)).
 
 2.1.0 is release C and three things beside it:
 
@@ -1774,6 +1781,23 @@ api_key_folder (api_key_id, folder_id, permission)
 * **`created_by` is not decoration.** `action_history.created_by` is a foreign key to `user`, so
   anything a key does has to be attributable to a person or the audit trail breaks. It is invisible
   in the interface; it exists so the log stays complete.
+* **What a key does is recorded as the key's — done (2.3.0).** A key acts in its creator's name,
+  so `created_by` and `action_history.user_id` hold that person; since `V3.3` the key is recorded
+  beside them - `created_by_api_key_id` on `file_info` and `file_details`, `api_key_id` on
+  `action_history`, read from the request (`ActingApiKey`) in the two places a file or a revision
+  is created and in `ActionHistoryService`, so no caller can forget it. The file page shows
+  «از طریق API با کلید «title»» in the creator's place, the title as the key has it now.
+  Still to come, **not started**:
+  * **Recording downloads.** No download is recorded in the database - a person's or a key's; the
+    log has each one, with the key's id (`userId/keyId`). For a controlled document "who read this
+    revision" is a real question; the likely shape is an `action_history` row per API download (a
+    person's are many more, and a page view is not a record), decided with Phase 8.
+  * **A key's activity page.** On the API keys page, per key: what it uploaded, added and
+    deleted, paged, from `action_history.api_key_id` (indexed for it). A new endpoint, so a
+    permission of its own in `PermissionEnum`.
+  * The shared v1 account (HTTP Basic) is a user, not a key, and is recorded as that user; telling
+    "through the API" apart for it would need a channel column (`WEB` / `API`), left out until
+    someone asks the question.
 * **A key cannot be scoped to a folder its creator cannot see** (administrators excepted). Without
   that rule, the permission to create keys quietly becomes the permission to reach everything.
 

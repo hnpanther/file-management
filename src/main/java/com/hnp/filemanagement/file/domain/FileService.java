@@ -24,7 +24,10 @@ import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.file.persistence.FileDetailsRepository;
 import com.hnp.filemanagement.file.persistence.FileInfoRepository;
 import com.hnp.filemanagement.file.persistence.FileShareLinkRepository;
+import com.hnp.filemanagement.identity.domain.ApiKey;
+import com.hnp.filemanagement.identity.persistence.ApiKeyRepository;
 import com.hnp.filemanagement.identity.persistence.UserRepository;
+import com.hnp.filemanagement.identity.security.ActingApiKey;
 import com.hnp.filemanagement.shared.util.SearchKey;
 import com.hnp.filemanagement.shared.validation.ValidationUtil;
 import org.springframework.core.io.Resource;
@@ -135,6 +138,7 @@ public class FileService {
     private final FolderService folderService;
     private final FolderQuotaService folderQuotaService;
     private final FileShareLinkRepository fileShareLinkRepository;
+    private final ApiKeyRepository apiKeyRepository;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileDetailsRepository fileDetailsRepository,
@@ -147,7 +151,8 @@ public class FileService {
                        UploadPolicyService uploadPolicyService,
                        FolderService folderService,
                        FolderQuotaService folderQuotaService,
-                       FileShareLinkRepository fileShareLinkRepository) {
+                       FileShareLinkRepository fileShareLinkRepository,
+                       ApiKeyRepository apiKeyRepository) {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
@@ -160,6 +165,7 @@ public class FileService {
         this.tagMirrorService = tagMirrorService;
         this.folderQuotaService = folderQuotaService;
         this.fileShareLinkRepository = fileShareLinkRepository;
+        this.apiKeyRepository = apiKeyRepository;
     }
 
     // ------------------------------------------------------------------ upload
@@ -216,6 +222,7 @@ public class FileService {
         fileInfo.setState(publicFile == PUBLIC ? STATE_ACTIVE : STATE_DISABLED);
         fileInfo.setLastVersion(1);
         fileInfo.setCreatedBy(userRepository.getReferenceById(principalId));
+        fileInfo.setCreatedByApiKey(actingApiKey());
         fileInfo.setFolder(folder);
         tagMirrorService.retag(fileInfo);
 
@@ -460,7 +467,18 @@ public class FileService {
         fileDetails.setEnabled(1);
         fileDetails.setState(STATE_ACTIVE);
         fileDetails.setCreatedBy(userRepository.getReferenceById(principalId));
+        fileDetails.setCreatedByApiKey(actingApiKey());
         return fileDetails;
+    }
+
+    /**
+     * The key the current request acts with, as a reference to set on a new row, or null for a
+     * person. Every file and every revision is created in {@link #createNewFile} and
+     * {@link #newFileDetails} - the form, v1 and v2 alike - so these two are the whole of it.
+     */
+    private ApiKey actingApiKey() {
+        Integer apiKeyId = ActingApiKey.currentId();
+        return apiKeyId == null ? null : apiKeyRepository.getReferenceById(apiKeyId);
     }
 
     // ------------------------------------------------------------------ mutation
@@ -890,7 +908,8 @@ public class FileService {
 
         folderAccessService.requireReadAccess(folderAccessService.accessFor(principalId), fileInfo);
 
-        return FileMapper.toDto(fileInfo, folderService.ancestryOf(fileInfo.getFolder()));
+        return FileMapper.withApiKeyTitles(
+                FileMapper.toDto(fileInfo, folderService.ancestryOf(fileInfo.getFolder())), fileInfo);
     }
 
     FileInfo getFileInfoWithFileDetails(int id) {

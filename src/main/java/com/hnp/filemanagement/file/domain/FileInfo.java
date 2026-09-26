@@ -2,6 +2,7 @@ package com.hnp.filemanagement.file.domain;
 
 import com.hnp.filemanagement.folder.domain.Folder;
 import com.hnp.filemanagement.folder.domain.Tag;
+import com.hnp.filemanagement.identity.domain.ApiKey;
 import com.hnp.filemanagement.shared.domain.AuditableEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -97,6 +98,16 @@ public class FileInfo extends AuditableEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "folder_id", nullable = false)
     private Folder folder;
+
+    /**
+     * The API key this file was created with, or null when a person created it here (2.3.0).
+     * {@code createdBy} is then the key's creator, as the key acts in their name; this says the
+     * key did it, and a page shows the key's current title in place of the person. Set once, at
+     * creation, from the request ({@code ActingApiKey}); keys are revoked, never deleted.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_api_key_id", updatable = false)
+    private ApiKey createdByApiKey;
 
     /**
      * What this file is about (roadmap 7.2, step 2): the category, sub-category and tag folder it

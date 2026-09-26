@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.domain;
 
+import com.hnp.filemanagement.identity.domain.ApiKey;
 import com.hnp.filemanagement.shared.domain.AuditableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -120,6 +121,16 @@ public class FileDetails extends AuditableEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "file_info_id", nullable = false)
     private FileInfo fileInfo;
+
+    /**
+     * The API key this revision was created with, or null when a person created it here (2.3.0).
+     * {@code createdBy} is then the key's creator, as the key acts in their name; this says the
+     * key did it, and a page shows the key's current title in place of the person. Set once, at
+     * creation, from the request ({@code ActingApiKey}); keys are revoked, never deleted.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_api_key_id", updatable = false)
+    private ApiKey createdByApiKey;
 
     public void setFileName(String fileName) {
         this.fileName = fileName;

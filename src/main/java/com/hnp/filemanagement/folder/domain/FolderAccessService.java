@@ -1,6 +1,6 @@
 package com.hnp.filemanagement.folder.domain;
 
-import com.hnp.filemanagement.identity.security.UserDetailsImpl;
+import com.hnp.filemanagement.identity.security.ActingApiKey;
 import com.hnp.filemanagement.file.domain.FileInfo;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
@@ -8,8 +8,6 @@ import com.hnp.filemanagement.folder.persistence.GrantedPath;
 import com.hnp.filemanagement.identity.persistence.RoleRepository;
 import com.hnp.filemanagement.shared.config.FileManagementProperties;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -105,11 +103,7 @@ public class FolderAccessService {
      * "what may this request reach" keeps it impossible to miss.
      */
     private static Integer currentApiKeyId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !(authentication.getPrincipal() instanceof UserDetailsImpl principal)) {
-            return null;
-        }
-        return principal.getApiKeyId();
+        return ActingApiKey.currentId();
     }
 
     /**

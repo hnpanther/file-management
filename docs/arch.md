@@ -888,6 +888,15 @@ itself refuses to run on a database that would have failed it (section 10).
 `action_history` row. It is called explicitly from the services after each mutation; it is not an
 aspect, so coverage depends on the author remembering.
 
+**Which API key did it** (2.3.0) — a request made with an API key runs as the key's creator, so
+`userId`, `created_by` and `action_history.user_id` are that person. The key itself is read from
+the request by `ActingApiKey` and recorded beside them without any caller passing it:
+`ActionHistoryService` writes it into `action_history.api_key_id` on every row, and `FileService`
+into `created_by_api_key_id` on the file and the revision it creates (the two places every route
+creates them). The file page shows «از طریق API با کلید «title»» in the creator's place
+(`FileMapper.withApiKeyTitles`, off the keys `findByIdAndFetchFileDetails` fetches). Downloads are
+not recorded in the database (roadmap 9.2).
+
 **Logging** — one writer per concern:
 
 * `LoggingInterceptor` (registered by `MyWebMvcConfigurer`) writes two lines per request: what
@@ -1002,6 +1011,7 @@ MySQL compared without case, an index on every foreign key.
 |---|---|
 | `V3.0__Baseline.sql` | the whole schema and its seed rows (release B, 2.0.0) |
 | `V3.1__Timestamps_with_time_zone.sql` | 2.2.0, issue 24: all 28 timestamp columns `TIMESTAMPTZ(0)`, the values already there read as `Asia/Tehran` (the summer time before 1401 included); refuses to finish if a timestamp without a zone is left |
+| `V3.3__Record_the_acting_api_key.sql` | 2.3.0: `created_by_api_key_id` on `file_info` and `file_details`, `api_key_id` on `action_history` - the API key an upload, a new version or a delete was made with, beside the key's creator |
 | `V3.2__Trigram_search_indexes.sql` | 2.2.0, issue 21: `pg_trgm` (trusted - the database's owner may create it) and a GIN trigram index on `replace(column, ' ', '')` for the name and description keys of `file_info` and `file_details` and the name and label keys of `folder` |
 
 The MySQL history, `V1.0` to `V2.19`, retired with MySQL in release C - kept here because it is how
@@ -1095,7 +1105,7 @@ installation that sets it.
 
 ## 12. Tests
 
-`./mvnw verify` runs 824 tests and needs only a working Docker daemon: `DatabaseSupport` points the
+`./mvnw verify` runs 829 tests and needs only a working Docker daemon: `DatabaseSupport` points the
 application at one PostgreSQL 18 container per JVM (`support/TestDatabases`, created as production's
 database is: UTF-8, ICU's root locale), and `StorageRootSupport` gives each test a clean storage
 root. Test classes sit in the package of what they test; the ones that span features
@@ -1153,6 +1163,7 @@ generates the unique ones, so a test overrides only what it is actually about.
 | `DependencyPinTest` | the pinned versions that clear known advisories stay pinned |
 | `FileManagementApplicationTests` | the context starts |
 | `SearchIndexTest` | every search's actual SQL is planned by PostgreSQL onto its trigram indexes (issue 21) |
+| `file/web/ApiKeyAttributionTest` | an upload, a new version and a delete with a real `Bearer` key record the key on the rows and the audit trail, and the file page names it (2.3.0) |
 | `MigrationTest` | `V3.1` turns times already written into their instants; every migration runs as a database owner that is no superuser, as production's |
 
 ## 13. Known structural weaknesses
