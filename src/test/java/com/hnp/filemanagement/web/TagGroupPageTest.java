@@ -10,7 +10,7 @@ import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class TagGroupPageTest extends MySqlSupport {
+class TagGroupPageTest extends DatabaseSupport {
 
     @Autowired
     private MockMvc mockMvc;

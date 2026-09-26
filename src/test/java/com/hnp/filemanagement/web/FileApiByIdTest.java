@@ -13,7 +13,7 @@ import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.FileService;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.support.FolderFixture;
@@ -59,7 +59,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
-class FileApiByIdTest extends MySqlSupport {
+class FileApiByIdTest extends DatabaseSupport {
 
     @Autowired
     private MockMvc mockMvc;

@@ -21,9 +21,14 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 * **Read the version in `pom.xml`; never take it from the log.** It is Spring Boot 4.1.1 on Java
   25 now, but a merge once discarded an upgrade and left the commit log claiming a version the
   build never had ([issue 1](docs/issues.md#1-the-spring-boot-upgrade-was-silently-reverted-by-a-merge--s1)).
-* **The tests need only a Docker daemon.** `support/MySqlSupport` starts a MySQL container and
-  `support/StorageRootSupport` uses `./target/test-storage/`. Run `./mvnw test`; if you did not run
-  it, say you did not run it — do not describe a change as verified.
+* **The tests need only a Docker daemon, and run on either database.** `support/DatabaseSupport`
+  starts MySQL, or PostgreSQL under `-Ddb=postgresql`; `support/StorageRootSupport` uses
+  `./target/test-storage/`. Until release C run **both** - `./mvnw verify` and
+  `./mvnw verify -Ddb=postgresql`; if you did not run one, say so - do not describe a change as
+  verified.
+* **A schema change is two migrations** (release B, 2.0.0): `db/migration/mysql/V2.x` and
+  `db/migration/postgresql/V3.x`, held to each other by `SchemaParityTest`; a new table also goes
+  into `DatabaseCopy.TABLES`. Nothing goes in `db/migration` itself.
 * **On MySQL, a query can be wrong and pass every test.** The `utf8mb4_unicode_ci` collation makes
   `=` and `LIKE` on text case-insensitive by itself; PostgreSQL does not. A case test proves
   nothing on MySQL alone - release A's were also run on PostgreSQL

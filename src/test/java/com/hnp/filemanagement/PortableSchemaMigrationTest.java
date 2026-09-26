@@ -1,5 +1,6 @@
 package com.hnp.filemanagement;
 
+import com.hnp.filemanagement.support.MySqlOnly;
 import com.hnp.filemanagement.util.SearchKey;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
@@ -21,8 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.hnp.filemanagement.support.MySqlSupport.jdbcUrlFor;
-import static com.hnp.filemanagement.support.MySqlSupport.rootPassword;
+import static com.hnp.filemanagement.support.TestDatabases.mysqlUrlFor;
+import static com.hnp.filemanagement.support.TestDatabases.mysqlRootPassword;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -45,13 +46,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * the original file name (the first code), a UUID, an upper-case UUID.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@MySqlOnly
 class PortableSchemaMigrationTest {
 
     private static final String DATABASE = "fm_migration_probe";
     private static final long INT_MAX = Integer.MAX_VALUE;
     private static final long THREE_GIB = 3L * 1024 * 1024 * 1024;
 
-    private final String url = jdbcUrlFor(DATABASE);
+    private final String url = mysqlUrlFor(DATABASE);
 
     private List<String> foreignKeysBefore;
     private List<String> indexesBefore;
@@ -70,7 +72,7 @@ class PortableSchemaMigrationTest {
 
     @BeforeAll
     void migrateAroundRealRows() throws SQLException {
-        try (Connection admin = DriverManager.getConnection(jdbcUrlFor("mysql"), "root", rootPassword());
+        try (Connection admin = DriverManager.getConnection(mysqlUrlFor("mysql"), "root", mysqlRootPassword());
              Statement statement = admin.createStatement()) {
             statement.execute("DROP DATABASE IF EXISTS " + DATABASE);
             statement.execute("CREATE DATABASE " + DATABASE + " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
@@ -154,7 +156,7 @@ class PortableSchemaMigrationTest {
 
     @AfterAll
     void dropTheProbe() throws SQLException {
-        try (Connection admin = DriverManager.getConnection(jdbcUrlFor("mysql"), "root", rootPassword());
+        try (Connection admin = DriverManager.getConnection(mysqlUrlFor("mysql"), "root", mysqlRootPassword());
              Statement statement = admin.createStatement()) {
             statement.execute("DROP DATABASE IF EXISTS " + DATABASE);
         }
@@ -368,8 +370,8 @@ class PortableSchemaMigrationTest {
 
     private Flyway flyway(String target) {
         var configuration = Flyway.configure()
-                .dataSource(url, "root", rootPassword())
-                .locations("classpath:db/migration")
+                .dataSource(url, "root", mysqlRootPassword())
+                .locations("classpath:db/migration/mysql")
                 .baselineOnMigrate(true);
         if (target != null) {
             configuration.target(target);
@@ -378,7 +380,7 @@ class PortableSchemaMigrationTest {
     }
 
     private Connection connect() throws SQLException {
-        return DriverManager.getConnection(url, "root", rootPassword());
+        return DriverManager.getConnection(url, "root", mysqlRootPassword());
     }
 
     private static int single(Connection connection, String sql) throws SQLException {

@@ -8,7 +8,7 @@ import com.hnp.filemanagement.exception.UploadRefusedException;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UploadPolicyRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.validation.ContentTypes;
@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * across a person's roles, and the two refusals.
  */
 @ServiceIntegrationTest
-class UploadPolicyServiceTest extends MySqlSupport {
+class UploadPolicyServiceTest extends DatabaseSupport {
 
     private static final long MB = 1024L * 1024L;
 

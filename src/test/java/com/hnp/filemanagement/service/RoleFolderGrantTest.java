@@ -10,7 +10,7 @@ import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.repository.TagGroupRepository;
@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * ancestor.
  */
 @ServiceIntegrationTest
-class RoleFolderGrantTest extends MySqlSupport {
+class RoleFolderGrantTest extends DatabaseSupport {
 
     @Autowired
     private RoleService underTest;

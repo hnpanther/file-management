@@ -12,7 +12,7 @@ import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.jayway.jsonpath.JsonPath;
 import jakarta.persistence.EntityManager;
@@ -53,7 +53,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
-class FileApiExternalIdTest extends MySqlSupport {
+class FileApiExternalIdTest extends DatabaseSupport {
 
     private static final String UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 

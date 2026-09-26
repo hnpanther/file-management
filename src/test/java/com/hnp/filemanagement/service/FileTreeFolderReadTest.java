@@ -16,7 +16,7 @@ import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import jakarta.persistence.EntityManager;
@@ -44,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @ServiceIntegrationTest
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
-class FileTreeFolderReadTest extends MySqlSupport {
+class FileTreeFolderReadTest extends DatabaseSupport {
 
     @Autowired
     private FileTreeService underTest;

@@ -12,7 +12,7 @@ import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.util.SearchKey;
@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * setters, and this is what shows that every write path went through one.
  */
 @ServiceIntegrationTest
-class PersianNameFoldingTest extends MySqlSupport {
+class PersianNameFoldingTest extends DatabaseSupport {
 
     private static final String ZWNJ = "‌";
     /** گزارش‌های ۱۴۰۳ - the half-space and Persian digits, as a Persian keyboard writes it. */

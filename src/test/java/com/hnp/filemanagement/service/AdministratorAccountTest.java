@@ -7,7 +7,7 @@ import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import jakarta.persistence.EntityManager;
@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * only somebody who already holds it may - and the last enabled administrator stays.
  */
 @ServiceIntegrationTest
-class AdministratorAccountTest extends MySqlSupport {
+class AdministratorAccountTest extends DatabaseSupport {
 
     @Autowired
     private UserService userService;

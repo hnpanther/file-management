@@ -15,7 +15,7 @@ import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import jakarta.persistence.EntityManager;
@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * rows may share the database, so each assertion is about this test's own rows.
  */
 @ServiceIntegrationTest
-class ChecksumBackfillTest extends MySqlSupport {
+class ChecksumBackfillTest extends DatabaseSupport {
 
     @Autowired
     private ChecksumBackfill underTest;

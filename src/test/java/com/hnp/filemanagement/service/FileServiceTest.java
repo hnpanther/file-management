@@ -15,7 +15,7 @@ import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FileStorageWriteRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.repository.FolderRepository;
@@ -61,7 +61,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * </ul>
  */
 @ServiceIntegrationTest
-class FileServiceTest extends MySqlSupport {
+class FileServiceTest extends DatabaseSupport {
 
     @Autowired
     private FileService underTest;

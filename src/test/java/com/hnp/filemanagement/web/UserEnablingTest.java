@@ -8,7 +8,7 @@ import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.UserService;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.util.UiMessages;
 import org.hamcrest.Matchers;
@@ -42,7 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class UserEnablingTest extends MySqlSupport {
+class UserEnablingTest extends DatabaseSupport {
 
     @Autowired
     private MockMvc mockMvc;

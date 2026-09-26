@@ -2,7 +2,7 @@ package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.entity.PermissionEnum;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "springdoc.api-docs.enabled=false",
         "springdoc.swagger-ui.enabled=false"})
-class OpenApiDisabledTest extends MySqlSupport {
+class OpenApiDisabledTest extends DatabaseSupport {
 
     @Autowired
     private MockMvc mockMvc;

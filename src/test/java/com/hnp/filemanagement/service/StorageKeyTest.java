@@ -7,7 +7,7 @@ import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.repository.FolderRepository;
@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * anything - and, the one that matters, that a read never consults the folder names at all.
  */
 @ServiceIntegrationTest
-class StorageKeyTest extends MySqlSupport {
+class StorageKeyTest extends DatabaseSupport {
 
     @Autowired
     private FileService underTest;

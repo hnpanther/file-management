@@ -13,7 +13,7 @@ import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.TagRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import jakarta.persistence.EntityManager;
@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * row, and nothing else would notice. Each of these used to grow with the list.
  */
 @ServiceIntegrationTest
-class ListQueryCountTest extends MySqlSupport {
+class ListQueryCountTest extends DatabaseSupport {
 
     private static final int ROWS = 4;
 

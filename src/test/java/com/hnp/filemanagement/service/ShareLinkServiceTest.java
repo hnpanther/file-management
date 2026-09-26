@@ -20,7 +20,7 @@ import com.hnp.filemanagement.service.ShareLinkService.Attempt;
 import com.hnp.filemanagement.service.ShareLinkService.Outcome;
 import com.hnp.filemanagement.support.FolderFixture;
 import com.hnp.filemanagement.support.MutableClock;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import jakarta.persistence.EntityManager;
@@ -56,7 +56,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "filemanagement.share-links.default-minutes=3",
         "filemanagement.share-links.max-failed-attempts=2",
         "filemanagement.share-links.lock-minutes=5"})
-class ShareLinkServiceTest extends MySqlSupport {
+class ShareLinkServiceTest extends DatabaseSupport {
 
     @Autowired
     private ShareLinkService underTest;

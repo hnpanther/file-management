@@ -21,7 +21,7 @@ import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UploadPolicyRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import jakarta.persistence.EntityManager;
@@ -47,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * definition without taking access from anyone, and a username only an administrator changes.
  */
 @ServiceIntegrationTest
-class RoleAdministrationTest extends MySqlSupport {
+class RoleAdministrationTest extends DatabaseSupport {
 
     private static final long MB = 1024L * 1024L;
 

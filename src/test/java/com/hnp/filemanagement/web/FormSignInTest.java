@@ -2,7 +2,7 @@ package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class FormSignInTest extends MySqlSupport {
+class FormSignInTest extends DatabaseSupport {
 
     private static final String PASSWORD = "correct horse battery staple";
 

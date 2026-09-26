@@ -1,7 +1,7 @@
 # Database schema
 
 The database as it is **now** — every table, column, key and index — after all migrations have
-run. The migrations in `src/main/resources/db/migration` are the history and the only thing that
+run. The migrations in `src/main/resources/db/migration/mysql` are the history and the only thing that
 changes the schema; this file is the present, so nobody has to replay them in their head.
 
 **The table section below is generated, not written.** `SchemaDocumentationTest` migrates a fresh
@@ -11,6 +11,18 @@ here differs. When a migration changes the schema, regenerate and commit both to
 ```bash
 ./mvnw test -Dtest=SchemaDocumentationTest -DargLine=-Dschema.doc.write=true
 ```
+
+**The same schema on PostgreSQL** (release B, 2.0.0) is `db/migration/postgresql/V3.0__Baseline.sql`,
+written once in PostgreSQL's terms; this document describes MySQL until release C and is generated
+from it. `SchemaParityTest` keeps the two identical by name and fact, with these differences on
+PostgreSQL and no others: `datetime` is `timestamp(0)`, `tinyint(1)` is `boolean`,
+`AUTO_INCREMENT` is an identity, the unique names MySQL compared without case are unique on
+`upper(column)` (`uq_user_username`, `uq_user_email`, `uq_role_role_name`, `uq_tag_group_name`,
+`uq_tag_name_per_group`, `uq_folder_sibling_name`, `uq_file_info_name_per_folder`,
+`uq_file_details_version_format`), and `ix_folder_path` is `varchar_pattern_ops`. The indexes
+MySQL creates by itself for foreign keys, named after them, are declared by name there. How the
+PostgreSQL database is created is in
+[deployment.md](deployment.md#postgresql-the-database-and-the-copy).
 
 Everything above the marker is written by hand and kept short: what the tables are *for* is in
 [arch.md](arch.md#4-the-domain-model), and why each one is shaped the way it is lives in the

@@ -15,7 +15,7 @@ import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.support.FolderFixture;
 import com.hnp.filemanagement.support.MutableClock;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestPropertySource(properties = {
         "filemanagement.storage.unfinished-after-minutes=30",
         "filemanagement.storage.sweep-batch-size=2"})
-class StorageSweeperTest extends MySqlSupport {
+class StorageSweeperTest extends DatabaseSupport {
 
     @Autowired
     private StorageSweeper underTest;
@@ -101,12 +101,16 @@ class StorageSweeperTest extends MySqlSupport {
     void keepsTheBytesOfACommittedRevision() {
         FileDetailsDTO uploaded = upload("kept.txt");
         String key = fileDetailsRepository.findById(uploaded.getId()).orElseThrow().getStorageKey();
-        noteFrom(key, LocalDateTime.now(clock).minusMinutes(31));
+        FileStorageWrite stale = noteFrom(key, LocalDateTime.now(clock).minusMinutes(31));
 
         assertThat(underTest.sweep()).as("nothing removed").isZero();
 
         assertThat(blobStore.exists(StorageKey.of(key))).isTrue();
-        assertThat(journal.count()).as("only the note was stale").isZero();
+        // That note, and not a count: the upload above left its own note, committed in a transaction
+        // of its own and still in flight while this test's transaction is open. Under MySQL's
+        // REPEATABLE READ this transaction's snapshot hid it and a count of zero passed by accident;
+        // under PostgreSQL's READ COMMITTED it is there, as it is in production.
+        assertThat(journal.existsById(stale.getId())).as("only the stale note is settled").isFalse();
     }
 
     @Test
@@ -171,11 +175,11 @@ class StorageSweeperTest extends MySqlSupport {
         return key;
     }
 
-    private void noteFrom(String storageKey, LocalDateTime startedAt) {
+    private FileStorageWrite noteFrom(String storageKey, LocalDateTime startedAt) {
         FileStorageWrite note = new FileStorageWrite();
         note.setStorageKey(storageKey);
         note.setCreatedAt(startedAt);
-        journal.save(note);
+        return journal.save(note);
     }
 
     private FileDetailsDTO upload(String fileName) {

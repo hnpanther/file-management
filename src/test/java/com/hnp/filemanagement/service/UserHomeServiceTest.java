@@ -13,7 +13,7 @@ import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import jakarta.persistence.EntityManager;
@@ -39,7 +39,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @TestPropertySource(properties = {
         "filemanagement.folder-access.enabled=true",
         "filemanagement.profiles.default-quota-mb=10"})
-class UserHomeServiceTest extends MySqlSupport {
+class UserHomeServiceTest extends DatabaseSupport {
 
     private static final long MEGABYTE = 1024L * 1024L;
 

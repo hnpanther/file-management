@@ -2,7 +2,7 @@ package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.entity.PermissionEnum;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,7 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-class RestContractTest extends MySqlSupport {
+class RestContractTest extends DatabaseSupport {
 
     /** Far past anything Flyway seeds, so every lookup misses. */
     private static final int MISSING_ID = 999_999;

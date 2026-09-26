@@ -4,7 +4,7 @@ import com.hnp.filemanagement.entity.Permission;
 import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import jakarta.persistence.EntityManager;
 import org.hibernate.Hibernate;
@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-class UserRepositoryTest extends MySqlSupport {
+class UserRepositoryTest extends DatabaseSupport {
 
     @Autowired
     private UserRepository underTest;

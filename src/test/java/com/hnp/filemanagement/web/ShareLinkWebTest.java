@@ -16,7 +16,7 @@ import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.service.ShareLinkService;
 import com.hnp.filemanagement.support.FolderFixture;
 import com.hnp.filemanagement.support.MutableClock;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.jayway.jsonpath.JsonPath;
 import org.hamcrest.Matchers;
@@ -61,7 +61,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "filemanagement.folder-access.enabled=true",
         "filemanagement.share-links.max-minutes=30",
         "filemanagement.share-links.max-failed-attempts=2"})
-class ShareLinkWebTest extends MySqlSupport {
+class ShareLinkWebTest extends DatabaseSupport {
 
     @Autowired
     private MockMvc mockMvc;

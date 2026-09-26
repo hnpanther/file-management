@@ -610,6 +610,28 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 1.9.0 to 2.0.0 — able to run on PostgreSQL, still on MySQL
+
+PostgreSQL release B (roadmap 3.4). **A jar swap with no migration** and nothing to configure: on
+the MySQL it is deployed to, 2.0.0 does what 1.9.0 did. What it adds is the ability to run on
+PostgreSQL instead, chosen by `FILEMANAGEMENT_DB_URL` alone - which production does not use yet;
+the move itself is a separate, announced night (roadmap 3.6). Take the database backup first, as
+always, and watch the start for `Schema ... is up to date. No migration necessary.`
+
+* **The migrations moved** from `db/migration` to `db/migration/mysql` inside the jar, and the Java
+  one (`V2_17`) to another package. Flyway notices neither: it records a SQL migration by its file
+  name and does not compare a Java one's class name - a database migrated by 1.9.0 validates as it
+  is, with nothing to run (`VendorMigrationLayoutTest`). If the start ever reports
+  `Validate failed` after this upgrade, stop, put 1.9.0 back, and report it: nothing will have
+  been changed.
+* **The PostgreSQL driver is in the jar**, unused while the URL is MySQL's.
+* **One new way to run the jar**, for the cut-over night only: `--spring.profiles.active=copy`
+  copies the MySQL database into a PostgreSQL one and verifies it
+  ([below](#postgresql-the-database-and-the-copy)). It is not the service and does not start it;
+  the service's arguments must never contain that profile.
+
+**Rollback** is the 1.9.0 jar: no schema, no data and no setting changed.
+
 ### Upgrading from 1.8.0 to 1.9.0 — fixed roles, a tabbed role page, and a folder check on four writes
 
 One small migration, `V2.19`, which deletes three permissions nothing checked (below); otherwise a
@@ -1491,6 +1513,87 @@ first boot. Nothing else is run by hand.
 > [issue 47](issues.md) hid until the suite ran on Linux. `compose.yaml` and the test containers
 > both set it; a hand-installed server should match. It can only be set when the data directory is
 > initialised, not afterwards.
+
+---
+
+## PostgreSQL: the database and the copy
+
+From 2.0.0 the jar runs on PostgreSQL 17 as well as on MySQL; which one is `FILEMANAGEMENT_DB_URL`.
+Production stays on MySQL until the cut-over night, planned and rehearsed as roadmap 3.6 describes.
+This section is what that plan refers to: how the PostgreSQL database is created, and how the copy
+is run. Nothing here is done on the MySQL.
+
+**The database.** As a PostgreSQL superuser (`psql -U postgres`), once:
+
+```sql
+CREATE ROLE file_management LOGIN PASSWORD 'a real password';
+
+CREATE DATABASE file_management OWNER file_management
+    TEMPLATE template0 ENCODING 'UTF8'
+    LOCALE_PROVIDER icu ICU_LOCALE 'und';
+```
+
+* **`ENCODING 'UTF8'` and a locale whose `upper()` folds more than ASCII are required**, not
+  preferences: every name that must be unique without regard to case - usernames, role names,
+  folder and file names - is held unique on `upper(column)`, and under the `C` locale `upper('é')`
+  is still `é`. The first migration checks exactly that and refuses to run otherwise, before it
+  creates anything (`this database's LC_CTYPE (...) folds ASCII only`).
+* **ICU with the root locale (`und`)** is the recommendation: it behaves the same on Windows and
+  Linux, folds case over all of Unicode, and sorts names linguistically, as MySQL's
+  `utf8mb4_unicode_ci` did. The test suite runs on a Linux libc locale (`en_US.utf8`), which
+  passes the same check; the ICU form is proven on the production host by the rehearsal, which
+  is where any locale surprise belongs.
+* **`OWNER file_management`** is what lets the application's own account run the migrations: since
+  PostgreSQL 15 only a database's owner may create tables in its `public` schema. The account has
+  no other privilege.
+* The JDBC URL is `jdbc:postgresql://localhost:5432/file_management`. The service's pool is 20
+  connections (`FILEMANAGEMENT_DB_POOL_SIZE`), well inside PostgreSQL's default `max_connections`
+  of 100.
+
+Do not start the service against this database before the copy: the copy prepares it itself, and
+refuses a database that already holds a file.
+
+**The copy** - on the night, with the service stopped, from a console on the application host:
+
+```powershell
+# The source: the MySQL, exactly as the service's definition has it.
+$env:FILEMANAGEMENT_DB_URL      = "jdbc:mysql://localhost:3306/file_management"
+$env:FILEMANAGEMENT_DB_USERNAME = "file_management"
+$env:FILEMANAGEMENT_DB_PASSWORD = "the MySQL password"
+# The target: the new PostgreSQL database.
+$env:FILEMANAGEMENT_COPY_TARGET_URL      = "jdbc:postgresql://localhost:5432/file_management"
+$env:FILEMANAGEMENT_COPY_TARGET_USERNAME = "file_management"
+$env:FILEMANAGEMENT_COPY_TARGET_PASSWORD = "the PostgreSQL password"
+
+& "C:\Program Files\Eclipse Adoptium\jdk-25.0.3.9-hotspot\bin\java.exe" -Dfile.encoding=UTF-8 `
+    -jar "D:\MyApp\file-management\file-management.jar" --spring.profiles.active=copy
+echo "exit status: $LASTEXITCODE"
+```
+
+Run it from `D:\MyApp\file-management` if the MySQL password lives in
+`config\application.properties` rather than the environment: the copy reads the configuration the
+way the service does.
+
+It checks both databases before writing anything, then - in one PostgreSQL transaction - creates
+the schema if it is not there, copies every table with its ids, moves every identity past them, and
+compares every row of every table on both sides. The last lines say what happened:
+
+```
+  ok       folder: MySQL 188 row(s), PostgreSQL 188 row(s)
+  ok       file_info: MySQL 1358 row(s), PostgreSQL 1358 row(s)
+  ...
+copy VERIFIED: every table identical on both sides; the identities are past the copied ids
+exit status: 0
+```
+
+| Exit status | Meaning | What to do |
+|---|---|---|
+| `0` | copied, verified, committed | go on with the runbook |
+| `1` | copied but a table did not verify; **rolled back**, the target is as it was | do not cut over; the line marked `MISMATCH` names the table |
+| `2` | refused, or failed part-way and rolled back; nothing was written | read the reason: the source not at this release's schema, the target already holding files, a table the copy does not know, a value PostgreSQL cannot store |
+
+The MySQL is only read. The files on disk are not touched: `file_details.storage_key` is relative to
+`FILEMANAGEMENT_BASE_DIR` and means the same on either database.
 
 ---
 

@@ -3,7 +3,7 @@ package com.hnp.filemanagement.repository;
 import com.hnp.filemanagement.entity.FileDetails;
 import com.hnp.filemanagement.entity.FileInfo;
 import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-class FileInfoRepositoryTest extends MySqlSupport {
+class FileInfoRepositoryTest extends DatabaseSupport {
 
     @Autowired
     private FileInfoRepository underTest;

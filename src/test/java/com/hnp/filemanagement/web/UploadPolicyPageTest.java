@@ -6,7 +6,7 @@ import com.hnp.filemanagement.entity.Role;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.UploadPolicyService;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import org.hamcrest.Matchers;
@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @ServiceIntegrationTest
 @AutoConfigureMockMvc
-class UploadPolicyPageTest extends MySqlSupport {
+class UploadPolicyPageTest extends DatabaseSupport {
 
     private static final long MB = 1024L * 1024L;
 

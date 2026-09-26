@@ -7,7 +7,7 @@ import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.repository.FileDetailsRepository;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
@@ -50,7 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-class FileApiDeleteTest extends MySqlSupport {
+class FileApiDeleteTest extends DatabaseSupport {
 
     @Autowired
     private MockMvc mockMvc;

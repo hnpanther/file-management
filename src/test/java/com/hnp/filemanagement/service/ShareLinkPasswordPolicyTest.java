@@ -10,7 +10,7 @@ import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import org.junit.jupiter.api.DisplayName;
@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** The installation that insists on a password: a link without one is refused (roadmap 10.5). */
 @ServiceIntegrationTest
 @TestPropertySource(properties = "filemanagement.share-links.password=REQUIRED")
-class ShareLinkPasswordPolicyTest extends MySqlSupport {
+class ShareLinkPasswordPolicyTest extends DatabaseSupport {
 
     @Autowired
     private ShareLinkService underTest;

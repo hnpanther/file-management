@@ -9,7 +9,7 @@ import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.UserHomeService;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,7 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class UserHomeWebTest extends MySqlSupport {
+class UserHomeWebTest extends DatabaseSupport {
 
     private static final long MEGABYTE = 1024L * 1024L;
 
