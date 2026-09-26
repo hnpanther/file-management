@@ -23,7 +23,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.TestPropertySource;
 import jakarta.persistence.EntityManager;
 
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -234,7 +235,7 @@ class FolderContentServiceTest extends DatabaseSupport {
         FileDetails docx = versionTwo.stream().filter(row -> row.getFileExtension().equals("docx")).findFirst().orElseThrow();
         FileDetails pdf = versionTwo.stream().filter(row -> row.getFileExtension().equals("pdf")).findFirst().orElseThrow();
         assertThat(docx.getId()).as("the fixture stores the docx first").isLessThan(pdf.getId());
-        LocalDateTime sameInstant = docx.getCreatedAt();
+        Instant sameInstant = docx.getCreatedAt();
         entityManager.createNativeQuery("UPDATE file_details SET created_at = ?1 WHERE id IN (?2, ?3)")
                 .setParameter(1, sameInstant).setParameter(2, docx.getId()).setParameter(3, pdf.getId())
                 .executeUpdate();
@@ -245,7 +246,7 @@ class FolderContentServiceTest extends DatabaseSupport {
         assertThat(tied.latestFormat()).isEqualTo("pdf");
 
         entityManager.createNativeQuery("UPDATE file_details SET created_at = ?1 WHERE id = ?2")
-                .setParameter(1, sameInstant.plusMinutes(5)).setParameter(2, docx.getId())
+                .setParameter(1, sameInstant.plus(Duration.ofMinutes(5))).setParameter(2, docx.getId())
                 .executeUpdate();
         entityManager.clear();
 

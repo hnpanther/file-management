@@ -193,6 +193,7 @@ database **and** `base-dir` together.
 | `spring.datasource.*` | — | PostgreSQL connection (`FILEMANAGEMENT_DB_URL`, `_USERNAME`, `_PASSWORD`) |
 | `spring.jpa.hibernate.ddl-auto` | `validate` | schema is owned by Flyway |
 | `file.management.base-dir` | `./TempFiles/files/main/` | storage root; must exist and end with a separator |
+| `filemanagement.time-zone` | `Asia/Tehran` | the zone the pages show times in (`FILEMANAGEMENT_TIME_ZONE`); the database stores instants, and the server's own zone is never used |
 | `spring.servlet.multipart.max-file-size` | `20MB` | per-file upload cap |
 | `spring.servlet.multipart.max-request-size` | `20MB` | per-request upload cap |
 | `filemanagement.default.page-size` | `30` | rows per page in list views (at most 200) |

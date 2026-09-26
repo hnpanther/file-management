@@ -23,6 +23,7 @@
         <meta name="color-scheme" content="light">
         <meta name="_csrf" th:content="${_csrf} != null ? ${_csrf.token} : ''">
         <meta name="_csrf_header" th:content="${_csrf} != null ? ${_csrf.headerName} : ''">
+        <meta name="app-time-zone" th:content="${@jalali.zone()}">
         <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
         <link rel="stylesheet" th:href="@{/css/app.css}">
     </th:block>
@@ -33,6 +34,7 @@
         <meta name="color-scheme" content="light">
         <meta name="_csrf" th:content="${_csrf} != null ? ${_csrf.token} : ''">
         <meta name="_csrf_header" th:content="${_csrf} != null ? ${_csrf.headerName} : ''">
+        <meta name="app-time-zone" th:content="${@jalali.zone()}">
         <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
         <link rel="stylesheet" th:href="@{/vendor/select2/select2.min.css}">
         <link rel="stylesheet" th:href="@{/css/app.css}">
@@ -158,7 +160,7 @@
         </div>
         <p class="field-hint">
             <span th:text="#{shareLink.expires}">اعتبار تا</span>
-            <span class="technical" dir="ltr" x-text="result ? result.expiresAt.replace('T', ' ').substring(0, 16) : ''"></span>
+            <span class="technical" dir="ltr" x-text="expiry()"></span>
             <span x-show="result && result.passwordProtected" th:text="#{shareLink.withPassword}">· با رمز</span>
             <span x-show="result && result.maxDownloads">
                 <span>·</span>

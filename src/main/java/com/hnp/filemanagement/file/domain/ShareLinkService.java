@@ -22,7 +22,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Clock;
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
@@ -72,7 +73,7 @@ public class ShareLinkService {
      * @param file        the bytes, for {@link Outcome#DOWNLOAD}; null otherwise
      * @param lockedUntil when a locked link opens again, for {@link Outcome#LOCKED}; null otherwise
      */
-    public record Attempt(Outcome outcome, FileDownloadDTO file, LocalDateTime lockedUntil) {
+    public record Attempt(Outcome outcome, FileDownloadDTO file, Instant lockedUntil) {
         static Attempt of(Outcome outcome) {
             return new Attempt(outcome, null, null);
         }
@@ -154,12 +155,12 @@ public class ShareLinkService {
         }
 
         String token = ENCODER.encodeToString(randomBytes(TOKEN_BYTES));
-        LocalDateTime now = LocalDateTime.now(clock);
+        Instant now = Instant.now(clock);
 
         FileShareLink link = new FileShareLink();
         link.setTokenHash(sha256(token));
         link.setFileDetails(revision);
-        link.setExpiresAt(now.plusMinutes(validMinutes));
+        link.setExpiresAt(now.plus(Duration.ofMinutes(validMinutes)));
         link.setPasswordHash(secret == null ? null : passwordEncoder.encode(secret));
         link.setMaxDownloads(maxDownloads);
         link.setCreatedBy(userRepository.getReferenceById(principalId));
@@ -188,7 +189,7 @@ public class ShareLinkService {
             throw new AccessDeniedException("share link id=" + linkId + " belongs to someone else");
         }
         if (!link.isRevoked()) {
-            link.setRevokedAt(LocalDateTime.now(clock));
+            link.setRevokedAt(Instant.now(clock));
             shareLinkRepository.save(link);
         }
         actionHistoryService.saveActionHistory(EntityEnum.FileShareLink, linkId, ActionEnum.UPDATE_CHANGE_STATE, principalId,
@@ -203,7 +204,7 @@ public class ShareLinkService {
      */
     @Transactional(readOnly = true)
     public Optional<FileShareLink> usable(String token) {
-        LocalDateTime now = LocalDateTime.now(clock);
+        Instant now = Instant.now(clock);
         return hashOf(token)
                 .flatMap(shareLinkRepository::findByTokenHash)
                 .filter(link -> link.isUsableAt(now));
@@ -226,7 +227,7 @@ public class ShareLinkService {
      */
     @Transactional
     public Attempt download(String token, String password) {
-        LocalDateTime now = LocalDateTime.now(clock);
+        Instant now = Instant.now(clock);
         // Locked, not merely read: the count and the lock counter are written below, and two
         // downloads arriving together must not both pass a cap of one.
         FileShareLink link = hashOf(token)
@@ -244,7 +245,7 @@ public class ShareLinkService {
             if (!passwordEncoder.matches(password, link.getPasswordHash())) {
                 link.setFailedAttempts(link.getFailedAttempts() + 1);
                 if (link.getFailedAttempts() >= settings.maxFailedAttempts()) {
-                    link.setLockedUntil(now.plusMinutes(settings.lockMinutes()));
+                    link.setLockedUntil(now.plus(Duration.ofMinutes(settings.lockMinutes())));
                     link.setFailedAttempts(0);
                     shareLinkRepository.save(link);
                     logger.info("share link id={} locked until {} after {} wrong passwords", link.getId(), link.getLockedUntil(), settings.maxFailedAttempts());
@@ -270,14 +271,14 @@ public class ShareLinkService {
     /** The caller's own links, newest first. */
     @Transactional(readOnly = true)
     public List<ShareLinkDTO> listMine(int principalId) {
-        LocalDateTime now = LocalDateTime.now(clock);
+        Instant now = Instant.now(clock);
         return shareLinkRepository.findByCreator(principalId).stream().map(link -> ShareLinkDTO.of(link, null, now)).toList();
     }
 
     /** Every link, newest first - for whoever may revoke any. */
     @Transactional(readOnly = true)
     public List<ShareLinkDTO> listAll() {
-        LocalDateTime now = LocalDateTime.now(clock);
+        Instant now = Instant.now(clock);
         return shareLinkRepository.findAllWithDetails().stream().map(link -> ShareLinkDTO.of(link, null, now)).toList();
     }
 

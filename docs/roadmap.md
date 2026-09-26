@@ -11,7 +11,7 @@ working, and to depend only on what came before.
 | 0 | Safety net — CI, smoke test, containerised dev environment | — | **done** |
 | 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done**; the language level moved to 25 in 1.4.0, on its own, once every host ran a JDK 25 |
 | 2 | Architectural restructuring | 1 | **nearly done**: 2.1, 2.2, 2.3 (the two-phase write 1.6.1; per-feature mappers and the package re-slice by feature 2.1.0) and most of 2.4 (issues 8, 12, 13; 14 by Phase 6); left, **together**: one REST surface (issue 18) and coarse permission verbs (issue 19) - both rename permissions and need a migration of their rows |
-| 3 | PostgreSQL migration | 1, partly 2, **and 7** | three releases, the middle one runs on both databases (3.2); **done**: release A (1.7.0), release B (2.0.0), the cut-over (2026-09-26, production on PostgreSQL), release C (2.1.0, MySQL removed from the code; not yet deployed) |
+| 3 | PostgreSQL migration | 1, partly 2, **and 7** | three releases, the middle one runs on both databases (3.2); **done**: release A (1.7.0), release B (2.0.0), the cut-over (2026-09-26, production on PostgreSQL), release C (2.1.0, MySQL removed from the code; not yet deployed); then what only PostgreSQL has, `TIMESTAMPTZ` and trigram-indexed search (2.2.0, not yet deployed) |
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done**; the move it needs **done** (7.2 step 5d, 1.4.0); the drag handlers are what is left |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**; enforcement switched on per installation, after the grants exist |
@@ -38,8 +38,23 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: 2.1.0, written and tested, not yet deployed; production runs 2.0.0 on PostgreSQL since
-2026-09-26.** 2.1.0 is release C and three things beside it:
+**Now: 2.2.0 and 2.1.0, written and tested, neither deployed; production runs 2.0.0 on PostgreSQL
+since 2026-09-26.** 2.2.0 is the first release that uses what only PostgreSQL has (step 9):
+
+* **Times are instants** (issue 24): `V3.1` makes every timestamp `TIMESTAMPTZ(0)`, reading what
+  is there as Tehran time (checked against the bytes' modification times first), and the code holds
+  `Instant`. The zone the pages show and read times in is a setting,
+  `filemanagement.time-zone` (`Asia/Tehran`), never the server's - a host or container on UTC can
+  no longer shift new rows three and a half hours off the old ones.
+* **Searches served by indexes** (issue 21): `V3.2` adds `pg_trgm` and a trigram index on every
+  searched key, and the file list's and the public list's searches are rewritten to use them - 73
+  seconds to a few milliseconds on 205,000 files, with exactly the same results.
+
+**Deploy them in order**: 2.1.0 after 2026-10-10, when the rollback window closes; then 2.2.0,
+whose rollback is a database restore, since it changes the schema
+([deployment.md](deployment.md#upgrading-from-210-to-220--instants-and-indexed-search)).
+
+2.1.0 is release C and three things beside it:
 
 * **Release C** (step 8): MySQL is gone from the code - its driver, its Flyway module, its
   migrations `V1.0` to `V2.19`, the copy tool of the cut-over and the tests of the move between
@@ -55,9 +70,9 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 **Deploy 2.1.0 after 2026-10-10**, when the rollback window closes: until then the way back to
 MySQL is the 2.0.0 jar, which 2.1.0 no longer is ([deployment.md](deployment.md#upgrading-from-200-to-210--postgresql-only)).
-**After it**: the MySQL service is decommissioned; then what only PostgreSQL has - `TIMESTAMPTZ`,
-full-text search (issue 21) - and Phase 8 (controlled documents, forms on `jsonb`) and Phase 4 (S3).
-Issues 18 and 19 are one release of their own, whenever the permission model is taken up.
+**After it**: the MySQL service is decommissioned; then Phase 8 (controlled documents, forms on
+`jsonb`, full-text search of their contents) and Phase 4 (S3). Issues 18 and 19 are one release of
+their own, whenever the permission model is taken up.
 
 1.9.0 is role administration: ADMIN and USER defined in code and reset on every start without
 taking access from anyone (`FixedRole`), the role page in three tabs saved separately, permission
@@ -82,7 +97,7 @@ is therefore cheapest **before** B, where it is written once and lands in the `V
 | 6 | **Done (2.0.0, not yet deployed).** **Release B (2.0.0)**: migrations moved to `db/migration/mysql/`, the hand-written PostgreSQL baseline `V3.0` (with the `upper(column)` unique indexes, the `varchar_pattern_ops` index on `folder.path`, the seed rows), the PostgreSQL driver and Flyway module, the suite on both databases | the jar that can run on either, chosen by `FILEMANAGEMENT_DB_URL` - nothing is switched yet | [3.4](#34-release-b--the-dual-database-jar--done-200) |
 | 7 | **Done (2026-09-26).** Rehearsed on production-like data the same morning (3.6), then carried out in production. One thing went wrong, and it was the configuration: the datasource URL kept MySQL's port when its scheme was changed, and the driver's two errors did not say so - now in the runbook and in [deployment.md](deployment.md#when-it-will-not-start). **Rehearsal, then the cut-over** - the data copied, sequences set, verified, the service pointed at PostgreSQL | the one irreversible-feeling step; taken only when decided, with the rollback window announced | [3.5](#35-copying-the-data), [3.6](#36-production-runbook) |
 | 8 | **Done (2.1.0, not yet deployed).** **Release C (2.1.0)**: MySQL removed, after the rollback window | from here migrations are PostgreSQL-only | [3.2](#32-strategy-one-release-that-runs-on-both-then-a-cut-over-that-is-only-data) |
-| 9 | **After C**: `TIMESTAMPTZ`, full-text search (`tsvector`, issue 21), then Phase 4 (S3) | these use what only PostgreSQL has, and Phase 4 needs step 2 | [Phase 4](#phase-4--s3-as-a-storage-backend) |
+| 9 | **Done (2.2.0, not yet deployed): `TIMESTAMPTZ` and indexed search.** **After C**: `TIMESTAMPTZ`, full-text search (`tsvector`, issue 21), then Phase 4 (S3). As shipped, search is a trigram index on each folded key rather than `tsvector`, which matches words, not the fragments of names people type; full-text search belongs to the contents of documents, in Phase 8 | these use what only PostgreSQL has, and Phase 4 needs step 2 | [issue 24](issues.md#24-timestamps-are-hand-set-localdatetime--s2), [issue 21](issues.md#21-search-is-like-term-across-the-whole-graph--s2), [Phase 4](#phase-4--s3-as-a-storage-backend) |
 
 **Not tied to that order** - any time, and none of it touches the database migration:
 
@@ -230,7 +245,8 @@ Order matters — each step is independently shippable.
 
 * One `@ConfigurationProperties("filemanagement")` tree replacing all `@Value` injection (issue 27).
 * JPA auditing (`@CreatedDate`, `@CreatedBy`, …) replacing hand-set `LocalDateTime.now()` and the
-  `entityManager.getReference(User.class, …)` idiom (issues 23, 24).
+  `entityManager.getReference(User.class, …)` idiom (issues 23, 24). *The timestamps are
+  Hibernate's since the architecture pass, and instants in the installation's zone since 2.2.0.*
 * An `@Around` aspect or a servlet filter replacing the sixty copies of the logging preamble
   (issue 25), merged with `LoggingInterceptor`.
 * `ActionHistory` written by an aspect on annotated service methods rather than by hand.

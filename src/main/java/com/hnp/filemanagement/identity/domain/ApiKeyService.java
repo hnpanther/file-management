@@ -18,8 +18,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -75,15 +77,18 @@ public class ApiKeyService {
     private final FolderRepository folderRepository;
     private final UserRepository userRepository;
     private final ActionHistoryService actionHistoryService;
+    private final Clock clock;
 
     public ApiKeyService(ApiKeyRepository apiKeyRepository,
                          FolderRepository folderRepository,
                          UserRepository userRepository,
-                         ActionHistoryService actionHistoryService) {
+                         ActionHistoryService actionHistoryService,
+                         Clock clock) {
         this.apiKeyRepository = apiKeyRepository;
         this.folderRepository = folderRepository;
         this.userRepository = userRepository;
         this.actionHistoryService = actionHistoryService;
+        this.clock = clock;
     }
 
     // ------------------------------------------------------------------ creating
@@ -99,7 +104,7 @@ public class ApiKeyService {
                 () -> new ResourceNotFoundException("user with id=" + principalId + " doesn't exists"));
 
         LocalDate expiresOn = request.getExpiresAt();
-        if (expiresOn != null && !expiresOn.isAfter(LocalDate.now())) {
+        if (expiresOn != null && !expiresOn.isAfter(LocalDate.now(clock))) {
             // Refused rather than accepted and immediately useless: a key that expires today is
             // almost certainly a mistyped year, and it would fail with "expired" on first use.
             throw new InvalidDataException("expiry must be in the future, was " + expiresOn);
@@ -114,9 +119,8 @@ public class ApiKeyService {
         apiKey.setTitle(request.getTitle());
         apiKey.setDescription(request.getDescription());
         apiKey.setEnabled(1);
-        // End of day, so "expires on the 5th" means the 5th is still usable.
-        apiKey.setExpiresAt(expiresOn == null ? null : expiresOn.plusDays(1).atStartOfDay());
-        apiKey.setCreatedAt(LocalDateTime.now());
+        apiKey.setExpiresAt(endOf(expiresOn));
+        apiKey.setCreatedAt(Instant.now(clock));
         apiKey.setCreatedBy(creator);
         apiKey.replaceFolderGrants(grantsFor(apiKey, request.getFolderGrants()));
 
@@ -164,9 +168,8 @@ public class ApiKeyService {
 
         apiKey.setTitle(request.getTitle());
         apiKey.setDescription(request.getDescription());
-        apiKey.setExpiresAt(request.getExpiresAt() == null
-                ? null : request.getExpiresAt().plusDays(1).atStartOfDay());
-        apiKey.setUpdatedAt(LocalDateTime.now());
+        apiKey.setExpiresAt(endOf(request.getExpiresAt()));
+        apiKey.setUpdatedAt(Instant.now(clock));
         apiKey.setUpdatedBy(userRepository.findById(principalId).orElse(null));
         apiKey.replaceFolderGrants(grantsFor(apiKey, request.getFolderGrants()));
 
@@ -184,9 +187,10 @@ public class ApiKeyService {
         if (apiKey.getRevokedAt() != null) {
             return;
         }
-        apiKey.setRevokedAt(LocalDateTime.now());
+        Instant now = Instant.now(clock);
+        apiKey.setRevokedAt(now);
         apiKey.setEnabled(0);
-        apiKey.setUpdatedAt(LocalDateTime.now());
+        apiKey.setUpdatedAt(now);
 
         actionHistoryService.saveActionHistory(EntityEnum.ApiKey, id, ActionEnum.UPDATE_VALUES,
                 principalId, "REVOKE API_KEY", "REVOKE API_KEY, keyId=" + apiKey.getKeyId());
@@ -200,7 +204,7 @@ public class ApiKeyService {
             throw new InvalidDataException("a revoked key cannot be enabled again, id=" + id);
         }
         apiKey.setEnabled(enabled ? 1 : 0);
-        apiKey.setUpdatedAt(LocalDateTime.now());
+        apiKey.setUpdatedAt(Instant.now(clock));
 
         actionHistoryService.saveActionHistory(EntityEnum.ApiKey, id, ActionEnum.UPDATE_VALUES,
                 principalId, "CHANGE API_KEY ENABLED",
@@ -242,7 +246,7 @@ public class ApiKeyService {
             return Optional.empty();
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now(clock);
         if (!apiKey.isUsableAt(now)) {
             return Optional.empty();
         }
@@ -259,14 +263,23 @@ public class ApiKeyService {
      * the row and the object would disagree for the rest of the transaction, which is a trap for
      * whatever reads it next rather than a saving.
      */
-    private void stampLastUsed(ApiKey apiKey, LocalDateTime now) {
-        LocalDateTime last = apiKey.getLastUsedAt();
-        if (last == null || last.isBefore(now.minusMinutes(LAST_USED_STAMP_MINUTES))) {
+    private void stampLastUsed(ApiKey apiKey, Instant now) {
+        Instant last = apiKey.getLastUsedAt();
+        if (last == null || last.isBefore(now.minus(Duration.ofMinutes(LAST_USED_STAMP_MINUTES)))) {
             apiKey.setLastUsedAt(now);
         }
     }
 
     // ------------------------------------------------------------------ shared pieces
+
+    /**
+     * The instant a key that "expires on" this date stops working: the start of the next day, in
+     * the installation's time zone ({@code filemanagement.time-zone}), so the date itself is still
+     * usable to its last minute there - whatever zone the server runs in.
+     */
+    private Instant endOf(LocalDate expiresOn) {
+        return expiresOn == null ? null : expiresOn.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
+    }
 
     private ApiKey requireKey(int id) {
         return apiKeyRepository.findById(id).orElseThrow(
@@ -315,15 +328,15 @@ public class ApiKeyService {
         dto.setKeyId(apiKey.getKeyId());
         dto.setTitle(apiKey.getTitle());
         dto.setDescription(apiKey.getDescription());
-        // Back to a date for the form; the column holds the exclusive end of that day.
+        // Back to a date for the form; the column holds the exclusive end of that day (endOf).
         dto.setExpiresAt(apiKey.getExpiresAt() == null
-                ? null : apiKey.getExpiresAt().toLocalDate().minusDays(1));
+                ? null : LocalDate.ofInstant(apiKey.getExpiresAt(), clock.getZone()).minusDays(1));
         dto.setEnabled(apiKey.getEnabled());
         dto.setRevokedAt(apiKey.getRevokedAt());
         dto.setLastUsedAt(apiKey.getLastUsedAt());
         dto.setCreatedAt(apiKey.getCreatedAt());
         dto.setCreatedBy(apiKey.getCreatedBy() == null ? null : apiKey.getCreatedBy().getUsername());
-        dto.setUsable(apiKey.isUsableAt(LocalDateTime.now()));
+        dto.setUsable(apiKey.isUsableAt(Instant.now(clock)));
         return dto;
     }
 

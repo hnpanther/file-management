@@ -15,8 +15,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.TestPropertySource;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,6 +47,8 @@ class ApiKeyServiceTest extends DatabaseSupport {
     private FolderRepository folderRepository;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private Clock clock;
 
     private int principalId;
     private int rootFolderId;
@@ -84,9 +89,9 @@ class ApiKeyServiceTest extends DatabaseSupport {
     @Test
     @DisplayName("an expiry in the past is refused rather than stored and immediately useless")
     void anExpiryThatHasAlreadyPassedIsRefused() {
-        assertThatThrownBy(() -> underTest.create(request("stale", LocalDate.now().minusDays(1)), principalId))
+        assertThatThrownBy(() -> underTest.create(request("stale", LocalDate.now(clock).minusDays(1)), principalId))
                 .isInstanceOf(InvalidDataException.class);
-        assertThatThrownBy(() -> underTest.create(request("today", LocalDate.now()), principalId))
+        assertThatThrownBy(() -> underTest.create(request("today", LocalDate.now(clock)), principalId))
                 .isInstanceOf(InvalidDataException.class);
     }
 
@@ -103,13 +108,30 @@ class ApiKeyServiceTest extends DatabaseSupport {
     @Test
     @DisplayName("the expiry date is inclusive")
     void theExpiryDayItselfIsStillUsable() {
-        LocalDate tomorrow = LocalDate.now().plusDays(1);
+        LocalDate tomorrow = LocalDate.now(clock).plusDays(1);
 
         int id = underTest.create(request("until tomorrow", tomorrow), principalId).id();
 
         ApiKey stored = apiKeyRepository.findById(id).orElseThrow();
-        assertThat(stored.isUsableAt(tomorrow.atTime(23, 59))).isTrue();
-        assertThat(stored.isUsableAt(tomorrow.plusDays(1).atStartOfDay())).isFalse();
+        assertThat(stored.isUsableAt(tomorrow.atTime(23, 59).atZone(clock.getZone()).toInstant())).isTrue();
+        assertThat(stored.isUsableAt(tomorrow.plusDays(1).atStartOfDay(clock.getZone()).toInstant())).isFalse();
+    }
+
+    /**
+     * The day a key expires on is a day in Tehran (filemanagement.time-zone), not on the server's
+     * clock: a server left on UTC would otherwise end it three and a half hours late (issue 24).
+     */
+    @Test
+    @DisplayName("the expiry day ends at midnight in the installation's zone, and reads back as the same day")
+    void theExpiryDayIsADayInTheInstallationsZone() {
+        assertThat(clock.getZone()).isEqualTo(ZoneId.of("Asia/Tehran"));
+        LocalDate tomorrow = LocalDate.now(clock).plusDays(1);
+
+        int id = underTest.create(request("zoned", tomorrow), principalId).id();
+
+        assertThat(apiKeyRepository.findById(id).orElseThrow().getExpiresAt())
+                .isEqualTo(tomorrow.plusDays(1).atStartOfDay().atOffset(java.time.ZoneOffset.ofHoursMinutes(3, 30)).toInstant());
+        assertThat(underTest.getById(id).getExpiresAt()).as("the form shows the day that was typed").isEqualTo(tomorrow);
     }
 
     // ---------------------------------------------------------------- authenticating
@@ -182,10 +204,10 @@ class ApiKeyServiceTest extends DatabaseSupport {
     @Test
     @DisplayName("an expired key stops authenticating without anybody doing anything")
     void anExpiredKeyStopsWorking() {
-        ApiKeyCreatedDTO created = underTest.create(request("short lived", LocalDate.now().plusDays(1)), principalId);
+        ApiKeyCreatedDTO created = underTest.create(request("short lived", LocalDate.now(clock).plusDays(1)), principalId);
 
         ApiKey stored = apiKeyRepository.findById(created.id()).orElseThrow();
-        stored.setExpiresAt(LocalDateTime.now().minusMinutes(1));
+        stored.setExpiresAt(Instant.now(clock).minus(Duration.ofMinutes(1)));
 
         assertThat(underTest.authenticate(created.credential())).isEmpty();
     }

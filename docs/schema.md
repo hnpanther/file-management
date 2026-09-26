@@ -15,18 +15,20 @@ committed here differs. When a migration changes the schema, regenerate and comm
 ```
 
 **Where it differs from the MySQL the application ran on until 2026-09-26** - so that nothing below
-reads as an accident: timestamps are `timestamp(0)`, keeping whole seconds as MySQL's `DATETIME`
-did; ids are identities; the one flag is a `boolean`; a name MySQL's collation compared without
+reads as an accident: timestamps keep whole seconds, as MySQL's `DATETIME` did, and are
+`timestamptz(0)` - instants - since `V3.1` (2.2.0, issue 24); ids are identities; the one flag is a `boolean`; a name MySQL's collation compared without
 case is unique on `upper(column)` (`uq_user_username`, `uq_user_email`, `uq_role_role_name`,
 `uq_tag_group_name`, `uq_tag_name_per_group`, `uq_folder_sibling_name`,
 `uq_file_info_name_per_folder`, `uq_file_details_version_format`); `ix_folder_path` is
-`varchar_pattern_ops`, for prefix `LIKE`; and every foreign key has its own index, named after the
-constraint (`fk_...`), because PostgreSQL makes none by itself.
+`varchar_pattern_ops`, for prefix `LIKE`; every foreign key has its own index, named after the
+constraint (`fk_...`), because PostgreSQL makes none by itself; and each searched key has a
+trigram GIN index on `replace(column, ' ', '')` (`ix_*_trgm`, `V3.2`, issue 21), the expression the
+searches compare - the extension `pg_trgm` is part of the schema.
 
 Everything above the marker is written by hand and kept short: what the tables are *for* is in
 [arch.md](arch.md#4-the-domain-model), and why each one is shaped the way it is lives in the
-comment block at the top of `V3.0` and of the MySQL migration that first created it (in git
-history since release C).
+comment block at the top of `V3.0`, of the `V3.x` that changed it, and of the MySQL migration that
+first created it (in git history since release C).
 
 ## Creating the database and its user
 
@@ -110,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.2`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -126,7 +128,7 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 | `user_id` | `integer` | no |  |  |
 | `enabled` | `integer` | no |  |  |
 | `state` | `integer` | no |  |  |
-| `created_at` | `timestamp(0)` | no |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
 
 * **primary key** `id`
 * **foreign key** `fk_action_history_user_id` `user_id` → `app_user` (`id`)
@@ -143,11 +145,11 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 | `title` | `varchar(100)` | no |  |  |
 | `description` | `varchar(500)` | yes |  |  |
 | `enabled` | `integer` | no | `1` |  |
-| `expires_at` | `timestamp(0)` | yes |  |  |
-| `revoked_at` | `timestamp(0)` | yes |  |  |
-| `last_used_at` | `timestamp(0)` | yes |  |  |
-| `created_at` | `timestamp(0)` | no |  |  |
-| `updated_at` | `timestamp(0)` | yes |  |  |
+| `expires_at` | `timestamptz(0)` | yes |  |  |
+| `revoked_at` | `timestamptz(0)` | yes |  |  |
+| `last_used_at` | `timestamptz(0)` | yes |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+| `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | no |  |  |
 | `updated_by` | `integer` | yes |  |  |
 
@@ -179,7 +181,7 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 | `id` | `integer` | no |  | identity |
 | `setting_key` | `varchar(100)` | no |  |  |
 | `setting_value` | `varchar(500)` | no |  |  |
-| `updated_at` | `timestamp(0)` | yes |  |  |
+| `updated_at` | `timestamptz(0)` | yes |  |  |
 | `updated_by` | `integer` | yes |  |  |
 
 * **primary key** `id`
@@ -200,8 +202,8 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 | `password` | `varchar(100)` | no |  |  |
 | `first_name` | `varchar(250)` | no |  |  |
 | `last_name` | `varchar(250)` | no |  |  |
-| `created_at` | `timestamp(0)` | no |  |  |
-| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+| `updated_at` | `timestamptz(0)` | yes |  |  |
 | `login_type` | `integer` | no | `0` |  |
 | `enabled` | `integer` | no |  |  |
 | `state` | `integer` | no |  |  |
@@ -225,8 +227,8 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 | `signature_offset` | `integer` | no | `0` |  |
 | `text_only` | `boolean` | no | `false` |  |
 | `description` | `varchar(500)` | yes |  |  |
-| `created_at` | `timestamp(0)` | no |  |  |
-| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+| `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | yes |  |  |
 | `updated_by` | `integer` | yes |  |  |
 
@@ -259,8 +261,8 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 | `checksum_sha256` | `varchar(64)` | yes |  |  |
 | `enabled` | `integer` | no |  |  |
 | `state` | `integer` | no |  |  |
-| `created_at` | `timestamp(0)` | no |  |  |
-| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+| `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | no |  |  |
 | `updated_by` | `integer` | yes |  |  |
 
@@ -273,6 +275,8 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 * **index** `fk_file_details_created_by_user` (`created_by`)
 * **index** `fk_file_details_updated_by_user` (`updated_by`)
 * **index** `ix_file_details_file_info_version` (`file_info_id`, `version`)
+* **index** `ix_file_details_search_description_trgm` (`replace(search_description, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
+* **index** `ix_file_details_search_name_trgm` (`replace(search_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 * **index** `ix_file_details_state` (`state`)
 
 ### `file_info`
@@ -292,8 +296,8 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 | `folder_id` | `integer` | no |  |  |
 | `enabled` | `integer` | no |  |  |
 | `state` | `integer` | no |  |  |
-| `created_at` | `timestamp(0)` | no |  |  |
-| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+| `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | no |  |  |
 | `updated_by` | `integer` | yes |  |  |
 
@@ -307,6 +311,8 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 * **index** `fk_file_info_updated_by_user` (`updated_by`)
 * **index** `ix_file_info_created_at` (`created_at`)
 * **index** `ix_file_info_folder` (`folder_id`)
+* **index** `ix_file_info_search_description_trgm` (`replace(search_description, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
+* **index** `ix_file_info_search_name_trgm` (`replace(search_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 * **index** `ix_file_info_state` (`state`)
 
 ### `file_share_link`
@@ -316,14 +322,14 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 | `id` | `integer` | no |  | identity |
 | `token_hash` | `varchar(64)` | no |  |  |
 | `file_details_id` | `integer` | no |  |  |
-| `expires_at` | `timestamp(0)` | no |  |  |
+| `expires_at` | `timestamptz(0)` | no |  |  |
 | `password_hash` | `varchar(100)` | yes |  |  |
 | `max_downloads` | `integer` | yes |  |  |
 | `download_count` | `integer` | no | `0` |  |
 | `failed_attempts` | `integer` | no | `0` |  |
-| `locked_until` | `timestamp(0)` | yes |  |  |
-| `revoked_at` | `timestamp(0)` | yes |  |  |
-| `created_at` | `timestamp(0)` | no |  |  |
+| `locked_until` | `timestamptz(0)` | yes |  |  |
+| `revoked_at` | `timestamptz(0)` | yes |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
 | `created_by` | `integer` | no |  |  |
 
 * **primary key** `id`
@@ -339,7 +345,7 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 |---|---|---|---|---|
 | `id` | `integer` | no |  | identity |
 | `storage_key` | `varchar(1000)` | no |  |  |
-| `created_at` | `timestamp(0)` | no |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
 
 * **primary key** `id`
 * **index** `ix_file_storage_write_created_at` (`created_at`)
@@ -374,8 +380,8 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 | `quota_bytes` | `bigint` | yes |  |  |
 | `enabled` | `integer` | no |  |  |
 | `state` | `integer` | no |  |  |
-| `created_at` | `timestamp(0)` | no |  |  |
-| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+| `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | yes |  |  |
 | `updated_by` | `integer` | yes |  |  |
 
@@ -392,6 +398,8 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 * **index** `fk_folder_updated_by_user` (`updated_by`)
 * **index** `ix_folder_parent` (`parent_id`)
 * **index** `ix_folder_path` (`path`, for prefix `LIKE` (`varchar_pattern_ops`))
+* **index** `ix_folder_search_display_name_trgm` (`replace(search_display_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
+* **index** `ix_folder_search_name_trgm` (`replace(search_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 
 ### `permission`
 
@@ -451,8 +459,8 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 | `name` | `varchar(100)` | no |  |  |
 | `title` | `varchar(200)` | no |  |  |
 | `enabled` | `integer` | no |  |  |
-| `created_at` | `timestamp(0)` | no |  |  |
-| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+| `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | yes |  |  |
 | `updated_by` | `integer` | yes |  |  |
 
@@ -472,8 +480,8 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 | `name` | `varchar(100)` | no |  |  |
 | `title` | `varchar(200)` | no |  |  |
 | `enabled` | `integer` | no |  |  |
-| `created_at` | `timestamp(0)` | no |  |  |
-| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+| `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | yes |  |  |
 | `updated_by` | `integer` | yes |  |  |
 
@@ -490,8 +498,8 @@ _As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is
 |---|---|---|---|---|
 | `id` | `integer` | no |  | identity |
 | `role_id` | `integer` | yes |  |  |
-| `created_at` | `timestamp(0)` | no |  |  |
-| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+| `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | yes |  |  |
 | `updated_by` | `integer` | yes |  |  |
 

@@ -143,7 +143,7 @@ public class ObjectStoreApi {
                 .header("X-Content-Type-Options", "nosniff")
                 .header(HttpHeaders.ETAG, metadata.eTag())
                 .header("x-fm-version", String.valueOf(metadata.version()))
-                .lastModified(metadata.lastModified().atZone(java.time.ZoneId.systemDefault()))
+                .lastModified(metadata.lastModified())
                 .body(download.getResource());
     }
 
@@ -179,7 +179,7 @@ public class ObjectStoreApi {
                 .contentLength(metadata.size())
                 .header(HttpHeaders.ETAG, metadata.eTag())
                 .header("x-fm-version", String.valueOf(metadata.version()))
-                .lastModified(metadata.lastModified().atZone(java.time.ZoneId.systemDefault()))
+                .lastModified(metadata.lastModified())
                 .build();
     }
 

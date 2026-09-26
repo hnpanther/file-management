@@ -7,7 +7,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * The record of a byte write that is under way ({@code V2.13}, roadmap 2.3).
@@ -39,7 +39,7 @@ public class StorageWriteJournal {
     public Integer begin(String storageKey) {
         FileStorageWrite write = new FileStorageWrite();
         write.setStorageKey(storageKey);
-        write.setCreatedAt(LocalDateTime.now(clock));
+        write.setCreatedAt(Instant.now(clock));
         return repository.save(write).getId();
     }
 

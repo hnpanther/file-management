@@ -1,6 +1,6 @@
 package com.hnp.filemanagement.folder.domain;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -98,7 +98,7 @@ public record FolderContentDTO(
      * @param latestFormat that revision's extension, so the button can say what it hands out
      */
     public record FileEntry(int id, String name, String title, int lastVersion,
-                            List<String> formats, long size, LocalDateTime createdAt,
+                            List<String> formats, long size, Instant createdAt,
                             Integer latestFileDetailsId, String latestFormat) {}
 
     /** Which page of {@link FolderContentDTO#files} came back. */

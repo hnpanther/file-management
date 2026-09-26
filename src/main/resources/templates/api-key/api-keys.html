@@ -98,7 +98,7 @@
                         <td class="text-xs" th:text="${k.expiresAt != null} ? ${#temporals.format(k.expiresAt, 'yyyy-MM-dd')} : ''">
                             <span th:if="${k.expiresAt == null}" th:text="#{apiKey.noExpiry}">بدون انقضا</span>
                         </td>
-                        <td class="text-xs" th:text="${k.lastUsedAt != null} ? ${#temporals.format(k.lastUsedAt, 'yyyy-MM-dd HH:mm')} : '—'"></td>
+                        <td class="text-xs" th:text="${k.lastUsedAt != null} ? ${#temporals.format(@jalali.local(k.lastUsedAt), 'yyyy-MM-dd HH:mm')} : '—'"></td>
                         <td class="technical text-xs" dir="ltr" th:text="${k.createdBy}"></td>
                         <td>
                             <div class="btn-group">

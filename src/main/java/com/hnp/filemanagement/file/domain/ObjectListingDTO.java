@@ -1,6 +1,6 @@
 package com.hnp.filemanagement.file.domain;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -33,6 +33,6 @@ public record ObjectListingDTO(String bucket,
      *             size and version, quoted — stable for an unchanged object, different when it
      *             changes, and never presented as a content hash
      */
-    public record ObjectSummary(String key, long size, String eTag, LocalDateTime lastModified) {
+    public record ObjectSummary(String key, long size, String eTag, Instant lastModified) {
     }
 }

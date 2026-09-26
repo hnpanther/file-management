@@ -1,7 +1,7 @@
 package com.hnp.filemanagement.file.domain;
 
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * A share link as the pages and the JSON show it (roadmap 10.5).
@@ -20,8 +20,8 @@ import java.time.LocalDateTime;
  */
 public record ShareLinkDTO(int id, String token, String path, int fileDetailsId, int fileInfoId,
                            String fileName, int version, Status status, boolean passwordProtected,
-                           Integer maxDownloads, int downloadCount, LocalDateTime createdAt,
-                           LocalDateTime expiresAt, LocalDateTime revokedAt, String createdBy) {
+                           Integer maxDownloads, int downloadCount, Instant createdAt,
+                           Instant expiresAt, Instant revokedAt, String createdBy) {
 
     public enum Status { ACTIVE, EXPIRED, REVOKED, EXHAUSTED }
 
@@ -31,7 +31,7 @@ public record ShareLinkDTO(int id, String token, String path, int fileDetailsId,
         return "ShareLinkDTO[id=" + id + ", fileDetailsId=" + fileDetailsId + ", status=" + status + "]";
     }
 
-    public static ShareLinkDTO of(FileShareLink link, String token, LocalDateTime now) {
+    public static ShareLinkDTO of(FileShareLink link, String token, Instant now) {
         Status status = link.isRevoked() ? Status.REVOKED
                 : link.isExhausted() ? Status.EXHAUSTED
                 : link.isExpiredAt(now) ? Status.EXPIRED

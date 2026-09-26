@@ -807,15 +807,21 @@ public class FileService {
         Optional<Set<Integer>> readableFolders =
                 folderAccessService.readableFolderIds(folderAccessService.accessFor(principalId));
 
+        // An empty key - no search, or one of only spaces and marks - lists everything, through a
+        // query that does not search at all (issue 21).
+        String key = SearchKey.forSearch(search);
         Page<FileInfo> page;
         if (readableFolders.isEmpty()) {
-            page = fileInfoRepository.search(SearchKey.forSearch(search), pageable);
+            page = key.isEmpty()
+                    ? fileInfoRepository.findPageWithFolder(pageable)
+                    : fileInfoRepository.search(key, pageable);
         } else if (readableFolders.get().isEmpty()) {
             // Granted nothing: an empty page, without asking the database for `IN ()`.
             page = Page.empty(pageable);
         } else {
-            page = fileInfoRepository.searchWithinFolders(
-                    SearchKey.forSearch(search), readableFolders.get(), pageable);
+            page = key.isEmpty()
+                    ? fileInfoRepository.findPageWithinFolders(readableFolders.get(), pageable)
+                    : fileInfoRepository.searchWithinFolders(key, readableFolders.get(), pageable);
         }
 
         // The ancestors of every folder on the page in one query, so the conversion below adds no
@@ -830,7 +836,10 @@ public class FileService {
     public PageResponse<PublicFileDetailsDTO> getPagePublicFiles(int pageSize, int pageNumber, String search) {
 
         Pageable pageable = PageRequest.of(pageNumber, pageSize, NEWEST_FIRST);
-        Page<FileDetails> page = fileDetailsRepository.searchPublicFiles(SearchKey.forSearch(search), pageable);
+        String key = SearchKey.forSearch(search);
+        Page<FileDetails> page = key.isEmpty()
+                ? fileDetailsRepository.findPublicFiles(pageable)
+                : fileDetailsRepository.searchPublicFiles(key, pageable);
 
         Map<Integer, List<Folder>> ancestry = folderService.ancestryOf(
                 page.getContent().stream().map(d -> d.getFileInfo().getFolder()).toList());

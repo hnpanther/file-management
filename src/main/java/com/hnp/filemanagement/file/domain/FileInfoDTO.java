@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import com.hnp.filemanagement.folder.domain.FolderContentDTO;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +50,7 @@ public class FileInfoDTO {
 
     private Integer state;
     private Integer enabled;
-    private LocalDateTime createdAt;
+    private Instant createdAt;
     private String createdBy;
 
     private List<FileDetailsDTO> fileDetailsDTOS = new ArrayList<>();

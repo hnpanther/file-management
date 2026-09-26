@@ -30,7 +30,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class MappersTest {
 
-    private static final LocalDateTime WHEN = LocalDateTime.of(2026, 9, 26, 10, 30, 15);
+    private static final Instant WHEN = Instant.parse("2026-09-26T07:00:15Z");
 
     @Nested
     class Users {

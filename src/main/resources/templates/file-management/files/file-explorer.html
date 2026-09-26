@@ -1303,8 +1303,9 @@
                     return "—";
                 }
                 try {
+                    // The installation's zone, not the browser's: 23:30 UTC is already tomorrow in Tehran.
                     return new Intl.DateTimeFormat("fa-IR", {
-                        year: "numeric", month: "long", day: "numeric"
+                        year: "numeric", month: "long", day: "numeric", timeZone: window.appTimeZone()
                     }).format(new Date(value));
                 } catch (e) {
                     return String(value).slice(0, 10);

@@ -7,7 +7,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * A byte write that is under way ({@code V2.13}, roadmap 2.3, {@code docs/issues.md} issue 3).
@@ -36,5 +36,5 @@ public class FileStorageWrite extends AbstractEntity {
      * because the sweeper's only question is how old this is and a test has to be able to move it.
      */
     @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 }

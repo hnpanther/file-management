@@ -2,7 +2,7 @@ package com.hnp.filemanagement.folder.domain;
 
 import com.hnp.filemanagement.folder.domain.FolderContentDTO.FolderRef;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -38,8 +38,8 @@ public record FolderDetailsDTO(
         long totalFolders,
         Long quotaBytes,
         long usedBytes,
-        LocalDateTime createdAt,
+        Instant createdAt,
         String createdBy,
-        LocalDateTime updatedAt,
+        Instant updatedAt,
         String updatedBy) {
 }
