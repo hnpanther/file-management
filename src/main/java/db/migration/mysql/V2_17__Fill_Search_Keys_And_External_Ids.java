@@ -1,4 +1,4 @@
-package db.migration;
+package db.migration.mysql;
 
 import com.hnp.filemanagement.util.SearchKey;
 import org.flywaydb.core.api.migration.BaseJavaMigration;

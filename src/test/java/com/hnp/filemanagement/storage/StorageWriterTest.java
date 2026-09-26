@@ -2,7 +2,7 @@ package com.hnp.filemanagement.storage;
 
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.repository.FileStorageWriteRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * clean up after themselves.
  */
 @SpringBootTest
-class StorageWriterTest extends MySqlSupport {
+class StorageWriterTest extends DatabaseSupport {
 
     private static final String KEY = "files/s000/1/report/v1/report.txt";
 

@@ -11,7 +11,7 @@ working, and to depend only on what came before.
 | 0 | Safety net — CI, smoke test, containerised dev environment | — | **done** |
 | 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done**; the language level moved to 25 in 1.4.0, on its own, once every host ran a JDK 25 |
 | 2 | Architectural restructuring | 1 | **partly done**: 2.1, 2.2, the two-phase write of 2.3 and most of 2.4 (issues 8, 12, 13; 14 by Phase 6); left: the package re-slice and one REST surface (issue 18), per-feature mappers (issue 29), coarse permission verbs (issue 19) - none of them needed by Phase 3 |
-| 3 | PostgreSQL migration | 1, partly 2, **and 7** | three releases, the middle one runs on both databases (3.2); **release A done** (1.7.0), B and C to come |
+| 3 | PostgreSQL migration | 1, partly 2, **and 7** | three releases, the middle one runs on both databases (3.2); **release A done** (1.7.0, in production), **release B done** (2.0.0, not yet deployed); the cut-over and C to come |
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done**; the move it needs **done** (7.2 step 5d, 1.4.0); the drag handlers are what is left |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**; enforcement switched on per installation, after the grants exist |
@@ -38,26 +38,23 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: 1.9.0, written and tested, not yet deployed** - and neither were 1.7.0 and 1.8.0, so the
-next deployment takes all three
-([deployment.md](deployment.md#upgrading-from-180-to-190--fixed-roles-a-tabbed-role-page-and-a-folder-check-on-four-writes)).
+**Now: 2.0.0, PostgreSQL release B, written and tested, not yet deployed; 1.9.0 is in production**
+(with 1.7.0 and 1.8.0, deployed together and running well). 2.0.0 is the jar that runs on either
+database, chosen by `FILEMANAGEMENT_DB_URL` alone ([3.4](#34-release-b--the-dual-database-jar--done-200)):
+the MySQL migrations moved to `db/migration/mysql/`, the PostgreSQL baseline `V3.0` beside them,
+the whole suite run against both, a schema parity test holding the two to each other, and the data
+copy of the cut-over night ([3.5](#35-copying-the-data)). **On the MySQL it is deployed to, it
+changes nothing** - no migration, no behaviour; the rollback is the 1.9.0 jar
+([deployment.md](deployment.md#upgrading-from-190-to-200--able-to-run-on-postgresql-still-on-mysql)).
+The rehearsal and the cut-over (step 7) come after 2.0.0 has run in production for a while.
+
 1.9.0 is role administration: ADMIN and USER defined in code and reset on every start without
 taking access from anyone (`FixedRole`), the role page in three tabs saved separately, permission
 groups on it as a shortcut (issue 19 eased, not fixed), copying a role, usernames changed by an
-administrator only, and a folder check on the four file writes that lacked one (issue 90). A
-review of the whole codebase went into it as well: administrators' accounts managed by
-administrators only (issue 91), no password in the log (issue 92), bounded list pages without a
-query per row (issue 93), and three permissions nothing checked removed by the one migration,
-`V2.19` (issue 94).
-1.7.0 is PostgreSQL release A
-([3.3](#33-release-a--what-to-neutralise-on-mysql-first--done-170)) - `app_user`, a 64-bit
-`file_size`, every name compared through `UPPER`, an empty search passed as `''` - together with
-the download-name fix (issue 85), "show in the explorer" from the file page and after an upload,
-new files private unless the upload asks to publish them, and upload refusals that say why
-(issue 89). 1.8.0 is steps 2 and 4 of the table below: a SHA-256 for every revision, an external
-id for every file and revision, and search keys that fold Persian the same way on either
-database. Release A's two migrations have already run once against a development database
-holding real rows: all twenty-two foreign keys followed the table, and no row was lost.
+administrator only, and a folder check on the four file writes that lacked one (issue 90), with a
+review of the whole codebase (issues 91 to 94). 1.7.0 is PostgreSQL release A
+([3.3](#33-release-a--what-to-neutralise-on-mysql-first--done-170)); 1.8.0 is steps 2 and 4 of
+the table below.
 
 **The order from here**, and why each step is where it is. One rule sets most of it: from
 release B until release C every migration has to be written twice, once per database, and in the
@@ -66,12 +63,12 @@ is therefore cheapest **before** B, where it is written once and lands in the `V
 
 | # | Step | Why it is here | Where it is specified |
 |---|---|---|---|
-| 1 | **Deploy 1.9.0** (with 1.7.0 and 1.8.0 in it) and let it run on MySQL for a while - after checking what the USER role holds today, and that folder access is on | the point of release A is that anything it broke shows up while there is no PostgreSQL in the picture; the rollback is a restore, not the old jar. The checksum backfill runs once after the first start and reports what it could not read | [deployment.md, 1.6.1 → 1.7.0](deployment.md#upgrading-from-161-to-170--ready-for-postgresql-still-on-mysql), [1.7.0 → 1.8.0](deployment.md#upgrading-from-170-to-180--checksums-external-ids-and-persian-search) |
+| 1 | **Done (1.9.0 in production).** **Deploy 1.9.0** (with 1.7.0 and 1.8.0 in it) and let it run on MySQL for a while - after checking what the USER role holds today, and that folder access is on | the point of release A is that anything it broke shows up while there is no PostgreSQL in the picture; the rollback is a restore, not the old jar. The checksum backfill runs once after the first start and reports what it could not read | [deployment.md, 1.6.1 → 1.7.0](deployment.md#upgrading-from-161-to-170--ready-for-postgresql-still-on-mysql), [1.7.0 → 1.8.0](deployment.md#upgrading-from-170-to-180--checksums-external-ids-and-persian-search) |
 | 2 | **Done (1.8.0).** **Real checksums and an external id**: a `checksum_sha256` column (`V2.16`), written on every upload, and a one-off job that reads every existing file and fills it in; in the same migration, `file_details.hash_id` - a random UUID despite its name - renamed `external_id`, and an `external_id` UUID added to `file_info`, so a client can name a file and a revision by something that is neither guessable nor a database row number. The v1 API takes either id and answers both, until the PL/SQL clients have moved over; the integer ids stay for the pages | the checksum: Phase 4 cannot verify that a file survived the copy to S3 without it, and 4.3 assigns the backfill to Phase 3. `StoredBlob` has computed the SHA-256 of every write since 1.6.0; only the column and the backfill are missing. The external id: sequential ids let anyone count the files and walk `/files/public-download/{id}`, and tie every client to this database's numbering. It is a second layer, never the access control - that stays the permission and the folder grant. Both are schema changes, so before B they are one migration instead of two | [issue 7](issues.md#7-hash_id-is-not-a-hash--s2), [4.3](#43-migrating-existing-bytes) |
-| 3 | **Restore CI**: one workflow, `./mvnw verify` on JDK 25 with a Docker daemon | release B's plan is "CI runs the suite twice"; there is no CI to run it once. Without it, every change in the dual period has to be tested by hand on both databases | [issue 38](issues.md#38-no-ci--s1), [issue 83](issues.md#83-the-docs-describe-a-ci-workflow-that-was-removed--s3) |
+| 3 | **Deferred to the end, by decision** (2026-09-26). **Restore CI**: one workflow, `./mvnw verify` on JDK 25 with a Docker daemon, and the same with `-Ddb=postgresql` | release B's plan was "CI runs the suite twice". Until there is CI, every change in the dual period is tested by hand on both databases - `./mvnw verify` and `./mvnw verify -Ddb=postgresql` - before it is committed; 2.0.0 was | [issue 38](issues.md#38-no-ci--s1), [issue 83](issues.md#83-the-docs-describe-a-ci-workflow-that-was-removed--s3) |
 | 4 | **Done (1.8.0).** **Digit, accent and half-space folding**: decided for a normalised copy of each searched column - `search_name`, `search_description`, `search_display_name` on `file_info`, `file_details` and `folder`, written by the entities through `SearchKey` and filled for existing rows by the Java migration `V2_17`. Persian and Arabic digits as ASCII, the half-space and the marks dropped, Arabic `ي`/`ك` as Persian (which MySQL never did), upper case; a search also drops the spaces. A file or folder name that folds to a sibling's is refused as a duplicate | MySQL found `۱۴۰۳` when `1403` was typed and treated a name with and without the half-space as one; PostgreSQL would not. A schema change, so before B | [issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2) |
 | 5 | **Only if planned soon**: coarse permission verbs | it migrates the `permission` rows, so before B or after C, never in between | [issue 19](issues.md#19-permissionenum-is-a-hardcoded-list-of-endpoint-names--s2), [2.4](#24-authorization) |
-| 6 | **Release B (2.0.0)**: migrations moved to `db/migration/mysql/`, the hand-written PostgreSQL baseline `V3.0` (with the `upper(column)` unique indexes, the `varchar_pattern_ops` index on `folder.path`, the seed rows), the PostgreSQL driver and Flyway module, the suite on both databases | the jar that can run on either, chosen by `FILEMANAGEMENT_DB_URL` - nothing is switched yet | [3.4](#34-release-b--the-dual-database-jar) |
+| 6 | **Done (2.0.0, not yet deployed).** **Release B (2.0.0)**: migrations moved to `db/migration/mysql/`, the hand-written PostgreSQL baseline `V3.0` (with the `upper(column)` unique indexes, the `varchar_pattern_ops` index on `folder.path`, the seed rows), the PostgreSQL driver and Flyway module, the suite on both databases | the jar that can run on either, chosen by `FILEMANAGEMENT_DB_URL` - nothing is switched yet | [3.4](#34-release-b--the-dual-database-jar--done-200) |
 | 7 | **Rehearsal, then the cut-over** - the data copied, sequences set, verified, the service pointed at PostgreSQL | the one irreversible-feeling step; taken only when decided, with the rollback window announced | [3.5](#35-copying-the-data), [3.6](#36-production-runbook) |
 | 8 | **Release C (2.1.0)**: MySQL removed, after the rollback window | from here migrations are PostgreSQL-only | [3.2](#32-strategy-one-release-that-runs-on-both-then-a-cut-over-that-is-only-data) |
 | 9 | **After C**: `TIMESTAMPTZ`, full-text search (`tsvector`, issue 21), then Phase 4 (S3) | these use what only PostgreSQL has, and Phase 4 needs step 2 | [Phase 4](#phase-4--s3-as-a-storage-backend) |
@@ -406,7 +403,7 @@ they test something. That run is also what found issue 87.
 * **Digit, accent and half-space folding** is a decision still to take (issue 86): MySQL finds
   `۱۴۰۳` when `1403` is typed, PostgreSQL will not.
 
-### 3.4 Release B — the dual-database jar
+### 3.4 Release B — the dual-database jar — **done** (2.0.0)
 
 **Migrations by vendor.** Flyway's `{vendor}` placeholder picks the directory from the driver:
 
@@ -449,14 +446,57 @@ exactly as an empty MySQL does.
 **Dependencies.** `org.postgresql:postgresql` and `org.flywaydb:flyway-database-postgresql` are
 added beside the MySQL pair (removed only in C).
 
-**Tests on both.** `MySqlSupport` gains a sibling `PostgresSupport`; the database-backed tests
-run against whichever the `db` system property names (`-Ddb=postgresql`, MySQL by default), and
-CI runs the suite twice. `SchemaDocumentationTest` writes `schema.md` from PostgreSQL once C
-lands; until then from MySQL. `ddl-auto=validate` failing on either container fails the build —
-that is the test that the two baselines agree.
+**Tests on both.** `support/DatabaseSupport` (it was `MySqlSupport`) points the application at
+the container `support/TestDatabases` starts for the run: MySQL by default, PostgreSQL 17 under
+`./mvnw verify -Ddb=postgresql`. Every database-backed test runs on both; the three that are
+about MySQL itself are marked `@MySqlOnly` and skipped on a PostgreSQL run - the MySQL migrations
+against rows (`PortableSchemaMigrationTest`), the history they left (`VendorMigrationLayoutTest`)
+and `schema.md`, generated from MySQL until C (`SchemaDocumentationTest`). `ddl-auto=validate`
+failing on either container fails the build.
 
 **One property decides.** `FILEMANAGEMENT_DB_URL=jdbc:postgresql://…` runs the jar on
 PostgreSQL; the MySQL URL runs it on MySQL. Nothing else in the environment file changes.
+
+> **What shipped in 2.0.0**, and where it departs from the plan above:
+>
+> * **The move is invisible to a MySQL already migrated** - the one thing in this release a
+>   production database meets. Flyway records a SQL migration by its file name, not its path; the
+>   Java `V2_17` is recorded by class name and changed package (`db.migration` to
+>   `db.migration.mysql`), and Flyway does not compare that name. `VendorMigrationLayoutTest`
+>   writes the old name back into a migrated history and proves the database still validates with
+>   nothing to run - and fails if a migration is ever put in `db/migration` itself, where it
+>   would silently run on neither database.
+> * **`SchemaParityTest`**, which the plan did not have. `validate` checks tables, columns and
+>   types and nothing else; a unique index or a cascade left out of `V3.0` would pass it and let
+>   in data MySQL refuses. The test migrates a fresh database of each kind and compares their
+>   catalogues fact by fact and by name - columns (type, nullability, default, identity), primary,
+>   unique and foreign keys (with the delete rule), every index, and the seed rows. The intended
+>   differences are listed in it and nowhere else. It was shown to fail on a deliberately
+>   removed index and a deliberately dropped cascade.
+> * **Timestamps are `TIMESTAMP(0)`**, not `TIMESTAMP`: MySQL's `DATETIME` keeps no fraction of a
+>   second, and a bare `TIMESTAMP` would keep microseconds - a value would no longer read back the
+>   same on the two.
+> * **Every foreign key column has its index on PostgreSQL too.** MySQL creates one silently for
+>   any foreign key no other index starts with, named after the constraint; PostgreSQL creates
+>   none. `V3.0` declares them under the same names (twenty-four), so a delete and a lookup by a
+>   foreign key find the same index on either.
+> * **The seed rows are what the migrations leave**, not the permission catalogue and ADMIN:
+>   `DataInitializer` writes those at every start, on either database. `V3.0` seeds `Home`,
+>   `Profiles` and its tag group, the public-files setting, the default upload policy with its
+>   ten kinds, and the fifteen permission rows the migrations inserted with their descriptions -
+>   all with the same ids, and every identity moved past them.
+> * **`V3.0` refuses a database whose `upper()` folds only ASCII** (created with `LC_CTYPE 'C'`),
+>   before creating anything: every case-insensitive unique name rests on it. The check is on what
+>   `upper('é')` returns, not on the locale's name, which differs between Linux and Windows.
+> * **One difference the suite found, in a test**: MySQL's default isolation is `REPEATABLE READ`,
+>   PostgreSQL's `READ COMMITTED`. `StorageSweeperTest` had counted every journal note inside its
+>   own transaction; on MySQL that transaction's snapshot hid the note of an upload still in
+>   flight, and a count of zero passed by accident. The test now asks for the note it made. No
+>   application code depended on the difference: the one read-modify-write that must not race,
+>   a share link's download count, takes a row lock on both.
+> * **The test container allows 400 connections.** PostgreSQL's default is 100 and MySQL's 151;
+>   the suite keeps a dozen Spring contexts cached, each with its pool. Production runs one pool
+>   (20, `FILEMANAGEMENT_DB_POOL_SIZE`), well inside PostgreSQL's default.
 
 ### 3.5 Copying the data
 
@@ -483,63 +523,79 @@ both sides are UTF-8, and `V3.0` declares the types the table below maps. The va
 are copied as they are, not recomputed: the search keys, the external ids, the checksums. The
 Java migration `V2_17` is never run on PostgreSQL; the rows it filled arrive filled.
 
-**The copier: a `copy` profile of the application itself**, not a separate script. Decided over
-`pgloader` (which needs Linux or WSL beside the Windows host) and over a Python script (a second
-language and a runtime to install on the production host, and a path the test suite does not
-cover):
+**The copier: the application's own jar, with one argument** - not a separate script. Decided
+over `pgloader` (which needs Linux or WSL beside the Windows host) and over a Python script (a
+second language and a runtime to install on the production host, and a path the test suite does
+not cover):
 
 ```
 java -jar file-management.jar --spring.profiles.active=copy
 ```
 
-It starts no web server; it opens two `DataSource`s from the environment file (the MySQL one as
-today, `FILEMANAGEMENT_COPY_TARGET_URL` and its credentials for PostgreSQL), does the steps
-below, prints a report and exits with a non-zero status if anything did not match. It is written
-in release B, with a test that starts a MySQL and a PostgreSQL container, fills the MySQL one
-with awkward data - Persian names with the half-space, a folder tree at the maximum depth, a file
-with several versions and formats, share links, API keys - runs the copy and compares every
-table. The table list lives beside the code that defines the schema, and that test fails when a
-migration adds a table the copier does not know, so a new table cannot be forgotten.
+> **As shipped in 2.0.0** (`com.hnp.filemanagement.copy`, `DatabaseCopyTest`):
+>
+> * **It is not the application.** Started as the application, the copy would run everything a
+>   start runs against the production MySQL - `DataInitializer`'s reconciliation, the checksum
+>   backfill, the sweeper. `FileManagementApplication.main` hands that argument to
+>   `DatabaseCopyCommand` instead, which reads the configuration the way the service does (the same
+>   `application.properties`, environment variables and external file) through a Spring context
+>   with nothing in it, and copies over two plain JDBC connections. Only the command-line argument
+>   selects it: an environment variable that said `copy` would turn the next service start into
+>   one.
+> * **Source**: `spring.datasource.*`, as for the service - it must be MySQL. **Target**:
+>   `FILEMANAGEMENT_COPY_TARGET_URL`, `_USERNAME`, `_PASSWORD` - it must be PostgreSQL.
+> * **Refusals, before anything is written**: the source not at exactly this jar's last MySQL
+>   migration (validated, never migrated - nothing writes to the source); the target not at this
+>   jar's PostgreSQL baseline (an empty target is migrated to it by the copier itself, so it need
+>   not be started against first); a table on either side the copier does not know
+>   (`DatabaseCopy.TABLES`; `DatabaseCopyTest` fails when a migration adds one that is not
+>   listed); **a target that already holds a file** - a PostgreSQL in use, after the cut-over for
+>   instance, is never emptied because a command was run twice.
+> * **All or nothing, in one PostgreSQL transaction**: every table emptied (what `V3.0` seeded,
+>   and the administrator a start may have written), every row copied in foreign-key order -
+>   `folder` by depth, so a parent always precedes its child whatever their ids - every identity
+>   set one past the largest copied id, and every table verified. A failure anywhere, or a table
+>   that does not verify, rolls the whole of it back.
+> * **Verification is row by row**, not by counts and sums: each table is read back from both
+>   sides in primary-key order and every value digested (SHA-256), and a count or a digest that
+>   differs fails the copy. It prints one line per table and exits `0` (verified and committed),
+>   `1` (did not verify, rolled back) or `2` (refused). The `tools/pg-verify.sql` below is
+>   therefore not needed for the data; the application checklist after it is.
+> * **Tested against awkward data**: ids with gaps, a child folder whose id is smaller than its
+>   parent's, a chain at depth 6, Persian names with the half-space, a four-byte emoji, a
+>   three-gibibyte size, a leap-day timestamp, `NULL`s in every nullable column - read back by the
+>   test itself, not only by the copier. A value PostgreSQL cannot store (a NUL character in a
+>   string, which MySQL accepts) fails the copy and rolls it back whole; the rehearsal is where
+>   such a row would be found.
 
 1. **Empty what `V3.0` seeded.** The baseline inserts `Home`, the permission catalogue, the
    settings, so that an empty PostgreSQL boots; the copy brings the production rows for all of
    them, so the seeded ones are removed first (`TRUNCATE ... RESTART IDENTITY CASCADE`, on the
    target only).
-2. **Copy in foreign-key order**, so no row arrives before the row it points at:
+2. **Copy in foreign-key order**, so no row arrives before the row it points at (as shipped:
+   `DatabaseCopy.TABLES`):
 
    ```
    app_user → role → permission → permission_role → user_role → tag_group
-   → folder (by depth: every parent before its children) → tag → app_setting
-   → file_info → file_details → file_tag → user_folder → role_folder
-   → upload_policy → upload_policy_rule → content_kind → api_key → api_key_folder
-   → file_share_link → file_storage_write → action_history
+   → folder (by depth: every parent before its children) → tag → role_folder → user_folder
+   → app_setting → content_kind → upload_policy → upload_policy_rule
+   → file_info → file_details → file_tag → file_share_link → file_storage_write
+   → api_key → api_key_folder → action_history
    ```
 
-   `folder` points at itself (`parent_id`), which is why it goes by depth. Rows go in batches
-   (1 000 per `INSERT`), one transaction per table. `flyway_schema_history` is **not** copied:
-   PostgreSQL has its own, written by `V3.0`. `user` is `app_user` on both sides since release A;
-   every other table keeps its name too.
+   `flyway_schema_history` is **not** copied: PostgreSQL has its own, written by `V3.0`.
 3. **Set every identity sequence past the copied ids** - otherwise the first upload after the
-   cut-over is given id 1 and fails as a duplicate:
-   `SELECT setval(pg_get_serial_sequence('file_info', 'id'), (SELECT MAX(id) FROM file_info));`
-   - one per table with an id.
-4. **Verify** (below), on both sides, and refuse to finish on any difference.
+   cut-over is given id 1 and fails as a duplicate.
+4. **Verify** (above), and refuse to commit on any difference.
 
 The copy is run against a **rehearsal** PostgreSQL first, from a backup, days before; the night
 is the rehearsal again. The bytes on disk are not touched at any point: `file_details.storage_key`
 is relative to `base-dir` and knows nothing about the database.
 
-**Verification, scripted (`tools/pg-verify.sql`, run on both sides and diffed):**
-
-* `COUNT(*)` per table;
-* per table, `MAX(id)` and `SUM(id)` — a cheap check that the same rows arrived;
-* `file_details`: `COUNT(DISTINCT storage_key)`, `SUM(file_size)`, `MAX(version)`;
-* `folder`: `COUNT(*)` per `depth`, and every `path` ends with the row's own id;
-* `SELECT … findIdsWhoseTagsDisagreeWithTheFolders` returns nothing (tags and tree agree);
-* the application on PostgreSQL: starts (`validate` passes), `/actuator/health` is `UP`, an
-  administrator signs in, the explorer opens the deepest folder, a file stored before 1.4.0 and one
-  after both download, a `v1` download with an API key returns 200, and an upload lands under
-  `files/…` with the next id.
+**After the copy, the application on PostgreSQL:** starts (`validate` passes), `/actuator/health`
+is `UP`, an administrator signs in, the explorer opens the deepest folder, a file stored before
+1.4.0 and one after both download, a `v1` download with an API key returns 200, and an upload
+lands under `files/…` with the next id.
 
 ### 3.6 Production runbook
 
@@ -557,17 +613,21 @@ the existing one).
    in the environment file as today, never in a script.
 3. The nightly backup job gains a `pg_dump -Fc` beside the `mysqldump` it has, and the restore
    is rehearsed once (`deployment.md`, "Backups").
-4. **Rehearsal:** restore last night's MySQL backup to a scratch schema, run release B on an
-   empty PostgreSQL to create `V3.0`, copy, verify (3.5), start the application against it, walk
-   the checklist. Time it. Fix what fails and rehearse again until nothing does.
+4. **Rehearsal:** restore last night's MySQL backup to a scratch schema, create a new, empty
+   PostgreSQL database ([deployment.md](deployment.md#postgresql-the-database-and-the-copy)), run
+   the copy against the two (3.5 - it migrates the target and verifies), start the application
+   against the result, walk the checklist. Time it. Fix what fails and rehearse again until nothing
+   does.
 
 **The night (expect the rehearsal's time plus half).**
 1. Announce; stop the service (`winsw stop`) — no uploads during the copy.
 2. Final MySQL backup, kept with the date in its name.
-3. Empty the PostgreSQL database (`DROP SCHEMA public CASCADE; CREATE SCHEMA public;` — on the
-   scratch database from the rehearsal, never on anything else), start release B against it once
-   to run `V3.0`, stop it.
-4. Copy; set the sequences; run the verification script on both sides; diff.
+3. Create the production PostgreSQL database, new and empty
+   ([deployment.md](deployment.md#postgresql-the-database-and-the-copy)) - or drop and recreate
+   the rehearsal's. The copy refuses a target that holds a file, so a database in use cannot be
+   emptied by mistake.
+4. Run the copy (3.5): it migrates the target to `V3.0`, copies, sets the sequences and verifies,
+   in one transaction. Exit status `0` and `copy VERIFIED` are the only go-ahead.
 5. Point `FILEMANAGEMENT_DB_URL` at PostgreSQL in the environment file; start the service.
 6. Walk the checklist in 3.5; watch the log for `SQLGrammarException` for the first hour; the
    PL/SQL clients download one file each.

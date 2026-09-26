@@ -11,7 +11,7 @@ import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.entity.Folder;
@@ -52,7 +52,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @ServiceIntegrationTest
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
-class FileServiceFolderAccessTest extends MySqlSupport {
+class FileServiceFolderAccessTest extends DatabaseSupport {
 
     @Autowired
     private FileService underTest;

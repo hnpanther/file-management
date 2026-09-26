@@ -14,7 +14,7 @@ import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import jakarta.persistence.EntityManager;
@@ -39,7 +39,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * kilobytes, files of one kilobyte each.
  */
 @ServiceIntegrationTest
-class FolderQuotaEnforcementTest extends MySqlSupport {
+class FolderQuotaEnforcementTest extends DatabaseSupport {
 
     private static final int KB = 1024;
 

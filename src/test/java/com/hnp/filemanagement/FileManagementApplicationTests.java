@@ -1,6 +1,6 @@
 package com.hnp.filemanagement;
 
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
@@ -10,7 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
  * test is a {@code @DataJpaTest} slice that never sees a controller or a filter chain.
  */
 @SpringBootTest
-class FileManagementApplicationTests extends MySqlSupport {
+class FileManagementApplicationTests extends DatabaseSupport {
 
 	@Test
 	void contextLoads() {

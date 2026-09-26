@@ -2,7 +2,7 @@ package com.hnp.filemanagement.web;
 
 import com.hnp.filemanagement.config.security.UserDetailsImpl;
 import com.hnp.filemanagement.entity.PermissionEnum;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,7 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-class AuthenticationRedirectTest extends MySqlSupport {
+class AuthenticationRedirectTest extends DatabaseSupport {
 
     private static final String SAVED_REQUEST = "SPRING_SECURITY_SAVED_REQUEST";
 

@@ -9,7 +9,7 @@ import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.ApiKeyRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @ServiceIntegrationTest
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
-class ApiKeyServiceTest extends MySqlSupport {
+class ApiKeyServiceTest extends DatabaseSupport {
 
     @Autowired
     private ApiKeyService underTest;

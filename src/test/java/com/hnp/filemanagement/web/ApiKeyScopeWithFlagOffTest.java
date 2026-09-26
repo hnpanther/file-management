@@ -8,7 +8,7 @@ import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.ApiKeyService;
 import com.hnp.filemanagement.service.FolderAccessService;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.support.FolderFixture;
@@ -42,7 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class ApiKeyScopeWithFlagOffTest extends MySqlSupport {
+class ApiKeyScopeWithFlagOffTest extends DatabaseSupport {
 
     @Autowired
     private MockMvc mockMvc;

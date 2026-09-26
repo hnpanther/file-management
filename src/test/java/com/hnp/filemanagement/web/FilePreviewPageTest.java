@@ -7,7 +7,7 @@ import com.hnp.filemanagement.entity.PermissionEnum;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.FileService;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
@@ -51,7 +51,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // Rolled back: the taxonomy rows are inserted straight through the repositories, with no folder
 // mirror, and must not stay behind for the tree and explorer tests that share the database.
 @org.springframework.transaction.annotation.Transactional
-class FilePreviewPageTest extends MySqlSupport {
+class FilePreviewPageTest extends DatabaseSupport {
 
     /** Stands in for Tomcat's client-abort, which MockMvc has no socket to produce. */
     @TestConfiguration

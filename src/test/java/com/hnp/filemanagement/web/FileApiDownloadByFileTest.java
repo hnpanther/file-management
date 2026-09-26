@@ -10,7 +10,7 @@ import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.FileService;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.jayway.jsonpath.JsonPath;
 import jakarta.persistence.EntityManager;
@@ -56,7 +56,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
-class FileApiDownloadByFileTest extends MySqlSupport {
+class FileApiDownloadByFileTest extends DatabaseSupport {
 
     private static final byte[] V1 = TestData.bytesFor("report.pdf");
     private static final byte[] V2 = concat(TestData.bytesFor("report.pdf"), " second version");

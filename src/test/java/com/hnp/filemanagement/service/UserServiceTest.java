@@ -14,7 +14,7 @@ import com.hnp.filemanagement.repository.PermissionRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.config.bootstrap.DataInitializer;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * false-positive on a user who simply did not change that field.
  */
 @ServiceIntegrationTest
-class UserServiceTest extends MySqlSupport {
+class UserServiceTest extends DatabaseSupport {
 
     @Autowired
     private UserService underTest;

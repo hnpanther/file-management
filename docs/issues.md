@@ -584,6 +584,12 @@ solve it by quoting — quoted mixed-case identifiers are worse to live with.
 Fix: a fresh `V2.0` PostgreSQL baseline plus a documented data-copy path, rather than trying to make
 V1.0–V1.2 portable.
 
+> **Fixed in 2.0.0** (release B, roadmap 3.4), as planned but numbered `V3.0`: the MySQL history
+> moved unchanged to `db/migration/mysql`, and `db/migration/postgresql/V3.0__Baseline.sql` is the
+> same schema in PostgreSQL's terms, picked by the driver (`{vendor}`). `SchemaParityTest` holds the
+> two to each other; the data copy is `--spring.profiles.active=copy` (`DatabaseCopy`, roadmap 3.5).
+> The MySQL files keep their MySQL syntax - they never run on PostgreSQL.
+
 ### 32. `schema-db/schema.sql` is a live footgun — **S1**
 
 > **Resolved in Phase 0.** `schema-db/` deleted. Flyway is now the only way the schema is created.
@@ -1478,14 +1484,14 @@ is refused beside `Report` - is what proves it.
 > `UPPER` stripped out of the written queries, the eight `PortableQueriesTest` cases that depend
 > on it fail there, and only those.
 >
-> **Still open, for Release B:** the `V3.0` unique indexes on `upper(column)` for the constraints
-> listed above, and the database created with a UTF-8 locale (under `C`, PostgreSQL's `upper()`
-> folds ASCII only). **Still open, a decision:** digit, accent and half-space folding. MySQL finds
-> `۱۴۰۳` when `1403` is typed, and a name written with the half-space when it is typed without;
-> PostgreSQL will not, in search or in uniqueness. Folding digits in the search term alone would
-> cover only one direction; both directions need either a normalised copy of each searched
-> column or issue 21's full-text search. Until one is chosen, that part of today's search
-> behaviour does not survive the move.
+> **Release B's half is done** (2.0.0): `V3.0` declares the eight constraints above as unique indexes
+> on `upper(column)` under their own names (`SchemaParityTest` lists them as the only intended
+> difference), and refuses to run on a database whose `upper()` folds only ASCII. The case-variant
+> tests that proved nothing on MySQL alone - `PortableQueriesTest`, `FormSignInTest` and the
+> service tests - now run on PostgreSQL 17 in every `-Ddb=postgresql` run, and pass. (Until then
+> this paragraph listed those two as still open for release B, and one decision as still open:
+> digit, accent and half-space folding, which MySQL's collation did in search and uniqueness and
+> PostgreSQL would not - decided in 1.8.0, below.)
 >
 > **Decided and done in 1.8.0: the normalised copy.** Every searched name and description has a
 > folded key beside it - `file_info.search_name` / `search_description`, the same two on
@@ -1668,3 +1674,24 @@ them took nothing away - a box that says a role can be kept off the public files
 > **Fixed in 1.9.0.** The constants are gone, and `V2.19` deletes their rows (the role links
 > first). `@Enumerated(STRING)` cannot load a row whose name is no constant, so the migration and
 > the constants go together.
+
+## Found while building PostgreSQL release B (2.0.0)
+
+### 95. Three lists page by a timestamp with one-second resolution and nothing to break ties — **S3**
+
+`FileService.getPageFileInfo` and `getPagePublicFiles` (`FileService.java`, `Sort.by("createdAt")
+.descending()`) and `UserService`'s user list (`UserService.java`, the same sort) order a page by
+`created_at` alone. The column is `DATETIME` on MySQL and `TIMESTAMP(0)` on PostgreSQL - whole
+seconds - so every row written in the same second ties, and a database returns tied rows in
+whatever order its plan produces. Across two page requests that order need not be the same: a
+file can appear on page 1 and again on page 2 while its neighbour appears on neither. Rare with
+people uploading one file at a time; routine with an import or an integration that uploads in a
+burst.
+
+Not a PostgreSQL difference as such - MySQL can do it too - but PostgreSQL returns ties in heap
+order, which moves as rows are updated, where InnoDB tends to return them by primary key and so
+hides it. Nothing in the suite depends on it; found by reading the sorts while checking what the
+move could change.
+
+Fix: a tie-breaker in each sort - `Sort.by("createdAt").descending().and(Sort.by("id").descending())`
+- which keeps today's order wherever it was defined and makes it total where it was not.

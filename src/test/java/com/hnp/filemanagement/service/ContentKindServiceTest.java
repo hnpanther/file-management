@@ -6,7 +6,7 @@ import com.hnp.filemanagement.entity.ContentKind;
 import com.hnp.filemanagement.exception.DuplicateResourceException;
 import com.hnp.filemanagement.exception.InvalidDataException;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.validation.ContentTypes;
@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * exactly like a built-in one, what can never be added, and what deleting one takes with it.
  */
 @ServiceIntegrationTest
-class ContentKindServiceTest extends MySqlSupport {
+class ContentKindServiceTest extends DatabaseSupport {
 
     /** AutoCAD DWG: "AC10" followed by the version digits. */
     private static final byte[] DWG = "AC1027 drawing bytes".getBytes(StandardCharsets.US_ASCII);

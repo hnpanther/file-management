@@ -7,7 +7,7 @@ import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.ContentKindService;
 import com.hnp.filemanagement.service.UploadPolicyService;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
@@ -50,7 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class ContentKindPageTest extends MySqlSupport {
+class ContentKindPageTest extends DatabaseSupport {
 
     private static final byte[] DWG = "AC1027 drawing bytes".getBytes(StandardCharsets.US_ASCII);
 

@@ -9,7 +9,7 @@ import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.entity.UserFolderGrant;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import org.junit.jupiter.api.AfterEach;
@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ServiceIntegrationTest
 @org.springframework.test.context.TestPropertySource(
         properties = "filemanagement.folder-access.enabled=true")
-class ApiKeyAccessResolutionTest extends MySqlSupport {
+class ApiKeyAccessResolutionTest extends DatabaseSupport {
 
     @Autowired
     private FolderAccessService folderAccessService;

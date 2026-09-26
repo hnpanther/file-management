@@ -29,7 +29,8 @@ done). Package root `com.hnp.filemanagement`.
 ## Commands
 
 ```bash
-./mvnw verify                 # build + all tests; needs only a Docker daemon (no Node)
+./mvnw verify                 # build + all tests on MySQL; needs only a Docker daemon (no Node)
+./mvnw verify -Ddb=postgresql # the same suite on PostgreSQL - run both before committing (release B)
 npm run build:css             # only if you edited src/main/frontend/app.css
 ./mvnw clean package          # build → target/file-management.jar (executable)
 ./mvnw spring-boot:run        # run on :8122
@@ -51,7 +52,8 @@ Get-NetTCPConnection -LocalPort 8122 -State Listen -ErrorAction SilentlyContinue
 lsof -ti tcp:8122 | xargs -r kill
 ```
 
-The tests start their own MySQL through Testcontainers (`support/MySqlSupport`) and use
+The tests start their own database through Testcontainers (`support/DatabaseSupport`, MySQL or,
+with `-Ddb=postgresql`, PostgreSQL) and use
 `./target/test-storage/` as the storage root (`support/StorageRootSupport`). There is nothing to
 provision. **Run them.** If something prevents you from running them, say so rather than claiming a
 change is verified.
@@ -222,11 +224,19 @@ the traversal cases in `ValidationUtilTest` are the ones never to relax.
 
 ## Database changes
 
-Schema is owned by **Flyway** (`src/main/resources/db/migration`), and `ddl-auto=validate` means
-Hibernate will refuse to start on a mismatch.
+Schema is owned by **Flyway**, and `ddl-auto=validate` means Hibernate will refuse to start on a
+mismatch. **There are two migration directories until release C** (roadmap 3.4), one per database:
+`src/main/resources/db/migration/mysql` (`V1.0` to `V2.19`, and the Java `V2_17` in
+`src/main/java/db/migration/mysql`) and `src/main/resources/db/migration/postgresql` (`V3.0`, the
+baseline). Nothing goes in `db/migration` itself - it would run on neither database
+(`VendorMigrationLayoutTest`).
 
-* Add the next `V2.x__Description.sql` (`V2.18` is the latest; `V2_17` is a Java migration in
-  `src/main/java/db/migration`). Never edit an applied migration.
+* **A schema change is written twice**: the next `V2.x__Description.sql` in `mysql/` and the next
+  `V3.x__Description.sql` in `postgresql/`, in the same commit, with the same effect.
+  `SchemaParityTest` compares the two migrated schemas - tables, columns, defaults, keys, foreign
+  keys, indexes, seed rows - and fails on any difference it was not told about. A new table goes
+  into `DatabaseCopy.TABLES` too, in foreign-key order (`DatabaseCopyTest`). Never edit an applied
+  migration.
 * Flyway is the only source of schema. There is no schema dump to keep in sync any more.
 * Update the entity in the same commit.
 * `ddl-auto=validate` checks types and existence but **not** nullability — if you add a `NOT NULL`
@@ -234,6 +244,12 @@ Hibernate will refuse to start on a mismatch.
   ([issue 33](docs/issues.md#33-schema-and-entity-mappings-disagree--s2)).
 * Migrations are MySQL-specific today. If you are writing one during the PostgreSQL migration, see
   [roadmap Phase 3](docs/roadmap.md#phase-3--postgresql-migration) for the vendor-directory layout.
+* **Run the suite on both databases** before committing anything that touches a query or the
+  schema: `./mvnw verify` and `./mvnw verify -Ddb=postgresql`. `@MySqlOnly` is for a test about
+  MySQL itself, never for one that fails on PostgreSQL - that failure is what release B exists to
+  find. Two differences the suite has already met: PostgreSQL's default isolation is
+  `READ COMMITTED`, not MySQL's `REPEATABLE READ` (a transaction sees what others committed after
+  it began), and it refuses a NUL character in a string, which MySQL stores.
 * **A query must not lean on MySQL's collation** (release A, 1.7.0). `utf8mb4_unicode_ci` makes a
   bare `=` or `LIKE` on text case-insensitive; PostgreSQL does not. Compare a name or search a
   text through `UPPER(...)` on both sides - in a derived query, `IgnoreCase`, which renders the
@@ -345,7 +361,7 @@ Rules for new tests:
 
 A change is done when:
 
-* `./mvnw verify` is green;
+* `./mvnw verify` is green, and `./mvnw verify -Ddb=postgresql` too;
 * new behaviour has a test, or you have stated explicitly that you could not run the suite and why;
 * any new endpoint has a `PermissionEnum` constant, placed in a `PermissionGroup`, and a `@PreAuthorize`;
 * any new mutation writes an `ActionHistory` row;

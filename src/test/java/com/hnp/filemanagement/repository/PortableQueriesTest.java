@@ -8,7 +8,7 @@ import com.hnp.filemanagement.entity.Tag;
 import com.hnp.filemanagement.entity.TagGroup;
 import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.util.SearchKey;
 import jakarta.persistence.EntityManager;
@@ -44,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-class PortableQueriesTest extends MySqlSupport {
+class PortableQueriesTest extends DatabaseSupport {
 
     private static final Pageable PAGE = PageRequest.of(0, 20);
     private static final long THREE_GIB = 3L * 1024 * 1024 * 1024;

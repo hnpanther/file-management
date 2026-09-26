@@ -11,7 +11,7 @@ import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.repository.PermissionRepository;
 import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import jakarta.persistence.EntityManager;
@@ -49,7 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @ServiceIntegrationTest
 @AutoConfigureMockMvc
-class RolePagesTest extends MySqlSupport {
+class RolePagesTest extends DatabaseSupport {
 
     @Autowired
     private MockMvc mockMvc;

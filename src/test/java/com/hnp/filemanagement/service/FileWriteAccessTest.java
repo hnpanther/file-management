@@ -12,7 +12,7 @@ import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.support.FolderFixture;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +39,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @ServiceIntegrationTest
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
-class FileWriteAccessTest extends MySqlSupport {
+class FileWriteAccessTest extends DatabaseSupport {
 
     @Autowired
     private FileService underTest;

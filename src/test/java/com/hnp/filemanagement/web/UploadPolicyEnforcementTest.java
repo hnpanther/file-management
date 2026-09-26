@@ -12,7 +12,7 @@ import com.hnp.filemanagement.repository.RoleRepository;
 import com.hnp.filemanagement.repository.UserRepository;
 import com.hnp.filemanagement.service.ApiKeyService;
 import com.hnp.filemanagement.service.UploadPolicyService;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.repository.TagGroupRepository;
 import com.hnp.filemanagement.support.FolderFixture;
@@ -57,7 +57,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class UploadPolicyEnforcementTest extends MySqlSupport {
+class UploadPolicyEnforcementTest extends DatabaseSupport {
 
     private static final long MB = 1024L * 1024L;
 

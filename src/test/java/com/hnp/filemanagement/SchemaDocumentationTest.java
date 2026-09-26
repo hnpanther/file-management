@@ -1,6 +1,7 @@
 package com.hnp.filemanagement;
 
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.MySqlOnly;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,7 +39,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and commit the result with the migration.
  */
 @SpringBootTest
-class SchemaDocumentationTest extends MySqlSupport {
+@MySqlOnly
+class SchemaDocumentationTest extends DatabaseSupport {
 
     static final Path DOCUMENT = Path.of("docs/schema.md");
     static final String START = "<!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->";

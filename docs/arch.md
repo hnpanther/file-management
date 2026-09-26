@@ -951,8 +951,15 @@ outlives one that does not commit (§5, "Writing bytes inside a transaction",
 ## 10. Database schema
 
 The tables as they stand after every migration — columns, keys, indexes — are in
-[schema.md](schema.md), generated from the migrated database and checked on every build. The
-migrations themselves, in `src/main/resources/db/migration`:
+[schema.md](schema.md), generated from the migrated database and checked on every build.
+
+**Two directories of migrations since 2.0.0** (roadmap 3.4), one per database, picked by the driver
+the JDBC URL names (`spring.flyway.locations=classpath:db/migration/{vendor}`):
+`db/migration/mysql/` holds the history below, unchanged, and the Java `V2_17` moved with it to
+`db.migration.mysql`; `db/migration/postgresql/` holds `V3.0__Baseline.sql`, the same schema written
+once in PostgreSQL's terms, with its seed rows. `SchemaParityTest` holds the two to each other
+table by table, column by column and index by index; until release C a schema change is written in
+both. The MySQL history, in `src/main/resources/db/migration/mysql`:
 
 | Version | Contents |
 |---|---|
@@ -1041,8 +1048,14 @@ installation that sets it.
 
 ## 12. Tests
 
-`./mvnw test` runs 642 tests and needs only a working Docker daemon: `MySqlSupport` starts one
-MySQL 8.0.36 container per JVM, and `StorageRootSupport` gives each test a clean storage root.
+`./mvnw verify` runs 826 tests and needs only a working Docker daemon: `DatabaseSupport` points the
+application at one database container per JVM, and `StorageRootSupport` gives each test a clean
+storage root. **The suite runs on either database** (roadmap 3.4): MySQL 8.0.36 by default, and
+PostgreSQL 17 with `./mvnw verify -Ddb=postgresql` (`support/TestDatabases`); both are run before a
+change is committed until release C. The three classes about MySQL itself are `@MySqlOnly` and
+skipped on the PostgreSQL run. Two classes need both databases whichever run it is, and start the
+second container themselves: `SchemaParityTest` (the two schemas agree) and `DatabaseCopyTest` (the
+data copy of the cut-over).
 
 Four kinds, and the kind is the point — each answers something the others cannot.
 

@@ -7,7 +7,7 @@ import com.hnp.filemanagement.entity.User;
 import com.hnp.filemanagement.repository.FileInfoRepository;
 import com.hnp.filemanagement.repository.FolderRepository;
 import com.hnp.filemanagement.repository.UserRepository;
-import com.hnp.filemanagement.support.MySqlSupport;
+import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import com.hnp.filemanagement.repository.TagGroupRepository;
@@ -38,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @ServiceIntegrationTest
 @AutoConfigureMockMvc
-class FileTreeSearchTest extends MySqlSupport {
+class FileTreeSearchTest extends DatabaseSupport {
 
     @Autowired
     private MockMvc mockMvc;

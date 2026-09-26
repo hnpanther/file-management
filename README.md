@@ -100,10 +100,12 @@ java -jar target/file-management.jar
 ## Running the tests
 
 ```bash
-./mvnw verify
+./mvnw verify                  # on MySQL
+./mvnw verify -Ddb=postgresql  # the same suite on PostgreSQL 17
 ```
 
-**A running Docker daemon is the only requirement.** The suite starts its own throwaway MySQL
+**A running Docker daemon is the only requirement.** The suite starts its own throwaway database -
+MySQL, or PostgreSQL with `-Ddb=postgresql` (release B, 2.0.0: the application runs on either) -
 through Testcontainers and uses `./target/test-storage/` as the storage root, so there is nothing
 to provision and nothing machine-specific to configure.
 
@@ -240,7 +242,7 @@ Validation currently trusts the `Content-Type` the client sends — see
 ├── compose.yaml          MySQL for local runs
 ├── src/main/java/        application code
 ├── src/main/resources/
-│   ├── db/migration/     Flyway migrations — the only source of schema
+│   ├── db/migration/     Flyway migrations — the only source of schema: mysql/ and postgresql/
 │   ├── templates/        Thymeleaf views
 │   └── static/           CSS and the public landing page
 └── src/test/java/
