@@ -10,8 +10,8 @@ working, and to depend only on what came before.
 |---|---|---|---|
 | 0 | Safety net — CI, smoke test, containerised dev environment | — | **done** |
 | 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done**; the language level moved to 25 in 1.4.0, on its own, once every host ran a JDK 25 |
-| 2 | Architectural restructuring | 1 | **partly done**: 2.1, 2.2, the two-phase write of 2.3 and most of 2.4 (issues 8, 12, 13; 14 by Phase 6); left: the package re-slice and one REST surface (issue 18), per-feature mappers (issue 29), coarse permission verbs (issue 19) - none of them needed by Phase 3 |
-| 3 | PostgreSQL migration | 1, partly 2, **and 7** | three releases, the middle one runs on both databases (3.2); **release A done** (1.7.0), **release B done** (2.0.0), **cut-over done 2026-09-26** - production runs on PostgreSQL; MySQL read-only until the rollback window closes on 2026-10-10; release C to come |
+| 2 | Architectural restructuring | 1 | **nearly done**: 2.1, 2.2, 2.3 (the two-phase write 1.6.1; per-feature mappers and the package re-slice by feature 2.1.0) and most of 2.4 (issues 8, 12, 13; 14 by Phase 6); left, **together**: one REST surface (issue 18) and coarse permission verbs (issue 19) - both rename permissions and need a migration of their rows |
+| 3 | PostgreSQL migration | 1, partly 2, **and 7** | three releases, the middle one runs on both databases (3.2); **done**: release A (1.7.0), release B (2.0.0), the cut-over (2026-09-26, production on PostgreSQL), release C (2.1.0, MySQL removed from the code; not yet deployed) |
 | 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done**; the move it needs **done** (7.2 step 5d, 1.4.0); the drag handlers are what is left |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**; enforcement switched on per installation, after the grants exist |
@@ -38,14 +38,26 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: production runs on PostgreSQL, since 2026-09-26** - 2.0.0, moved from MySQL by the copy of
-[3.5](#35-copying-the-data), verified row by row, on the night the runbook of
-[3.6](#36-production-runbook) describes. The MySQL is kept, read-only, for the **rollback window,
-which closes on 2026-10-10**; until then no migration may be added (it would have to be written for
-both, and a rollback would not have it). The nightly backup dumps PostgreSQL
-([deployment.md](deployment.md#backups--one-job-both-halves)). **Next: release C** (step 8), after
-the window: the MySQL driver, its migrations and `MySqlSupport`'s successor go, and the suite runs
-on PostgreSQL only.
+**Now: 2.1.0, written and tested, not yet deployed; production runs 2.0.0 on PostgreSQL since
+2026-09-26.** 2.1.0 is release C and three things beside it:
+
+* **Release C** (step 8): MySQL is gone from the code - its driver, its Flyway module, its
+  migrations `V1.0` to `V2.19`, the copy tool of the cut-over and the tests of the move between
+  the two. `V3.0` is the baseline, the suite runs on PostgreSQL only, and `docs/schema.md` is
+  generated from PostgreSQL's catalogue. Production meets no migration: its history already says
+  `3.0`, and Flyway records a migration by file name.
+* **Per-feature mappers** in place of `ModelConverterUtil` (issue 29), unit-tested without a
+  database; and **the packages sliced by feature** - `audit`, `file`, `folder`, `identity`,
+  `settings`, `storage`, `shared`, each with `domain`, `persistence`, `web` (2.3).
+* **Two fixes**: lists ordered by a whole-second timestamp now break ties by id, so a page never
+  repeats or skips a row (issue 95); and an administrator can change only the case of a username
+  (issue 88).
+
+**Deploy 2.1.0 after 2026-10-10**, when the rollback window closes: until then the way back to
+MySQL is the 2.0.0 jar, which 2.1.0 no longer is ([deployment.md](deployment.md#upgrading-from-200-to-210--postgresql-only)).
+**After it**: the MySQL service is decommissioned; then what only PostgreSQL has - `TIMESTAMPTZ`,
+full-text search (issue 21) - and Phase 8 (controlled documents, forms on `jsonb`) and Phase 4 (S3).
+Issues 18 and 19 are one release of their own, whenever the permission model is taken up.
 
 1.9.0 is role administration: ADMIN and USER defined in code and reset on every start without
 taking access from anyone (`FixedRole`), the role page in three tabs saved separately, permission
@@ -69,7 +81,7 @@ is therefore cheapest **before** B, where it is written once and lands in the `V
 | 5 | **Only if planned soon**: coarse permission verbs | it migrates the `permission` rows, so before B or after C, never in between | [issue 19](issues.md#19-permissionenum-is-a-hardcoded-list-of-endpoint-names--s2), [2.4](#24-authorization) |
 | 6 | **Done (2.0.0, not yet deployed).** **Release B (2.0.0)**: migrations moved to `db/migration/mysql/`, the hand-written PostgreSQL baseline `V3.0` (with the `upper(column)` unique indexes, the `varchar_pattern_ops` index on `folder.path`, the seed rows), the PostgreSQL driver and Flyway module, the suite on both databases | the jar that can run on either, chosen by `FILEMANAGEMENT_DB_URL` - nothing is switched yet | [3.4](#34-release-b--the-dual-database-jar--done-200) |
 | 7 | **Done (2026-09-26).** Rehearsed on production-like data the same morning (3.6), then carried out in production. One thing went wrong, and it was the configuration: the datasource URL kept MySQL's port when its scheme was changed, and the driver's two errors did not say so - now in the runbook and in [deployment.md](deployment.md#when-it-will-not-start). **Rehearsal, then the cut-over** - the data copied, sequences set, verified, the service pointed at PostgreSQL | the one irreversible-feeling step; taken only when decided, with the rollback window announced | [3.5](#35-copying-the-data), [3.6](#36-production-runbook) |
-| 8 | **Release C (2.1.0)**: MySQL removed, after the rollback window | from here migrations are PostgreSQL-only | [3.2](#32-strategy-one-release-that-runs-on-both-then-a-cut-over-that-is-only-data) |
+| 8 | **Done (2.1.0, not yet deployed).** **Release C (2.1.0)**: MySQL removed, after the rollback window | from here migrations are PostgreSQL-only | [3.2](#32-strategy-one-release-that-runs-on-both-then-a-cut-over-that-is-only-data) |
 | 9 | **After C**: `TIMESTAMPTZ`, full-text search (`tsvector`, issue 21), then Phase 4 (S3) | these use what only PostgreSQL has, and Phase 4 needs step 2 | [Phase 4](#phase-4--s3-as-a-storage-backend) |
 
 **Not tied to that order** - any time, and none of it touches the database migration:
@@ -266,9 +278,17 @@ only subject until Phase 4 adds a second one.
 > the same refusals. Every `storage_key` in the production-shaped database was checked against
 > the new key rule before the change shipped - 1370 of them, none refused.
 
-### 2.3 Domain restructuring — two-phase write **done** (1.6.1)
+### 2.3 Domain restructuring — two-phase write **done** (1.6.1), mappers and re-slice **done** (2.1.0)
 
-* Re-slice packages by feature (`catalog/`, `file/`, `identity/`, `storage/`, `audit/`, `shared/`).
+* ~~Re-slice packages by feature (`catalog/`, `file/`, `identity/`, `storage/`, `audit/`, `shared/`)~~
+  — **done** (2.1.0). As shipped: `audit`, `file`, `folder`, `identity` (with `security/` and
+  `bootstrap/`), `settings`, `storage` and `shared` (`config`, `domain`, `exception`, `util`,
+  `validation`, `web`); a feature holds `domain/` (entities, services, their DTOs and its mapper),
+  `persistence/` (repositories) and `web/` (`*Controller`, `*Resource`, `*Api`). DTOs sit in
+  `domain/` rather than `web/` because the services return them - the layering of
+  [target-architecture.md](target-architecture.md#layering), where they would not, is issue 18's
+  work. Every class moved with its history (a rename, not a rewrite); tests sit in the package of
+  what they test. `MessageBundleTest` finds the controllers by annotation now, not by directory.
 * Collapse `controller/` + `resource/` + `api/` into a Thymeleaf surface and a single versioned REST
   surface (issue 18). The `/resource/**` endpoints become part of `/api/v1`, called by the pages with
   the session cookie.
@@ -303,7 +323,9 @@ only subject until Phase 4 adds a second one.
   > asked for it - the tree delete's audit row says how many directories were left behind - nor be
   > observed by a test that rolls back. `docs/arch.md` §5 records the trade.
 * `@ManyToOne` → `LAZY` with explicit `@EntityGraph`s, and projection DTOs for the list pages
-  (issue 20). Replace `ModelConverterUtil` with per-feature mappers (issue 29).
+  (issue 20). ~~Replace `ModelConverterUtil` with per-feature mappers (issue 29)~~ — **done**
+  (2.1.0): `UserMapper`, `RoleMapper`, `FileMapper`, `ActionHistoryMapper`, and `FileNames` for
+  the one helper that was not mapping at all.
 
 ### 2.4 Authorization
 

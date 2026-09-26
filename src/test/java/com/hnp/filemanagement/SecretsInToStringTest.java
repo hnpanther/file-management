@@ -1,9 +1,9 @@
 package com.hnp.filemanagement;
 
-import com.hnp.filemanagement.config.FileManagementProperties;
-import com.hnp.filemanagement.dto.ApiKeyCreatedDTO;
-import com.hnp.filemanagement.dto.ShareLinkDTO;
-import com.hnp.filemanagement.resource.ShareLinkResource;
+import com.hnp.filemanagement.shared.config.FileManagementProperties;
+import com.hnp.filemanagement.identity.domain.ApiKeyCreatedDTO;
+import com.hnp.filemanagement.file.domain.ShareLinkDTO;
+import com.hnp.filemanagement.file.web.ShareLinkResource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

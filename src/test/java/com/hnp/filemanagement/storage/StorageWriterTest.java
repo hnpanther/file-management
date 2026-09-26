@@ -1,7 +1,6 @@
 package com.hnp.filemanagement.storage;
 
-import com.hnp.filemanagement.exception.DuplicateResourceException;
-import com.hnp.filemanagement.repository.FileStorageWriteRepository;
+import com.hnp.filemanagement.shared.exception.DuplicateResourceException;
 import com.hnp.filemanagement.support.DatabaseSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;

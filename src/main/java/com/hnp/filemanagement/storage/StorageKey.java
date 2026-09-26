@@ -1,6 +1,6 @@
 package com.hnp.filemanagement.storage;
 
-import com.hnp.filemanagement.exception.BusinessException;
+import com.hnp.filemanagement.shared.exception.BusinessException;
 
 /**
  * Where one stored object lives, as the one opaque string the row carries
@@ -8,7 +8,7 @@ import com.hnp.filemanagement.exception.BusinessException;
  *
  * <p>Opaque on purpose: a key is written once, when the bytes are stored, and is never rebuilt
  * from the folder tree afterwards - which is what lets a folder be renamed or moved, and a file
- * be moved between folders, without touching a byte. {@link com.hnp.filemanagement.service.StorageLayout}
+ * be moved between folders, without touching a byte. {@link com.hnp.filemanagement.storage.StorageLayout}
  * is the only writer of the shape a new key takes; everything else treats it as a string.
  *
  * <p>The only rule here is the one every backend shares: a key is a non-empty relative path with

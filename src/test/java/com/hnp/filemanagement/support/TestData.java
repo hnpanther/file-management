@@ -1,15 +1,15 @@
 package com.hnp.filemanagement.support;
 
-import com.hnp.filemanagement.service.StorageLayout;
-import com.hnp.filemanagement.entity.FileDetails;
-import com.hnp.filemanagement.entity.FileInfo;
-import com.hnp.filemanagement.entity.Folder;
-import com.hnp.filemanagement.entity.FolderKind;
-import com.hnp.filemanagement.entity.Permission;
-import com.hnp.filemanagement.entity.PermissionEnum;
-import com.hnp.filemanagement.entity.Role;
-import com.hnp.filemanagement.entity.TagGroup;
-import com.hnp.filemanagement.entity.User;
+import com.hnp.filemanagement.storage.StorageLayout;
+import com.hnp.filemanagement.file.domain.FileDetails;
+import com.hnp.filemanagement.file.domain.FileInfo;
+import com.hnp.filemanagement.folder.domain.Folder;
+import com.hnp.filemanagement.folder.domain.FolderKind;
+import com.hnp.filemanagement.identity.domain.Permission;
+import com.hnp.filemanagement.identity.domain.PermissionEnum;
+import com.hnp.filemanagement.identity.domain.Role;
+import com.hnp.filemanagement.folder.domain.TagGroup;
+import com.hnp.filemanagement.identity.domain.User;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;

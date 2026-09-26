@@ -551,6 +551,12 @@ that the rest of the roadmap assumes.
 Untestable in isolation, silently coupled to the eager-fetch decisions in the entities, and it
 duplicates field lists that already exist on the DTOs.
 
+> **Fixed in 2.1.0.** One mapper per feature - `UserMapper`, `RoleMapper`, `FileMapper`,
+> `ActionHistoryMapper` - each a class of pure functions whose javadoc says which associations
+> must be loaded before it is called; `FileNames.withoutExtension` for the helper that was not
+> mapping. `MappersTest` checks every field of every mapping with no Spring and no database, and
+> that the password never leaves a user. The behaviour is the old one, field for field.
+
 ---
 
 ## Data & persistence
@@ -584,7 +590,8 @@ solve it by quoting — quoted mixed-case identifiers are worse to live with.
 Fix: a fresh `V2.0` PostgreSQL baseline plus a documented data-copy path, rather than trying to make
 V1.0–V1.2 portable.
 
-> **Fixed in 2.0.0** (release B, roadmap 3.4), as planned but numbered `V3.0`: the MySQL history
+> **Closed in 2.1.0**, with MySQL itself: `V3.0` is the only baseline, and the MySQL files are in
+> git history. Before that - **fixed in 2.0.0** (release B, roadmap 3.4), as planned but numbered `V3.0`: the MySQL history
 > moved unchanged to `db/migration/mysql`, and `db/migration/postgresql/V3.0__Baseline.sql` is the
 > same schema in PostgreSQL's terms, picked by the driver (`{vendor}`). `SchemaParityTest` holds the
 > two to each other; the data copy is `--spring.profiles.active=copy` (`DatabaseCopy`, roadmap 3.5).
@@ -1559,6 +1566,13 @@ folder's rename, which follows, already compares siblings with
 `findByParentIdAndNameIgnoreCase` and would find its own folder, so it needs the same care.
 `TagGroupService.update` is the pattern: it filters the edited group out of the lookup.
 
+> **Fixed in 2.1.0.** An edit asks whether *another* account holds the username (without regard to
+> case), the personnel code, the national code or the phone number
+> (`existsBy...AndIdNot`); creating an account asks as before. The home folder's rename already
+> left its own folder out. `UserServiceTest` renames `caseuser…` to `CaseUser…` and a home along
+> with it, and still refuses another account's name in another case - the first two failed with
+> exactly this issue's 409 before the change.
+
 ### 89. The upload form answered every refusal with "enter the information correctly" — **S2**
 
 Reported: a Visio drawing (`.vsdx`) uploaded through the form, with the title left as the file's
@@ -1695,3 +1709,9 @@ move could change.
 
 Fix: a tie-breaker in each sort - `Sort.by("createdAt").descending().and(Sort.by("id").descending())`
 - which keeps today's order wherever it was defined and makes it total where it was not.
+
+> **Fixed in 2.1.0**, in the three pages and in three more places with the same fault: the tree
+> search and the folder search, whose result limit decides which of several tied rows are shown,
+> and a record's history (`ORDER BY created_at DESC, id DESC`). `ListOrderTieBreakTest` gives five
+> rows one `created_at` and pages through them one at a time: every row once, newest id first.
+> Without the tie-breakers all four of its tests failed on PostgreSQL.

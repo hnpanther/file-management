@@ -1,10 +1,10 @@
 package com.hnp.filemanagement.support;
 
-import com.hnp.filemanagement.entity.Folder;
-import com.hnp.filemanagement.entity.TagGroup;
-import com.hnp.filemanagement.entity.User;
-import com.hnp.filemanagement.repository.FolderRepository;
-import com.hnp.filemanagement.repository.TagGroupRepository;
+import com.hnp.filemanagement.folder.domain.Folder;
+import com.hnp.filemanagement.folder.domain.TagGroup;
+import com.hnp.filemanagement.identity.domain.User;
+import com.hnp.filemanagement.folder.persistence.FolderRepository;
+import com.hnp.filemanagement.folder.persistence.TagGroupRepository;
 
 /**
  * A three-deep chain for a test - still called category → sub-category → tag, the names the

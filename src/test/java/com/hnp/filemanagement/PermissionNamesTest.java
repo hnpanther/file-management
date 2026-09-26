@@ -1,6 +1,6 @@
 package com.hnp.filemanagement;
 
-import com.hnp.filemanagement.entity.PermissionEnum;
+import com.hnp.filemanagement.identity.domain.PermissionEnum;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

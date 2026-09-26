@@ -21,17 +21,15 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 * **Read the version in `pom.xml`; never take it from the log.** It is Spring Boot 4.1.1 on Java
   25 now, but a merge once discarded an upgrade and left the commit log claiming a version the
   build never had ([issue 1](docs/issues.md#1-the-spring-boot-upgrade-was-silently-reverted-by-a-merge--s1)).
-* **The tests need only a Docker daemon, and run on either database.** `support/DatabaseSupport`
-  starts MySQL, or PostgreSQL under `-Ddb=postgresql`; `support/StorageRootSupport` uses
-  `./target/test-storage/`. Until release C run **both** - `./mvnw verify` and
-  `./mvnw verify -Ddb=postgresql`; if you did not run one, say so - do not describe a change as
-  verified.
-* **A schema change is two migrations** (release B, 2.0.0): `db/migration/mysql/V2.x` and
-  `db/migration/postgresql/V3.x`, held to each other by `SchemaParityTest`; a new table also goes
-  into `DatabaseCopy.TABLES`. Nothing goes in `db/migration` itself.
-* **On MySQL, a query can be wrong and pass every test.** The `utf8mb4_unicode_ci` collation makes
-  `=` and `LIKE` on text case-insensitive by itself; PostgreSQL does not. A case test proves
-  nothing on MySQL alone - release A's were also run on PostgreSQL
+* **The tests need only a Docker daemon.** `support/DatabaseSupport` starts a PostgreSQL 18
+  container and `support/StorageRootSupport` uses `./target/test-storage/`. Run `./mvnw verify`;
+  if you did not run it, say you did not run it - do not describe a change as verified.
+* **PostgreSQL only since release C (2.1.0).** A schema change is the next
+  `db/migration/V3.x__Description.sql`, never an edit of `V3.0` or any applied migration (Flyway
+  checksums comments too, and production refuses to start on a mismatch).
+* **A query that leans on a collation was wrong on MySQL and passed every test there.** Its
+  `utf8mb4_unicode_ci` collation made `=` and `LIKE` on text case-insensitive by itself;
+  PostgreSQL does not, so a name is compared through `UPPER(...)` and is unique on `upper(column)`
   ([issue 86](docs/issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2)).
 * **`docs/issues.md` is a catalogue, not a backlog of things to fix now.** Each entry has a phase in
   the roadmap. Fixing one out of order can conflict with a later step (e.g. checksum backfill must
@@ -92,7 +90,7 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   from the tree, and `files` is a reserved top-level name. Do not move bytes on a rename or a
   move — what each operation may touch (tree, keys, bytes, tags) is tabulated in
   [docs/arch.md](docs/arch.md#what-each-operation-touches); keep it true.
-* **Adding a field to `ModelConverterUtil` that follows an association costs a query per row** -
+* **Adding a field to a mapper (`FileMapper`, `UserMapper`, ...) that follows an association costs a query per row** -
   every association is `LAZY` and `open-in-view` is off. Fetch it in the repository query.
 * **Flyway owns the schema; `docs/schema.md` describes it.** The old `schema-db/schema.sql`
   (which began with `DROP DATABASE IF EXISTS file_management;`) was deleted in Phase 0. Never
@@ -123,8 +121,8 @@ error message says nothing about the real cause. The commands are in
 [AGENTS.md](AGENTS.md#commands); the rule is part of the
 [definition of done](AGENTS.md#definition-of-done).
 
-Note also that the application talks to a **real** MySQL on `localhost:3306` (the tests do not —
-they start their own through Testcontainers). Anything you do while it is running is done to real
+Note also that the application talks to a **real** PostgreSQL - `localhost:5434` by default, the
+port `compose.yaml` publishes (the tests do not — they start their own through Testcontainers). Anything you do while it is running is done to real
 data.
 
 ## Scope discipline

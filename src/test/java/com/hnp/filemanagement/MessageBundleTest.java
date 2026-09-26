@@ -128,8 +128,18 @@ class MessageBundleTest {
         Pattern persianLiteral = Pattern.compile("\"[^\"\\n]*[\\u0600-\\u06ff][^\"\\n]*\"");
         Set<String> found = new TreeSet<>();
 
-        try (Stream<Path> files = Files.walk(Path.of("src", "main", "java", "com", "hnp", "filemanagement", "controller"))) {
+        // A controller is whatever Spring treats as one, wherever its feature keeps it - the packages
+        // are sliced by feature since 2.1.0, so there is no single controller directory to walk.
+        Pattern controller = Pattern.compile("@(Rest)?Controller(Advice)?\\b");
+        try (Stream<Path> files = Files.walk(Path.of("src", "main", "java", "com", "hnp", "filemanagement"))) {
+            List<Path> controllers = new java.util.ArrayList<>();
             for (Path java : files.filter(path -> path.toString().endsWith(".java")).toList()) {
+                if (controller.matcher(Files.readString(java)).find()) {
+                    controllers.add(java);
+                }
+            }
+            assertThat(controllers).as("the controllers were found at all").hasSizeGreaterThan(15);
+            for (Path java : controllers) {
                 Matcher matcher = persianLiteral.matcher(Files.readString(java));
                 while (matcher.find()) {
                     found.add(java.getFileName() + ": " + matcher.group());

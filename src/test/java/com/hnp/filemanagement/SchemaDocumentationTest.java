@@ -1,6 +1,5 @@
 package com.hnp.filemanagement;
 
-import com.hnp.filemanagement.support.MySqlOnly;
 import com.hnp.filemanagement.support.DatabaseSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,9 +12,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,8 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>The migrations are the history; the document is the present. Nobody should have to replay
  * eleven files in their head to know what {@code file_info} looks like today, and a hand-maintained
  * description would drift the first time somebody added a column and forgot the doc. So the
- * description is <em>generated</em> - from {@code information_schema} of a database that Flyway has
- * just migrated - and compared with what is committed. The part between the two markers in
+ * description is <em>generated</em> - from the catalogue of a PostgreSQL that Flyway has just
+ * migrated ({@code information_schema}, and {@code pg_index} / {@code pg_constraint} for what the
+ * standard views do not say: expression indexes, and which index is a key) - and compared with what is committed. The part between the two markers in
  * {@code docs/schema.md} is the generated part; everything above the first marker is written by hand
  * and left alone.
  *
@@ -39,7 +41,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and commit the result with the migration.
  */
 @SpringBootTest
-@MySqlOnly
 class SchemaDocumentationTest extends DatabaseSupport {
 
     static final Path DOCUMENT = Path.of("docs/schema.md");
@@ -80,120 +81,135 @@ class SchemaDocumentationTest extends DatabaseSupport {
     // ---------------------------------------------------------------- rendering
 
     private String render() {
-        String schema = jdbcTemplate.queryForObject("SELECT DATABASE()", String.class);
         String flyway = jdbcTemplate.queryForObject(
-                "SELECT version FROM flyway_schema_history WHERE success = 1 ORDER BY installed_rank DESC LIMIT 1",
+                "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",
                 String.class);
 
         StringBuilder out = new StringBuilder();
-        out.append("\n\n_As of migration `V").append(flyway).append("`. Types and defaults are MySQL's own; ")
-                .append("every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._\n");
+        out.append("\n\n_As of migration `V").append(flyway).append("`. Types and defaults are PostgreSQL's own; ")
+                .append("every table is in the `public` schema of a `UTF8` database with ICU's root collation ")
+                .append("([deployment.md](deployment.md#creating-the-database-and-its-account))._\n");
 
         List<String> tables = jdbcTemplate.queryForList("""
                 SELECT table_name FROM information_schema.tables
-                WHERE table_schema = ? AND table_type = 'BASE TABLE' AND table_name <> 'flyway_schema_history'
+                WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'flyway_schema_history'
                 ORDER BY table_name
-                """, String.class, schema);
+                """, String.class);
 
         for (String table : tables) {
             out.append("\n### `").append(table).append("`\n\n");
-            renderColumns(out, schema, table);
-            renderKeys(out, schema, table);
+            renderColumns(out, table);
+            renderKeys(out, table);
         }
         return out.toString();
     }
 
-    private void renderColumns(StringBuilder out, String schema, String table) {
+    private void renderColumns(StringBuilder out, String table) {
         List<Map<String, Object>> columns = jdbcTemplate.queryForList("""
-                SELECT column_name, column_type, is_nullable, column_default, extra, character_set_name, collation_name
+                SELECT column_name, data_type, character_maximum_length, datetime_precision,
+                       is_nullable, column_default, is_identity
                 FROM information_schema.columns
-                WHERE table_schema = ? AND table_name = ?
+                WHERE table_schema = 'public' AND table_name = ?
                 ORDER BY ordinal_position
-                """, schema, table);
+                """, table);
 
         out.append("| Column | Type | Null | Default | Notes |\n|---|---|---|---|---|\n");
         for (Map<String, Object> column : columns) {
-            List<String> notes = new ArrayList<>();
-            String extra = text(column.get("extra")).toLowerCase();
-            if (extra.contains("auto_increment")) {
-                notes.add("auto-increment");
-            }
-            String charset = text(column.get("character_set_name"));
-            if (!charset.isEmpty() && !charset.equals("utf8mb4")) {
-                notes.add(charset);
-            }
-            Object defaultValue = column.get("column_default");
-            out.append("| `").append(column.get("column_name")).append("` | `")
-                    .append(column.get("column_type")).append("` | ")
+            String type = switch (text(column.get("data_type"))) {
+                case "character varying" -> "varchar(" + column.get("character_maximum_length") + ")";
+                case "timestamp without time zone" -> "timestamp(" + column.get("datetime_precision") + ")";
+                default -> text(column.get("data_type"));
+            };
+            String defaultValue = plainDefault(column.get("column_default"));
+            out.append("| `").append(column.get("column_name")).append("` | `").append(type).append("` | ")
                     .append("YES".equals(column.get("is_nullable")) ? "yes" : "no").append(" | ")
                     .append(defaultValue == null ? "" : "`" + defaultValue + "`").append(" | ")
-                    .append(String.join(", ", notes)).append(" |\n");
+                    .append("YES".equals(column.get("is_identity")) ? "identity" : "").append(" |\n");
         }
     }
 
-    private void renderKeys(StringBuilder out, String schema, String table) {
-        // Constraints, with their columns in order.
-        List<Map<String, Object>> keyColumns = jdbcTemplate.queryForList("""
-                SELECT tc.constraint_name, tc.constraint_type, kcu.column_name,
-                       kcu.referenced_table_name, kcu.referenced_column_name, rc.delete_rule, rc.update_rule
-                FROM information_schema.table_constraints tc
-                    JOIN information_schema.key_column_usage kcu
-                        ON kcu.constraint_schema = tc.constraint_schema
-                       AND kcu.constraint_name = tc.constraint_name
-                       AND kcu.table_name = tc.table_name
-                    LEFT JOIN information_schema.referential_constraints rc
-                        ON rc.constraint_schema = tc.constraint_schema
-                       AND rc.constraint_name = tc.constraint_name
-                       AND rc.table_name = tc.table_name
-                WHERE tc.table_schema = ? AND tc.table_name = ?
-                ORDER BY FIELD(tc.constraint_type, 'PRIMARY KEY', 'UNIQUE', 'FOREIGN KEY'), tc.constraint_name, kcu.ordinal_position
-                """, schema, table);
-
-        Map<String, List<Map<String, Object>>> byConstraint = new LinkedHashMap<>();
-        for (Map<String, Object> row : keyColumns) {
-            byConstraint.computeIfAbsent(text(row.get("constraint_name")), k -> new ArrayList<>()).add(row);
-        }
-
+    private void renderKeys(StringBuilder out, String table) {
         List<String> lines = new ArrayList<>();
-        for (Map.Entry<String, List<Map<String, Object>>> entry : byConstraint.entrySet()) {
-            List<Map<String, Object>> rows = entry.getValue();
-            String type = text(rows.getFirst().get("constraint_type"));
-            String columns = rows.stream().map(r -> "`" + r.get("column_name") + "`").collect(Collectors.joining(", "));
-            switch (type) {
-                case "PRIMARY KEY" -> lines.add("* **primary key** " + columns);
-                case "UNIQUE" -> lines.add("* **unique** `" + entry.getKey() + "` (" + columns + ")");
-                case "FOREIGN KEY" -> {
-                    Map<String, Object> first = rows.getFirst();
-                    String delete = text(first.get("delete_rule"));
-                    lines.add("* **foreign key** `" + entry.getKey() + "` " + columns + " → `"
-                            + first.get("referenced_table_name") + "` (`" + first.get("referenced_column_name") + "`)"
-                            + ("NO ACTION".equals(delete) || "RESTRICT".equals(delete) ? "" : ", on delete " + delete.toLowerCase()));
-                }
-                default -> lines.add("* " + type.toLowerCase() + " `" + entry.getKey() + "` (" + columns + ")");
+
+        // Every index with its columns - or the expression it is on, such as upper(name) - in order:
+        // the primary key first, then the unique ones, then the plain ones after the foreign keys.
+        List<Map<String, Object>> indexes = jdbcTemplate.queryForList("""
+                SELECT i.relname AS name, ix.indisprimary AS primary_key, ix.indisunique AS is_unique,
+                       (SELECT string_agg(pg_get_indexdef(ix.indexrelid, k, true), '|' ORDER BY k)
+                        FROM generate_series(1, ix.indnkeyatts) AS k) AS columns,
+                       pg_get_indexdef(ix.indexrelid) AS definition
+                FROM pg_index ix
+                    JOIN pg_class i ON i.oid = ix.indexrelid
+                    JOIN pg_class t ON t.oid = ix.indrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                WHERE n.nspname = 'public' AND t.relname = ?
+                ORDER BY ix.indisprimary DESC, ix.indisunique DESC, i.relname
+                """, table);
+        List<String> plain = new ArrayList<>();
+        for (Map<String, Object> index : indexes) {
+            String columns = columnsOf(text(index.get("columns")));
+            if (text(index.get("definition")).contains("varchar_pattern_ops")) {
+                // The operator class is what lets a B-tree serve a prefix LIKE under a linguistic
+                // collation; without it every subtree query is a sequential scan.
+                columns += ", for prefix `LIKE` (`varchar_pattern_ops`)";
+            }
+            if (Boolean.TRUE.equals(index.get("primary_key"))) {
+                lines.add("* **primary key** " + columns);
+            } else if (Boolean.TRUE.equals(index.get("is_unique"))) {
+                lines.add("* **unique** `" + index.get("name") + "` (" + columns + ")");
+            } else {
+                plain.add("* **index** `" + index.get("name") + "` (" + columns + ")");
             }
         }
 
-        // Plain indexes: what is left once the ones backing a constraint are removed.
-        List<Map<String, Object>> indexColumns = jdbcTemplate.queryForList("""
-                SELECT index_name, column_name
-                FROM information_schema.statistics
-                WHERE table_schema = ? AND table_name = ? AND non_unique = 1
-                ORDER BY index_name, seq_in_index
-                """, schema, table);
-        Map<String, List<String>> byIndex = new LinkedHashMap<>();
-        for (Map<String, Object> row : indexColumns) {
-            byIndex.computeIfAbsent(text(row.get("index_name")), k -> new ArrayList<>())
-                    .add("`" + row.get("column_name") + "`");
+        List<Map<String, Object>> foreignKeys = jdbcTemplate.queryForList("""
+                SELECT con.conname AS name,
+                       (SELECT string_agg(a.attname, '|' ORDER BY k.ord)
+                        FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)
+                            JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum) AS columns,
+                       rf.relname AS target,
+                       (SELECT string_agg(a.attname, '|' ORDER BY k.ord)
+                        FROM unnest(con.confkey) WITH ORDINALITY AS k(attnum, ord)
+                            JOIN pg_attribute a ON a.attrelid = con.confrelid AND a.attnum = k.attnum) AS target_columns,
+                       con.confdeltype::text AS on_delete
+                FROM pg_constraint con
+                    JOIN pg_class cl ON cl.oid = con.conrelid
+                    JOIN pg_class rf ON rf.oid = con.confrelid
+                    JOIN pg_namespace n ON n.oid = cl.relnamespace
+                WHERE con.contype = 'f' AND n.nspname = 'public' AND cl.relname = ?
+                ORDER BY con.conname
+                """, table);
+        for (Map<String, Object> key : foreignKeys) {
+            String onDelete = switch (text(key.get("on_delete"))) {
+                case "c" -> ", on delete cascade";
+                case "n" -> ", on delete set null";
+                case "d" -> ", on delete set default";
+                default -> "";
+            };
+            lines.add("* **foreign key** `" + key.get("name") + "` " + columnsOf(text(key.get("columns")))
+                    + " → `" + key.get("target") + "` (" + columnsOf(text(key.get("target_columns"))) + ")" + onDelete);
         }
-        for (Map.Entry<String, List<String>> index : byIndex.entrySet()) {
-            if (!byConstraint.containsKey(index.getKey())) {
-                lines.add("* **index** `" + index.getKey() + "` (" + String.join(", ", index.getValue()) + ")");
-            }
-        }
+        lines.addAll(plain);
 
         if (!lines.isEmpty()) {
             out.append("\n").append(String.join("\n", lines)).append("\n");
         }
+    }
+
+    /** {@code name|upper(file_name::text)} as {@code `name`, `upper(file_name)`}. */
+    private static String columnsOf(String list) {
+        return Arrays.stream(list.split("\\|"))
+                .map(column -> "`" + column.replace("::text", "") + "`")
+                .collect(Collectors.joining(", "));
+    }
+
+    /** {@code 'READ'::character varying} as {@code READ}; an identity has no default of its own. */
+    private static String plainDefault(Object value) {
+        if (value == null) {
+            return null;
+        }
+        Matcher quoted = Pattern.compile("^'(.*)'::[a-z ]+$").matcher(value.toString());
+        return quoted.matches() ? quoted.group(1) : value.toString();
     }
 
     private static String replaceGeneratedSection(String document, String generated) {

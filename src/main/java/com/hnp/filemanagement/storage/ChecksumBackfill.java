@@ -1,9 +1,9 @@
 package com.hnp.filemanagement.storage;
 
-import com.hnp.filemanagement.config.FileManagementProperties;
-import com.hnp.filemanagement.entity.FileDetails;
-import com.hnp.filemanagement.exception.ResourceNotFoundException;
-import com.hnp.filemanagement.repository.FileDetailsRepository;
+import com.hnp.filemanagement.shared.config.FileManagementProperties;
+import com.hnp.filemanagement.file.domain.FileDetails;
+import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.file.persistence.FileDetailsRepository;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

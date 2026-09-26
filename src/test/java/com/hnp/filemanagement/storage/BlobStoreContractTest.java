@@ -1,8 +1,8 @@
 package com.hnp.filemanagement.storage;
 
-import com.hnp.filemanagement.exception.BusinessException;
-import com.hnp.filemanagement.exception.DuplicateResourceException;
-import com.hnp.filemanagement.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.shared.exception.BusinessException;
+import com.hnp.filemanagement.shared.exception.DuplicateResourceException;
+import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;

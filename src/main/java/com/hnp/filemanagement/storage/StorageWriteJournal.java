@@ -1,7 +1,5 @@
 package com.hnp.filemanagement.storage;
 
-import com.hnp.filemanagement.entity.FileStorageWrite;
-import com.hnp.filemanagement.repository.FileStorageWriteRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

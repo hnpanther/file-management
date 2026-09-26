@@ -1,6 +1,6 @@
 package com.hnp.filemanagement.storage;
 
-import com.hnp.filemanagement.config.FileManagementProperties;
+import com.hnp.filemanagement.shared.config.FileManagementProperties;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;

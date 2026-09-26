@@ -1,96 +1,61 @@
 # Database schema
 
 The database as it is **now** — every table, column, key and index — after all migrations have
-run. The migrations in `src/main/resources/db/migration/mysql` are the history and the only thing that
-changes the schema; this file is the present, so nobody has to replay them in their head.
+run. PostgreSQL only since release C (2.1.0): `src/main/resources/db/migration/V3.0__Baseline.sql`
+is the baseline every database starts from, and the only thing that changes the schema is the next
+`V3.x` beside it; this file is the present, so nobody has to replay them in their head.
 
 **The table section below is generated, not written.** `SchemaDocumentationTest` migrates a fresh
-MySQL with Flyway, reads `information_schema`, renders it, and fails the build if what is committed
-here differs. When a migration changes the schema, regenerate and commit both together:
+PostgreSQL with Flyway, reads its catalogue (`information_schema`, and `pg_index` / `pg_constraint`
+for expression indexes and which index is a key), renders it, and fails the build if what is
+committed here differs. When a migration changes the schema, regenerate and commit both together:
 
 ```bash
 ./mvnw test -Dtest=SchemaDocumentationTest -DargLine=-Dschema.doc.write=true
 ```
 
-**The same schema on PostgreSQL** (release B, 2.0.0) is `db/migration/postgresql/V3.0__Baseline.sql`,
-written once in PostgreSQL's terms; this document describes MySQL until release C and is generated
-from it. `SchemaParityTest` keeps the two identical by name and fact, with these differences on
-PostgreSQL and no others: `datetime` is `timestamp(0)`, `tinyint(1)` is `boolean`,
-`AUTO_INCREMENT` is an identity, the unique names MySQL compared without case are unique on
-`upper(column)` (`uq_user_username`, `uq_user_email`, `uq_role_role_name`, `uq_tag_group_name`,
-`uq_tag_name_per_group`, `uq_folder_sibling_name`, `uq_file_info_name_per_folder`,
-`uq_file_details_version_format`), and `ix_folder_path` is `varchar_pattern_ops`. The indexes
-MySQL creates by itself for foreign keys, named after them, are declared by name there. How the
-PostgreSQL database is created is in
-[deployment.md](deployment.md#postgresql-the-database-and-the-copy).
+**Where it differs from the MySQL the application ran on until 2026-09-26** - so that nothing below
+reads as an accident: timestamps are `timestamp(0)`, keeping whole seconds as MySQL's `DATETIME`
+did; ids are identities; the one flag is a `boolean`; a name MySQL's collation compared without
+case is unique on `upper(column)` (`uq_user_username`, `uq_user_email`, `uq_role_role_name`,
+`uq_tag_group_name`, `uq_tag_name_per_group`, `uq_folder_sibling_name`,
+`uq_file_info_name_per_folder`, `uq_file_details_version_format`); `ix_folder_path` is
+`varchar_pattern_ops`, for prefix `LIKE`; and every foreign key has its own index, named after the
+constraint (`fk_...`), because PostgreSQL makes none by itself.
 
 Everything above the marker is written by hand and kept short: what the tables are *for* is in
 [arch.md](arch.md#4-the-domain-model), and why each one is shaped the way it is lives in the
-comment block at the top of the migration that created it.
+comment block at the top of `V3.0` and of the MySQL migration that first created it (in git
+history since release C).
 
 ## Creating the database and its user
 
 The one thing Flyway cannot do is create the database it runs in, or the account it connects as.
-That is done once, by hand, as a MySQL administrator, before the first start:
-
-```sql
-CREATE DATABASE file_management
-    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE USER 'file_management'@'localhost' IDENTIFIED BY 'a real password';
-
-GRANT ALL PRIVILEGES ON file_management.* TO 'file_management'@'localhost';
-FLUSH PRIVILEGES;
-```
-
-Line by line:
-
-* **`CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`** is not optional. Every table below is
-  created with the same pair, and a database default that differs would give a table added later
-  without an explicit clause a different collation — and then a `JOIN` between the two fails with
-  "illegal mix of collations". `utf8mb4` is what Persian text and emoji need; `unicode_ci` is what
-  makes the uniqueness constraints compare names case-insensitively, which the pre-flight queries
-  in [deployment.md](deployment.md#upgrading-from-100-to-110) rely on. It folds more than case -
-  accents, Persian and Arabic-Indic digits against ASCII ones, the zero-width non-joiner - and
-  since 1.7.0 the application does not lean on it for case: every name lookup and search says
-  `UPPER(...)` on both sides itself, so PostgreSQL gives the same answers
-  ([issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2)).
-* **A dedicated user.** The application must not connect as `root`. `ALL PRIVILEGES ON
-  file_management.*` is the least that works — Flyway needs `CREATE`, `ALTER`, `INDEX` and
-  `REFERENCES` on this schema to run migrations at start-up — and it is scoped to this one schema:
-  no global privilege, no `GRANT OPTION`, nothing on `mysql.*`.
-* **`@'localhost'`** is right when the application runs on the same machine as MySQL and connects
-  over loopback, which both service definitions do. If the application is on another host, the
-  account must be created for that host (`'file_management'@'10.0.0.5'`, or `@'%'` behind a
-  firewall) — a `'localhost'` account is invisible to a remote connection and the error is a bare
-  "Access denied".
-* **The password** goes into `FILEMANAGEMENT_DB_PASSWORD` or the external `application.properties`
-  ([deployment.md](deployment.md#configuring-it-from-outside-the-jar)) and nowhere else.
-  `file_management` — the password the repository ships as a default — is published in this
-  repository and must never be the real one.
-* **`USE file_management;`** is for a person at the MySQL prompt about to run the verification
-  queries below or in a migration's header. The application never needs it: its JDBC URL names
-  the schema.
+That is done once, by hand, as a PostgreSQL superuser, before the first start - an account that
+owns its database and nothing else, the database `UTF8` with ICU's root locale. The statements,
+what each clause is for, what goes into the configuration afterwards and how to check the result
+are in [deployment.md](deployment.md#creating-the-database-and-its-account), the one place they
+are written down.
 
 Flyway does everything after that on the first boot, and `DataInitializer` seeds the permissions,
 the two roles and the `Admin` account. Nothing else is run by hand.
 
 ### A throw-away developer database
 
-For a local database you intend to destroy and recreate, the same statements are preceded by:
+`compose.yaml` brings up a disposable PostgreSQL with the right settings; `docker compose down -v`
+throws it away, data and all, with nothing to type. For a database on a server you intend to
+destroy and recreate by hand, as a superuser:
 
 ```sql
 DROP DATABASE IF EXISTS file_management;
-DROP USER IF EXISTS 'file_management'@'localhost';
+DROP ROLE IF EXISTS file_management;
 ```
 
-**Never on a server with real data.** Those two lines are the opening of the old
-`schema-db/schema.sql`, which was deleted in Phase 0 precisely because a file that begins by
-dropping the production database, carries no warning, and can be run against the wrong
-connection is a live footgun
-([issue 32](issues.md#32-schema-dbschemasql-is-a-live-footgun--s1)). They are shown here so that
-the reset is documented; they are not shipped as a script on purpose. Developers should prefer
-`compose.yaml`, which brings up a disposable MySQL with the right settings and no reset to type.
+**Never on a server with real data.** A file that begins by dropping the database, carries no
+warning, and can be run against the wrong connection is a live footgun - which is why the old
+`schema-db/schema.sql` that began that way was deleted in Phase 0
+([issue 32](issues.md#32-schema-dbschemasql-is-a-live-footgun--s1)). The reset is documented here;
+it is not shipped as a script, on purpose.
 
 ## How the tables relate
 
@@ -145,138 +110,145 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V2.19`. Types and defaults are MySQL's own; every table is InnoDB, `utf8mb4` / `utf8mb4_unicode_ci` unless a column says otherwise._
+_As of migration `V3.0`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
+| `id` | `integer` | no |  | identity |
 | `entity_name` | `varchar(100)` | no |  |  |
 | `table_name` | `varchar(100)` | no |  |  |
-| `entity_id` | `int` | no |  |  |
+| `entity_id` | `integer` | no |  |  |
 | `action` | `varchar(100)` | no |  |  |
 | `action_description` | `varchar(1000)` | yes |  |  |
 | `description` | `varchar(1000)` | yes |  |  |
-| `user_id` | `int` | no |  |  |
-| `enabled` | `int` | no |  |  |
-| `state` | `int` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
+| `user_id` | `integer` | no |  |  |
+| `enabled` | `integer` | no |  |  |
+| `state` | `integer` | no |  |  |
+| `created_at` | `timestamp(0)` | no |  |  |
 
 * **primary key** `id`
 * **foreign key** `fk_action_history_user_id` `user_id` → `app_user` (`id`)
+* **index** `fk_action_history_user_id` (`user_id`)
 * **index** `ix_action_history_entity` (`entity_name`, `entity_id`)
 
 ### `api_key`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
+| `id` | `integer` | no |  | identity |
 | `key_id` | `varchar(32)` | no |  |  |
 | `secret_hash` | `varchar(64)` | no |  |  |
 | `title` | `varchar(100)` | no |  |  |
 | `description` | `varchar(500)` | yes |  |  |
-| `enabled` | `int` | no | `1` |  |
-| `expires_at` | `datetime` | yes |  |  |
-| `revoked_at` | `datetime` | yes |  |  |
-| `last_used_at` | `datetime` | yes |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `created_by` | `int` | no |  |  |
-| `updated_by` | `int` | yes |  |  |
+| `enabled` | `integer` | no | `1` |  |
+| `expires_at` | `timestamp(0)` | yes |  |  |
+| `revoked_at` | `timestamp(0)` | yes |  |  |
+| `last_used_at` | `timestamp(0)` | yes |  |  |
+| `created_at` | `timestamp(0)` | no |  |  |
+| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_by` | `integer` | no |  |  |
+| `updated_by` | `integer` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_api_key_key_id` (`key_id`)
 * **foreign key** `fk_api_key_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_api_key_updated_by_user` `updated_by` → `app_user` (`id`)
+* **index** `fk_api_key_created_by_user` (`created_by`)
+* **index** `fk_api_key_updated_by_user` (`updated_by`)
 
 ### `api_key_folder`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `api_key_id` | `int` | no |  |  |
-| `folder_id` | `int` | no |  |  |
+| `api_key_id` | `integer` | no |  |  |
+| `folder_id` | `integer` | no |  |  |
 | `permission` | `varchar(10)` | no | `READ` |  |
 
 * **primary key** `api_key_id`, `folder_id`
 * **foreign key** `fk_api_key_folder_folder` `folder_id` → `folder` (`id`), on delete cascade
 * **foreign key** `fk_api_key_folder_key` `api_key_id` → `api_key` (`id`), on delete cascade
+* **index** `fk_api_key_folder_folder` (`folder_id`)
 * **index** `ix_api_key_folder_key` (`api_key_id`)
 
 ### `app_setting`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
+| `id` | `integer` | no |  | identity |
 | `setting_key` | `varchar(100)` | no |  |  |
 | `setting_value` | `varchar(500)` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `updated_by` | `int` | yes |  |  |
+| `updated_at` | `timestamp(0)` | yes |  |  |
+| `updated_by` | `integer` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_app_setting_key` (`setting_key`)
 * **foreign key** `fk_app_setting_updated_by_user` `updated_by` → `app_user` (`id`)
+* **index** `fk_app_setting_updated_by_user` (`updated_by`)
 
 ### `app_user`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
+| `id` | `integer` | no |  | identity |
 | `username` | `varchar(150)` | no |  |  |
-| `personel_code` | `int` | no |  |  |
+| `personel_code` | `integer` | no |  |  |
 | `national_code` | `varchar(10)` | no |  |  |
 | `email` | `varchar(150)` | yes |  |  |
 | `phone_number` | `varchar(15)` | yes |  |  |
 | `password` | `varchar(100)` | no |  |  |
 | `first_name` | `varchar(250)` | no |  |  |
 | `last_name` | `varchar(250)` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `login_type` | `int` | no | `0` |  |
-| `enabled` | `int` | no |  |  |
-| `state` | `int` | no |  |  |
+| `created_at` | `timestamp(0)` | no |  |  |
+| `updated_at` | `timestamp(0)` | yes |  |  |
+| `login_type` | `integer` | no | `0` |  |
+| `enabled` | `integer` | no |  |  |
+| `state` | `integer` | no |  |  |
 
 * **primary key** `id`
-* **unique** `uq_user_email` (`email`)
+* **unique** `uq_user_email` (`upper(email)`)
 * **unique** `uq_user_national_code` (`national_code`)
 * **unique** `uq_user_personel_code` (`personel_code`)
 * **unique** `uq_user_phone_number` (`phone_number`)
-* **unique** `uq_user_username` (`username`)
+* **unique** `uq_user_username` (`upper(username)`)
 * **index** `ix_user_created_at` (`created_at`)
 
 ### `content_kind`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
+| `id` | `integer` | no |  | identity |
 | `extension` | `varchar(16)` | no |  |  |
 | `media_type` | `varchar(255)` | no |  |  |
 | `signature_hex` | `varchar(64)` | yes |  |  |
-| `signature_offset` | `int` | no | `0` |  |
-| `text_only` | `tinyint(1)` | no | `0` |  |
+| `signature_offset` | `integer` | no | `0` |  |
+| `text_only` | `boolean` | no | `false` |  |
 | `description` | `varchar(500)` | yes |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `created_by` | `int` | yes |  |  |
-| `updated_by` | `int` | yes |  |  |
+| `created_at` | `timestamp(0)` | no |  |  |
+| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_by` | `integer` | yes |  |  |
+| `updated_by` | `integer` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_content_kind_extension` (`extension`)
 * **foreign key** `fk_content_kind_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_content_kind_updated_by_user` `updated_by` → `app_user` (`id`)
+* **index** `fk_content_kind_created_by_user` (`created_by`)
+* **index** `fk_content_kind_updated_by_user` (`updated_by`)
 
 ### `file_details`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `file_info_id` | `int` | no |  |  |
-| `external_id` | `varchar(36)` | no |  | ascii |
+| `id` | `integer` | no |  | identity |
+| `file_info_id` | `integer` | no |  |  |
+| `external_id` | `varchar(36)` | no |  |  |
 | `file_name` | `varchar(100)` | no |  |  |
 | `search_name` | `varchar(200)` | no |  |  |
 | `file_extension` | `varchar(10)` | no |  |  |
 | `content_type` | `varchar(100)` | no |  |  |
-| `version` | `int` | no |  |  |
+| `version` | `integer` | no |  |  |
 | `version_name` | `varchar(100)` | no |  |  |
 | `version_name_description` | `varchar(1000)` | yes |  |  |
 | `description` | `varchar(1000)` | no |  |  |
@@ -284,20 +256,22 @@ _As of migration `V2.19`. Types and defaults are MySQL's own; every table is Inn
 | `storage_key` | `varchar(1000)` | no |  |  |
 | `file_link` | `varchar(1000)` | yes |  |  |
 | `file_size` | `bigint` | no |  |  |
-| `checksum_sha256` | `varchar(64)` | yes |  | ascii |
-| `enabled` | `int` | no |  |  |
-| `state` | `int` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `created_by` | `int` | no |  |  |
-| `updated_by` | `int` | yes |  |  |
+| `checksum_sha256` | `varchar(64)` | yes |  |  |
+| `enabled` | `integer` | no |  |  |
+| `state` | `integer` | no |  |  |
+| `created_at` | `timestamp(0)` | no |  |  |
+| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_by` | `integer` | no |  |  |
+| `updated_by` | `integer` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_file_details_external_id` (`external_id`)
-* **unique** `uq_file_details_version_format` (`file_info_id`, `version`, `file_extension`)
+* **unique** `uq_file_details_version_format` (`file_info_id`, `version`, `upper(file_extension)`)
 * **foreign key** `fk_file_details_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_file_details_file_info_id` `file_info_id` → `file_info` (`id`)
 * **foreign key** `fk_file_details_updated_by_user` `updated_by` → `app_user` (`id`)
+* **index** `fk_file_details_created_by_user` (`created_by`)
+* **index** `fk_file_details_updated_by_user` (`updated_by`)
 * **index** `ix_file_details_file_info_version` (`file_info_id`, `version`)
 * **index** `ix_file_details_state` (`state`)
 
@@ -305,8 +279,8 @@ _As of migration `V2.19`. Types and defaults are MySQL's own; every table is Inn
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `external_id` | `varchar(36)` | no |  | ascii |
+| `id` | `integer` | no |  | identity |
+| `external_id` | `varchar(36)` | no |  |  |
 | `file_name` | `varchar(100)` | no |  |  |
 | `search_name` | `varchar(200)` | no |  |  |
 | `code_name` | `varchar(300)` | no |  |  |
@@ -314,21 +288,23 @@ _As of migration `V2.19`. Types and defaults are MySQL's own; every table is Inn
 | `description` | `varchar(1000)` | yes |  |  |
 | `search_description` | `varchar(2000)` | yes |  |  |
 | `file_link` | `varchar(1000)` | yes |  |  |
-| `last_version` | `int` | no |  |  |
-| `folder_id` | `int` | no |  |  |
-| `enabled` | `int` | no |  |  |
-| `state` | `int` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `created_by` | `int` | no |  |  |
-| `updated_by` | `int` | yes |  |  |
+| `last_version` | `integer` | no |  |  |
+| `folder_id` | `integer` | no |  |  |
+| `enabled` | `integer` | no |  |  |
+| `state` | `integer` | no |  |  |
+| `created_at` | `timestamp(0)` | no |  |  |
+| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_by` | `integer` | no |  |  |
+| `updated_by` | `integer` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_file_info_external_id` (`external_id`)
-* **unique** `uq_file_info_name_per_folder` (`folder_id`, `file_name`)
+* **unique** `uq_file_info_name_per_folder` (`folder_id`, `upper(file_name)`)
 * **foreign key** `fk_file_info_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_file_info_folder` `folder_id` → `folder` (`id`)
 * **foreign key** `fk_file_info_updated_by_user` `updated_by` → `app_user` (`id`)
+* **index** `fk_file_info_created_by_user` (`created_by`)
+* **index** `fk_file_info_updated_by_user` (`updated_by`)
 * **index** `ix_file_info_created_at` (`created_at`)
 * **index** `ix_file_info_folder` (`folder_id`)
 * **index** `ix_file_info_state` (`state`)
@@ -337,18 +313,18 @@ _As of migration `V2.19`. Types and defaults are MySQL's own; every table is Inn
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
+| `id` | `integer` | no |  | identity |
 | `token_hash` | `varchar(64)` | no |  |  |
-| `file_details_id` | `int` | no |  |  |
-| `expires_at` | `datetime` | no |  |  |
+| `file_details_id` | `integer` | no |  |  |
+| `expires_at` | `timestamp(0)` | no |  |  |
 | `password_hash` | `varchar(100)` | yes |  |  |
-| `max_downloads` | `int` | yes |  |  |
-| `download_count` | `int` | no | `0` |  |
-| `failed_attempts` | `int` | no | `0` |  |
-| `locked_until` | `datetime` | yes |  |  |
-| `revoked_at` | `datetime` | yes |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `created_by` | `int` | no |  |  |
+| `max_downloads` | `integer` | yes |  |  |
+| `download_count` | `integer` | no | `0` |  |
+| `failed_attempts` | `integer` | no | `0` |  |
+| `locked_until` | `timestamp(0)` | yes |  |  |
+| `revoked_at` | `timestamp(0)` | yes |  |  |
+| `created_at` | `timestamp(0)` | no |  |  |
+| `created_by` | `integer` | no |  |  |
 
 * **primary key** `id`
 * **unique** `uq_file_share_link_token` (`token_hash`)
@@ -361,9 +337,9 @@ _As of migration `V2.19`. Types and defaults are MySQL's own; every table is Inn
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
+| `id` | `integer` | no |  | identity |
 | `storage_key` | `varchar(1000)` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
+| `created_at` | `timestamp(0)` | no |  |  |
 
 * **primary key** `id`
 * **index** `ix_file_storage_write_created_at` (`created_at`)
@@ -372,8 +348,8 @@ _As of migration `V2.19`. Types and defaults are MySQL's own; every table is Inn
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `file_info_id` | `int` | no |  |  |
-| `tag_id` | `int` | no |  |  |
+| `file_info_id` | `integer` | no |  |  |
+| `tag_id` | `integer` | no |  |  |
 
 * **primary key** `file_info_id`, `tag_id`
 * **foreign key** `fk_file_tag_file_info` `file_info_id` → `file_info` (`id`)
@@ -384,41 +360,44 @@ _As of migration `V2.19`. Types and defaults are MySQL's own; every table is Inn
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `parent_id` | `int` | yes |  |  |
+| `id` | `integer` | no |  | identity |
+| `parent_id` | `integer` | yes |  |  |
 | `name` | `varchar(100)` | no |  |  |
 | `search_name` | `varchar(200)` | no |  |  |
 | `display_name` | `varchar(200)` | no |  |  |
 | `search_display_name` | `varchar(400)` | no |  |  |
-| `path` | `varchar(1000)` | no |  | ascii |
-| `depth` | `int` | no |  |  |
+| `path` | `varchar(1000)` | no |  |  |
+| `depth` | `integer` | no |  |  |
 | `kind` | `varchar(30)` | no |  |  |
-| `owner_user_id` | `int` | yes |  |  |
-| `tag_group_id` | `int` | yes |  |  |
+| `owner_user_id` | `integer` | yes |  |  |
+| `tag_group_id` | `integer` | yes |  |  |
 | `quota_bytes` | `bigint` | yes |  |  |
-| `enabled` | `int` | no |  |  |
-| `state` | `int` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `created_by` | `int` | yes |  |  |
-| `updated_by` | `int` | yes |  |  |
+| `enabled` | `integer` | no |  |  |
+| `state` | `integer` | no |  |  |
+| `created_at` | `timestamp(0)` | no |  |  |
+| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_by` | `integer` | yes |  |  |
+| `updated_by` | `integer` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_folder_owner_user` (`owner_user_id`)
-* **unique** `uq_folder_sibling_name` (`parent_id`, `name`)
+* **unique** `uq_folder_sibling_name` (`parent_id`, `upper(name)`)
 * **foreign key** `fk_folder_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_folder_owner_user` `owner_user_id` → `app_user` (`id`)
 * **foreign key** `fk_folder_parent` `parent_id` → `folder` (`id`)
 * **foreign key** `fk_folder_tag_group` `tag_group_id` → `tag_group` (`id`)
 * **foreign key** `fk_folder_updated_by_user` `updated_by` → `app_user` (`id`)
+* **index** `fk_folder_created_by_user` (`created_by`)
+* **index** `fk_folder_tag_group` (`tag_group_id`)
+* **index** `fk_folder_updated_by_user` (`updated_by`)
 * **index** `ix_folder_parent` (`parent_id`)
-* **index** `ix_folder_path` (`path`)
+* **index** `ix_folder_path` (`path`, for prefix `LIKE` (`varchar_pattern_ops`))
 
 ### `permission`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
+| `id` | `integer` | no |  | identity |
 | `permission_name` | `varchar(100)` | no |  |  |
 | `description` | `varchar(1500)` | yes |  |  |
 
@@ -429,99 +408,107 @@ _As of migration `V2.19`. Types and defaults are MySQL's own; every table is Inn
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `role_id` | `int` | no |  |  |
-| `permission_id` | `int` | no |  |  |
+| `id` | `integer` | no |  | identity |
+| `role_id` | `integer` | no |  |  |
+| `permission_id` | `integer` | no |  |  |
 
 * **primary key** `id`
 * **unique** `uq_permission_role` (`role_id`, `permission_id`)
 * **foreign key** `fk_permission_role_permission_id` `permission_id` → `permission` (`id`)
 * **foreign key** `fk_permission_role_role_id` `role_id` → `role` (`id`)
+* **index** `fk_permission_role_permission_id` (`permission_id`)
 
 ### `role`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
+| `id` | `integer` | no |  | identity |
 | `role_name` | `varchar(100)` | no |  |  |
 
 * **primary key** `id`
-* **unique** `uq_role_role_name` (`role_name`)
+* **unique** `uq_role_role_name` (`upper(role_name)`)
 
 ### `role_folder`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `role_id` | `int` | no |  |  |
-| `folder_id` | `int` | no |  |  |
+| `role_id` | `integer` | no |  |  |
+| `folder_id` | `integer` | no |  |  |
 | `permission` | `varchar(10)` | no | `READ` |  |
 
 * **primary key** `role_id`, `folder_id`
 * **foreign key** `fk_role_folder_folder` `folder_id` → `folder` (`id`), on delete cascade
 * **foreign key** `fk_role_folder_role` `role_id` → `role` (`id`), on delete cascade
+* **index** `fk_role_folder_folder` (`folder_id`)
 * **index** `ix_role_folder_role` (`role_id`)
 
 ### `tag`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `group_id` | `int` | yes |  |  |
+| `id` | `integer` | no |  | identity |
+| `group_id` | `integer` | yes |  |  |
 | `name` | `varchar(100)` | no |  |  |
 | `title` | `varchar(200)` | no |  |  |
-| `enabled` | `int` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `created_by` | `int` | yes |  |  |
-| `updated_by` | `int` | yes |  |  |
+| `enabled` | `integer` | no |  |  |
+| `created_at` | `timestamp(0)` | no |  |  |
+| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_by` | `integer` | yes |  |  |
+| `updated_by` | `integer` | yes |  |  |
 
 * **primary key** `id`
-* **unique** `uq_tag_name_per_group` (`group_id`, `name`)
+* **unique** `uq_tag_name_per_group` (`group_id`, `upper(name)`)
 * **foreign key** `fk_tag_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_tag_group` `group_id` → `tag_group` (`id`)
 * **foreign key** `fk_tag_updated_by_user` `updated_by` → `app_user` (`id`)
+* **index** `fk_tag_created_by_user` (`created_by`)
+* **index** `fk_tag_updated_by_user` (`updated_by`)
 
 ### `tag_group`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
+| `id` | `integer` | no |  | identity |
 | `name` | `varchar(100)` | no |  |  |
 | `title` | `varchar(200)` | no |  |  |
-| `enabled` | `int` | no |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `created_by` | `int` | yes |  |  |
-| `updated_by` | `int` | yes |  |  |
+| `enabled` | `integer` | no |  |  |
+| `created_at` | `timestamp(0)` | no |  |  |
+| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_by` | `integer` | yes |  |  |
+| `updated_by` | `integer` | yes |  |  |
 
 * **primary key** `id`
-* **unique** `uq_tag_group_name` (`name`)
+* **unique** `uq_tag_group_name` (`upper(name)`)
 * **foreign key** `fk_tag_group_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_tag_group_updated_by_user` `updated_by` → `app_user` (`id`)
+* **index** `fk_tag_group_created_by_user` (`created_by`)
+* **index** `fk_tag_group_updated_by_user` (`updated_by`)
 
 ### `upload_policy`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `role_id` | `int` | yes |  |  |
-| `created_at` | `datetime` | no |  |  |
-| `updated_at` | `datetime` | yes |  |  |
-| `created_by` | `int` | yes |  |  |
-| `updated_by` | `int` | yes |  |  |
+| `id` | `integer` | no |  | identity |
+| `role_id` | `integer` | yes |  |  |
+| `created_at` | `timestamp(0)` | no |  |  |
+| `updated_at` | `timestamp(0)` | yes |  |  |
+| `created_by` | `integer` | yes |  |  |
+| `updated_by` | `integer` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_upload_policy_role` (`role_id`)
 * **foreign key** `fk_upload_policy_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_upload_policy_role` `role_id` → `role` (`id`), on delete cascade
 * **foreign key** `fk_upload_policy_updated_by_user` `updated_by` → `app_user` (`id`)
+* **index** `fk_upload_policy_created_by_user` (`created_by`)
+* **index** `fk_upload_policy_updated_by_user` (`updated_by`)
 
 ### `upload_policy_rule`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `policy_id` | `int` | no |  |  |
+| `id` | `integer` | no |  | identity |
+| `policy_id` | `integer` | no |  |  |
 | `extension` | `varchar(16)` | no |  |  |
 | `max_size_bytes` | `bigint` | no |  |  |
 
@@ -533,26 +520,28 @@ _As of migration `V2.19`. Types and defaults are MySQL's own; every table is Inn
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `user_id` | `int` | no |  |  |
-| `folder_id` | `int` | no |  |  |
+| `user_id` | `integer` | no |  |  |
+| `folder_id` | `integer` | no |  |  |
 | `permission` | `varchar(10)` | no | `READ` |  |
 
 * **primary key** `user_id`, `folder_id`
 * **foreign key** `fk_user_folder_folder` `folder_id` → `folder` (`id`), on delete cascade
 * **foreign key** `fk_user_folder_user` `user_id` → `app_user` (`id`), on delete cascade
+* **index** `fk_user_folder_folder` (`folder_id`)
 * **index** `ix_user_folder_user` (`user_id`)
 
 ### `user_role`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
-| `id` | `int` | no |  | auto-increment |
-| `user_id` | `int` | no |  |  |
-| `role_id` | `int` | no |  |  |
+| `id` | `integer` | no |  | identity |
+| `user_id` | `integer` | no |  |  |
+| `role_id` | `integer` | no |  |  |
 
 * **primary key** `id`
 * **unique** `uq_user_role` (`user_id`, `role_id`)
 * **foreign key** `fk_user_role_role_id` `role_id` → `role` (`id`)
 * **foreign key** `fk_user_role_user_id` `user_id` → `app_user` (`id`)
+* **index** `fk_user_role_role_id` (`role_id`)
 
 <!-- end of generated section -->
