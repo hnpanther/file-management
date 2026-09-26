@@ -1518,40 +1518,132 @@ first boot. Nothing else is run by hand.
 
 ## PostgreSQL: the database and the copy
 
-From 2.0.0 the jar runs on PostgreSQL 17 as well as on MySQL; which one is `FILEMANAGEMENT_DB_URL`.
-Production stays on MySQL until the cut-over night, planned and rehearsed as roadmap 3.6 describes.
-This section is what that plan refers to: how the PostgreSQL database is created, and how the copy
-is run. Nothing here is done on the MySQL.
+From 2.0.0 the jar runs on PostgreSQL (17 or 18) as well as on MySQL; which one is
+`FILEMANAGEMENT_DB_URL`. Production stays on MySQL until the cut-over night, planned and rehearsed
+as roadmap 3.6 describes. This section is what that plan refers to: how the PostgreSQL database and
+its account are created, what goes into the configuration, and how the copy is run. Nothing here is
+done on the MySQL.
 
-**The database.** As a PostgreSQL superuser (`psql -U postgres`), once:
+### Creating the database and its account
 
-```sql
-CREATE ROLE file_management LOGIN PASSWORD 'a real password';
+The application connects as **an account of its own that owns one database and nothing else** -
+never as `postgres`, and never as the account a Docker image creates from `POSTGRES_USER`, which is
+a superuser. A superuser can drop every database on the server and read any file the server can;
+the application needs to create tables in one database and read and write its rows.
 
-CREATE DATABASE file_management OWNER file_management
-    TEMPLATE template0 ENCODING 'UTF8'
-    LOCALE_PROVIDER icu ICU_LOCALE 'und';
+Connect as a superuser. On a server installed as a service (the EDB installer on Windows, a package
+on Linux):
+
+```bash
+psql -U postgres -d postgres
 ```
 
+On a server in a Docker container - the `POSTGRES_USER` of the compose file is that superuser, and
+`-d postgres` is the maintenance database every server has:
+
+```bash
+docker exec -it file-management-postgres psql -U file-management -d postgres
+```
+
+Then, once:
+
+```sql
+-- 1. The account the application signs in as. A long random password: it lives in the service's
+--    environment, nobody types it.
+CREATE ROLE file_management LOGIN PASSWORD 'a long random password';
+
+-- 2. Its database, owned by it.
+CREATE DATABASE file_management
+    OWNER file_management
+    TEMPLATE template0
+    ENCODING 'UTF8'
+    LOCALE_PROVIDER icu ICU_LOCALE 'und';
+
+-- 3. Nobody else may connect to it (every role may connect to a new database by default).
+REVOKE CONNECT, TEMPORARY ON DATABASE file_management FROM PUBLIC;
+```
+
+That is all the granting there is: **`OWNER` is the grant.** The owner of a database may create
+tables in its `public` schema (since PostgreSQL 15, nobody else may) and owns every table it
+creates, so Flyway, running as this account, creates the schema, and the application reads and
+writes it - with no `GRANT` on tables, sequences or schemas to keep in step with each migration. The
+account can do nothing in any other database, and holds no role attribute beyond `LOGIN` (not
+`SUPERUSER`, not `CREATEDB`, not `CREATEROLE`).
+
+Line by line:
+
+* **`TEMPLATE template0`** is required for the next two clauses: a database copied from `template1`
+  must keep `template1`'s encoding and locale.
 * **`ENCODING 'UTF8'` and a locale whose `upper()` folds more than ASCII are required**, not
   preferences: every name that must be unique without regard to case - usernames, role names,
   folder and file names - is held unique on `upper(column)`, and under the `C` locale `upper('é')`
   is still `é`. The first migration checks exactly that and refuses to run otherwise, before it
   creates anything (`this database's LC_CTYPE (...) folds ASCII only`).
-* **ICU with the root locale (`und`)** is the recommendation: it behaves the same on Windows and
-  Linux, folds case over all of Unicode, and sorts names linguistically, as MySQL's
-  `utf8mb4_unicode_ci` did. The test suite runs on a Linux libc locale (`en_US.utf8`), which
-  passes the same check; the ICU form is proven on the production host by the rehearsal, which
-  is where any locale surprise belongs.
-* **`OWNER file_management`** is what lets the application's own account run the migrations: since
-  PostgreSQL 15 only a database's owner may create tables in its `public` schema. The account has
-  no other privilege.
-* The JDBC URL is `jdbc:postgresql://localhost:5432/file_management`. The service's pool is 20
-  connections (`FILEMANAGEMENT_DB_POOL_SIZE`), well inside PostgreSQL's default `max_connections`
-  of 100.
+* **`LOCALE_PROVIDER icu ICU_LOCALE 'und'`** - ICU's root locale - is the recommendation: it
+  behaves the same on Windows and Linux, folds case over all of Unicode, and sorts names the way
+  MySQL's `utf8mb4_unicode_ci` did (`a < b < B < آ < ب`). Checked on PostgreSQL 18.4: `upper('é')`
+  is `É`, and `REPORT` is refused beside `Report`. A server built without ICU refuses the clause;
+  then leave it out and give a UTF-8 libc locale instead (`LC_COLLATE 'en_US.utf8' LC_CTYPE
+  'en_US.utf8'` on Linux; on Windows, the installer's locale with `ENCODING 'UTF8'`), which the
+  first migration checks all the same.
+* **Names with a hyphen** (`file-management`, as a compose file may name them) are legal but must be
+  written in double quotes everywhere in SQL - `CREATE DATABASE "file-management" OWNER
+  "file-management" ...`, `\c "file-management"` - and plainly in a JDBC URL
+  (`jdbc:postgresql://localhost:5434/file-management`). An underscore spares the quoting.
 
-Do not start the service against this database before the copy: the copy prepares it itself, and
-refuses a database that already holds a file.
+To check what was created - as the new account, in its own database:
+
+```bash
+psql -U file_management -d file_management -h localhost \
+     -c "SELECT current_user, current_database(), upper('é'), current_setting('server_encoding')"
+```
+
+```
+ current_user    | current_database | upper | current_setting
+ file_management | file_management  | É     | UTF8
+```
+
+**Reaching it.** A server on the application host needs nothing more. A server elsewhere must let
+the application host in, and only it: one line in `pg_hba.conf`,
+
+```
+host    file_management    file_management    10.0.0.5/32    scram-sha-256
+```
+
+(the application host's address), `listen_addresses` in `postgresql.conf` including an address
+that host can reach, a reload (`SELECT pg_reload_conf();`), and the firewall rule beside MySQL's.
+A Docker container publishes its port instead (`ports: - "5434:5432"`); bind it to `127.0.0.1`
+(`"127.0.0.1:5434:5432"`) when the application runs on the same host, so that nothing else can
+reach it.
+
+### What goes into the configuration
+
+Three values, in the same place the MySQL ones are today - the service definition's environment
+(WinSW `<env>`, [above](#2-the-service-definition)) or the external `config\application.properties`
+([Configuring it from outside the jar](#configuring-it-from-outside-the-jar)):
+
+| Setting | Environment variable | Value |
+|---|---|---|
+| `spring.datasource.url` | `FILEMANAGEMENT_DB_URL` | `jdbc:postgresql://localhost:5432/file_management` - host, port and database as created |
+| `spring.datasource.username` | `FILEMANAGEMENT_DB_USERNAME` | `file_management` |
+| `spring.datasource.password` | `FILEMANAGEMENT_DB_PASSWORD` | the password of `CREATE ROLE` |
+
+In `config\application.properties` that is:
+
+```properties
+spring.datasource.url=jdbc:postgresql://localhost:5432/file_management
+spring.datasource.username=file_management
+spring.datasource.password=a long random password
+```
+
+Nothing else changes: the driver is chosen from the URL, Flyway picks `db/migration/postgresql`
+from it, and Hibernate its dialect. The pool stays at 20 connections
+(`FILEMANAGEMENT_DB_POOL_SIZE`), well inside PostgreSQL's default `max_connections` of 100. **Do
+not** set these before the cut-over night: the service would start on an empty PostgreSQL. On that
+night they are set in step 5 of roadmap 3.6, after the copy.
+
+Do not start the service against this database before the copy, either: the copy prepares it
+itself, and refuses a database that already holds a file.
 
 **The copy** - on the night, with the service stopped, from a console on the application host:
 

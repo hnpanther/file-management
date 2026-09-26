@@ -619,6 +619,36 @@ the existing one).
    against the result, walk the checklist. Time it. Fix what fails and rehearse again until nothing
    does.
 
+   **A rehearsal instance must not touch the production storage.** It reads the same
+   `FILEMANAGEMENT_BASE_DIR` the service does, and a database that is a day old:
+   * its sweeper would settle the journal notes the backup caught in flight - and delete the bytes
+     of an upload that completed after the backup, which the rehearsal database knows nothing
+     about. Start it with `FILEMANAGEMENT_STORAGE_SWEEP_ENABLED=false`;
+   * an upload would write into production's `files/` under an id MySQL will hand to a real file
+     later, and that file would then be refused as a duplicate; a delete would delete a production
+     file. Do the reading checks (downloads) against the production storage, and the writing ones
+     (upload, delete) against an instance started with an empty `FILEMANAGEMENT_BASE_DIR` of its
+     own;
+   * another port (`FILEMANAGEMENT_PORT`), so that it cannot be mistaken for the service;
+   * sign in with a temporary administrator created in the rehearsal database only, and drop that
+     database afterwards - the night copies into a new one anyway.
+
+   > **Rehearsed on 2026-09-26**, on a development host: the MySQL a copy of a development database
+   > holding production-like data (1.5.0's schema, restored from `mysqldump` into a separate MySQL
+   > 8.4 and upgraded by starting 2.0.0 on it once, as production was - seven migrations, 1370
+   > checksums computed, none missing), the target PostgreSQL 18.4 in Docker. The copy: **22 tables,
+   > 11 063 rows, verified, 14 seconds**. An independent comparison, not the copier's own, read every
+   > table on both sides: identical row by row, every identity one past its largest id, the same
+   > 1370 distinct storage keys and 3 622 726 800 bytes. The application on PostgreSQL: `UP` in 18
+   > seconds, `validate` passed, nothing for `DataInitializer` to change; sign-in with the username
+   > in another case accepted and a wrong password refused; **all 1370 revisions downloaded through
+   > `/api/v1` and every one matched its recorded SHA-256**; an upload with a Persian name and a
+   > half-space got the next ids (1581 / 1594) and landed under `files/s001/1581/`, the same name
+   > again and a Latin name differing only in case were refused (409), and both deletes removed
+   > rows and bytes. The database was then dropped, recreated and copied again (verified, 11 s),
+   > and a third copy onto it was refused because it held files. PostgreSQL 18 works as 17 does;
+   > the suite runs on 17.
+
 **The night (expect the rehearsal's time plus half).**
 1. Announce; stop the service (`winsw stop`) — no uploads during the copy.
 2. Final MySQL backup, kept with the date in its name.
@@ -636,7 +666,22 @@ the existing one).
 
 **Rollback** (any time in the window): stop the service, point the URL back at MySQL, start.
 Anything created on PostgreSQL in between is lost — which is why the window is short (two
-weeks) and announced. After the window: release C, the MySQL grants and service go, the backup
+weeks) and announced. **Two things first, or the rollback breaks uploads**:
+1. The files uploaded in the window lost their rows but kept their bytes, under
+   `files/…/{id}/` with ids MySQL has not handed out yet. MySQL's counters still stand where the
+   cut-over left them, so the first uploads after the rollback would be given exactly those ids -
+   and refused, because a stored object is never overwritten. Before starting on MySQL, move its
+   counters past what PostgreSQL used, for each table that grew:
+
+   ```sql
+   -- on PostgreSQL: SELECT MAX(id) + 1 FROM file_info;  (and file_details, folder, action_history, ...)
+   -- then on MySQL, with those numbers:
+   ALTER TABLE file_info AUTO_INCREMENT = 1601;
+   ALTER TABLE file_details AUTO_INCREMENT = 1614;
+   ```
+2. List what the window created, for the people who will have to upload it again:
+   `SELECT id, file_name, created_by, created_at FROM file_info WHERE id > <file_info's MAX(id) at the cut-over>;`
+   on PostgreSQL, before it is left behind. After the window: release C, the MySQL grants and service go, the backup
 job drops `mysqldump`, and `deployment.md` describes PostgreSQL only.
 
 **Done when:** release C is in production, the suite runs against PostgreSQL only, the copied
