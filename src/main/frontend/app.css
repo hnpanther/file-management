@@ -377,6 +377,23 @@
     .revision-metadata { @apply my-4 grid grid-cols-1 gap-3 sm:grid-cols-3; }
     .revision-metadata dd { @apply text-sm; overflow-wrap: anywhere; }
     .revision-actions { @apply flex flex-wrap gap-2 border-t border-ink-100 pt-3; }
+    /* A version's external id (VIEW_FILE_EXTERNAL_ID): quiet, selectable in one click, copied in one. */
+    .revision-external-id {
+        @apply -mt-1 mb-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1
+               rounded-[var(--radius-control)] border border-dashed border-ink-200 bg-ink-50
+               px-3 py-1.5 text-xs text-ink-500;
+    }
+    .revision-external-id > .bi-fingerprint { @apply text-sm text-brand-600; }
+    .revision-external-id code {
+        @apply min-w-0 flex-1 font-mono text-[0.8125rem] tracking-tight text-ink-800;
+        overflow-wrap: anywhere; user-select: all;
+    }
+    .revision-external-id-copy {
+        @apply inline-flex min-h-8 shrink-0 items-center gap-1 rounded-[var(--radius-control)] px-2
+               text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800;
+    }
+    .revision-external-id-copy:focus-visible { outline: 2px solid var(--color-brand-600); outline-offset: 1px; }
+    .revision-external-id-copy.is-copied { @apply text-brand-700; }
     .revision-actions .btn { @apply min-h-9; }
     .profile-mark { @apply flex size-14 shrink-0 items-center justify-center rounded-[var(--radius-card)] border border-ink-200 bg-white text-3xl text-brand-600; }
     .quota-controls { @apply mt-2 flex flex-wrap items-center gap-2; }

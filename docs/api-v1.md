@@ -1,8 +1,8 @@
 # API v1 — the guide for a client
 
 The machine-facing API the PL/SQL (Oracle APEX) clients call: upload a file, download a revision,
-delete a revision. This is the contract as a client sees it, and how to move a client from the
-numeric ids to the external ids. How it is built is in [arch.md](arch.md#6-http-layers); the S3-style
+delete a revision. This is the contract as a client sees it. **Since 2.4.0 every path takes the
+external ids only** - the clients moved over from the numbers, and the numbers are refused. How it is built is in [arch.md](arch.md#6-http-layers); the S3-style
 API for API keys is v2, also there.
 
 ## Signing in
@@ -27,15 +27,21 @@ Every file and every revision (one version in one format) has two ids:
 | looks like | `42` | `3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d` |
 | given | at upload, forever | at upload, forever (since 1.8.0; files stored before were given one then) |
 
-**Every path segment that takes an id takes either**, and a UUID in any case. The numbers keep
-working for as long as a client uses them. The external id is the one to move to: it cannot be
-guessed or counted through, and it does not depend on this database's numbering - which the move
-to PostgreSQL keeps, but a later one need not. An external id is a name, not a permission: the
-folder check is the same whichever id is used.
+**Every path segment that takes an id takes the external id**, a UUID in any case - and since
+2.4.0 nothing else. From 1.8.0 to 2.3.0 it took either, while the clients moved over; they have.
+The external id cannot be guessed or counted through, does not depend on this database's
+numbering, and is never given to another row - a number can be, once its row is deleted
+([issue 98](issues.md#98-the-cut-over-set-each-sequence-after-the-largest-id-left-so-the-ids-of-the-last-deleted-rows-are-handed-out-again--s2)).
+It is a name, not a permission: the folder check is the same.
 
-A segment that is neither a number (1-9 digits) nor a UUID is `400` with `"title": "InvalidParameter"`,
-naming the parameter and not echoing the value - the same answer a non-number always got. An id no
-file or revision has is `404`, for either kind.
+A segment that is not a UUID - **a number included** - is `400` with `"title": "InvalidParameter"`,
+naming the parameter and not echoing the value; for a number, the `detail` adds that the parameter
+takes the external id (`invalid value for parameter 'fileDetailsId': it takes the external id (a
+UUID), not the numeric id`). An external id no file or revision has is `404`.
+
+The numbers are still **answered**: the upload returns `fileId` and `fileDetailsId` beside the
+external ids, a delete answers the revision's number as `id`, and every download sends
+`X-File-Details-Id`. They are for a client's own records and logs; they cannot be sent back.
 
 ## Endpoints
 
@@ -44,10 +50,14 @@ file or revision has is `404`, for either kind.
 | GET | `/api/v1/files/health-test` | `API_HEALTH_TEST` | `200`, text |
 | POST | `/api/v1/files` (multipart) | `API_SAVE_NEW_FILE` | `200` and the ids (below) |
 | GET | `/api/v1/files/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` | the revision's bytes |
-| GET | `/api/v1/files/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` | the same; the file id is only checked for its form |
+| GET | `/api/v1/files/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` | the same; the file's id is only checked for its form |
 | GET | `/api/v1/files/file-info/{fileInfoId}/download` (`?version=`, `?format=`) | `API_DOWNLOAD_FILE` | the file's latest version, or the one named (1.9.0) |
 | DELETE | `/api/v1/files/file-details/{fileDetailsId}` | `API_DELETE_FILE_DETAILS` | `200` `{"outcome":"DELETED"}`; the last revision takes the file with it |
 | DELETE | `/api/v1/files/file-info/{fileInfoId}/file-details/{fileDetailsId}` | `API_DELETE_FILE_DETAILS` | the same; the two must name the same file, or `404` |
+
+The paths keep their parameter names, and **`{fileInfoId}` is the file's external id
+(`fileExternalId`), `{fileDetailsId}` the revision's (`fileDetailsExternalId`)**. For example,
+`DELETE /api/v1/files/file-details/9a0b1c2d-3e4f-4a5b-9c6d-7e8f9a0b1c2d`.
 
 ### Upload
 
@@ -77,7 +87,9 @@ The answer:
 ```
 
 The first two fields are as they always were; the three in the middle arrived in 1.8.0 and are
-only additions, so a client that reads fields by name is unaffected. Refusals: `400` for a type
+only additions, so a client that reads fields by name is unaffected. **Keep
+`fileDetailsExternalId`** (and `fileExternalId`, to download a file's latest version): they are
+what the downloads and the deletes take. Refusals: `400` for a type
 the uploader may not store, a file larger than their limit, bytes that are not what the
 extension says, a name that cannot be stored or a missing field (the `detail` says which);
 `409` for a name the folder already holds (compared the way the search folds names: `گزارش‌ها`
@@ -113,6 +125,10 @@ A client can compare `X-Checksum-SHA256` with the SHA-256 of what it received. A
 any download answers the same headers, with the file's size as `Content-Length`, and no body -
 the server does not read the file for it.
 
+A person can read a revision's external id off the file page too, with a copy button, when their
+role holds `VIEW_FILE_EXTERNAL_ID` (the group "دیدن شناسهٔ خارجی نسخه‌ها"; ADMIN holds it) - for
+setting up an integration by hand.
+
 ### Errors
 
 Every failure is an RFC 9457 problem document, `application/problem+json`:
@@ -125,27 +141,19 @@ Every failure is an RFC 9457 problem document, `application/problem+json`:
 code - `400`, `401`, `403` (no permission, or no access to that file's folder), `404`, `409` - and
 not on the wording, which may change.
 
-## Moving a client to the external ids
+## A client that still holds numbers
 
-Nothing forces the move, and it can be done one client at a time:
+The move to the external ids (1.8.0 to 2.3.0) is done, and since 2.4.0 a number in a path is a
+`400`. A client, or a row, that was missed shows up as that `400` with `it takes the external id`
+in the `detail`. The `HEAD` that used to turn a number into its external ids takes the external
+id itself now, so the mapping for the rows such a client stored comes from the database, read
+once by an administrator:
 
-1. **New files first.** Store `fileExternalId` and `fileDetailsExternalId` from the upload's
-   answer beside the numbers already stored. Nothing else changes yet.
-2. **Use them.** Call the downloads and deletes with the external ids. The numbers still work,
-   so a row that has not got its external id yet keeps working with its number.
-3. **Fill in the old rows.** For each row that has only numbers:
-   `HEAD /api/v1/files/file-details/{fileDetailsId}/download` answers `X-File-External-Id` and
-   `X-File-Details-External-Id` without sending the file. Or, done once by an administrator
-   with read access to the database, the whole mapping at a time:
-
-   ```sql
-   SELECT fd.id AS file_details_id, fd.external_id AS file_details_external_id,
-          fi.id AS file_id, fi.external_id AS file_external_id
-   FROM file_details fd JOIN file_info fi ON fi.id = fd.file_info_id;
-   ```
-
-4. **Stop sending the numbers.** When every row has its external ids, the numbers can be dropped
-   from the client. They stay valid on the server; nothing on this side needs to change.
+```sql
+SELECT fd.id AS file_details_id, fd.external_id AS file_details_external_id,
+       fi.id AS file_id, fi.external_id AS file_external_id
+FROM file_details fd JOIN file_info fi ON fi.id = fd.file_info_id;
+```
 
 For a client that stores only a file per record and always wants its current content, keep
 `fileExternalId` and download with `file-info/{fileExternalId}/download` - the latest version,
@@ -159,6 +167,7 @@ whatever it is when the request is made.
 | 1.7.0 | a Persian file name arrives intact; **uploads private unless `public-file=1`**; a refused upload says why in `detail` |
 | 1.8.0 | external ids and `checksumSha256` in the upload's answer; every id segment takes the external id |
 | 1.9.0 | `file-info/{id}/download` by the file's id, with `?version=` and `?format=`; the `X-File-*` and `X-Checksum-SHA256` headers on every download; deleting or changing a file checks the file's folder (issue 90) |
+| 2.4.0 | **every path takes the external ids only**: a number in `{fileInfoId}` or `{fileDetailsId}` is `400 InvalidParameter`, saying the parameter takes the external id. Routes, methods, fields, answers and headers are otherwise unchanged - the numbers are still answered |
 | 2.3.0 | nothing. (What a request made with an API key uploads or deletes is now recorded as that key's, and the file page names the key.) |
 | 2.2.0 | nothing: the v1 API carries no times. (The v2 API's JSON now gives `lastModified` as an instant in UTC - `2026-09-19T13:03:55Z` rather than the server's wall clock `2026-09-19T16:33:55`; see [deployment.md](deployment.md#upgrading-from-210-to-220--instants-and-indexed-search).) |
 | 2.1.0 | nothing |

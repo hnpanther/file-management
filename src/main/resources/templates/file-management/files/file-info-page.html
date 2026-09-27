@@ -159,6 +159,18 @@
                             <dd th:text="${fd.createdByApiKey != null} ? #{field.createdByApiKey(${fd.createdByApiKey})} : ${fd.getCreatedBy()}"></dd>
                         </div>
                     </dl>
+                    <div class="revision-external-id" x-data="{ copied: false }"
+                         sec:authorize="hasAuthority('VIEW_FILE_EXTERNAL_ID') || hasAuthority('ADMIN')">
+                        <i class="bi bi-fingerprint" aria-hidden="true"></i>
+                        <span th:text="#{field.externalId}">شناسهٔ خارجی</span>
+                        <code dir="ltr" th:text="${fd.getExternalId()}"></code>
+                        <button type="button" class="revision-external-id-copy" :class="copied && 'is-copied'"
+                                th:attr="data-external-id=${fd.getExternalId()},title=#{action.copyExternalId},aria-label=#{action.copyExternalId}"
+                                @click="appCopy($el.dataset.externalId).then(ok => { copied = ok; if (ok) setTimeout(() => copied = false, 1600) })">
+                            <i class="bi" :class="copied ? 'bi-clipboard-check' : 'bi-clipboard'" aria-hidden="true"></i>
+                            <span x-show="copied" x-cloak th:text="#{action.copied}">کپی شد</span>
+                        </button>
+                    </div>
                     <div sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')">
                         <div class="revision-actions">
                             <a sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')" th:href="@{'/files/file-info/' + ${file.getId()} + '/file-details/' + ${fd.getId() + '/download'} }"

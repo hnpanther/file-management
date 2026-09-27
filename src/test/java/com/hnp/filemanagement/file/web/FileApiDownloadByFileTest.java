@@ -82,7 +82,9 @@ class FileApiDownloadByFileTest extends DatabaseSupport {
     private int fileId;
     private String fileExternalId;
     private int v1Id;
+    private String v1ExternalId;
     private int v2PdfId;
+    private String v2PdfExternalId;
 
     /** One file: version 1 as a PDF, version 2 as a PDF and a DOCX. */
     @BeforeEach
@@ -103,18 +105,22 @@ class FileApiDownloadByFileTest extends DatabaseSupport {
         fileId = JsonPath.read(body, "$.fileId");
         fileExternalId = JsonPath.read(body, "$.fileExternalId");
         v1Id = JsonPath.read(body, "$.fileDetailsId");
+        v1ExternalId = JsonPath.read(body, "$.fileDetailsExternalId");
 
         fileService.createNewFileDetails(request("version", 2, "report.pdf", V2, null), adminId);
         entityManager.flush();
         v2PdfId = entityManager.createQuery(
                         "SELECT d.id FROM FileDetails d WHERE d.fileInfo.id = :f AND d.version = 2", Integer.class)
                 .setParameter("f", fileId).getSingleResult();
+        v2PdfExternalId = entityManager.createQuery(
+                        "SELECT d.externalId FROM FileDetails d WHERE d.id = :d", String.class)
+                .setParameter("d", v2PdfId).getSingleResult();
     }
 
     @Test
-    @DisplayName("by the file's number or its external id, in any case: the latest version, and headers saying which revision it was")
-    void theLatestVersionByEitherId() throws Exception {
-        for (String id : List.of(String.valueOf(fileId), fileExternalId, fileExternalId.toUpperCase(Locale.ROOT))) {
+    @DisplayName("by the file's external id, in any case: the latest version, and headers saying which revision it was")
+    void theLatestVersionByExternalId() throws Exception {
+        for (String id : List.of(fileExternalId, fileExternalId.toUpperCase(Locale.ROOT))) {
             download(id, "")
                     .andExpect(status().isOk())
                     .andExpect(content().bytes(V2))
@@ -145,12 +151,12 @@ class FileApiDownloadByFileTest extends DatabaseSupport {
         fileService.createNewFileDetails(request("format", 2, "report.docx", V2_DOCX, v2PdfId), adminId);
         entityManager.flush();
 
-        download(String.valueOf(fileId), "")
+        download(fileExternalId, "")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value(containsString("docx, pdf")))
                 .andExpect(jsonPath("$.detail").value(containsString("?format=")));
 
-        download(String.valueOf(fileId), "?format=docx").andExpect(status().isOk()).andExpect(content().bytes(V2_DOCX));
+        download(fileExternalId, "?format=docx").andExpect(status().isOk()).andExpect(content().bytes(V2_DOCX));
         download(fileExternalId, "?format=.PDF").andExpect(status().isOk()).andExpect(content().bytes(V2));
         download(fileExternalId, "?version=1&format=pdf").andExpect(status().isOk()).andExpect(content().bytes(V1));
     }
@@ -171,10 +177,14 @@ class FileApiDownloadByFileTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("an unknown file is a 404 by either id; a malformed id is the usual 400 that does not echo it")
+    @DisplayName("an unknown external id is a 404; the file's number, since 2.4.0, and a malformed id are the usual 400 that does not echo it")
     void unknownAndMalformed() throws Exception {
-        download("999999", "").andExpect(status().isNotFound());
         download("3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "").andExpect(status().isNotFound());
+        download(String.valueOf(fileId), "")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("InvalidParameter"))
+                .andExpect(jsonPath("$.detail").value(containsString("external id")))
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.not(containsString(String.valueOf(fileId)))));
         download("not-an-id", "")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.title").value("InvalidParameter"))
@@ -193,7 +203,7 @@ class FileApiDownloadByFileTest extends DatabaseSupport {
                             .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isForbidden());
         }
-        mockMvc.perform(get("/api/v1/files/file-info/" + fileId + "/download")
+        mockMvc.perform(get("/api/v1/files/file-info/" + fileExternalId + "/download")
                         .with(user(principal(adminId, PermissionEnum.API_SAVE_NEW_FILE)))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());
@@ -202,13 +212,13 @@ class FileApiDownloadByFileTest extends DatabaseSupport {
     @Test
     @DisplayName("the revision downloads say which revision they served too; their bytes are unchanged")
     void theOtherDownloadsCarryTheHeaders() throws Exception {
-        mockMvc.perform(get("/api/v1/files/file-details/{d}/download", v1Id)
+        mockMvc.perform(get("/api/v1/files/file-details/{d}/download", v1ExternalId)
                         .with(user(principal(adminId, PermissionEnum.API_DOWNLOAD_FILE))))
                 .andExpect(status().isOk())
                 .andExpect(content().bytes(V1))
                 .andExpect(header().string("X-File-Version", "1"))
                 .andExpect(header().string("X-Checksum-SHA256", sha256(V1)));
-        mockMvc.perform(get("/api/v1/files/file-info/{f}/file-details/{d}/download", fileId, v2PdfId)
+        mockMvc.perform(get("/api/v1/files/file-info/{f}/file-details/{d}/download", fileExternalId, v2PdfExternalId)
                         .with(user(principal(adminId, PermissionEnum.API_DOWNLOAD_FILE))))
                 .andExpect(status().isOk())
                 .andExpect(content().bytes(V2))
@@ -216,27 +226,21 @@ class FileApiDownloadByFileTest extends DatabaseSupport {
     }
 
     /**
-     * How a client holding only the numbers of what it stored learns their external ids: a HEAD
-     * to the download it already makes. {@code FileApi} answers it with no body at all rather than
-     * letting Spring run the GET and drop the bytes, so the empty body here is the handler's, not
-     * the container's - and the length is the stored file's.
+     * A HEAD to a download answers its headers alone. {@code FileApi} answers it with no body at
+     * all rather than letting Spring run the GET and drop the bytes, so the empty body here is the
+     * handler's, not the container's - and the length is the stored file's.
      */
     @Test
-    @DisplayName("a HEAD to a download by the old numbers answers both external ids, and the size without the bytes")
-    void aHeadRequestTellsTheExternalIds() throws Exception {
-        String revisionExternalId = mockMvc.perform(head("/api/v1/files/file-details/{d}/download", v1Id)
+    @DisplayName("a HEAD to a download answers both external ids, and the size without the bytes")
+    void aHeadRequestAnswersTheHeaders() throws Exception {
+        mockMvc.perform(head("/api/v1/files/file-details/{d}/download", v1ExternalId)
                         .with(user(principal(adminId, PermissionEnum.API_DOWNLOAD_FILE))))
                 .andExpect(status().isOk())
                 .andExpect(header().string("X-File-External-Id", fileExternalId))
+                .andExpect(header().string("X-File-Details-External-Id", v1ExternalId))
                 .andExpect(header().string("X-File-Version", "1"))
                 .andExpect(header().longValue(HttpHeaders.CONTENT_LENGTH, V1.length))
-                .andExpect(content().bytes(new byte[0]))
-                .andReturn().getResponse().getHeader("X-File-Details-External-Id");
-
-        mockMvc.perform(get("/api/v1/files/file-details/{d}/download", revisionExternalId)
-                        .with(user(principal(adminId, PermissionEnum.API_DOWNLOAD_FILE))))
-                .andExpect(status().isOk())
-                .andExpect(content().bytes(V1));
+                .andExpect(content().bytes(new byte[0]));
     }
 
     // ---------------------------------------------------------------- helpers

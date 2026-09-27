@@ -278,6 +278,9 @@ mismatch. PostgreSQL only since release C (2.1.0): `V3.0__Baseline.sql` in
   - `principalId` is that person - and `ActingApiKey.currentId()` says which key; `ActionHistoryService`
   records it on every row by itself, and a new place that creates a file or a revision (today only
   `FileService.createNewFile` and `newFileDetails`) sets `createdByApiKey` too.
+* **The v1 API names files and revisions by external id only** (2.4.0): a path variable is an
+  `ExternalId`, resolved with `FileService.fileInfoIdOf` / `fileDetailsIdOf`; never add a v1 route
+  that takes the number. The pages keep their numbers.
 * **A search goes through its trigram index** (2.2.0, issue 21). The predicate is
   `REPLACE(x.searchKey, ' ', '') LIKE CONCAT('%', :term, '%')`, written exactly so, because a
   `V3.2` index is on that expression; matching a file through another table is a `UNION` of ids

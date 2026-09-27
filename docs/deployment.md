@@ -611,6 +611,28 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 2.3.0 to 2.4.0 — the v1 API takes the external ids only
+
+**No migration, and nothing to configure.** Two changes, one of which a client sees:
+
+* **Every v1 path takes the external ids only.** The PL/SQL clients have moved to them; a request
+  that still sends a number in `{fileInfoId}` or `{fileDetailsId}` is now `400 InvalidParameter`,
+  whose `detail` says the parameter takes the external id - nothing is looked up, downloaded or
+  deleted. Routes, fields, answers and headers are otherwise what they were ([api-v1.md](api-v1.md)).
+  **Before deploying, make sure no client still sends a number**: in the application log of the
+  last days, a v1 path whose id segment is all digits is one
+  (`/api/v1/files/file-details/1234/download`); 2.3.0 answered it, 2.4.0 will refuse it. A client
+  found late gets its mapping from the SQL in [api-v1.md](api-v1.md#a-client-that-still-holds-numbers).
+* **A new permission, `VIEW_FILE_EXTERNAL_ID`** - on the role page as its own group, "دیدن شناسهٔ
+  خارجی نسخه‌ها". It shows each version's external id on the file page, with a copy button; nobody
+  sees it without it. ADMIN has it from the first start, with no migration, as every new
+  permission; give it to the role of whoever sets up integrations.
+
+**What the start says**: nothing new - `Schema "public" is up to date. No migration necessary.`, and
+the new permission row inserted by the start-up.
+
+**Rollback** is the 2.3.0 jar alone: no schema changed. The permission row stays, unused by 2.3.0.
+
 ### Upgrading from 2.2.0 to 2.3.0 — which API key did it
 
 **One migration**, `V3.3`, run by the first start: three nullable columns with their foreign keys
@@ -909,7 +931,7 @@ second, and the checksum of every revision matched `sha256sum` of its file.
 * **For the PL/SQL clients, nothing changes unless they want it to.** The upload answers three
   more fields - `fileExternalId`, `fileDetailsExternalId`, `checksumSha256` - beside the ones they
   read today. Every path that takes an id now takes the number or the external id (a UUID); the
-  numbers keep working. Moving the clients to the external ids is recommended, at their own pace:
+  numbers keep working *(until 2.4.0, which takes the external ids only)*. Moving the clients to the external ids is recommended, at their own pace:
   they are not guessable and do not depend on this database's numbering. A malformed id is the
   same `400` as before.
 

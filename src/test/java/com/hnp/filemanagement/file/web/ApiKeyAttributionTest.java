@@ -177,9 +177,9 @@ class ApiKeyAttributionTest extends DatabaseSupport {
         int secondVersion = jdbcTemplate.queryForObject(
                 "SELECT id FROM file_details WHERE file_info_id = ? AND version = 2", Integer.class, fileId);
 
-        mockMvc.perform(withKey(delete("/api/v1/files/file-details/{d}", firstVersion).accept(MediaType.APPLICATION_JSON)))
+        mockMvc.perform(withKey(delete("/api/v1/files/file-details/{d}", externalIdOf(firstVersion)).accept(MediaType.APPLICATION_JSON)))
                 .andExpect(status().isOk());
-        mockMvc.perform(withKey(delete("/api/v1/files/file-details/{d}", secondVersion).accept(MediaType.APPLICATION_JSON)))
+        mockMvc.perform(withKey(delete("/api/v1/files/file-details/{d}", externalIdOf(secondVersion)).accept(MediaType.APPLICATION_JSON)))
                 .andExpect(status().isOk());
         entityManager.flush();
 
@@ -237,6 +237,10 @@ class ApiKeyAttributionTest extends DatabaseSupport {
 
     private <B extends AbstractMockHttpServletRequestBuilder<B>> B withKey(B request) {
         return request.header(HttpHeaders.AUTHORIZATION, "Bearer " + key.credential());
+    }
+
+    private String externalIdOf(int fileDetailsId) {
+        return jdbcTemplate.queryForObject("SELECT external_id FROM file_details WHERE id = ?", String.class, fileDetailsId);
     }
 
     private Map<String, Object> row(String table, int id) {

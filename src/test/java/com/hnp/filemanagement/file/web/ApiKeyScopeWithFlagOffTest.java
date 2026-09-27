@@ -85,7 +85,7 @@ class ApiKeyScopeWithFlagOffTest extends DatabaseSupport {
                         .param("description", "d").param("folderId", String.valueOf(tagFolderId))
                         .with(user(principal(ownerId, PermissionEnum.API_SAVE_NEW_FILE))).accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        int detailsId = JsonPath.read(body, "$.fileDetailsId");
+        String detailsId = JsonPath.read(body, "$.fileDetailsExternalId");
 
         // A key granted the *other* folder: refused on this one, on every route.
         String elsewhere = apiKey(otherTagFolderId + ":WRITE");
