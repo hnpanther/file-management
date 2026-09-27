@@ -152,7 +152,7 @@
         <div class="share-link-url">
             <input type="text" class="form-control technical" dir="ltr" readonly :value="result ? result.url : ''"
                    @focus="$el.select()">
-            <button type="button" class="btn btn-secondary btn-sm" @click="copy()">
+            <button type="button" class="btn btn-secondary btn-sm" @click="copy($el)">
                 <i class="bi" :class="copied ? 'bi-clipboard-check' : 'bi-clipboard'" aria-hidden="true"></i>
                 <span x-show="!copied" th:text="#{shareLink.copy}">کپی</span>
                 <span x-show="copied" x-cloak th:text="#{shareLink.copied}">کپی شد</span>

@@ -278,6 +278,12 @@ mismatch. PostgreSQL only since release C (2.1.0): `V3.0__Baseline.sql` in
   - `principalId` is that person - and `ActingApiKey.currentId()` says which key; `ActionHistoryService`
   records it on every row by itself, and a new place that creates a file or a revision (today only
   `FileService.createNewFile` and `newFileDetails`) sets `createdByApiKey` too.
+* **Every change to a file records an event** (2.5.0): `fileHistoryService.record(...)` in the
+  same transaction, beside the `actionHistoryService` call - a new way to change, create or delete
+  a file or a revision without it leaves the file's history silently incomplete. The history is
+  followed by external id and never counted.
+* **A search term is escaped for `LIKE`** (2.5.0, issue 96): `SearchTerms.escapeLike` after
+  `SearchKey.forSearch`, and `ESCAPE '\'` on the query's `LIKE`.
 * **The v1 API names files and revisions by external id only** (2.4.0): a path variable is an
   `ExternalId`, resolved with `FileService.fileInfoIdOf` / `fileDetailsIdOf`; never add a v1 route
   that takes the number. The pages keep their numbers.

@@ -44,6 +44,9 @@ public enum PermissionGroup {
     /** Seeing each version's external id on the file page - for whoever sets up an integration. */
     FILE_EXTERNAL_ID(VIEW_FILE_EXTERNAL_ID),
 
+    /** The history of every file, deleted ones included, and each file's own on its page. */
+    FILE_HISTORY(FILE_HISTORY_PAGE),
+
     /** Deleting a file, or one of its versions. */
     FILE_DELETE(REST_DELETE_FILE_INFO, REST_DELETE_FILE_DETAILS),
 
@@ -75,7 +78,7 @@ public enum PermissionGroup {
 
     /** The API key pages and the API documentation. */
     API_KEYS_ADMIN(GET_ALL_API_KEY_PAGE, CREATE_API_KEY_PAGE, SAVE_NEW_API_KEY, UPDATE_API_KEY_PAGE,
-            SAVE_UPDATED_API_KEY, REVOKE_API_KEY, VIEW_API_DOCS),
+            SAVE_UPDATED_API_KEY, REVOKE_API_KEY, API_KEY_ACTIVITY_PAGE, VIEW_API_DOCS),
 
     /** The v1 API an integration (the PL/SQL clients) signs in to with a password. */
     API_V1(API_HEALTH_TEST, API_SAVE_NEW_FILE, API_DELETE_FILE_DETAILS, API_DOWNLOAD_FILE);

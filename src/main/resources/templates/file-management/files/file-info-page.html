@@ -166,7 +166,7 @@
                         <code dir="ltr" th:text="${fd.getExternalId()}"></code>
                         <button type="button" class="revision-external-id-copy" :class="copied && 'is-copied'"
                                 th:attr="data-external-id=${fd.getExternalId()},title=#{action.copyExternalId},aria-label=#{action.copyExternalId}"
-                                @click="appCopy($el.dataset.externalId).then(ok => { copied = ok; if (ok) setTimeout(() => copied = false, 1600) })">
+                                @click="appCopy($el.dataset.externalId, $el).then(ok => { copied = ok; if (ok) setTimeout(() => copied = false, 1600) })">
                             <i class="bi" :class="copied ? 'bi-clipboard-check' : 'bi-clipboard'" aria-hidden="true"></i>
                             <span x-show="copied" x-cloak th:text="#{action.copied}">کپی شد</span>
                         </button>
@@ -195,6 +195,23 @@
                     </div>
                 </article>
             </div>
+        </div>
+    </section>
+    <section class="card mt-5" aria-labelledby="file-history-title" th:if="${history != null}"
+             sec:authorize="hasAuthority('FILE_HISTORY_PAGE') || hasAuthority('ADMIN')">
+        <div class="card-body">
+            <div class="section-heading">
+                <i class="bi bi-journal-text" aria-hidden="true"></i>
+                <div>
+                    <h2 id="file-history-title" th:text="#{fileHistory.fileSection}">تاریخچهٔ این فایل</h2>
+                    <p th:text="#{fileHistory.fileSectionHint}"></p>
+                </div>
+                <a class="btn btn-sm btn-outline-secondary ms-auto" th:href="@{/files/history(file=${file.getId()})}"
+                   th:text="#{fileHistory.seeAll}">همهٔ رویدادهای این فایل</a>
+            </div>
+            <p th:if="${#lists.isEmpty(history)}" class="text-ink-500" th:text="#{fileHistory.empty}">رویدادی پیدا نشد.</p>
+            <div th:unless="${#lists.isEmpty(history)}"
+                 th:replace="~{file-management/files/history-fragments.html :: history-table(${history}, false)}"></div>
         </div>
     </section>
 </main>

@@ -611,6 +611,43 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 2.4.0 to 2.5.0 — the file history
+
+**Two migrations**, run by the first start, both under a second on production's data (0.2 s on a
+copy of it):
+
+* `V3.4` moves each identity sequence past every id its table or `action_history` has ever used
+  (issue 98): the ids of rows deleted before the cut-over are never handed out again. Its
+  `NOTICE` lines in the log name each sequence it moved.
+* `V3.5` creates `file_history` and fills it from what the database already knows: every file and
+  revision there is (its upload, versions and formats - exact, from their own rows), what
+  `action_history` recorded about them after they were made (moves, descriptions, public/private,
+  share links), and the files it records as deleted - by number and date and who, but **without a
+  name**, which was never recorded before 2.5.0. From the upgrade on, every event carries
+  everything.
+
+**Before the start**: the backup - it is the rollback, as for every release that migrates.
+
+**After the start**:
+
+* **Give the new permissions** on the role page: "تاریخچهٔ فایل‌ها" (`FILE_HISTORY_PAGE` - the history
+  page, and each file's history on its page) to whoever audits files, and "فعالیت‌های کلید"
+  (`API_KEY_ACTIVITY_PAGE`, in the API keys group) to whoever manages integrations. ADMIN has both.
+* Check the history was filled:
+
+  ```sql
+  SELECT event, count(*) FROM file_history GROUP BY event ORDER BY 2 DESC;
+  SELECT count(*) FROM file_history WHERE file_name IS NULL;   -- files deleted before 2.5.0
+  ```
+
+**What people will notice**: a "تاریخچهٔ فایل‌ها" entry in the menu and a history section on each
+file's page, for those given the permission; a `%` or `_` typed into a search box now finds only
+names that contain it (issue 96); the share dialog's copy button works over plain http (issue 99).
+
+**For the clients**: nothing changes ([api-v1.md](api-v1.md)).
+
+**Rollback** is the backup restored and the 2.4.0 jar, in the same operation ([Rollback](#7-rollback)).
+
 ### Upgrading from 2.3.0 to 2.4.0 — the v1 API takes the external ids only
 
 **No migration, and nothing to configure.** Two changes, one of which a client sees:

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{fileHistory.pageTitle}">تاریخچهٔ فایل‌ها | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The history of every file (2.5.0): FileHistoryController, over FileHistoryService.search. The
+  filters are a GET form, so a filtered view is a link that can be kept; the pager is newer and
+  older only - the history is never counted.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{nav.section.files}">مدیریت فایل‌ها</div>
+        <h1 th:text="#{fileHistory.heading}">تاریخچهٔ فایل‌ها</h1>
+        <p class="page-description" th:text="#{fileHistory.description}">هر بارگذاری، تغییر و حذف.</p>
+    </header>
+
+    <section class="card" aria-labelledby="history-title">
+        <div class="card-body">
+            <h2 id="history-title" class="sr-only" th:text="#{fileHistory.heading}">تاریخچهٔ فایل‌ها</h2>
+
+            <form class="history-filters" method="get" th:action="@{/files/history}" role="search">
+                <input type="hidden" name="file" th:if="${file != null}" th:value="${file}">
+                <div class="history-filter">
+                    <label for="history-q" th:text="#{fileHistory.filter.name}">نام فایل</label>
+                    <input id="history-q" class="form-control" type="search" name="q" th:value="${q}"
+                           th:placeholder="#{fileHistory.filter.namePlaceholder}" autocomplete="off">
+                </div>
+                <div class="history-filter">
+                    <label for="history-event" th:text="#{fileHistory.filter.event}">رویداد</label>
+                    <select id="history-event" class="form-control" name="event">
+                        <option value="" th:text="#{fileHistory.filter.anyEvent}">همهٔ رویدادها</option>
+                        <option th:each="ev : ${events}" th:value="${ev.name()}" th:selected="${ev.name() == event}"
+                                th:text="#{'fileHistory.event.' + ${ev.name()}}">بارگذاری فایل</option>
+                    </select>
+                </div>
+                <div class="history-filter">
+                    <label for="history-from" th:text="#{fileHistory.filter.from}">از تاریخ</label>
+                    <input id="history-from" class="form-control" type="date" name="from" th:value="${from}" dir="ltr">
+                </div>
+                <div class="history-filter">
+                    <label for="history-to" th:text="#{fileHistory.filter.to}">تا تاریخ</label>
+                    <input id="history-to" class="form-control" type="date" name="to" th:value="${to}" dir="ltr">
+                </div>
+                <div class="history-filter-actions">
+                    <button class="btn btn-primary" type="submit" th:text="#{fileHistory.filter.submit}">اعمال</button>
+                    <a class="btn btn-outline-secondary" th:href="@{/files/history}" th:text="#{fileHistory.filter.clear}">پاک کردن فیلترها</a>
+                </div>
+            </form>
+            <p class="field-hint mb-4">
+                <span th:if="${file != null}" class="badge me-1">
+                    <i class="bi bi-funnel" aria-hidden="true"></i>
+                    <span th:text="#{fileHistory.filter.oneFile}">فقط رویدادهای یک فایل</span>
+                </span>
+                <span th:text="#{fileHistory.filter.dateHint(${timeZone})}">تاریخ‌ها میلادی خوانده می‌شوند.</span>
+            </p>
+
+            <div th:if="${#lists.isEmpty(history.entries())}" class="empty-state empty-state-panel" role="status">
+                <strong th:text="#{fileHistory.empty}">رویدادی پیدا نشد.</strong>
+            </div>
+
+            <div th:unless="${#lists.isEmpty(history.entries())}"
+                 th:replace="~{file-management/files/history-fragments.html :: history-table(${history.entries()}, true)}"></div>
+
+            <nav th:if="${history.hasPrevious() or history.hasNext()}" class="mt-3" th:aria-label="#{fileHistory.heading}">
+                <ul class="pagination mb-0">
+                    <li th:if="${history.hasPrevious()}" class="page-item">
+                        <a class="page-link" th:href="@{/files/history(q=${q}, event=${event}, from=${from}, to=${to}, file=${file}, page=${history.page() - 1})}"
+                           th:text="#{action.previous}">قبلی</a>
+                    </li>
+                    <li class="page-item active" aria-current="page"><span class="page-link" th:text="${history.page() + 1}">1</span></li>
+                    <li th:if="${history.hasNext()}" class="page-item">
+                        <a class="page-link" th:href="@{/files/history(q=${q}, event=${event}, from=${from}, to=${to}, file=${file}, page=${history.page() + 1})}"
+                           th:text="#{action.next}">بعدی</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

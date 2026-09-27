@@ -32,8 +32,9 @@ import java.util.Optional;
  * SQL-92 and says why it is native.
  *
  * <p><b>Text compares the same way on every database.</b> A search compares folded keys
- * ({@code SearchKey}, V2.16): {@code REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%')},
- * with the term folded by {@code SearchKey.forSearch} - so case, Persian and Arabic digits, the
+ * ({@code SearchKey}, V2.16): {@code REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\'},
+ * with the term folded by {@code SearchKey.forSearch} and escaped by {@code SearchTerms.escapeLike},
+ * so that a {@code %} or a {@code _} typed stands for itself (issue 96) - so case, Persian and Arabic digits, the
  * half-space and the marks are all folded in Java, identically for the stored key and the term,
  * and the database compares plain text. The spaces are dropped on both sides, so a half-space, a
  * space and none all meet. MySQL's {@code unicode_ci} collation did part of this by itself and
@@ -116,30 +117,30 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
             WHERE f.id IN (SELECT g.id FROM FileInfo g
-                           WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                           WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
                            SELECT g.id FROM FileInfo g
-                           WHERE REPLACE(g.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
+                           WHERE REPLACE(g.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
                            SELECT g.id FROM FileInfo g
                            WHERE g.folder.id IN (SELECT d.id FROM Folder d, Folder a
                                                  WHERE a.depth > 0 AND d.path LIKE CONCAT(a.path, '%')
-                                                   AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
-                                                        OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%'))))
+                                                   AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
+                                                        OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\')))
             """,
             countQuery = """
             SELECT COUNT(f) FROM FileInfo f
             WHERE f.id IN (SELECT g.id FROM FileInfo g
-                           WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                           WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
                            SELECT g.id FROM FileInfo g
-                           WHERE REPLACE(g.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
+                           WHERE REPLACE(g.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
                            SELECT g.id FROM FileInfo g
                            WHERE g.folder.id IN (SELECT d.id FROM Folder d, Folder a
                                                  WHERE a.depth > 0 AND d.path LIKE CONCAT(a.path, '%')
-                                                   AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
-                                                        OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%'))))
+                                                   AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
+                                                        OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\')))
             """)
     Page<FileInfo> search(@Param("search") String search, Pageable pageable);
 
@@ -155,31 +156,31 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             JOIN FETCH f.folder t
             WHERE t.id IN (:folderIds)
               AND f.id IN (SELECT g.id FROM FileInfo g
-                           WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                           WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
                            SELECT g.id FROM FileInfo g
-                           WHERE REPLACE(g.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
+                           WHERE REPLACE(g.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
                            SELECT g.id FROM FileInfo g
                            WHERE g.folder.id IN (SELECT d.id FROM Folder d, Folder a
                                                  WHERE a.depth > 0 AND d.path LIKE CONCAT(a.path, '%')
-                                                   AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
-                                                        OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%'))))
+                                                   AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
+                                                        OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\')))
             """,
             countQuery = """
             SELECT COUNT(f) FROM FileInfo f
             WHERE f.folder.id IN (:folderIds)
               AND f.id IN (SELECT g.id FROM FileInfo g
-                           WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                           WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
                            SELECT g.id FROM FileInfo g
-                           WHERE REPLACE(g.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
+                           WHERE REPLACE(g.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
                            SELECT g.id FROM FileInfo g
                            WHERE g.folder.id IN (SELECT d.id FROM Folder d, Folder a
                                                  WHERE a.depth > 0 AND d.path LIKE CONCAT(a.path, '%')
-                                                   AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
-                                                        OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%'))))
+                                                   AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
+                                                        OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\')))
             """)
     Page<FileInfo> searchWithinFolders(@Param("search") String search,
                                        @Param("folderIds") Collection<Integer> folderIds,
@@ -205,8 +206,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder d
             WHERE (:id IS NOT NULL AND f.id = :id)
-               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%')
-               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%')
+               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
+               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
             ORDER BY f.fileName ASC, f.id ASC
             """)
     List<FileInfo> searchForTree(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
@@ -293,8 +294,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder d
             WHERE (:id IS NOT NULL AND f.id = :id)
-               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%')
-               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%')
+               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
+               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
             """)
     Page<FileInfo> searchFiles(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
 
@@ -304,8 +305,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             JOIN FETCH f.folder d
             WHERE d.id IN (:folderIds)
               AND ((:id IS NOT NULL AND f.id = :id)
-               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%')
-               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%'))
+               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
+               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\')
             """)
     Page<FileInfo> searchFilesWithinFolders(@Param("id") Integer id,
                                             @Param("term") String term,

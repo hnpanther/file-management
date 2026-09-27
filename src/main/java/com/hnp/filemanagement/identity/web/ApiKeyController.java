@@ -1,6 +1,9 @@
 package com.hnp.filemanagement.identity.web;
 
+import com.hnp.filemanagement.file.domain.FileHistoryService;
+import com.hnp.filemanagement.file.persistence.FileHistoryQuery;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
+import com.hnp.filemanagement.shared.web.PageRequests;
 import com.hnp.filemanagement.identity.domain.ApiKeyCreatedDTO;
 import com.hnp.filemanagement.identity.domain.ApiKeyDTO;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
@@ -39,13 +42,42 @@ public class ApiKeyController {
     private final GlobalGeneralLogging globalGeneralLogging;
     private final ApiKeyService apiKeyService;
     private final RoleService roleService;
+    private final FileHistoryService fileHistoryService;
 
     public ApiKeyController(GlobalGeneralLogging globalGeneralLogging,
                             ApiKeyService apiKeyService,
-                            RoleService roleService) {
+                            RoleService roleService,
+                            FileHistoryService fileHistoryService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.apiKeyService = apiKeyService;
         this.roleService = roleService;
+        this.fileHistoryService = fileHistoryService;
+    }
+
+    /** Rows per page of a key's activity, as on the file history page. */
+    private static final int ACTIVITY_PAGE_SIZE = 50;
+    private static final int MAX_ACTIVITY_PAGE = 2_000;
+
+    /**
+     * What one key has done to files, newest first (2.5.0): the file history filtered by the key,
+     * read through the same folder access as the history page - a key's activity is no way round
+     * the folders the reader may not read.
+     */
+    //API_KEY_ACTIVITY_PAGE
+    @PreAuthorize("hasAuthority('API_KEY_ACTIVITY_PAGE') || hasAuthority('ADMIN')")
+    @GetMapping("{id}/activity")
+    public String apiKeyActivityPage(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                     @PathVariable("id") int id,
+                                     @RequestParam(value = "page", required = false) Integer page,
+                                     Model model) {
+
+        int pageNumber = Math.min(PageRequests.number(page), MAX_ACTIVITY_PAGE);
+        globalGeneralLogging.detail("api key activity page id=" + id + " page=" + pageNumber);
+
+        model.addAttribute("apiKey", apiKeyService.getById(id));
+        model.addAttribute("history", fileHistoryService.search(
+                FileHistoryQuery.everything().byApiKey(id), pageNumber, ACTIVITY_PAGE_SIZE, userDetails.getId()));
+        return "api-key/api-key-activity.html";
     }
 
     //GET_ALL_API_KEY_PAGE

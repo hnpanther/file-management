@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.folder.domain;
 
 import com.hnp.filemanagement.audit.domain.ActionHistoryService;
+import com.hnp.filemanagement.file.domain.FileHistoryService;
 import com.hnp.filemanagement.file.domain.FileService;
 import com.hnp.filemanagement.audit.domain.ActionEnum;
 import com.hnp.filemanagement.audit.domain.EntityEnum;
@@ -70,12 +71,14 @@ public class FolderTreeDeleteService {
     private final FolderAccessService folderAccessService;
     private final BlobStore blobStore;
     private final ActionHistoryService actionHistoryService;
+    private final FileHistoryService fileHistoryService;
 
     private final long maxDeleteFiles;
 
     public FolderTreeDeleteService(FolderRepository folderRepository, FileInfoRepository fileInfoRepository,
                                    FileService fileService, FolderAccessService folderAccessService,
                                    BlobStore blobStore, ActionHistoryService actionHistoryService,
+                                   FileHistoryService fileHistoryService,
                                    FileManagementProperties properties) {
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
@@ -83,6 +86,7 @@ public class FolderTreeDeleteService {
         this.folderAccessService = folderAccessService;
         this.blobStore = blobStore;
         this.actionHistoryService = actionHistoryService;
+        this.fileHistoryService = fileHistoryService;
         this.maxDeleteFiles = properties.folders().maxDeleteFiles();
     }
 
@@ -114,10 +118,12 @@ public class FolderTreeDeleteService {
                     + " file(s), more than the " + maxDeleteFiles + " one delete may remove; delete it in parts");
         }
 
-        // The rows of every file, its bytes' address kept for the end.
+        // The rows of every file, its bytes' address kept for the end. Each file's history says it
+        // went with this folder.
+        String deletedWith = fileHistoryService.titleOf(folder);
         List<String> addresses = new ArrayList<>();
         for (Integer fileInfoId : fileInfoRepository.findIdsBySubtree(folder.getPath())) {
-            String address = fileService.deleteFileRows(fileInfoId, principalId);
+            String address = fileService.deleteFileRows(fileInfoId, principalId, deletedWith);
             if (address != null) {
                 addresses.add(address);
             }

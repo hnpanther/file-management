@@ -291,9 +291,12 @@ public class FolderContentService {
         return Optional.of(withinScope);
     }
 
-    /** When only the id can match, the text side is a term no stored key contains. */
+    /**
+     * The key as the search's {@code LIKE} takes it (issue 96) - or, when only the id can match, a
+     * term no stored key contains.
+     */
     private static String nothingIfEmpty(String key) {
-        return key.isEmpty() ? SearchKey.MATCHES_NOTHING : key;
+        return key.isEmpty() ? SearchKey.MATCHES_NOTHING : SearchTerms.escapeLike(key);
     }
 
     private Page<FileInfo> matches(Integer id, String key, Optional<Set<Integer>> folderFilter, PageRequest pageRequest) {

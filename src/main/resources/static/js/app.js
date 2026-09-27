@@ -97,31 +97,47 @@
     /**
      * Copies text to the clipboard; resolves true when it did. The Clipboard API where the page may
      * use it (https, localhost), and the older selection copy otherwise: the application is often
-     * served over plain http on the office network, where navigator.clipboard does not exist.
+     * served over plain http on the office network, where navigator.clipboard does not exist - which
+     * is why the share dialog's copy button did nothing there (2.5.0).
+     *
+     * The selection copy has to run in the click itself, so it runs first on a page that has no
+     * Clipboard API rather than after a failed await; and its hidden field goes next to `near` -
+     * the button - so that inside a dialog it is in the part of the page that holds the focus.
      */
-    window.appCopy = async function (text) {
-        try {
-            if (navigator.clipboard && window.isSecureContext) {
+    window.appCopy = async function (text, near) {
+        if (navigator.clipboard && window.isSecureContext) {
+            try {
                 await navigator.clipboard.writeText(text);
                 return true;
+            } catch (e) {
+                // Refused (no permission, no focus): fall through to the selection copy.
             }
-        } catch (e) {
-            // Refused (no permission, no focus): fall through to the selection copy.
         }
+        var host = (near && near.parentNode) || document.body;
         var area = document.createElement("textarea");
         area.value = text;
         area.setAttribute("readonly", "");
+        area.setAttribute("aria-hidden", "true");
         area.style.position = "fixed";
+        area.style.top = "0";
+        area.style.left = "0";
+        area.style.width = "1px";
+        area.style.height = "1px";
         area.style.opacity = "0";
-        document.body.appendChild(area);
+        host.appendChild(area);
+        area.focus();
         area.select();
+        area.setSelectionRange(0, text.length);
         var copied = false;
         try {
             copied = document.execCommand("copy");
         } catch (e) {
             copied = false;
         }
-        document.body.removeChild(area);
+        host.removeChild(area);
+        if (near && typeof near.focus === "function") {
+            near.focus();
+        }
         return copied;
     };
 
@@ -336,16 +352,16 @@
                 }
             },
 
-            copy: async function () {
+            copy: async function (button) {
                 if (!this.result) {
                     return;
                 }
-                try {
-                    await navigator.clipboard.writeText(this.result.url);
-                    this.copied = true;
-                } catch (e) {
-                    // No clipboard (an http origin, an old browser): the field is selectable.
-                    this.copied = false;
+                // appCopy, not navigator.clipboard alone: over plain http - how the office network
+                // reaches the server - there is no Clipboard API, and the button did nothing.
+                this.copied = await window.appCopy(this.result.url, button);
+                if (this.copied) {
+                    var panel = this;
+                    setTimeout(function () { panel.copied = false; }, 2000);
                 }
             }
         };

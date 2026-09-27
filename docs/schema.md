@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.3`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.5`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -284,6 +284,39 @@ _As of migration `V3.3`. Types and defaults are PostgreSQL's own; every table is
 * **index** `ix_file_details_search_description_trgm` (`replace(search_description, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 * **index** `ix_file_details_search_name_trgm` (`replace(search_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 * **index** `ix_file_details_state` (`state`)
+
+### `file_history`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `integer` | no |  | identity |
+| `occurred_at` | `timestamptz(0)` | no |  |  |
+| `event` | `varchar(30)` | no |  |  |
+| `file_info_id` | `integer` | no |  |  |
+| `file_external_id` | `varchar(36)` | yes |  |  |
+| `file_name` | `varchar(100)` | yes |  |  |
+| `search_name` | `varchar(200)` | yes |  |  |
+| `file_details_id` | `integer` | yes |  |  |
+| `file_details_external_id` | `varchar(36)` | yes |  |  |
+| `version` | `integer` | yes |  |  |
+| `file_extension` | `varchar(10)` | yes |  |  |
+| `file_size` | `bigint` | yes |  |  |
+| `folder_id` | `integer` | yes |  |  |
+| `folder_title` | `varchar(1000)` | yes |  |  |
+| `detail` | `varchar(1000)` | yes |  |  |
+| `user_id` | `integer` | no |  |  |
+| `username` | `varchar(150)` | no |  |  |
+| `api_key_id` | `integer` | yes |  |  |
+
+* **primary key** `id`
+* **foreign key** `fk_file_history_api_key` `api_key_id` → `api_key` (`id`)
+* **foreign key** `fk_file_history_user` `user_id` → `app_user` (`id`)
+* **index** `fk_file_history_api_key` (`api_key_id`, `occurred_at`, `id`)
+* **index** `fk_file_history_user` (`user_id`, `occurred_at`, `id`)
+* **index** `ix_file_history_event` (`event`, `occurred_at`, `id`)
+* **index** `ix_file_history_file` (`file_external_id`, `occurred_at`, `id`)
+* **index** `ix_file_history_occurred_at` (`occurred_at`, `id`)
+* **index** `ix_file_history_search_name_trgm` (`search_name`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 
 ### `file_info`
 
