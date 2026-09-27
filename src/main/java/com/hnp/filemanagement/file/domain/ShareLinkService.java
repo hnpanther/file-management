@@ -85,6 +85,7 @@ public class ShareLinkService {
     private final FileService fileService;
     private final FolderAccessService folderAccessService;
     private final ActionHistoryService actionHistoryService;
+    private final FileHistoryService fileHistoryService;
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
 
@@ -93,13 +94,15 @@ public class ShareLinkService {
     public ShareLinkService(FileShareLinkRepository shareLinkRepository, FileDetailsRepository fileDetailsRepository,
                             UserRepository userRepository, FileService fileService,
                             FolderAccessService folderAccessService, ActionHistoryService actionHistoryService,
-                            PasswordEncoder passwordEncoder, Clock clock, FileManagementProperties properties) {
+                            PasswordEncoder passwordEncoder, Clock clock, FileManagementProperties properties,
+                            FileHistoryService fileHistoryService) {
         this.shareLinkRepository = shareLinkRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
         this.fileService = fileService;
         this.folderAccessService = folderAccessService;
         this.actionHistoryService = actionHistoryService;
+        this.fileHistoryService = fileHistoryService;
         this.passwordEncoder = passwordEncoder;
         this.clock = clock;
         this.settings = properties.shareLinks();
@@ -166,6 +169,7 @@ public class ShareLinkService {
         link.setCreatedBy(userRepository.getReferenceById(principalId));
         link = shareLinkRepository.save(link);
 
+        fileHistoryService.record(FileEvent.SHARE_LINK_CREATED, revision, link.getExpiresAt().toString(), principalId);
         actionHistoryService.saveActionHistory(EntityEnum.FileShareLink, link.getId(), ActionEnum.CREATE, principalId,
                 "CREATE SHARE LINK", "CREATE share link id=" + link.getId() + " to fileDetails id=" + fileDetailsId
                         + " valid " + validMinutes + " minute(s), password " + (secret == null ? "no" : "yes")
@@ -191,6 +195,7 @@ public class ShareLinkService {
         if (!link.isRevoked()) {
             link.setRevokedAt(Instant.now(clock));
             shareLinkRepository.save(link);
+            fileHistoryService.record(FileEvent.SHARE_LINK_REVOKED, link.getFileDetails(), null, principalId);
         }
         actionHistoryService.saveActionHistory(EntityEnum.FileShareLink, linkId, ActionEnum.UPDATE_CHANGE_STATE, principalId,
                 "REVOKE SHARE LINK", "REVOKE share link id=" + linkId);

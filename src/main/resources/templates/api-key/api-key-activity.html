@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{apiKeyActivity.pageTitle}">فعالیت‌های کلید API | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  What one API key has done to files, newest first (2.5.0): the file history filtered by the key.
+  The key acts in its creator's name; each row says the key did it.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker">
+            <a th:href="@{/api-keys}" th:text="#{apiKeyActivity.back}">بازگشت به کلیدهای API</a>
+        </div>
+        <h1 th:text="#{apiKeyActivity.heading(${apiKey.title})}">فعالیت‌های کلید</h1>
+        <p class="page-description">
+            <span class="technical" dir="ltr" th:text="'fmk_' + ${apiKey.keyId}">fmk_…</span>
+            ·
+            <span th:text="#{apiKeyActivity.description(${apiKey.createdBy})}">کلید در نام سازنده‌اش عمل می‌کند.</span>
+        </p>
+    </header>
+
+    <section class="card" aria-labelledby="activity-title">
+        <div class="card-body">
+            <h2 id="activity-title" class="sr-only" th:text="#{apiKeyActivity.heading(${apiKey.title})}">فعالیت‌ها</h2>
+
+            <div th:if="${#lists.isEmpty(history.entries())}" class="empty-state empty-state-panel" role="status">
+                <strong th:text="#{fileHistory.empty}">رویدادی پیدا نشد.</strong>
+            </div>
+
+            <div th:unless="${#lists.isEmpty(history.entries())}"
+                 th:replace="~{file-management/files/history-fragments.html :: history-table(${history.entries()}, true)}"></div>
+
+            <nav th:if="${history.hasPrevious() or history.hasNext()}" class="mt-3" th:aria-label="#{apiKeyActivity.heading(${apiKey.title})}">
+                <ul class="pagination mb-0">
+                    <li th:if="${history.hasPrevious()}" class="page-item">
+                        <a class="page-link" th:href="@{'/api-keys/' + ${apiKey.id} + '/activity'(page=${history.page() - 1})}"
+                           th:text="#{action.previous}">قبلی</a>
+                    </li>
+                    <li class="page-item active" aria-current="page"><span class="page-link" th:text="${history.page() + 1}">1</span></li>
+                    <li th:if="${history.hasNext()}" class="page-item">
+                        <a class="page-link" th:href="@{'/api-keys/' + ${apiKey.id} + '/activity'(page=${history.page() + 1})}"
+                           th:text="#{action.next}">بعدی</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

@@ -40,7 +40,8 @@ class UiResourceTest {
     void userFacingTemplatesUseSharedOfflineAssets() throws IOException {
         for (Path template : htmlFiles(TEMPLATES)) {
             String fileName = template.getFileName().toString();
-            if (fileName.equals("fragments.html") || fileName.equals("navbar.html")) {
+            // Files of fragments only - included by pages, never pages themselves.
+            if (fileName.endsWith("fragments.html") || fileName.equals("navbar.html")) {
                 continue;
             }
 

@@ -386,7 +386,7 @@ public class UserService {
         Pageable pageable = PageRequest.of(pageNumber, pageSize,
                 // The id breaks ties between accounts created in the same second (issue 95).
                 Sort.by("createdAt").descending().and(Sort.by("id").descending()));
-        return userRepository.search(searchNumber, term, pageable)
+        return userRepository.search(searchNumber, SearchTerms.escapeLike(term), pageable)
                 .map(UserMapper::toDto);
     }
 

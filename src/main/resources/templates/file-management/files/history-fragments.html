@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<!--
+  The file history's pieces (2.5.0), shared by the history page, a key's activity page and the
+  file page: one event's badge, the table of a page of events, and the newer / older pager.
+  Every value comes from the event itself - a snapshot taken when it happened - so a deleted file
+  or folder still reads as it was. A file that is still there is a link; one that is gone is not.
+-->
+<body>
+
+<!-- One event, as a small badge: an icon and its label; deletions in red. -->
+<span th:fragment="event-badge(e)" class="history-event"
+      th:classappend="${e.isDeletion()} ? 'is-deletion' : (${e.event().name() == 'FILE_UPLOADED' or e.event().name() == 'VERSION_ADDED' or e.event().name() == 'FORMAT_ADDED'} ? 'is-addition' : '')">
+    <i class="bi" aria-hidden="true" th:classappend="${e.event().name() == 'FILE_UPLOADED'} ? 'bi-cloud-arrow-up'
+        : (${e.event().name() == 'VERSION_ADDED'} ? 'bi-layers'
+        : (${e.event().name() == 'FORMAT_ADDED'} ? 'bi-file-earmark-plus'
+        : (${e.event().name() == 'DESCRIPTION_CHANGED'} ? 'bi-pencil'
+        : (${e.event().name() == 'FILE_MOVED'} ? 'bi-folder-symlink'
+        : (${e.event().name() == 'FILE_PUBLISHED' or e.event().name() == 'REVISION_PUBLISHED'} ? 'bi-globe'
+        : (${e.event().name() == 'FILE_UNPUBLISHED' or e.event().name() == 'REVISION_UNPUBLISHED'} ? 'bi-lock'
+        : (${e.event().name() == 'SHARE_LINK_CREATED'} ? 'bi-link-45deg'
+        : (${e.event().name() == 'SHARE_LINK_REVOKED'} ? 'bi-slash-circle'
+        : 'bi-trash3'))))))))"></i>
+    <span th:text="#{'fileHistory.event.' + ${e.event().name()}}">بارگذاری فایل</span>
+</span>
+
+<!-- Who did it: the person, or - for an API key - the key by its current title. -->
+<th:block th:fragment="actor(e)">
+    <span th:if="${e.apiKeyTitle() != null}" class="history-actor is-key">
+        <i class="bi bi-key" aria-hidden="true"></i>
+        <span th:text="#{field.createdByApiKey(${e.apiKeyTitle()})}">از طریق API با کلید «…»</span>
+    </span>
+    <span th:unless="${e.apiKeyTitle() != null}" class="history-actor technical" dir="auto" th:text="${e.username()}">user</span>
+</th:block>
+
+<!-- What the event says beyond its kind. -->
+<th:block th:fragment="detail(e)">
+    <span th:if="${e.detail() != null and e.event().name() == 'FILE_MOVED'}"
+          th:text="#{fileHistory.detail.movedFrom(${e.detail()})}"></span>
+    <span th:if="${e.detail() != null and e.event().name() == 'FILE_DELETED'}"
+          th:text="#{fileHistory.detail.deletedWith(${e.detail()})}"></span>
+    <span th:if="${e.detail() != null and e.event().name() == 'DESCRIPTION_CHANGED'}" class="history-detail-text"
+          th:text="#{fileHistory.detail.newDescription(${e.detail()})}"></span>
+    <span th:if="${e.detail() != null and e.event().name() == 'SHARE_LINK_CREATED'}"
+          th:text="#{fileHistory.detail.expires(${@jalali.formatIso(e.detail())})}"></span>
+</th:block>
+
+<!-- A page of events. showFile=false on a file's own page, where the file is known. -->
+<div th:fragment="history-table(entries, showFile)" class="table-responsive">
+    <table class="table history-table">
+        <thead>
+        <tr>
+            <th scope="col" th:text="#{fileHistory.column.when}">زمان</th>
+            <th scope="col" th:text="#{fileHistory.column.event}">رویداد</th>
+            <th scope="col" th:if="${showFile}" th:text="#{fileHistory.column.file}">فایل</th>
+            <th scope="col" th:text="#{fileHistory.column.folder}">محل</th>
+            <th scope="col" th:text="#{fileHistory.column.by}">انجام‌دهنده</th>
+            <th scope="col" th:text="#{fileHistory.column.detail}">توضیح</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="e : ${entries}" th:classappend="${e.isDeletion()} ? 'is-deletion'">
+            <td class="history-when technical" dir="ltr" th:text="${@jalali.format(e.occurredAt())}">۱۴۰۵/۰۷/۰۵ ۱۰:۲۰</td>
+            <td><span th:replace="~{file-management/files/history-fragments.html :: event-badge(${e})}"></span></td>
+            <td th:if="${showFile}" class="history-file">
+                <th:block th:if="${e.fileName() != null}">
+                    <a th:if="${e.liveFileId() != null}" class="technical" dir="auto"
+                       th:href="@{'/files/file-info/' + ${e.liveFileId()}}" th:text="${e.fileName()}">report</a>
+                    <span th:unless="${e.liveFileId() != null}" class="technical" dir="auto" th:text="${e.fileName()}">report</span>
+                    <span th:if="${e.liveFileId() == null}" class="badge history-gone" th:text="#{fileHistory.gone}">حذف‌شده</span>
+                </th:block>
+                <span th:if="${e.fileName() == null}" class="text-ink-500">
+                    <span th:text="#{fileHistory.unknownName}">نام ثبت نشده</span>
+                    · <span th:text="#{fileHistory.fileNumber(${e.fileInfoId()})}">شمارهٔ ۱۲</span>
+                </span>
+                <span th:if="${e.version() != null}" class="history-revision technical" dir="ltr"
+                      th:text="'v' + ${e.version()} + (${e.fileExtension() != null} ? ' · ' + ${e.fileExtension()} : '')">v1 · pdf</span>
+            </td>
+            <td class="history-folder" th:text="${e.folderTitle()}">اسناد / کیفیت</td>
+            <td><th:block th:replace="~{file-management/files/history-fragments.html :: actor(${e})}"></th:block></td>
+            <td class="history-detail">
+                <span th:if="${!showFile and e.version() != null}" class="history-revision technical" dir="ltr"
+                      th:text="'v' + ${e.version()} + (${e.fileExtension() != null} ? ' · ' + ${e.fileExtension()} : '')">v1 · pdf</span>
+                <th:block th:replace="~{file-management/files/history-fragments.html :: detail(${e})}"></th:block>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+</div>
+
+</body>
+</html>

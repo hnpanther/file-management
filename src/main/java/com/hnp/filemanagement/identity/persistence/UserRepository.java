@@ -116,8 +116,8 @@ public interface UserRepository extends JpaRepository<User, Integer> {
             SELECT u FROM User u
             WHERE ((:searchNumber) IS NULL OR u.id = (:searchNumber) OR u.personelCode = (:searchNumber))
               AND (:search = ''
-                   OR UPPER(u.username) LIKE UPPER(CONCAT('%', (:search), '%'))
-                   OR UPPER(CONCAT(u.firstName, ' ', u.lastName)) LIKE UPPER(CONCAT('%', (:search), '%')))
+                   OR UPPER(u.username) LIKE UPPER(CONCAT('%', (:search), '%')) ESCAPE '\\'
+                   OR UPPER(CONCAT(u.firstName, ' ', u.lastName)) LIKE UPPER(CONCAT('%', (:search), '%')) ESCAPE '\\')
             """)
     Page<User> search(@Param("searchNumber") Integer searchNumber, @Param("search") String search, Pageable pageable);
 }

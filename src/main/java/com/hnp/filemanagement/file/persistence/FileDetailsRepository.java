@@ -91,29 +91,29 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
             JOIN FETCH fi.folder t
             WHERE fd.state = 0 AND fi.state = 0
               AND fd.id IN (SELECT e.id FROM FileDetails e
-                            WHERE REPLACE(e.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                            WHERE REPLACE(e.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                             UNION
                             SELECT e.id FROM FileDetails e
-                            WHERE REPLACE(e.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
+                            WHERE REPLACE(e.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                             UNION
                             SELECT e.id FROM FileDetails e
                             WHERE e.fileInfo.folder.id IN (SELECT d.id FROM Folder d, Folder a
                                                            WHERE a.depth > 0 AND d.path LIKE CONCAT(a.path, '%')
-                                                             AND REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%')))
+                                                             AND REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'))
             """,
             countQuery = """
             SELECT COUNT(fd) FROM FileDetails fd
             WHERE fd.state = 0 AND fd.fileInfo.state = 0
               AND fd.id IN (SELECT e.id FROM FileDetails e
-                            WHERE REPLACE(e.searchName, ' ', '') LIKE CONCAT('%', :search, '%')
+                            WHERE REPLACE(e.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                             UNION
                             SELECT e.id FROM FileDetails e
-                            WHERE REPLACE(e.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%')
+                            WHERE REPLACE(e.searchDescription, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                             UNION
                             SELECT e.id FROM FileDetails e
                             WHERE e.fileInfo.folder.id IN (SELECT d.id FROM Folder d, Folder a
                                                            WHERE a.depth > 0 AND d.path LIKE CONCAT(a.path, '%')
-                                                             AND REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%')))
+                                                             AND REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'))
             """)
     Page<FileDetails> searchPublicFiles(@Param("search") String search, Pageable pageable);
 

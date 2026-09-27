@@ -105,6 +105,9 @@
                                 <a sec:authorize="hasAuthority('UPDATE_API_KEY_PAGE') || hasAuthority('ADMIN')"
                                    th:href="@{'/api-keys/' + ${k.id}}" class="btn btn-secondary btn-sm"
                                    th:text="#{apiKey.action.edit}">ویرایش</a>
+                                <a sec:authorize="hasAuthority('API_KEY_ACTIVITY_PAGE') || hasAuthority('ADMIN')"
+                                   th:href="@{'/api-keys/' + ${k.id} + '/activity'}" class="btn btn-secondary btn-sm"
+                                   th:text="#{apiKey.action.activity}">فعالیت‌ها</a>
 
                                 <form sec:authorize="hasAuthority('REVOKE_API_KEY') || hasAuthority('ADMIN')"
                                       th:if="${k.revokedAt == null}"

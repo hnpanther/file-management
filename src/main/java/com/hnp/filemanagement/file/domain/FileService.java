@@ -29,6 +29,7 @@ import com.hnp.filemanagement.identity.persistence.ApiKeyRepository;
 import com.hnp.filemanagement.identity.persistence.UserRepository;
 import com.hnp.filemanagement.identity.security.ActingApiKey;
 import com.hnp.filemanagement.shared.util.SearchKey;
+import com.hnp.filemanagement.shared.util.SearchTerms;
 import com.hnp.filemanagement.shared.validation.ValidationUtil;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
@@ -139,6 +140,7 @@ public class FileService {
     private final FolderQuotaService folderQuotaService;
     private final FileShareLinkRepository fileShareLinkRepository;
     private final ApiKeyRepository apiKeyRepository;
+    private final FileHistoryService fileHistoryService;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileDetailsRepository fileDetailsRepository,
@@ -152,7 +154,8 @@ public class FileService {
                        FolderService folderService,
                        FolderQuotaService folderQuotaService,
                        FileShareLinkRepository fileShareLinkRepository,
-                       ApiKeyRepository apiKeyRepository) {
+                       ApiKeyRepository apiKeyRepository,
+                       FileHistoryService fileHistoryService) {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
@@ -166,6 +169,7 @@ public class FileService {
         this.folderQuotaService = folderQuotaService;
         this.fileShareLinkRepository = fileShareLinkRepository;
         this.apiKeyRepository = apiKeyRepository;
+        this.fileHistoryService = fileHistoryService;
     }
 
     // ------------------------------------------------------------------ upload
@@ -248,6 +252,7 @@ public class FileService {
 
         actionHistoryService.saveActionHistory(EntityEnum.FileInfo, fileInfo.getId(), ActionEnum.CREATE, principalId,
                 "CREATE NEW FILE_INFO", "CREATE NEW FILE_INFO");
+        fileHistoryService.record(FileEvent.FILE_UPLOADED, fileDetails, null, principalId);
         actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetails.getId(), ActionEnum.CREATE,
                 principalId, "CREATE NEW FILE_DETAILS", "CREATE NEW FILE_DETAILS");
 
@@ -394,7 +399,9 @@ public class FileService {
                     "fileDetails with same version and format exists. version=" + version + ", format=" + extension);
         }
 
-        return persistNewVersionRow(fileInfo, fileUploadDTO, version, sample.getVersionName(), principalId);
+        FileDetails created = persistNewVersionRow(fileInfo, fileUploadDTO, version, sample.getVersionName(), principalId);
+        fileHistoryService.record(FileEvent.FORMAT_ADDED, created, null, principalId);
+        return created;
     }
 
     private FileDetails createNewVersionFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo, int principalId) {
@@ -410,6 +417,7 @@ public class FileService {
         // The parent is managed, so the dirty check writes this - it needs no save(), and calling
         // one here is what used to merge a copy of the new child into the database.
         fileInfo.setLastVersion(version);
+        fileHistoryService.record(FileEvent.VERSION_ADDED, created, null, principalId);
         return created;
     }
 
@@ -505,6 +513,7 @@ public class FileService {
 
         actionHistoryService.saveActionHistory(EntityEnum.FileInfo, id, ActionEnum.UPDATE_VALUES, principalId,
                 "UPDATE FILE_INFO", "Update File info, new description=" + description);
+        fileHistoryService.record(FileEvent.DESCRIPTION_CHANGED, fileInfo, description, principalId);
     }
 
     /**
@@ -534,13 +543,17 @@ public class FileService {
         // hold the file must have room (roadmap 10.4). Nothing on disk moves.
         folderQuotaService.requireRoom(target, fileDetailsRepository.sumSizeOf(fileInfoId), fileInfo.getFolder().getPath());
 
-        int from = fileInfo.getFolder().getId();
+        Folder source = fileInfo.getFolder();
+        int from = source.getId();
+        // Where it was, as a person read it, before it is not there any more.
+        String sourceTitle = fileHistoryService.titleOf(source);
         fileInfo.setFolder(target);
         fileInfo.setUpdatedBy(userRepository.getReferenceById(principalId));
         tagMirrorService.retag(fileInfo);
 
         actionHistoryService.saveActionHistory(EntityEnum.FileInfo, fileInfoId, ActionEnum.UPDATE_VALUES, principalId,
                 "MOVE FILE_INFO", "MOVE file id=" + fileInfoId + " from folder id=" + from + " to folder id=" + targetFolderId);
+        fileHistoryService.record(FileEvent.FILE_MOVED, fileInfo, null, target, sourceTitle, principalId);
     }
 
     @Transactional
@@ -556,6 +569,10 @@ public class FileService {
 
         actionHistoryService.saveActionHistory(EntityEnum.FileInfo, fileInfoId, ActionEnum.UPDATE_CHANGE_STATE,
                 principalId, "CHANGE STATE FILE_INFO", "Change state from " + oldState + " to " + newState);
+        if (oldState != newState) {
+            fileHistoryService.record(newState == STATE_ACTIVE ? FileEvent.FILE_PUBLISHED : FileEvent.FILE_UNPUBLISHED,
+                    fileInfo, null, principalId);
+        }
     }
 
     @Transactional
@@ -573,6 +590,10 @@ public class FileService {
 
         actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetailsId, ActionEnum.UPDATE_CHANGE_STATE,
                 principalId, "CHANGE STATE FILE_DETAILS", "Change state from " + oldState + " to " + newState);
+        if (oldState != newState) {
+            fileHistoryService.record(newState == STATE_ACTIVE ? FileEvent.REVISION_PUBLISHED : FileEvent.REVISION_UNPUBLISHED,
+                    fileDetails, null, principalId);
+        }
     }
 
     /**
@@ -613,6 +634,17 @@ public class FileService {
      */
     @Transactional
     public String deleteFileRows(int id, int principalId) {
+        return deleteFileRows(id, principalId, null);
+    }
+
+    /**
+     * {@link #deleteFileRows(int, int)}, as part of deleting a folder with everything under it.
+     *
+     * @param deletedWith the title of the folder being deleted, recorded in the file's history as
+     *                    what took it with it; null for a file deleted on its own
+     */
+    @Transactional
+    public String deleteFileRows(int id, int principalId, String deletedWith) {
 
         FileInfo fileInfo = getFileInfoWithFileDetails(id);
         // The directory on disk that is this file's alone, read from a stored key, not rebuilt
@@ -627,6 +659,13 @@ public class FileService {
                     ? directory
                     : directory + "/" + fileInfo.getFileName();
         }
+
+        // Recorded while the file is still whole: its name, its folder and its latest version are
+        // what the history keeps of it once the rows are gone.
+        FileDetails latest = fileInfo.getFileDetailsList().stream()
+                .max(java.util.Comparator.comparing(FileDetails::getVersion).thenComparing(FileDetails::getId))
+                .orElse(null);
+        fileHistoryService.record(FileEvent.FILE_DELETED, fileInfo, latest, fileInfo.getFolder(), deletedWith, principalId);
 
         // Share links to any of its revisions first (roadmap 10.5), then the file and its revisions.
         fileShareLinkRepository.deleteAll(fileShareLinkRepository.findByFileDetailsFileInfoId(id));
@@ -693,6 +732,8 @@ public class FileService {
         int version = fileDetails.getVersion();
         boolean lastFormatOfItsVersion = fileDetailsRepository.countByFileInfoIdAndVersion(fileInfoId, version) == 1;
         String storageKey = fileDetails.getStorageKey();
+
+        fileHistoryService.record(FileEvent.REVISION_DELETED, fileDetails, null, principalId);
 
         // A share link to this revision goes with it - said here, not left to the schema's
         // cascade, so that a link already in the persistence context cannot outlive its target.
@@ -832,14 +873,14 @@ public class FileService {
         if (readableFolders.isEmpty()) {
             page = key.isEmpty()
                     ? fileInfoRepository.findPageWithFolder(pageable)
-                    : fileInfoRepository.search(key, pageable);
+                    : fileInfoRepository.search(SearchTerms.escapeLike(key), pageable);
         } else if (readableFolders.get().isEmpty()) {
             // Granted nothing: an empty page, without asking the database for `IN ()`.
             page = Page.empty(pageable);
         } else {
             page = key.isEmpty()
                     ? fileInfoRepository.findPageWithinFolders(readableFolders.get(), pageable)
-                    : fileInfoRepository.searchWithinFolders(key, readableFolders.get(), pageable);
+                    : fileInfoRepository.searchWithinFolders(SearchTerms.escapeLike(key), readableFolders.get(), pageable);
         }
 
         // The ancestors of every folder on the page in one query, so the conversion below adds no
@@ -857,7 +898,7 @@ public class FileService {
         String key = SearchKey.forSearch(search);
         Page<FileDetails> page = key.isEmpty()
                 ? fileDetailsRepository.findPublicFiles(pageable)
-                : fileDetailsRepository.searchPublicFiles(key, pageable);
+                : fileDetailsRepository.searchPublicFiles(SearchTerms.escapeLike(key), pageable);
 
         Map<Integer, List<Folder>> ancestry = folderService.ancestryOf(
                 page.getContent().stream().map(d -> d.getFileInfo().getFolder()).toList());
@@ -883,6 +924,12 @@ public class FileService {
     public int fileInfoIdOf(ExternalId externalId) {
         return fileInfoRepository.findIdByExternalId(externalId.value()).orElseThrow(
                 () -> new ResourceNotFoundException("file info not exists, externalId=" + externalId));
+    }
+
+    /** The external id of the file with this number, while there is one. */
+    @Transactional(readOnly = true)
+    public Optional<String> externalIdOf(int fileInfoId) {
+        return fileInfoRepository.findById(fileInfoId).map(FileInfo::getExternalId);
     }
 
     /** The number of the revision with this external id; see {@link #fileInfoIdOf}. */

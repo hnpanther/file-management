@@ -1804,6 +1804,13 @@ Fix: escape `\`, `%` and `_` in the term (`SearchKey.forSearch`, or beside it) a
 column's expression and are unaffected. `SearchIndexTest` then checks the new SQL still plans onto
 them.
 
+> **Fixed in 2.5.0**, as proposed: `SearchTerms.escapeLike` escapes `\`, `%` and `_` after the term
+> is folded and after the "is it empty" decision, and every term `LIKE` declares `ESCAPE '\'` -
+> the files, the public files, the explorer, the tree, the folders, the users, and the new file
+> history. `SearchWildcardTest` searches each for a name with an underscore that has a look-alike,
+> and for a bare `%`; with the escape switched off all three of its tests fail. `SearchIndexTest`
+> still finds every search on its index.
+
 ### 97. What an API key did was recorded as its creator's doing, with nothing to say a key did it — **S2**
 
 A request made with an API key runs as the key's creator (`ApiKeyAuthenticationFilter`): that
@@ -1864,3 +1871,25 @@ ever held - `setval(seq, greatest(max(id), max(action_history.entity_id)))` per 
 ever moves a sequence forward and is safe to run on any database. Ids already reused on
 production, if the check finds any, are listed by comparing the new rows' `created_at` with the
 old history rows' and are reported, not rewritten: a client may already hold them.
+
+> **Fixed in 2.5.0**, as proposed: `V3.4` moves each sequence past the larger of its table's
+> largest id and the largest id `action_history` names for it, only ever forward - an empty table
+> with no history still starts at 1. `MigrationTest` checks all three cases. The v1 API stopped
+> taking numbers in 2.4.0; from 2.5.0 the file history follows a file by its external id, so an
+> old file's events never appear under a new one that had its number.
+
+## Found in production (2.4.0)
+
+### 99. The share dialog's copy button did nothing over plain http — **S3**
+
+`shareLinkPanel.copy` (`app.js`) called `navigator.clipboard.writeText` and nothing else. The
+Clipboard API exists only in a secure context - https, or `localhost` - and production is reached
+over plain http on the office network, where `navigator.clipboard` is `undefined`: the call threw,
+the catch left `copied` false, and the button did nothing, with nothing to say why. It worked on
+every developer machine, which is `localhost`.
+
+> **Fixed in 2.5.0.** `window.appCopy(text, near)` uses the Clipboard API where there is one and
+> otherwise the selection copy (`document.execCommand("copy")` on a hidden field placed next to the
+> button, so it works inside the dialog), synchronously in the click; the share dialog and the
+> external-id button of 2.4.0 both use it. Checked in a browser over the machine's LAN address -
+> no secure context, no Clipboard API, as in production: both buttons copied, three times of three.

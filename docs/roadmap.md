@@ -38,8 +38,17 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: 2.4.0, 2.3.0, 2.2.0 and 2.1.0, written and tested, none deployed; production runs 2.0.0 on
-PostgreSQL since 2026-09-26.** 2.4.0: the v1 API takes the **external ids only** - the PL/SQL
+**Now: production runs 2.4.0; 2.5.0 is written and tested.** 2.5.0 is **the file history**: one
+row per thing that happened to a file - uploaded, a version or a format added, described, moved,
+made public or private, a revision or the whole file deleted, a share link made or revoked - with
+who, when, with which API key, and a snapshot of the name, the revision, the size and the
+folders, so it outlives the file (`V3.5`, filled from what the database already knew). Three
+pages read it: the history of every file, a file's own history on its page, and an API key's
+activity (9.2). Beside it: issue 96 (`%` and `_` in a search box stand for themselves), issue 98
+(`V3.4`, sequences past every id ever used) and issue 99 (the share dialog's copy button over
+plain http). Recording downloads is still to come (9.2).
+
+2.4.0: the v1 API takes the **external ids only** - the PL/SQL
 clients moved over, and a number in a path is refused with a 400 that says so - and a permission,
 `VIEW_FILE_EXTERNAL_ID`, shows each version's external id on the file page to whoever sets up an
 integration (ADMIN holds it).
@@ -1797,9 +1806,10 @@ api_key_folder (api_key_id, folder_id, permission)
     log has each one, with the key's id (`userId/keyId`). For a controlled document "who read this
     revision" is a real question; the likely shape is an `action_history` row per API download (a
     person's are many more, and a page view is not a record), decided with Phase 8.
-  * **A key's activity page.** On the API keys page, per key: what it uploaded, added and
-    deleted, paged, from `action_history.api_key_id` (indexed for it). A new endpoint, so a
-    permission of its own in `PermissionEnum`.
+  * ~~**A key's activity page.**~~ — **done (2.5.0)**: `/api-keys/{id}/activity`
+    (`API_KEY_ACTIVITY_PAGE`, in the API keys group), what the key uploaded, added, changed and
+    deleted, newest first, read from the file history (`file_history.api_key_id`, indexed), under
+    the reader's folder access.
   * The shared v1 account (HTTP Basic) is a user, not a key, and is recorded as that user; telling
     "through the API" apart for it would need a channel column (`WEB` / `API`), left out until
     someone asks the question.

@@ -11,6 +11,7 @@ import com.hnp.filemanagement.shared.exception.DuplicateResourceException;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.folder.domain.QuotaExceededException;
 import com.hnp.filemanagement.file.domain.UploadRefusedException;
+import com.hnp.filemanagement.file.domain.FileHistoryService;
 import com.hnp.filemanagement.file.domain.FileService;
 import com.hnp.filemanagement.file.domain.UploadPolicyService;
 import com.hnp.filemanagement.shared.web.GlobalGeneralLogging;
@@ -58,17 +59,25 @@ public class FileController {
     private final FileService fileService;
     private final UploadPolicyService uploadPolicyService;
     private final UiMessages messages;
+    private final FileHistoryService fileHistoryService;
 
     private final int defaultPageSize;
 
     public FileController(GlobalGeneralLogging globalGeneralLogging, FileService fileService,
                           UploadPolicyService uploadPolicyService, FileManagementProperties properties,
-                          UiMessages messages) {
+                          UiMessages messages, FileHistoryService fileHistoryService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.fileService = fileService;
         this.uploadPolicyService = uploadPolicyService;
         this.defaultPageSize = properties.defaults().pageSize();
         this.messages = messages;
+        this.fileHistoryService = fileHistoryService;
+    }
+
+    /** Whether this person holds the permission, ADMIN counting as every permission. */
+    private static boolean holds(UserDetailsImpl userDetails, String permission) {
+        return userDetails.getAuthorities().stream().map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .anyMatch(authority -> authority.equals(permission) || authority.equals("ADMIN"));
     }
 
     /**
@@ -302,6 +311,10 @@ public class FileController {
 
         FileInfoDTO fileInfoDTO = fileService.getFileInfoDtoWithFileDetails(fileInfoId, principalId);
         model.addAttribute("file", fileInfoDTO);
+        // The file's own history, for whoever may read the history at all - asked only then.
+        if (holds(userDetails, "FILE_HISTORY_PAGE")) {
+            model.addAttribute("history", fileHistoryService.ofFile(fileInfoDTO.getExternalId()));
+        }
         return "file-management/files/file-info-page.html";
     }
 

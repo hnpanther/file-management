@@ -140,7 +140,7 @@ public class FileTreeService {
         if (key.isEmpty() && id == null) {
             return List.of();
         }
-        List<FileInfo> hits = fileInfoRepository.searchForTree(id, key.isEmpty() ? SearchKey.MATCHES_NOTHING : key, PageRequest.of(0, 20)).stream()
+        List<FileInfo> hits = fileInfoRepository.searchForTree(id, key.isEmpty() ? SearchKey.MATCHES_NOTHING : SearchTerms.escapeLike(key), PageRequest.of(0, 20)).stream()
                 // Search reaches across the whole tree, so unlike opening a folder it can turn up
                 // something outside every grant. A hit is only offered if its folder is readable.
                 .filter(fileInfo -> folderAccessService.allowsRead(access, fileInfo))

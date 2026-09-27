@@ -394,6 +394,29 @@
     }
     .revision-external-id-copy:focus-visible { outline: 2px solid var(--color-brand-600); outline-offset: 1px; }
     .revision-external-id-copy.is-copied { @apply text-brand-700; }
+    /* The file history (2.5.0): a filter row, and a table whose event is a badge - additions in
+       the brand colour, deletions in red, the rest neutral. */
+    .history-filters { @apply mb-2 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-[2fr_1.5fr_1fr_1fr_auto]; }
+    .history-filter { @apply min-w-0; }
+    .history-filter label { @apply mb-1 block text-xs font-medium text-ink-600; }
+    .history-filter-actions { @apply flex flex-wrap gap-2; }
+    .history-table td { @apply align-middle; }
+    .history-table tr.is-deletion { @apply bg-red-50/40; }
+    .history-when { @apply whitespace-nowrap text-xs text-ink-600; }
+    .history-event {
+        @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-ink-200
+               bg-ink-50 px-2.5 py-1 text-xs font-medium text-ink-700;
+    }
+    .history-event.is-addition { @apply border-brand-200 bg-brand-50 text-brand-700; }
+    .history-event.is-deletion { @apply border-red-200 bg-red-50 text-red-700; }
+    .history-file { @apply min-w-0; }
+    .history-file a, .history-file > .technical { @apply font-medium; overflow-wrap: anywhere; }
+    .history-revision { @apply ms-1 inline-block rounded bg-ink-100 px-1.5 py-0.5 text-[0.7rem] text-ink-600; }
+    .history-gone { @apply ms-1 border-red-200 bg-red-50 text-red-700; }
+    .history-folder { @apply text-xs text-ink-600; overflow-wrap: anywhere; }
+    .history-actor.is-key { @apply inline-flex items-center gap-1 text-brand-700; }
+    .history-detail { @apply text-xs text-ink-600; }
+    .history-detail-text { overflow-wrap: anywhere; }
     .revision-actions .btn { @apply min-h-9; }
     .profile-mark { @apply flex size-14 shrink-0 items-center justify-center rounded-[var(--radius-card)] border border-ink-200 bg-white text-3xl text-brand-600; }
     .quota-controls { @apply mt-2 flex flex-wrap items-center gap-2; }

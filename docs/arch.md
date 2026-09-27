@@ -890,6 +890,25 @@ itself refuses to run on a database that would have failed it (section 10).
 `action_history` row. It is called explicitly from the services after each mutation; it is not an
 aspect, so coverage depends on the author remembering.
 
+**The file history** (2.5.0) — `file_history`, one row per thing that happened to a file:
+`FILE_UPLOADED`, `VERSION_ADDED`, `FORMAT_ADDED`, `DESCRIPTION_CHANGED`, `FILE_MOVED`,
+`FILE_PUBLISHED` / `FILE_UNPUBLISHED`, `REVISION_PUBLISHED` / `REVISION_UNPUBLISHED`,
+`REVISION_DELETED`, `FILE_DELETED`, `SHARE_LINK_CREATED` / `SHARE_LINK_REVOKED` (`FileEvent`, stored
+by name). `FileHistoryService.record` writes it from `FileService` and `ShareLinkService`, in the
+transaction of the change (`MANDATORY`): a refused or rolled-back change leaves no event. Each row
+copies in what a person reads - the name, the revision's version, format and size, the folders
+above as one line, the username, the API key - and has no foreign key to the file, its revisions
+or its folder, so a file deleted with every revision, or a folder deleted with everything under
+it (one event per file, naming the folder), keeps its account. A file is followed by its external
+id, never reused; its number is kept only to relate to `action_history`. Read as a `Slice` - a page
+and whether there is another, never a count - through one index per way of reading it (one file,
+everything by time, one event, one person, one API key, and a trigram index on the folded name),
+two statements a page; a search by name plans for its value (`SET LOCAL plan_cache_mode =
+force_custom_plan`, `FileHistorySearch`), since a cached generic plan walked the time index for a
+name found in a few rows. A reader sees the events of the folders their access reaches. Pages:
+`/files/history` (`FILE_HISTORY_PAGE`), a file's own on its page, `/api-keys/{id}/activity`
+(`API_KEY_ACTIVITY_PAGE`). `action_history` stays as it was - the general audit trail.
+
 **Which API key did it** (2.3.0) — a request made with an API key runs as the key's creator, so
 `userId`, `created_by` and `action_history.user_id` are that person. The key itself is read from
 the request by `ActingApiKey` and recorded beside them without any caller passing it:
@@ -1013,6 +1032,8 @@ MySQL compared without case, an index on every foreign key.
 |---|---|
 | `V3.0__Baseline.sql` | the whole schema and its seed rows (release B, 2.0.0) |
 | `V3.1__Timestamps_with_time_zone.sql` | 2.2.0, issue 24: all 28 timestamp columns `TIMESTAMPTZ(0)`, the values already there read as `Asia/Tehran` (the summer time before 1401 included); refuses to finish if a timestamp without a zone is left |
+| `V3.5__File_history.sql` | 2.5.0: `file_history` and its six indexes, filled from the files and revisions there are (exact: their own rows), from what `action_history` recorded about them after they were made, and from the files it records as gone (by number, nameless - their names were never recorded) |
+| `V3.4__Sequences_past_every_id_ever_used.sql` | 2.5.0, issue 98: each identity sequence moved past every id its table or its audit rows ever used, only forward |
 | `V3.3__Record_the_acting_api_key.sql` | 2.3.0: `created_by_api_key_id` on `file_info` and `file_details`, `api_key_id` on `action_history` - the API key an upload, a new version or a delete was made with, beside the key's creator |
 | `V3.2__Trigram_search_indexes.sql` | 2.2.0, issue 21: `pg_trgm` (trusted - the database's owner may create it) and a GIN trigram index on `replace(column, ' ', '')` for the name and description keys of `file_info` and `file_details` and the name and label keys of `folder` |
 
@@ -1107,7 +1128,7 @@ installation that sets it.
 
 ## 12. Tests
 
-`./mvnw verify` runs 834 tests and needs only a working Docker daemon: `DatabaseSupport` points the
+`./mvnw verify` runs 856 tests and needs only a working Docker daemon: `DatabaseSupport` points the
 application at one PostgreSQL 18 container per JVM (`support/TestDatabases`, created as production's
 database is: UTF-8, ICU's root locale), and `StorageRootSupport` gives each test a clean storage
 root. Test classes sit in the package of what they test; the ones that span features
@@ -1164,7 +1185,9 @@ generates the unique ones, so a test overrides only what it is actually about.
 | `MessageBundleTest` | every `#{...}` key is backed, and no Persian is hardcoded in a template |
 | `DependencyPinTest` | the pinned versions that clear known advisories stay pinned |
 | `FileManagementApplicationTests` | the context starts |
-| `SearchIndexTest` | every search's actual SQL is planned by PostgreSQL onto its trigram indexes (issue 21) |
+| `SearchIndexTest` | every search's actual SQL is planned by PostgreSQL onto its trigram indexes (issue 21), and each way the file history is read onto its index |
+| `SearchWildcardTest` | `%` and `_` in every search stand for themselves (issue 96) |
+| `file/domain/FileHistoryServiceTest`, `FileHistoryFolderAccessTest`, `file/web/FileHistoryPageTest` | one event per change, in its transaction, outliving the file; the pages behind their permissions, under folder access, in a fixed number of statements |
 | `file/web/ApiKeyAttributionTest` | an upload, a new version and a delete with a real `Bearer` key record the key on the rows and the audit trail, and the file page names it (2.3.0) |
 | `MigrationTest` | `V3.1` turns times already written into their instants; every migration runs as a database owner that is no superuser, as production's |
 

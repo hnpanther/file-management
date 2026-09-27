@@ -50,6 +50,21 @@ public class JalaliDate {
                 date(local.toLocalDate()), local.getHour(), local.getMinute()));
     }
 
+    /**
+     * {@link #format(Instant)} of an instant stored as text ({@code 2026-09-22T08:00:00Z}) - the
+     * detail of a file history event - or the text as it is if it is not one.
+     */
+    public String formatIso(String instant) {
+        if (instant == null || instant.isBlank()) {
+            return "";
+        }
+        try {
+            return format(Instant.parse(instant));
+        } catch (java.time.format.DateTimeParseException notAnInstant) {
+            return instant;
+        }
+    }
+
     /** {@code ۱۴۰۵/۰۶/۲۴}, or an empty string for a missing value. A date has no zone to apply. */
     public String format(LocalDate value) {
         return value == null ? "" : persianDigits(date(value));

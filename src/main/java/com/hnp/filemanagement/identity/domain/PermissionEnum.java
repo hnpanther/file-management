@@ -23,6 +23,9 @@ public enum PermissionEnum {
     //the id the v1 API takes since 2.4.0 - with a copy button. Hidden from everyone without it; ADMIN
     //holds it as it holds every assignable permission (FixedRole).
     VIEW_FILE_EXTERNAL_ID,
+    //@GetMapping("history") - the history of every file: who uploaded, changed or deleted what, when,
+    //with which API key - deleted files included (2.5.0). Also shows a file's own history on its page.
+    FILE_HISTORY_PAGE,
 
     //@GetMapping("file-info/{fileInfoId}/file-details/create")
     SAVE_NEW_FILE_DETAILS_PAGE,
@@ -191,6 +194,8 @@ public enum PermissionEnum {
     SAVE_UPDATED_API_KEY,
     //@PostMapping("{id}/revoke")
     REVOKE_API_KEY,
+    //@GetMapping("{id}/activity") - what one key has uploaded, added, changed and deleted (2.5.0)
+    API_KEY_ACTIVITY_PAGE,
 
     /**
      * Held by an API key itself rather than by any person, and by every API key.

@@ -34,6 +34,31 @@ public final class SearchTerms {
         return (search == null || search.isBlank()) ? "" : search.trim();
     }
 
+    /** The escape character every search's {@code LIKE} declares ({@code ESCAPE '\'}). */
+    public static final char LIKE_ESCAPE = '\\';
+
+    /**
+     * The term as a {@code LIKE} pattern takes it: {@code %}, {@code _} and the escape character
+     * itself escaped, so that each stands for itself (issue 96). Every search binds its term as
+     * {@code LIKE CONCAT('%', :term, '%') ESCAPE '\'}; without this a {@code %} typed into a box
+     * matched everything and {@code CM_EDU} also found {@code CMXEDU}. Applied last - after
+     * {@code SearchKey.forSearch} and after any "is it empty" decision, which is about the term
+     * the person typed, not the pattern. Null stays null.
+     */
+    public static String escapeLike(String term) {
+        if (term == null) {
+            return null;
+        }
+        StringBuilder escaped = new StringBuilder(term.length() + 4);
+        for (char c : term.toCharArray()) {
+            if (c == LIKE_ESCAPE || c == '%' || c == '_') {
+                escaped.append(LIKE_ESCAPE);
+            }
+            escaped.append(c);
+        }
+        return escaped.toString();
+    }
+
     /**
      * The term read as a file id, or {@code null} when it is not one.
      *

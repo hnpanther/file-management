@@ -1,6 +1,9 @@
 package com.hnp.filemanagement;
 
 import com.hnp.filemanagement.file.persistence.FileDetailsRepository;
+import com.hnp.filemanagement.file.persistence.FileHistoryQuery;
+import com.hnp.filemanagement.file.persistence.FileHistoryRepository;
+import com.hnp.filemanagement.file.persistence.FileHistorySearch;
 import com.hnp.filemanagement.file.persistence.FileInfoRepository;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import com.hnp.filemanagement.support.DatabaseSupport;
@@ -157,13 +160,60 @@ class SearchIndexTest extends DatabaseSupport {
     @DisplayName("the indexes are on the expression the queries compare, and the extension is installed")
     void theIndexesExist() {
         List<String> definitions = jdbcTemplate.queryForList(
-                "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname LIKE '%\\_trgm'",
+                "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname LIKE '%\\_trgm' AND tablename <> 'file_history'",
                 String.class);
 
         assertThat(definitions).hasSize(6).allSatisfy(definition -> assertThat(definition)
                 .contains("USING gin (replace(", "' '::text, ''::text) gin_trgm_ops)"));
+        // The history stores its key already without spaces (FileHistory.searchName): the column itself.
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_file_history_search_name_trgm'", String.class))
+                .contains("USING gin (search_name gin_trgm_ops)");
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM pg_extension WHERE extname = 'pg_trgm'", Integer.class)).isEqualTo(1);
+    }
+
+    // ---------------------------------------------------------------- the file history (2.5.0)
+
+    @Autowired
+    private FileHistoryRepository fileHistoryRepository;
+    @Autowired
+    private FileHistorySearch fileHistorySearch;
+
+    /**
+     * The file history only grows, and each of its four readings has an index in the order it
+     * sorts by: a page is then the rows it shows, read in order, not the table sorted. Planned
+     * with sequential scans priced out; plain index scans are allowed, as the order is what the
+     * index gives.
+     */
+    @Test
+    @DisplayName("each way the file history is read has its index: one file, everything, one API key, one event, a name")
+    void theFileHistoryIsReadThroughItsIndexes() {
+        var page = PageRequest.of(0, 50);
+        FileHistoryQuery none = FileHistoryQuery.everything();
+
+        assertThat(planOfEach(() -> fileHistoryRepository.findByFile("3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", page)))
+                .allSatisfy(plan -> assertThat(plan).contains("ix_file_history_file"));
+        assertThat(planOfEach(() -> fileHistorySearch.find(none, page)))
+                .allSatisfy(plan -> assertThat(plan).contains("ix_file_history_occurred_at"));
+        assertThat(planOfEach(() -> fileHistorySearch.find(none.byApiKey(7), page)))
+                .allSatisfy(plan -> assertThat(plan).contains("fk_file_history_api_key"));
+        assertThat(planOfEach(() -> fileHistorySearch.find(new FileHistoryQuery(null,
+                com.hnp.filemanagement.file.domain.FileEvent.FILE_DELETED, null, null, null, null, null), page)))
+                .allSatisfy(plan -> assertThat(plan).contains("ix_file_history_event"));
+        assertThat(planOfEach(() -> fileHistorySearch.find(new FileHistoryQuery(TERM, null, null, null, null, null, null), page)))
+                .allSatisfy(plan -> assertThat(plan).contains("ix_file_history_search_name_trgm"));
+    }
+
+    /** The plans of the statements on file_history this call prepares - at least one. */
+    private List<String> planOfEach(Runnable call) {
+        Recorder.STATEMENTS.clear();
+        call.run();
+        List<String> statements = Recorder.STATEMENTS.stream()
+                .filter(sql -> sql.toLowerCase(Locale.ROOT).contains("from file_history"))
+                .distinct().toList();
+        assertThat(statements).as("statements on file_history").isNotEmpty();
+        return plans(statements, false);
     }
 
     // ---------------------------------------------------------------- the plan
@@ -186,10 +236,18 @@ class SearchIndexTest extends DatabaseSupport {
     private List<String> plansOfRecordedSearches(int expected) {
         List<String> searches = Recorder.STATEMENTS.stream()
                 .filter(sql -> sql.toLowerCase(Locale.ROOT).contains(" like "))
+                .filter(sql -> !sql.toLowerCase(Locale.ROOT).contains("from file_history"))
                 .distinct()
                 .toList();
         assertThat(searches).as("searching statements recorded").hasSizeGreaterThanOrEqualTo(expected);
+        return plans(searches, true);
+    }
 
+    /**
+     * The generic plan of each statement, with sequential scans priced out and - when
+     * {@code bitmapOnly} - plain index scans too.
+     */
+    private List<String> plans(List<String> searches, boolean bitmapOnly) {
         var container = TestDatabases.postgresql();
         String url = container.getJdbcUrl() + (container.getJdbcUrl().contains("?") ? "&" : "?")
                 + "preferQueryMode=simple";
@@ -199,8 +257,10 @@ class SearchIndexTest extends DatabaseSupport {
             // table without one of the searched indexes cannot hide behind a full index scan -
             // the planner's cheapest way round a disabled sequential scan on a near-empty table.
             statement.execute("SET enable_seqscan = off");
-            statement.execute("SET enable_indexscan = off");
-            statement.execute("SET enable_indexonlyscan = off");
+            if (bitmapOnly) {
+                statement.execute("SET enable_indexscan = off");
+                statement.execute("SET enable_indexonlyscan = off");
+            }
             List<String> plans = new ArrayList<>();
             for (String sql : searches) {
                 StringBuilder plan = new StringBuilder(sql).append('\n');
