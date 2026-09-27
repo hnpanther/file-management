@@ -87,7 +87,7 @@ Do this **before** the first start.
 | `FILEMANAGEMENT_BASE_DIR` | `./TempFiles/files/main/` | Where every uploaded file is written. The default is inside the working tree, **and `TempFiles/` is in `.gitignore`** — so on a real host the data lands in a directory the repository deliberately ignores ([issue 45](issues.md#45-the-prod-profile-writes-into-the-working-tree--s3)) |
 | `FILEMANAGEMENT_LOG_PATH` | `./logs` | Same problem: relative to the working directory |
 | `FILEMANAGEMENT_TIME_ZONE` | `Asia/Tehran` | The zone the pages show times in and the day an API key expires on is read in (2.2.0). Leave it unless the people using the system are elsewhere; the database stores instants and the server's own zone is never used for either. An unknown zone stops the start |
-| `filemanagement.bootstrap.admin-password` | *(empty)* | With nothing set, `DataInitializer` generates a random password for the `Admin` account and prints it **once**, at WARN, on the first boot. Miss that line and the account is unusable |
+| `FILEMANAGEMENT_BOOTSTRAP_ADMIN_PASSWORD` (`filemanagement.bootstrap.admin-password`) | *(empty)* | The `Admin` account's password, used once: on the first start against an empty database, when `DataInitializer` creates the account. With nothing set it generates a random password and prints it **once**, at WARN, to the console and to `app_log.log` under `FILEMANAGEMENT_LOG_PATH` - see [finding it](#4-confirm-it-is-actually-up) below. Miss that line and the account is unusable. Changing the variable later changes nothing: the account exists |
 
 > **`FILEMANAGEMENT_BASE_DIR` with or without a trailing separator - both work, since 1.1.0.**
 > The storage service used to concatenate strings (`baseDir + address + "/" + …`), so
@@ -421,14 +421,20 @@ Everything else under `/actuator` answers 403, whether or not it has been expose
 > application that cannot serve any. It was the best substitute available before the actuator
 > existed; it is not one now.
 
-On the first boot, find the generated administrator password if you did not set one:
+On the first boot, find the generated administrator password if you did not set
+`FILEMANAGEMENT_BOOTSTRAP_ADMIN_PASSWORD`:
 
 ```bash
 grep -n "random password was generated" /opt/file-management/logs/app_log.log
+# or, when it ran under systemd:
+journalctl -u file-management | grep "random password was generated"
 ```
 
-It is printed **once**. If it has scrolled out of a rotated file, the account has to be reset in the
-database.
+The line reads `A random password was generated for the "Admin" account: ...`. It is printed
+**once**. If it has scrolled out of a rotated file, the account has to be reset in the database.
+**Sign in as `Admin` and change the password straight away**: the generated one stays in that log
+file, in the clear, for as long as the file and its archives are kept, and anyone who can read the
+logs can read it.
 
 ## 5. Upgrades
 

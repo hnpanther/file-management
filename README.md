@@ -75,15 +75,23 @@ directories underneath it as you create them in the UI.
 
 The application listens on **http://localhost:8122**.
 
-The `prod` profile (the default) seeds the permission table, the `ADMIN` and `USER` roles, and an
-administrator account:
+The `prod` profile (the default) seeds the permission table, the `ADMIN` and `USER` roles, and -
+on the first start against an empty database - an administrator account, **`Admin`**. There is no
+default password:
 
-| Username | Password |
-|---|---|
-| `Admin` | `admin` |
+* set one before that first start with `FILEMANAGEMENT_BOOTSTRAP_ADMIN_PASSWORD=<your password>`
+  (the property `filemanagement.bootstrap.admin-password`, shown commented out in
+  `application.properties`), or
+* leave it unset, and a random password is generated and printed **once**, as a WARN line, to the
+  console and to `logs/app_log.log` (`FILEMANAGEMENT_LOG_PATH`):
 
-**Change it immediately on any non-local deployment** — it is created unconditionally at every
-startup.
+  ```bash
+  grep "random password was generated" logs/app_log.log
+  ```
+
+Sign in and change it at once - a generated password stays readable in the log file. The setting
+is read only while no `Admin` account exists; it does not change the password of one already
+created.
 
 ### 4. Build a deployable artefact
 
@@ -190,6 +198,7 @@ database **and** `base-dir` together.
 |---|---|---|
 | `server.port` | `8122` | |
 | `spring.profiles.active` | `prod` | `prod` seeds permissions, roles and the admin user |
+| `filemanagement.bootstrap.admin-password` | *(none)* | the `Admin` account's password on the first start of an empty database (`FILEMANAGEMENT_BOOTSTRAP_ADMIN_PASSWORD`); unset, a random one is printed once to `app_log.log` |
 | `spring.datasource.*` | — | PostgreSQL connection (`FILEMANAGEMENT_DB_URL`, `_USERNAME`, `_PASSWORD`) |
 | `spring.jpa.hibernate.ddl-auto` | `validate` | schema is owned by Flyway |
 | `file.management.base-dir` | `./TempFiles/files/main/` | storage root; must exist and end with a separator |
