@@ -6,7 +6,7 @@ import com.hnp.filemanagement.file.domain.FileDetailsDTO;
 import com.hnp.filemanagement.file.domain.FileDownloadDTO;
 import com.hnp.filemanagement.file.domain.FileInfoDTO;
 import com.hnp.filemanagement.file.domain.FileUploadOutputDTO;
-import com.hnp.filemanagement.shared.web.IdReference;
+import com.hnp.filemanagement.shared.web.ExternalId;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.file.domain.FileService;
 import com.hnp.filemanagement.shared.web.GlobalGeneralLogging;
@@ -51,15 +51,17 @@ import java.util.OptionalLong;
  * <p>The upload still answers 200 rather than 201. It is a published endpoint and the status is
  * part of its contract, so changing it is a Phase 2 decision, not a cleanup.
  *
- * <p><b>Either id, since 1.8.0.</b> Every path segment that names a file or a revision takes its
- * number, as it always has, or its external id - a UUID, in any case (issue 7, {@link IdReference});
- * a segment that is neither is the same 400 a non-number always was. A client that keeps only
- * the file's id downloads with {@code file-info/{fileInfoId}/download}: the latest version, or
- * the one {@code ?version=} names, in its only format or the one {@code ?format=} picks. Every
- * download says which revision it served in {@code X-File-*} headers. The guide for moving a
- * client over is {@code docs/api-v1.md}. The upload answers
- * both. The numbers keep working for as long as a client uses them; the external id is the one
- * that is neither guessable nor tied to this database's numbering, so it is the one to move to.
+ * <p><b>External ids only, since 2.4.0.</b> Every path segment that names a file or a revision
+ * takes its external id - a UUID, in any case (issue 7, {@link ExternalId}) - where it took the
+ * number until 2.3.0 (and either, from 1.8.0, while the PL/SQL clients moved over). The routes,
+ * their names, the methods, the answers and the headers are what they were; a number in a
+ * segment is now the same 400 {@code InvalidParameter} any malformed id is, and says the parameter
+ * takes the external id. A client that keeps only the file's id downloads with
+ * {@code file-info/{fileInfoId}/download}: the latest version, or the one {@code ?version=} names,
+ * in its only format or the one {@code ?format=} picks. Every download says which revision it
+ * served in {@code X-File-*} headers. The upload answers both ids of the file and of the
+ * revision, as before; only the external ones can be sent back. The guide is
+ * {@code docs/api-v1.md}.
  */
 @RestController
 @RequestMapping("/api/v1/files")
@@ -130,15 +132,15 @@ public class FileApi {
     }
 
     /**
-     * Deletes one version. Removing the last version removes the file itself. Each id is a number
-     * or an external id, and the two need not be the same kind.
+     * Deletes one version. Removing the last version removes the file itself. Both ids are external
+     * ids, and must name a revision of that file.
      */
     // API_DELETE_FILE_DETAILS
     @PreAuthorize("hasAuthority('API_DELETE_FILE_DETAILS') || hasAuthority('ADMIN')")
     @DeleteMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}")
     public ApiResult deleteFileDetails(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                       @PathVariable("fileInfoId") IdReference fileInfoReference,
-                                       @PathVariable("fileDetailsId") IdReference fileDetailsReference) {
+                                       @PathVariable("fileInfoId") ExternalId fileInfoReference,
+                                       @PathVariable("fileDetailsId") ExternalId fileDetailsReference) {
 
         int fileInfoId = fileService.fileInfoIdOf(fileInfoReference);
         int fileDetailsId = fileService.fileDetailsIdOf(fileDetailsReference);
@@ -150,15 +152,15 @@ public class FileApi {
     }
 
     /**
-     * The same delete, by the version's id alone - the form an integration keeps: the id it got
-     * back from the upload is all it needs, and nothing in the path names the taxonomy that
+     * The same delete, by the version's external id alone - the form an integration keeps: the
+     * {@code fileDetailsExternalId} it got back from the upload is all it needs, and nothing in the path names the taxonomy that
      * Phase 7 step 4 removes. Same permission as the two-id form; it is the same operation.
      */
     // API_DELETE_FILE_DETAILS (the id-only form of the delete above)
     @PreAuthorize("hasAuthority('API_DELETE_FILE_DETAILS') || hasAuthority('ADMIN')")
     @DeleteMapping("file-details/{fileDetailsId}")
     public ApiResult deleteFileDetailsById(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                           @PathVariable("fileDetailsId") IdReference fileDetailsReference) {
+                                           @PathVariable("fileDetailsId") ExternalId fileDetailsReference) {
 
         int fileDetailsId = fileService.fileDetailsIdOf(fileDetailsReference);
         globalGeneralLogging.detail("delete file details id=" + fileDetailsId);
@@ -177,8 +179,8 @@ public class FileApi {
     @PreAuthorize("hasAuthority('API_DOWNLOAD_FILE') || hasAuthority('ADMIN')")
     @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
     public ResponseEntity<Resource> downloadFile(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                                 @PathVariable("fileInfoId") IdReference fileInfoReference,
-                                                 @PathVariable("fileDetailsId") IdReference fileDetailsReference,
+                                                 @PathVariable("fileInfoId") ExternalId fileInfoReference,
+                                                 @PathVariable("fileDetailsId") ExternalId fileDetailsReference,
                                                  HttpMethod method) {
         return downloadFileById(userDetails, fileDetailsReference, method);
     }
@@ -188,7 +190,7 @@ public class FileApi {
     @PreAuthorize("hasAuthority('API_DOWNLOAD_FILE') || hasAuthority('ADMIN')")
     @GetMapping("file-details/{fileDetailsId}/download")
     public ResponseEntity<Resource> downloadFileById(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                                     @PathVariable("fileDetailsId") IdReference fileDetailsReference,
+                                                     @PathVariable("fileDetailsId") ExternalId fileDetailsReference,
                                                      HttpMethod method) {
 
         int fileDetailsId = fileService.fileDetailsIdOf(fileDetailsReference);
@@ -198,7 +200,7 @@ public class FileApi {
     }
 
     /**
-     * A file's bytes by the file's own id - the number or the external id - for a client that
+     * A file's bytes by the file's own external id, for a client that
      * keeps that and not a revision's: the latest version unless {@code version} names another,
      * in the version's only format unless {@code format} picks one ({@code pdf}, {@code .PDF}).
      * 404 for a version or format the file does not have (the message lists the formats it does
@@ -209,7 +211,7 @@ public class FileApi {
     @PreAuthorize("hasAuthority('API_DOWNLOAD_FILE') || hasAuthority('ADMIN')")
     @GetMapping("file-info/{fileInfoId}/download")
     public ResponseEntity<Resource> downloadFileRevision(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                                         @PathVariable("fileInfoId") IdReference fileInfoReference,
+                                                         @PathVariable("fileInfoId") ExternalId fileInfoReference,
                                                          @RequestParam(value = "version", required = false) Integer version,
                                                          @RequestParam(value = "format", required = false) String format,
                                                          HttpMethod method) {
@@ -226,8 +228,7 @@ public class FileApi {
      * the stored name ({@link ContentDispositions}), {@code nosniff}, and which revision it was -
      * {@code X-File-External-Id}, {@code X-File-Details-Id}, {@code X-File-Details-External-Id},
      * {@code X-File-Version}, and {@code X-Checksum-SHA256} when the checksum is known, so a client
-     * can check what it received. A {@code HEAD} to any download answers the headers alone - the
-     * cheap way for a client holding only the numbers to learn the external ids of what it has.
+     * can check what it received. A {@code HEAD} to any download answers the headers alone.
      *
      * <p>The {@code HEAD} is answered here, without a body, rather than left to Spring: Spring
      * would run the {@code GET} and discard the body, reading the whole file from disk to throw it

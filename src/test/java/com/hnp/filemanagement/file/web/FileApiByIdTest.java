@@ -96,7 +96,7 @@ class FileApiByIdTest extends DatabaseSupport {
     // ================================================================ the round trip
 
     @Test
-    @DisplayName("upload by folderId, download by the version's id, delete by the version's id - and a second delete is a 404")
+    @DisplayName("upload by folderId, download by the version's external id, delete by it - and a second delete is a 404")
     void theRoundTripByIds() throws Exception {
         String body = upload("report.pdf", adminId)
                 .andExpect(status().isOk())
@@ -106,9 +106,10 @@ class FileApiByIdTest extends DatabaseSupport {
                 .andReturn().getResponse().getContentAsString();
         int fileId = JsonPath.read(body, "$.fileId");
         int detailsId = JsonPath.read(body, "$.fileDetailsId");
+        String detailsExternalId = JsonPath.read(body, "$.fileDetailsExternalId");
         assertThat(fileInfoRepository.findById(fileId).orElseThrow().getFolder().getId()).isEqualTo(tagFolderId);
 
-        mockMvc.perform(get("/api/v1/files/file-details/{d}/download", detailsId)
+        mockMvc.perform(get("/api/v1/files/file-details/{d}/download", detailsExternalId)
                         .with(user(principal(adminId, PermissionEnum.API_DOWNLOAD_FILE))))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_TYPE, startsWith("application/pdf")))
@@ -116,7 +117,7 @@ class FileApiByIdTest extends DatabaseSupport {
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))
                 .andExpect(content().bytes(TestData.bytesFor("report.pdf")));
 
-        mockMvc.perform(delete("/api/v1/files/file-details/{d}", detailsId)
+        mockMvc.perform(delete("/api/v1/files/file-details/{d}", detailsExternalId)
                         .with(user(principal(adminId, PermissionEnum.API_DELETE_FILE_DETAILS)))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -128,11 +129,11 @@ class FileApiByIdTest extends DatabaseSupport {
         assertThat(fileDetailsRepository.findById(detailsId)).isEmpty();
         assertThat(fileInfoRepository.findById(fileId)).as("the only version: the file goes with it").isEmpty();
 
-        mockMvc.perform(delete("/api/v1/files/file-details/{d}", detailsId)
+        mockMvc.perform(delete("/api/v1/files/file-details/{d}", detailsExternalId)
                         .with(user(principal(adminId, PermissionEnum.API_DELETE_FILE_DETAILS)))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound());
-        mockMvc.perform(get("/api/v1/files/file-details/{d}/download", detailsId)
+        mockMvc.perform(get("/api/v1/files/file-details/{d}/download", detailsExternalId)
                         .with(user(principal(adminId, PermissionEnum.API_DOWNLOAD_FILE))))
                 .andExpect(status().isNotFound());
     }
@@ -146,8 +147,8 @@ class FileApiByIdTest extends DatabaseSupport {
     void aPersianNameSurvivesTheDownload() throws Exception {
         String name = "گزارش.pdf"; // "report.pdf"
         String body = upload(name, adminId).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        int fileId = JsonPath.read(body, "$.fileId");
-        int detailsId = JsonPath.read(body, "$.fileDetailsId");
+        String fileId = JsonPath.read(body, "$.fileExternalId");
+        String detailsId = JsonPath.read(body, "$.fileDetailsExternalId");
 
         for (String route : List.of("/api/v1/files/file-details/" + detailsId + "/download",
                 "/api/v1/files/file-info/" + fileId + "/file-details/" + detailsId + "/download")) {
@@ -164,7 +165,7 @@ class FileApiByIdTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("deleting one of two versions by id leaves the other, and the two-id form answers the same")
+    @DisplayName("deleting one of two versions by external id leaves the other, and the two-id form answers the same")
     void deletingOneOfTwoVersionsById() throws Exception {
         String body = upload("versioned.txt", adminId).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         int fileId = JsonPath.read(body, "$.fileId");
@@ -180,10 +181,11 @@ class FileApiByIdTest extends DatabaseSupport {
         second.setMultipartFile(new MockMultipartFile("multipartFile", "versioned.txt", "text/plain", TestData.bytesFor("versioned.txt")));
         fileService.createNewFileDetails(second, adminId);
         entityManager.flush();
-        int v2DetailsId = fileDetailsRepository.findAll().stream()
-                .filter(d -> d.getFileInfo().getId() == fileId && d.getVersion() == 2).findFirst().orElseThrow().getId();
+        FileDetails v2 = fileDetailsRepository.findAll().stream()
+                .filter(d -> d.getFileInfo().getId() == fileId && d.getVersion() == 2).findFirst().orElseThrow();
+        int v2DetailsId = v2.getId();
 
-        mockMvc.perform(delete("/api/v1/files/file-details/{d}", v2DetailsId)
+        mockMvc.perform(delete("/api/v1/files/file-details/{d}", v2.getExternalId())
                         .with(user(principal(adminId, PermissionEnum.API_DELETE_FILE_DETAILS))).accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
         entityManager.flush();
@@ -192,7 +194,8 @@ class FileApiByIdTest extends DatabaseSupport {
         assertThat(fileDetailsRepository.findById(v1DetailsId)).isPresent();
         assertThat(fileInfoRepository.findById(fileId).orElseThrow().getLastVersion()).isEqualTo(1);
 
-        mockMvc.perform(delete("/api/v1/files/file-info/{f}/file-details/{d}", fileId, v1DetailsId)
+        mockMvc.perform(delete("/api/v1/files/file-info/{f}/file-details/{d}",
+                        (String) JsonPath.read(body, "$.fileExternalId"), (String) JsonPath.read(body, "$.fileDetailsExternalId"))
                         .with(user(principal(adminId, PermissionEnum.API_DELETE_FILE_DETAILS))).accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outcome").value("DELETED"));
@@ -204,8 +207,9 @@ class FileApiByIdTest extends DatabaseSupport {
     @DisplayName("a delete is judged on the file's own folder: no grant is 403, READ is 403, WRITE deletes - on both routes")
     void deleteIsSubjectToFolderAccess() throws Exception {
         String body = upload("theirs.pdf", adminId).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        int fileId = JsonPath.read(body, "$.fileId");
-        int detailsId = JsonPath.read(body, "$.fileDetailsId");
+        String fileId = JsonPath.read(body, "$.fileExternalId");
+        String detailsId = JsonPath.read(body, "$.fileDetailsExternalId");
+        int detailsNumber = JsonPath.read(body, "$.fileDetailsId");
 
         User stranger = userRepository.save(TestData.user());
         User reader = grantee(FolderPermission.READ);
@@ -218,7 +222,7 @@ class FileApiByIdTest extends DatabaseSupport {
             mockMvc.perform(delete(route).with(user(principal(reader.getId(), PermissionEnum.API_DELETE_FILE_DETAILS))).accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isForbidden());
         }
-        assertThat(fileDetailsRepository.findById(detailsId)).as("nothing was removed").isPresent();
+        assertThat(fileDetailsRepository.findById(detailsNumber)).as("nothing was removed").isPresent();
 
         // The reader may still download it.
         mockMvc.perform(get("/api/v1/files/file-details/{d}/download", detailsId)
@@ -237,7 +241,7 @@ class FileApiByIdTest extends DatabaseSupport {
     @DisplayName("the permission is the same one the two-id form needs; without it both forms are 403")
     void thePermissionIsShared() throws Exception {
         String body = upload("perm.txt", adminId).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        int detailsId = JsonPath.read(body, "$.fileDetailsId");
+        String detailsId = JsonPath.read(body, "$.fileDetailsExternalId");
 
         mockMvc.perform(delete("/api/v1/files/file-details/{d}", detailsId)
                         .with(user(principal(adminId, PermissionEnum.API_DOWNLOAD_FILE))).accept(MediaType.APPLICATION_JSON))
@@ -274,8 +278,9 @@ class FileApiByIdTest extends DatabaseSupport {
                 .andExpect(status().isOk())
                 .andExpect(header().doesNotExist("Deprecation"))
                 .andReturn().getResponse().getContentAsString();
-        int detailsId = JsonPath.read(body, "$.fileDetailsId");
-        assertThat(fileDetailsRepository.findById(detailsId).orElseThrow().getCreatedBy().getId())
+        int detailsNumber = JsonPath.read(body, "$.fileDetailsId");
+        String detailsId = JsonPath.read(body, "$.fileDetailsExternalId");
+        assertThat(fileDetailsRepository.findById(detailsNumber).orElseThrow().getCreatedBy().getId())
                 .as("the audit trail lands on the key's creator").isEqualTo(adminId);
 
         // Download: READ and WRITE may, a key with no grant on that folder may not.

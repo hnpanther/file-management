@@ -7,7 +7,7 @@ import com.hnp.filemanagement.folder.domain.FolderService;
 import com.hnp.filemanagement.folder.domain.TagMirrorService;
 import com.hnp.filemanagement.storage.StorageLayout;
 import com.hnp.filemanagement.folder.domain.FolderAccess;
-import com.hnp.filemanagement.shared.web.IdReference;
+import com.hnp.filemanagement.shared.web.ExternalId;
 import com.hnp.filemanagement.shared.web.PageResponse;
 import java.io.IOException;
 import com.hnp.filemanagement.storage.BlobStore;
@@ -877,24 +877,18 @@ public class FileService {
     }
 
     /**
-     * The number of a file named by either of its ids - the number itself, or its external id - as
-     * the v1 API accepts them. An external id no file has is a 404, like an unknown number.
+     * The number of the file with this external id - the only way the v1 API names a file since
+     * 2.4.0. An external id no file has is a 404, as an unknown number was.
      */
-    public int fileInfoIdOf(IdReference reference) {
-        if (reference.isNumber()) {
-            return reference.number();
-        }
-        return fileInfoRepository.findIdByExternalId(reference.externalId()).orElseThrow(
-                () -> new ResourceNotFoundException("file info not exists, externalId=" + reference.externalId()));
+    public int fileInfoIdOf(ExternalId externalId) {
+        return fileInfoRepository.findIdByExternalId(externalId.value()).orElseThrow(
+                () -> new ResourceNotFoundException("file info not exists, externalId=" + externalId));
     }
 
-    /** The number of a revision named by either of its ids; see {@link #fileInfoIdOf}. */
-    public int fileDetailsIdOf(IdReference reference) {
-        if (reference.isNumber()) {
-            return reference.number();
-        }
-        return fileDetailsRepository.findIdByExternalId(reference.externalId()).orElseThrow(
-                () -> new ResourceNotFoundException("fileDetails not exists, externalId=" + reference.externalId()));
+    /** The number of the revision with this external id; see {@link #fileInfoIdOf}. */
+    public int fileDetailsIdOf(ExternalId externalId) {
+        return fileDetailsRepository.findIdByExternalId(externalId.value()).orElseThrow(
+                () -> new ResourceNotFoundException("fileDetails not exists, externalId=" + externalId));
     }
 
     /** A new external id: a random (version 4) UUID, lower case, as every stored one is. */

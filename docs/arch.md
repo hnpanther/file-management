@@ -543,17 +543,19 @@ document, so a browser navigation still lands on a page.
 | GET | `/file-info/{fileInfoId}/download` (`?version=`, `?format=`) - a file by its own id: the latest version, or the one named; a version with several formats and no `format` is a 400 listing them (1.9.0) | `API_DOWNLOAD_FILE` |
 
 The id-only forms with `folderId` on the upload are the contract an integration keeps since Phase 7
-step 4: nothing in them names anything but a folder and a version. **Since 1.8.0 every id in these
-paths is a number or an external id** - the file's or the revision's `external_id`, a UUID in any
-case (`IdReference`, converted like any path variable, so a segment that is neither is the same
-400 `InvalidParameter` a non-number always was). The upload answers `fileId`, `fileDetailsId`,
-`fileExternalId`, `fileDetailsExternalId` and `checksumSha256`; the first two are unchanged, and the
-numbers keep working. An external id is a name, not a permission: the folder check is the same.
+step 4: nothing in them names anything but a folder and a version. **Since 2.4.0 every id in these
+paths is an external id** - the file's or the revision's `external_id`, a UUID in any case
+(`ExternalId`, converted like any path variable, so a segment that is not one - a number included -
+is the 400 `InvalidParameter` a malformed id always was, and for a number says the parameter takes
+the external id). From 1.8.0 to 2.3.0 a path took the number too, while the clients moved over.
+The upload answers `fileId`, `fileDetailsId`, `fileExternalId`, `fileDetailsExternalId` and
+`checksumSha256`, as before; only the external ones can be sent back. An external id is a name,
+not a permission: the folder check is the same. A person reads a revision's external id on the
+file page when their role holds `VIEW_FILE_EXTERNAL_ID` (ADMIN does).
 Every v1 download says which revision it served - `X-File-External-Id`, `X-File-Details-Id`,
 `X-File-Details-External-Id`, `X-File-Version`, `X-Checksum-SHA256` (`FileApi.serve`) - and a
 `HEAD` answers those alone, with the stored size as `Content-Length`, without opening the file
-(Spring would otherwise run the `GET` and read the whole file to discard it). **The client-facing guide, and how to move a client to the external
-ids, is [api-v1.md](api-v1.md).** Both deletes are judged on the file's own folder
+(Spring would otherwise run the `GET` and read the whole file to discard it). **The client-facing guide is [api-v1.md](api-v1.md).** Both deletes are judged on the file's own folder
 (`requireWriteAccess` on the `FileInfo`), the same way a download and a new version are. The
 whole group accepts either credential: the shared account's Basic password, or a Bearer API key,
 which reaches its own folders only.
@@ -1105,7 +1107,7 @@ installation that sets it.
 
 ## 12. Tests
 
-`./mvnw verify` runs 829 tests and needs only a working Docker daemon: `DatabaseSupport` points the
+`./mvnw verify` runs 834 tests and needs only a working Docker daemon: `DatabaseSupport` points the
 application at one PostgreSQL 18 container per JVM (`support/TestDatabases`, created as production's
 database is: UTF-8, ICU's root locale), and `StorageRootSupport` gives each test a clean storage
 root. Test classes sit in the package of what they test; the ones that span features

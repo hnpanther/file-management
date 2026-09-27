@@ -181,8 +181,11 @@ during the upload stream.
 > the stored bytes: written on every upload from what `StorageWriter` computed while writing
 > (`StoredBlob`), and for older revisions by `ChecksumBackfill`, which reads each one back once in
 > the background after the start, only fills what is empty, and logs every revision whose bytes
-> are missing. The v1 API takes either id in every path (`IdReference`; a malformed one is the same
-> 400 `InvalidParameter` as before) and its upload answers both ids and the checksum. Still open
+> are missing. The v1 API took either id in every path (`IdReference`; a malformed one is the same
+> 400 `InvalidParameter` as before) and its upload answers both ids and the checksum. **Since 2.4.0
+> it takes the external id only** (`ExternalId`): the PL/SQL clients moved over, and a number in a
+> path is a 400 that says to send the external id - which also closes, for the API, the reuse of
+> deleted rows' numbers (issue 98). Still open
 > from the consequences above: de-duplication, and the v2 `ETag`, which stays
 > `"v{version}-{size}"` rather than becoming the checksum - a changed `ETag` format is a change
 > clients can see, to make on purpose.
@@ -1839,7 +1842,9 @@ What follows from it:
   file's history begins with the old file's creation and deletion.
 * **A client that kept an old numeric id reaches a new file.** An integration that uploaded, kept
   `fileDetailsId` and deleted the file expects 404 for that id; after the reuse it downloads - or
-  deletes - someone else's revision. External ids (UUIDs) are not affected.
+  deletes - someone else's revision. External ids (UUIDs) are not affected. *Closed for the v1 API
+  in 2.4.0, which takes the external ids only; the pages still address rows by number, and the
+  audit trail still joins the two files.*
 * The bytes are not mixed: the old file's were deleted with it, and a new file is stored under its
   own id with its own name.
 

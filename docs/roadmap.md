@@ -38,8 +38,13 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: 2.3.0, 2.2.0 and 2.1.0, written and tested, none deployed; production runs 2.0.0 on
-PostgreSQL since 2026-09-26.** 2.3.0 records **which API key did it** (9.2): what a key uploads,
+**Now: 2.4.0, 2.3.0, 2.2.0 and 2.1.0, written and tested, none deployed; production runs 2.0.0 on
+PostgreSQL since 2026-09-26.** 2.4.0: the v1 API takes the **external ids only** - the PL/SQL
+clients moved over, and a number in a path is refused with a 400 that says so - and a permission,
+`VIEW_FILE_EXTERNAL_ID`, shows each version's external id on the file page to whoever sets up an
+integration (ADMIN holds it).
+
+2.3.0 records **which API key did it** (9.2): what a key uploads,
 adds or deletes carried only its creator's name, and on the file page an integration's upload read
 as the creator's own. `V3.3` records the key on the file, on the revision and on every audit row,
 and the file page says «از طریق API با کلید «…»» - the key's title as it is now - in the person's
@@ -57,7 +62,7 @@ place. Next to it, in 9.2 below: recording downloads, and a page of what one key
   seconds to a few milliseconds on 205,000 files, with exactly the same results.
 
 **Deploy them in order**: 2.1.0 after 2026-10-10, when the rollback window closes; then 2.2.0 and
-2.3.0, whose rollback is a database restore, since each changes the schema
+2.3.0, whose rollback is a database restore, since each changes the schema, then 2.4.0, a jar swap
 ([deployment.md](deployment.md#upgrading-from-210-to-220--instants-and-indexed-search),
 [2.2.0 to 2.3.0](deployment.md#upgrading-from-220-to-230--which-api-key-did-it)).
 

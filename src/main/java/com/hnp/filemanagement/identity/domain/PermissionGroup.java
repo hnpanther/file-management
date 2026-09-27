@@ -41,6 +41,9 @@ public enum PermissionGroup {
     /** Making a file or a version public or private. */
     FILE_PUBLISH(REST_CHANGE_FILE_INFO_STATE, REST_CHANGE_STATE_FILE_DETAILS),
 
+    /** Seeing each version's external id on the file page - for whoever sets up an integration. */
+    FILE_EXTERNAL_ID(VIEW_FILE_EXTERNAL_ID),
+
     /** Deleting a file, or one of its versions. */
     FILE_DELETE(REST_DELETE_FILE_INFO, REST_DELETE_FILE_DETAILS),
 

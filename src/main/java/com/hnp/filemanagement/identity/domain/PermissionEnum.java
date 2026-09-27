@@ -19,6 +19,10 @@ public enum PermissionEnum {
     GET_ALL_FILE_INFO_PAGE,
     //@GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
     DOWNLOAD_FILE,
+    //Not an endpoint of its own: on @GetMapping("file-info/{id}"), shows each revision's external id -
+    //the id the v1 API takes since 2.4.0 - with a copy button. Hidden from everyone without it; ADMIN
+    //holds it as it holds every assignable permission (FixedRole).
+    VIEW_FILE_EXTERNAL_ID,
 
     //@GetMapping("file-info/{fileInfoId}/file-details/create")
     SAVE_NEW_FILE_DETAILS_PAGE,

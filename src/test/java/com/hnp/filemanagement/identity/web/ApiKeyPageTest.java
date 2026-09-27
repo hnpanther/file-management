@@ -196,7 +196,8 @@ class ApiKeyPageTest extends DatabaseSupport {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
                 .andExpect(status().is3xxRedirection());
         // A file operation it may attempt; with no grant it reaches no folder, so nothing is found.
-        mockMvc.perform(get("/api/v1/files/file-info/1/file-details/1/download")
+        mockMvc.perform(get("/api/v1/files/file-info/{f}/file-details/{d}/download",
+                        "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5e")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
                 .andExpect(status().isNotFound());
     }

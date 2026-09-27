@@ -46,6 +46,7 @@ class RestContractTest extends DatabaseSupport {
 
     /** Far past anything Flyway seeds, so every lookup misses. */
     private static final int MISSING_ID = 999_999;
+    private static final String MISSING_EXTERNAL_ID = "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
 
     @Autowired
     private MockMvc mockMvc;
@@ -224,7 +225,7 @@ class RestContractTest extends DatabaseSupport {
     @Test
     @DisplayName("an unauthenticated API call is 401 with a challenge, not a redirect to the login page")
     void anUnauthenticatedApiCallIs401() throws Exception {
-        mockMvc.perform(delete("/api/v1/files/file-info/{id}/file-details/{fdId}", MISSING_ID, MISSING_ID))
+        mockMvc.perform(delete("/api/v1/files/file-info/{id}/file-details/{fdId}", MISSING_EXTERNAL_ID, MISSING_EXTERNAL_ID))
                 .andExpect(status().isUnauthorized())
                 .andExpect(header().string("WWW-Authenticate", org.hamcrest.Matchers.startsWith("Basic")))
                 .andExpect(header().doesNotExist("Location"));

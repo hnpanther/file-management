@@ -39,15 +39,17 @@ import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 1.8.0's additions to the v1 contract (issue 7): an upload answers each id twice - the number
- * and the external id - with the SHA-256 of what was stored, and every route that takes an id
- * takes either. The numbers go on working, unchanged: they are what the PL/SQL clients send today.
+ * The v1 contract's ids (issue 7): an upload answers each id twice - the number and the external
+ * id - with the SHA-256 of what was stored (1.8.0), and every route that takes an id takes the
+ * external id and, since 2.4.0, only that: the PL/SQL clients have moved over, and a number in a
+ * path is the 400 any malformed id is, telling the caller to send the external id.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -122,30 +124,70 @@ class FileApiExternalIdTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("every download route takes the number or the external id, in either case - and the number still works")
-    void downloadsTakeEitherId() throws Exception {
+    @DisplayName("every download route takes the external ids, in either case")
+    void downloadsTakeTheExternalIds() throws Exception {
         String body = upload("report.pdf").andReturn().getResponse().getContentAsString();
-        int fileId = JsonPath.read(body, "$.fileId");
-        int detailsId = JsonPath.read(body, "$.fileDetailsId");
         String fileExternalId = JsonPath.read(body, "$.fileExternalId");
         String detailsExternalId = JsonPath.read(body, "$.fileDetailsExternalId");
         byte[] bytes = TestData.bytesFor("report.pdf");
 
         for (String route : List.of(
-                "/api/v1/files/file-details/" + detailsId + "/download",
                 "/api/v1/files/file-details/" + detailsExternalId + "/download",
                 "/api/v1/files/file-details/" + detailsExternalId.toUpperCase(Locale.ROOT) + "/download",
-                "/api/v1/files/file-info/" + fileId + "/file-details/" + detailsId + "/download",
                 "/api/v1/files/file-info/" + fileExternalId + "/file-details/" + detailsExternalId + "/download",
-                "/api/v1/files/file-info/" + fileId + "/file-details/" + detailsExternalId + "/download")) {
+                "/api/v1/files/file-info/" + fileExternalId.toUpperCase(Locale.ROOT) + "/download")) {
             mockMvc.perform(get(route).with(user(principal(PermissionEnum.API_DOWNLOAD_FILE))))
                     .andExpect(status().isOk())
                     .andExpect(content().bytes(bytes));
         }
     }
 
+    /**
+     * 2.4.0: the numbers are refused on every route that names a file or a revision - downloads,
+     * the HEAD of a download, both deletes - and refused before anything is looked up: the same
+     * 400 {@code InvalidParameter} a malformed id is, naming the parameter, not echoing the value,
+     * and saying what to send instead. Nothing is deleted.
+     */
     @Test
-    @DisplayName("an unknown external id is a 404 like an unknown number; a malformed one is the same 400 a non-number always was")
+    @DisplayName("since 2.4.0 a numeric id is a 400 on every route, naming the parameter and asking for the external id")
+    void theNumbersAreRefused() throws Exception {
+        String body = upload("numbers.pdf").andReturn().getResponse().getContentAsString();
+        int fileId = JsonPath.read(body, "$.fileId");
+        int detailsId = JsonPath.read(body, "$.fileDetailsId");
+        String fileExternalId = JsonPath.read(body, "$.fileExternalId");
+        String detailsExternalId = JsonPath.read(body, "$.fileDetailsExternalId");
+        UserDetailsImpl everything = principal(PermissionEnum.API_DOWNLOAD_FILE, PermissionEnum.API_DELETE_FILE_DETAILS);
+
+        record Call(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String parameter) {}
+        List<Call> calls = List.of(
+                new Call(get("/api/v1/files/file-details/{d}/download", detailsId), "fileDetailsId"),
+                new Call(head("/api/v1/files/file-details/{d}/download", detailsId), "fileDetailsId"),
+                new Call(get("/api/v1/files/file-info/{f}/download", fileId), "fileInfoId"),
+                new Call(get("/api/v1/files/file-info/{f}/file-details/{d}/download", fileId, detailsExternalId), "fileInfoId"),
+                new Call(get("/api/v1/files/file-info/{f}/file-details/{d}/download", fileExternalId, detailsId), "fileDetailsId"),
+                new Call(delete("/api/v1/files/file-details/{d}", detailsId), "fileDetailsId"),
+                new Call(delete("/api/v1/files/file-info/{f}/file-details/{d}", fileId, detailsExternalId), "fileInfoId"),
+                new Call(delete("/api/v1/files/file-info/{f}/file-details/{d}", fileExternalId, detailsId), "fileDetailsId"));
+
+        for (Call call : calls) {
+            var result = mockMvc.perform(call.request().with(user(everything)).accept(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isBadRequest());
+            if (!"HEAD".equals(result.andReturn().getRequest().getMethod())) {
+                result.andExpect(jsonPath("$.title").value("InvalidParameter"))
+                        .andExpect(jsonPath("$.detail").value(containsString("'" + call.parameter() + "'")))
+                        .andExpect(jsonPath("$.detail").value(containsString("external id")))
+                        .andExpect(jsonPath("$.detail").value(not(containsString(String.valueOf(detailsId)))))
+                        .andExpect(jsonPath("$.detail").value(not(containsString(String.valueOf(fileId)))));
+            }
+        }
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(fileDetailsRepository.findById(detailsId)).as("nothing was deleted").isPresent();
+    }
+
+    @Test
+    @DisplayName("an unknown external id is a 404; a malformed one is the same 400 a non-number always was")
     void unknownAndMalformedIds() throws Exception {
         mockMvc.perform(get("/api/v1/files/file-details/{d}/download", "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d")
                         .with(user(principal(PermissionEnum.API_DOWNLOAD_FILE))).accept(MediaType.APPLICATION_JSON))
@@ -166,7 +208,7 @@ class FileApiExternalIdTest extends DatabaseSupport {
 
     @Test
     @DisplayName("both delete routes take the external ids, and they must still name the same file")
-    void deletesTakeEitherId() throws Exception {
+    void deletesTakeTheExternalIds() throws Exception {
         String first = upload("first.pdf").andReturn().getResponse().getContentAsString();
         String second = upload("second.pdf").andReturn().getResponse().getContentAsString();
 

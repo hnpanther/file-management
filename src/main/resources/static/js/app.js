@@ -94,6 +94,37 @@
         }
     };
 
+    /**
+     * Copies text to the clipboard; resolves true when it did. The Clipboard API where the page may
+     * use it (https, localhost), and the older selection copy otherwise: the application is often
+     * served over plain http on the office network, where navigator.clipboard does not exist.
+     */
+    window.appCopy = async function (text) {
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                return true;
+            }
+        } catch (e) {
+            // Refused (no permission, no focus): fall through to the selection copy.
+        }
+        var area = document.createElement("textarea");
+        area.value = text;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        var copied = false;
+        try {
+            copied = document.execCommand("copy");
+        } catch (e) {
+            copied = false;
+        }
+        document.body.removeChild(area);
+        return copied;
+    };
+
     window.appCsrf = function () {
         var token = document.querySelector("meta[name='_csrf']");
         var header = document.querySelector("meta[name='_csrf_header']");

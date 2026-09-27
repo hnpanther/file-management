@@ -183,13 +183,15 @@ class UploadContentTypeTest extends DatabaseSupport {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         int fileId = JsonPath.read(body, "$.fileId");
         int detailsId = JsonPath.read(body, "$.fileDetailsId");
+        String fileExternalId = JsonPath.read(body, "$.fileExternalId");
+        String detailsExternalId = JsonPath.read(body, "$.fileDetailsExternalId");
         // A row from before V2.5, or one somebody edited: the stored type says HTML.
         jdbcTemplate.update("UPDATE file_details SET content_type = 'text/html' WHERE id = ?", detailsId);
         entityManager.clear();
 
         for (String path : List.of(
                 "/files/file-info/" + fileId + "/file-details/" + detailsId + "/download",
-                "/api/v1/files/file-info/" + fileId + "/file-details/" + detailsId + "/download",
+                "/api/v1/files/file-info/" + fileExternalId + "/file-details/" + detailsExternalId + "/download",
                 "/files/public-download/" + detailsId)) {
             mockMvc.perform(get(path).with(user(principal(PermissionEnum.ADMIN))))
                     .andExpect(status().isOk())

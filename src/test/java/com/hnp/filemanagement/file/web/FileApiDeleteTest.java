@@ -90,12 +90,15 @@ class FileApiDeleteTest extends DatabaseSupport {
         int[] ids = uploadThroughV1("report.txt");
         int fileInfoId = ids[0];
         int fileDetailsId = ids[1];
+        String fileExternalId = externalIdOf("file_info", fileInfoId);
+        String detailsExternalId = externalIdOf("file_details", fileDetailsId);
         Path fileDirectory = Paths.get(baseDir).resolve(StorageLayout.directoryFor(fileInfoId));
         assertThat(fileDirectory.resolve("report")).exists();
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM file_tag WHERE file_info_id = ?", Integer.class, fileInfoId))
                 .as("the upload tagged it").isEqualTo(3);
 
-        mockMvc.perform(delete("/api/v1/files/file-info/{f}/file-details/{d}", fileInfoId, fileDetailsId)
+        mockMvc.perform(delete("/api/v1/files/file-info/{f}/file-details/{d}",
+                        externalIdOf("file_info", fileInfoId), externalIdOf("file_details", fileDetailsId))
                         .with(user(machine()))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -108,7 +111,7 @@ class FileApiDeleteTest extends DatabaseSupport {
                 .isZero();
         assertThat(fileDirectory).as("the file's whole directory on disk is gone with it").doesNotExist();
 
-        mockMvc.perform(delete("/api/v1/files/file-info/{f}/file-details/{d}", fileInfoId, fileDetailsId)
+        mockMvc.perform(delete("/api/v1/files/file-info/{f}/file-details/{d}", fileExternalId, detailsExternalId)
                         .with(user(machine()))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound());
@@ -133,7 +136,8 @@ class FileApiDeleteTest extends DatabaseSupport {
         int v2DetailsId = jdbcTemplate.queryForObject(
                 "SELECT id FROM file_details WHERE file_info_id = ? AND version = 2", Integer.class, fileInfoId);
 
-        mockMvc.perform(delete("/api/v1/files/file-info/{f}/file-details/{d}", fileInfoId, v2DetailsId)
+        mockMvc.perform(delete("/api/v1/files/file-info/{f}/file-details/{d}",
+                        externalIdOf("file_info", fileInfoId), externalIdOf("file_details", v2DetailsId))
                         .with(user(machine()))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -161,6 +165,11 @@ class FileApiDeleteTest extends DatabaseSupport {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return new int[]{JsonPath.read(body, "$.fileId"), JsonPath.read(body, "$.fileDetailsId")};
+    }
+
+    /** The external id of a row - what the v1 routes take since 2.4.0. */
+    private String externalIdOf(String table, int id) {
+        return jdbcTemplate.queryForObject("SELECT external_id FROM " + table + " WHERE id = ?", String.class, id);
     }
 
     private UserDetailsImpl machine() {

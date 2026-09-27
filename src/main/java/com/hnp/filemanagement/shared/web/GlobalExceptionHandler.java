@@ -135,8 +135,13 @@ public class GlobalExceptionHandler {
         log(principal, request, "MethodArgumentTypeMismatchException: " + e.getMessage(),
                 HttpStatus.BAD_REQUEST);
 
+        // A v1 id segment (ExternalId) takes the external id only since 2.4.0; a client still
+        // sending the number is told so, without the value being echoed.
+        String english = e.getRequiredType() == ExternalId.class
+                ? "invalid value for parameter '" + e.getName() + "': it takes the external id (a UUID), not the numeric id"
+                : "invalid value for parameter '" + e.getName() + "'";
         return respond(request, HttpStatus.BAD_REQUEST,
-                detail(request, "error.invalidParameter", "invalid value for parameter '" + e.getName() + "'"),
+                detail(request, "error.invalidParameter", english),
                 "InvalidParameter");
     }
 

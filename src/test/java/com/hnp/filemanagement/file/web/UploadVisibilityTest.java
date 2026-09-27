@@ -111,7 +111,8 @@ class UploadVisibilityTest extends DatabaseSupport {
         mockMvc.perform(get("/files/public-download/{id}", open)).andExpect(status().isOk());
 
         for (int revision : new int[]{closed, open}) {
-            mockMvc.perform(get("/api/v1/files/file-details/{id}/download", revision)
+            mockMvc.perform(get("/api/v1/files/file-details/{id}/download",
+                            fileDetailsRepository.findById(revision).orElseThrow().getExternalId())
                             .with(user(principal(PermissionEnum.API_DOWNLOAD_FILE))))
                     .andExpect(status().isOk());
         }
