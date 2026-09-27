@@ -880,8 +880,9 @@ inserts any missing `PermissionEnum` value, creates the `ADMIN` and `USER` roles
 their `FixedRole` definition - which is how a permission added in a release reaches ADMIN: the
 seeding inserts its row and the reconcile gives it to ADMIN, in the same start (anything extra of
 USER's is first copied into `USER_PREVIOUS` and given to the same people, with a WARN line saying
-so; nothing is written when both already match) - and creates the `Admin` account if absent (password from `filemanagement.bootstrap.admin-password`, or generated
-and logged once). The pre-flight report that preceded step 4 is gone with the step: `V2.8`
+so; nothing is written when both already match) - and creates the `Admin` account if absent (password from `filemanagement.bootstrap.admin-password` -
+`FILEMANAGEMENT_BOOTSTRAP_ADMIN_PASSWORD` - or generated and logged once, at WARN, to the console and
+`app_log.log`; there is no default password). The pre-flight report that preceded step 4 is gone with the step: `V2.8`
 itself refuses to run on a database that would have failed it (section 10).
 
 ## 8. Cross-cutting concerns
