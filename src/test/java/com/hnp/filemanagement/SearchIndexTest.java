@@ -201,19 +201,27 @@ class SearchIndexTest extends DatabaseSupport {
         assertThat(planOfEach(() -> fileHistorySearch.find(new FileHistoryQuery(null,
                 com.hnp.filemanagement.file.domain.FileEvent.FILE_DELETED, null, null, null, null, null), page)))
                 .allSatisfy(plan -> assertThat(plan).contains("ix_file_history_event"));
-        assertThat(planOfEach(() -> fileHistorySearch.find(new FileHistoryQuery(TERM, null, null, null, null, null, null), page)))
+        // Bitmap scans only, as for every other search here: with plain index scans allowed, the
+        // planner may walk ix_file_history_occurred_at in order and filter each row - on a table of
+        // a few rows the cheaper plan, depending on its statistics, and a test that passed or
+        // failed with them. What is asked is whether the trigram index can serve the search.
+        assertThat(planOfEach(() -> fileHistorySearch.find(new FileHistoryQuery(TERM, null, null, null, null, null, null), page), true))
                 .allSatisfy(plan -> assertThat(plan).contains("ix_file_history_search_name_trgm"));
     }
 
     /** The plans of the statements on file_history this call prepares - at least one. */
     private List<String> planOfEach(Runnable call) {
+        return planOfEach(call, false);
+    }
+
+    private List<String> planOfEach(Runnable call, boolean bitmapOnly) {
         Recorder.STATEMENTS.clear();
         call.run();
         List<String> statements = Recorder.STATEMENTS.stream()
                 .filter(sql -> sql.toLowerCase(Locale.ROOT).contains("from file_history"))
                 .distinct().toList();
         assertThat(statements).as("statements on file_history").isNotEmpty();
-        return plans(statements, false);
+        return plans(statements, bitmapOnly);
     }
 
     // ---------------------------------------------------------------- the plan

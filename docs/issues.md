@@ -791,6 +791,18 @@ config. Formatting is inconsistent across files, and dead imports (issue 10) sur
 part. The 20 MB cap keeps this survivable; raising it for the S3 work without switching to streaming
 multipart upload will put whole files in heap.
 
+> **Resolved in 2.5.1.** A form upload streams: Tomcat writes the part to a temporary file and
+> `FileService` streams it through `StorageWriter` to storage, digest and all - nothing reads it
+> into memory. **The v2 `PUT` still did**, and worse: it bound the body as a `byte[]`, and the
+> multipart cap does not apply to a raw body, so any API key could put a body of any size on the
+> heap. It is now read from the request stream into a temporary file (`SpooledRequestBody`),
+> bounded by the same cap - refused before reading when `Content-Length` says it is too large, cut
+> off at the cap when it says nothing. An upload above the cap is a 413 naming the cap
+> (`GlobalExceptionHandler`); it was a 500. The cap and the temporary directory are environment
+> variables (`FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE`, `_MAX_REQUEST_SIZE`, `_TEMP_DIR`);
+> [deployment.md](deployment.md#large-uploads) says what else a 1 GB upload needs - the proxy's
+> limit above all. What Phase 4 adds for an object store is in [roadmap 4.3](roadmap.md#43-s3blobstore).
+
 ### 45. The `prod` profile writes into the working tree — **S3**
 
 > **Partly addressed in Phase 0.** The path is now `FILEMANAGEMENT_BASE_DIR`-overridable. The in-repo default remains, and is only appropriate for a local run.

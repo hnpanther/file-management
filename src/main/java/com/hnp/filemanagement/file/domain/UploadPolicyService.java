@@ -92,6 +92,11 @@ public class UploadPolicyService {
         return serverCap.toBytes() / MEGABYTE;
     }
 
+    /** The server's multipart cap in bytes - what a v2 body, which is not multipart, is bounded by. */
+    public long serverCapBytes() {
+        return serverCap.toBytes();
+    }
+
     /** The system-wide limits, extension → bytes, in catalogue order. */
     @Transactional(readOnly = true)
     public Map<String, Long> globalLimits() {

@@ -44,8 +44,7 @@ motivate each change are numbered in [issues.md](issues.md); the order of work i
               ┌──────────────────────────┐   ┌──────────────────────────────┐
               │ persistence/  (JPA,      │   │ storage/                     │
               │   PostgreSQL, Flyway)    │   │   · FilesystemBlobStore      │
-              └──────────────────────────┘   │   · S3BlobStore              │
-                                             │   · (future) TieredBlobStore │
+              └──────────────────────────┘   │   · S3BlobStore (Phase 4)    │
                                              └──────────────────────────────┘
 ```
 
@@ -53,7 +52,7 @@ Package names follow the existing `com.hnp.filemanagement` root:
 
 ```
 com.hnp.filemanagement
-├── folder/             the tree: Folder (CATEGORY → SUB_CATEGORY → TAG), TagGroup, grants
+├── folder/             the tree: Folder at any depth (ROOT, FOLDER, PROFILES, USER_HOME), TagGroup, grants
 │   ├── domain/         entities + services
 │   ├── persistence/    repositories
 │   └── web/            controllers + API
@@ -72,65 +71,89 @@ directory instead of spread across `controller/`, `service/`, `repository/`, `dt
 
 ## The storage port
 
-The single most important interface in the redesign. It replaces the path-shaped
-`FileStorageService` (issue 2 in [arch.md](arch.md#13-known-structural-weaknesses)) with something
-both a filesystem and an object store can implement honestly:
+The single most important interface in the redesign - **in place since Phase 2**. It replaced the
+path-shaped `FileStorageService` with something both a filesystem and an object store can
+implement honestly:
 
 ```java
 public interface BlobStore {
 
-    /** Stream bytes in. Returns the checksum and byte count the store actually persisted. */
-    StoredBlob put(StorageKey key, InputStream data, BlobMetadata metadata);
+    /** Stream bytes in; never overwrites. Returns the byte count and SHA-256 actually written. */
+    StoredBlob put(StorageKey key, InputStream data);   // Phase 4 adds the length - see below
 
     /** Stream bytes out. */
-    InputStream open(StorageKey key);
-
-    /** For the download path: lets S3 hand the client a pre-signed URL and the
-     *  filesystem fall back to streaming through the application. */
-    Optional<URI> presignedGet(StorageKey key, Duration ttl, ContentDisposition disposition);
+    Resource open(StorageKey key);
 
     boolean exists(StorageKey key);
 
     void delete(StorageKey key);
 
-    /** Copy without round-tripping through the application (S3 server-side copy). */
-    void copy(StorageKey from, StorageKey to);
+    /** Everything under a prefix - a whole file's revisions. */
+    void deleteDirectory(String prefix);
 }
 ```
 
-`StorageKey` is an opaque, storage-neutral string built once at upload time and stored on the row:
+Its promises are written in `BlobStoreContractTest`, which every implementation passes:
+`FilesystemBlobStore` today, `S3BlobStore` in Phase 4.
+
+`StorageKey` is an opaque string built once at upload time and stored on the row
+(`file_details.storage_key`), never rebuilt:
 
 ```
-files/{fileInfoId}/v{version}/{fileDetailsId}.{ext}
+files/{shard}/{fileInfoId}/{name}/v{version}/{name}.{ext}      files/s000/123/report/v1/report.pdf
 ```
 
-It is derived from immutable identifiers, not from names. Renaming a category no longer invalidates
-anything (issue 35), and the same key works unchanged on a disk (as a relative path under
-`base-dir`) and in a bucket (as an object key).
+It is derived from the file's own id, not from any folder name. Renaming or moving a folder, or
+moving the file, changes nothing here (issue 35, Phase 7.1), and the same key works unchanged on
+a disk (a relative path under `base-dir`) and in a bucket (an object key) - which is why moving
+to an object store needs no migration. Keys written by the two earlier layouts keep working as
+they are.
 
-`StoredBlob` carries `checksumSha256` and `sizeBytes` computed **while streaming**, which closes
-issues 6 and 7 in one pass.
+`StoredBlob` carries the SHA-256 and the byte count computed **while streaming**; the checksum is
+stored on the row (`checksum_sha256`, 1.8.0, issue 7) and is what proves a copy arrived whole.
 
-### Two-phase write
+**Two additions come with Phase 4**, driven by the size of the files (below):
 
-To close issue 3 (non-atomic storage/DB writes):
+* `put` takes the length, which an object store needs before the first byte (`MultipartFile`
+  knows it), and uses multipart upload above a threshold;
+* an optional `presignedGet(key, ttl, disposition)`, so a download can be handed to the store
+  instead of streaming through the application - `Optional.empty()` from the filesystem.
+
+A server-side `copy` is **not** needed: the write path below writes to the final key.
+
+### Writes that cannot outlive their transaction
+
+Issue 3 (non-atomic storage and database writes) is closed by `StorageWriter` (roadmap 2.3,
+1.6.1), not by the staging key an earlier draft planned:
 
 ```
-1. PUT bytes to  staging/{uuid}          ← outside the transaction, before it opens
-2. BEGIN
-3.   INSERT file_details (storage_key = files/…, checksum, size, status = PENDING)
-4.   register TransactionSynchronization:
-        afterCommit   → BlobStore.copy(staging → final); UPDATE status = ACTIVE
-        afterRollback → BlobStore.delete(staging)
-5. COMMIT
+1. record the key in file_storage_write, in a transaction of its own
+2. put the bytes at the final key
+3. the file_details row is written in the caller's transaction
+4. afterCommit   → remove the file_storage_write record
+   afterRollback → delete the bytes, remove the record
 ```
 
-A crash at any point leaves either a staged orphan (swept by a scheduled job that deletes
-`staging/` objects older than 24 h) or a `PENDING` row (swept by the same job). Neither state is
-visible to users, because every read filters on `status = ACTIVE`.
+A process killed in between leaves a `file_storage_write` record; `StorageSweeper` settles it later
+against `file_details` - bytes a revision claims are kept, bytes nothing claims are removed. Nothing
+here depends on the kind of store.
 
-Deletes invert it: mark `status = DELETING` and commit, then delete bytes asynchronously. A failed
-byte-delete is retried, never silently dropped.
+### Large files
+
+Files will be many, of every size, **around 100 MB on average**. What that asks of the path the
+bytes take:
+
+* **Never hold a file in memory.** Uploads stream from the request (Tomcat spools a multipart
+  part to a temporary file) through the digest to the store; downloads stream from the store.
+* **The upload cap is a setting** (`spring.servlet.multipart.max-file-size`, and the reverse
+  proxy's `client_max_body_size` and timeouts to match); the per-kind limits of the upload policy
+  sit under it.
+* **Multipart upload to the store** above a threshold (16-64 MB parts), so a 1 GB file is not one
+  request that fails at 900 MB.
+* **Downloads by pre-signed URL** once the bytes are in an object store - the biggest single
+  saving: the application stops being the pipe every download flows through. A recorded download
+  (roadmap 9.2) is written before the redirect.
+* **Range requests** keep working for both backends, so a client can resume.
 
 ## Domain model changes
 
@@ -139,14 +162,18 @@ byte-delete is retried, never silently dropped.
 | `user` table → `app_user` | 30 | mandatory for PostgreSQL; **done** (`V2.14`, 1.7.0) |
 | `state`/`enabled` `Integer` → `Visibility` and `LifecycleStatus` enums, `@Enumerated(STRING)` + CHECK constraints | 22 | `PUBLIC`, `PRIVATE`, `RESTRICTED`; `ACTIVE`, `PENDING`, `DELETING`, `DISABLED` |
 | `file_size INT` → `BIGINT`, `Integer` → `long` | 6 | **done** (`V2.15`, 1.7.0) |
-| add `checksum_sha256`, `storage_key`, `storage_backend` | 7, 35 | drop `file_path` / `relative_path` |
+| add `checksum_sha256`, `storage_key`; drop `file_path` / `relative_path` | 7, 35 | **done** (`storage_key` Phase 7.1, `checksum_sha256` `V2.16` 1.8.0). No `storage_backend`: see below |
 | `LocalDateTime` → `Instant`, `DATETIME` → `TIMESTAMPTZ` | 24 | **done** (`V3.1`, 2.2.0); the timestamps written by Hibernate since the architecture pass, the zone they are shown in a setting (`filemanagement.time-zone`) |
 | `@Data` → `@Getter @Setter` + explicit `equals`/`hashCode` on id | 2 | |
 | all `@ManyToOne` → `LAZY`, add `@EntityGraph` per use case | 20 | |
 | `Integer` ids → keep (no gain in churning them), but add a public `external_id UUID` | 7 | API exposes the UUID, never the sequence value |
 
-`storage_backend` on the row is what makes a gradual filesystem → S3 migration possible: old rows say
-`FILESYSTEM`, new rows say `S3`, and a background job rewrites them one at a time.
+**No `storage_backend` column.** It was planned for a gradual move - old rows on the disk, new
+rows in the bucket, a composite store reading from the right one. Roadmap Phase 4 decided
+otherwise: one bucket per environment, every object at its row's `storage_key` unchanged, and a
+copy in two passes - most of it while the service runs, since a revision never changes once
+written - with a window of minutes to switch. The whole installation is on one backend at a time,
+named by a setting.
 
 ## Authorization
 
@@ -181,7 +208,8 @@ one table. No exception message ever reaches a client verbatim (issue 15).
 * `spring-boot-starter-actuator` with `/actuator/health/liveness`, `/readiness`, `/prometheus`,
   `/info` (build + git metadata).
 * Custom health indicators for the database **and** the configured `BlobStore` — a full disk or an
-  unreachable bucket must fail readiness (issue 41).
+  unreachable bucket must fail readiness (issue 41). The actuator and its readiness group exist
+  since 9.5; the `BlobStore` indicator comes with Phase 4.
 * Structured JSON logging to stdout in containers; the `D:/files/logs` appender becomes a
   profile-scoped, property-driven option (issue 40).
 * Micrometer timers on upload, download and blob-store operations, tagged by backend.
@@ -194,17 +222,19 @@ the scattered `@Value` injections and the two competing prefixes (issue 27):
 ```yaml
 filemanagement:
   storage:
-    backend: s3                 # filesystem | s3
+    backend: s3                 # filesystem | s3 - one backend for the whole installation
     filesystem:
       base-dir: /var/lib/file-management
     s3:
-      endpoint: https://minio.internal:9000
-      bucket: file-management
+      endpoint: https://s3.storage.internal:8333   # SeaweedFS's S3 gateway, or whichever store 4.6 chose
+      bucket: file-management-prod                 # one bucket per environment
+      prefix: ""                                   # optional, for a bucket shared with something else
       region: us-east-1
-      path-style-access: true   # required by MinIO and most S3-compatible stores
+      path-style-access: true   # required by every self-hosted S3-compatible store
+      multipart-threshold: 64MB
       presigned-url-ttl: 15m
   upload:
-    max-file-size: 200MB
+    max-file-size: 2GB          # the server's cap; the upload policy's per-kind limits sit under it
     allowed-types: [ application/pdf, image/png, ... ]
   paging:
     default-page-size: 30
@@ -216,7 +246,8 @@ Secrets come from the environment, never from a committed file (issue 11).
 
 Executable JAR instead of WAR (issue 28), built as a layered container image
 (`spring-boot:build-image` or a multi-stage Dockerfile), with a `compose.yaml` bringing up
-PostgreSQL + MinIO + the application for local development.
+PostgreSQL + the object store chosen in roadmap 4.6 + the application for local development.
+(MinIO is no longer the default choice: its community edition was archived in 2026.)
 
 ## Testing strategy
 
@@ -224,7 +255,7 @@ PostgreSQL + MinIO + the application for local development.
 |---|---|---|
 | Unit | JUnit 6, AssertJ, Mockito | domain services with ports stubbed |
 | Slice | `@DataJpaTest` + Testcontainers PostgreSQL | repositories, queries, migrations |
-| Storage contract | one abstract test class run against **both** `FilesystemBlobStore` and `S3BlobStore` (MinIO container) | guarantees the two backends behave identically |
+| Storage contract | one abstract test class run against **both** `FilesystemBlobStore` and `S3BlobStore` (a container of the chosen store) | guarantees the two backends behave identically |
 | Web slice | `@WebMvcTest` + `spring-security-test` | permissions, validation, error mapping |
 | Smoke | `@SpringBootTest` + Testcontainers | the context actually starts (issue 36) |
 

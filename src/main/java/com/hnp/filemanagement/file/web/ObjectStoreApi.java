@@ -5,6 +5,7 @@ import com.hnp.filemanagement.file.domain.FileDownloadDTO;
 import com.hnp.filemanagement.file.domain.ObjectListingDTO;
 import com.hnp.filemanagement.file.domain.ObjectMetadataDTO;
 import com.hnp.filemanagement.file.domain.ObjectStoreService;
+import com.hnp.filemanagement.file.domain.UploadPolicyService;
 import com.hnp.filemanagement.shared.web.GlobalGeneralLogging;
 import com.hnp.filemanagement.shared.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,6 +14,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -22,12 +24,13 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
 
 /**
  * API v2: buckets and objects, shaped after S3 so that an integrator recognises it (roadmap 9.3).
@@ -69,10 +72,16 @@ public class ObjectStoreApi {
 
     private final GlobalGeneralLogging globalGeneralLogging;
     private final ObjectStoreService objectStoreService;
+    private final UploadPolicyService uploadPolicyService;
+    /** Where a PUT body is spooled - the same directory a form's file part is written to. */
+    private final UploadTempDirectory uploadTempDirectory;
 
-    public ObjectStoreApi(GlobalGeneralLogging globalGeneralLogging, ObjectStoreService objectStoreService) {
+    public ObjectStoreApi(GlobalGeneralLogging globalGeneralLogging, ObjectStoreService objectStoreService,
+                          UploadPolicyService uploadPolicyService, UploadTempDirectory uploadTempDirectory) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.objectStoreService = objectStoreService;
+        this.uploadPolicyService = uploadPolicyService;
+        this.uploadTempDirectory = uploadTempDirectory;
     }
 
     /**
@@ -224,7 +233,8 @@ public class ObjectStoreApi {
             @ApiResponse(responseCode = "400", description = "The key is malformed, or does not end in a tag folder", content = @io.swagger.v3.oas.annotations.media.Content),
             @ApiResponse(responseCode = "403", description = "No write access to that folder", content = @io.swagger.v3.oas.annotations.media.Content),
             @ApiResponse(responseCode = "404", description = "No such bucket or folder", content = @io.swagger.v3.oas.annotations.media.Content),
-            @ApiResponse(responseCode = "409", description = "The key names a version (versions are immutable), or the file name is taken by a file under a sibling folder", content = @io.swagger.v3.oas.annotations.media.Content)})
+            @ApiResponse(responseCode = "409", description = "The key names a version (versions are immutable), or the file name is taken by a file under a sibling folder", content = @io.swagger.v3.oas.annotations.media.Content),
+            @ApiResponse(responseCode = "413", description = "The body is larger than the server's upload cap", content = @io.swagger.v3.oas.annotations.media.Content)})
     @io.swagger.v3.oas.annotations.parameters.RequestBody(
             description = "The file's bytes, as-is - not multipart and not JSON",
             content = @io.swagger.v3.oas.annotations.media.Content(
@@ -234,18 +244,23 @@ public class ObjectStoreApi {
     public ResponseEntity<ObjectMetadataDTO> putObject(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                                        @PathVariable("bucket") String bucket,
                                                        @Parameter(description = KEY_DESCRIPTION) @PathVariable("key") String rawKey,
-                                                       @RequestBody(required = false) byte[] body,
+                                                       HttpServletRequest request,
                                                        @Parameter(description = "Stored as the object's content type; "
                                                                + "`application/octet-stream` when absent")
                                                        @RequestHeader(value = HttpHeaders.CONTENT_TYPE,
-                                                               required = false) String contentType) {
+                                                               required = false) String contentType) throws IOException {
 
         String key = keyOf(rawKey);
-        globalGeneralLogging.detail("put object bucket=" + bucket + ", key=" + key + ", bytes=" + (body == null ? 0 : body.length));
+        globalGeneralLogging.detail("put object bucket=" + bucket + ", key=" + key + ", bytes=" + request.getContentLengthLong());
 
+        // The body is read from the request stream into a temporary file, bounded by the server's
+        // cap - never bound as a byte[], which put the whole file on the heap (issue 44).
         String objectName = key.substring(key.lastIndexOf('/') + 1);
-        ObjectMetadataDTO stored = objectStoreService.put(bucket, key,
-                new RawBodyMultipartFile(objectName, contentType, body), userDetails.getId());
+        ObjectMetadataDTO stored;
+        try (SpooledRequestBody body = SpooledRequestBody.spool(objectName, contentType, request.getInputStream(),
+                request.getContentLengthLong(), uploadPolicyService.serverCapBytes(), uploadTempDirectory.path())) {
+            stored = objectStoreService.put(bucket, key, body, userDetails.getId());
+        }
 
         return ResponseEntity.created(java.net.URI.create("/api/v2/" + bucket + "/" + stored.key()))
                 .header(HttpHeaders.ETAG, stored.eTag())
