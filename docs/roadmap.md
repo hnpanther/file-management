@@ -11,8 +11,8 @@ working, and to depend only on what came before.
 | 0 | Safety net — CI, smoke test, containerised dev environment | — | **done** |
 | 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done**; the language level moved to 25 in 1.4.0, on its own, once every host ran a JDK 25 |
 | 2 | Architectural restructuring | 1 | **nearly done**: 2.1, 2.2, 2.3 (the two-phase write 1.6.1; per-feature mappers and the package re-slice by feature 2.1.0) and most of 2.4 (issues 8, 12, 13; 14 by Phase 6); left, **together**: one REST surface (issue 18) and coarse permission verbs (issue 19) - both rename permissions and need a migration of their rows |
-| 3 | PostgreSQL migration | 1, partly 2, **and 7** | three releases, the middle one runs on both databases (3.2); **done**: release A (1.7.0), release B (2.0.0), the cut-over (2026-09-26, production on PostgreSQL), release C (2.1.0, MySQL removed from the code; not yet deployed); then what only PostgreSQL has, `TIMESTAMPTZ` and trigram-indexed search (2.2.0, not yet deployed) |
-| 4 | S3 or MinIO as a storage backend, alongside the filesystem | 2, 3 | |
+| 3 | PostgreSQL migration | 1, partly 2, **and 7** | **done**: three releases, the middle one runs on both databases (3.2): release A (1.7.0), release B (2.0.0), the cut-over (2026-09-26, production on PostgreSQL), release C (2.1.0, MySQL removed from the code), then what only PostgreSQL has, `TIMESTAMPTZ` and trigram-indexed search (2.2.0) - all in production, and the MySQL service decommissioned (2026-09-30) |
+| 4 | An S3-compatible object store (SeaweedFS, subject to a proof of concept) as the storage backend, in place of the filesystem | 2, 3 | **planned** (4.1-4.7): one bucket, keys unchanged, a proof of concept of the store, a two-pass copy |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done**; the move it needs **done** (7.2 step 5d, 1.4.0); the drag handlers are what is left |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**; enforcement switched on per installation, after the grants exist |
 | 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | **done** (`V2.8` 1.3.0, `V2.9` 1.4.0): the taxonomy is gone, the folder is the structure at any depth up to a limit, and it is created, renamed, moved and deleted from the explorer |
@@ -38,70 +38,64 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: production runs 2.4.0; 2.5.0 is written and tested.** 2.5.0 is **the file history**: one
-row per thing that happened to a file - uploaded, a version or a format added, described, moved,
-made public or private, a revision or the whole file deleted, a share link made or revoked - with
-who, when, with which API key, and a snapshot of the name, the revision, the size and the
-folders, so it outlives the file (`V3.5`, filled from what the database already knew). Three
-pages read it: the history of every file, a file's own history on its page, and an API key's
-activity (9.2). Beside it: issue 96 (`%` and `_` in a search box stand for themselves), issue 98
-(`V3.4`, sequences past every id ever used) and issue 99 (the share dialog's copy button over
-plain http). Recording downloads is still to come (9.2).
+**Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.5.1 is written: the upload cap from the environment, uploads of any size never held in memory -
+the v2 `PUT` included, which was (issue 44) - and a 413 above the cap
+([deployment.md](deployment.md#upgrading-from-250-to-251--the-upload-cap-from-the-environment)). Every
+release up to 2.5.0 is deployed. The cut-over's rollback window, announced to 2026-10-10, was
+closed early by that decision: the way back from here is a PostgreSQL restore
+([deployment.md](deployment.md)), never the MySQL database or a 2.0.0 jar. Phase 3 is done.
 
-2.4.0: the v1 API takes the **external ids only** - the PL/SQL
-clients moved over, and a number in a path is refused with a 400 that says so - and a permission,
-`VIEW_FILE_EXTERNAL_ID`, shows each version's external id on the file page to whoever sets up an
-integration (ADMIN holds it).
+What the releases since the cut-over brought, newest first:
 
-2.3.0 records **which API key did it** (9.2): what a key uploads,
-adds or deletes carried only its creator's name, and on the file page an integration's upload read
-as the creator's own. `V3.3` records the key on the file, on the revision and on every audit row,
-and the file page says «از طریق API با کلید «…»» - the key's title as it is now - in the person's
-place. Next to it, in 9.2 below: recording downloads, and a page of what one key has done.
+* **2.5.0 - the file history**: one row per thing that happened to a file - uploaded, a version
+  or a format added, described, moved, made public or private, a revision or the whole file
+  deleted, a share link made or revoked - with who, when, with which API key, and a snapshot of
+  the name, the revision, the size and the folders, so it outlives the file (`V3.5`, filled from
+  what the database already knew). Three pages read it: the history of every file, a file's own
+  history on its page, and an API key's activity (9.2). Beside it: issue 96 (`%` and `_` in a
+  search box stand for themselves), issue 98 (`V3.4`, sequences past every id ever used) and
+  issue 99 (the share dialog's copy button over plain http).
+* **2.4.0**: the v1 API takes the **external ids only** - the PL/SQL clients moved over, and a
+  number in a path is refused with a 400 that says so - and `VIEW_FILE_EXTERNAL_ID` shows each
+  version's external id on the file page to whoever sets up an integration.
+* **2.3.0 - which API key did it** (9.2): `V3.3` records the acting key on the file, on the
+  revision and on every audit row, and the file page says «از طریق API با کلید «…»» in the
+  person's place.
+* **2.2.0 - what only PostgreSQL has** (step 9): every timestamp an instant, shown in
+  `filemanagement.time-zone` rather than the server's zone (`V3.1`, issue 24); searches served by
+  trigram indexes, 73 seconds to a few milliseconds on 205,000 files (`V3.2`, issue 21).
+* **2.1.0 - release C** (step 8): MySQL gone from the code, `V3.0` the baseline, the suite on
+  PostgreSQL only; per-feature mappers (issue 29) and the packages sliced by feature (2.3); lists
+  ordered by a timestamp break ties by id (issue 95); an administrator can change only the case
+  of a username (issue 88).
+* **1.9.0** is role administration (`FixedRole`, the three-tab role page, copying a role, issue
+  90) with a review of the whole codebase (issues 91 to 94); 1.7.0 is release A
+  ([3.3](#33-release-a--what-to-neutralise-on-mysql-first--done-170)); 1.8.0 is steps 2 and 4 of
+  the table below.
 
-2.2.0 is the first release that uses what only PostgreSQL has (step 9):
+**What comes next**, in the order proposed:
 
-* **Times are instants** (issue 24): `V3.1` makes every timestamp `TIMESTAMPTZ(0)`, reading what
-  is there as Tehran time (checked against the bytes' modification times first), and the code holds
-  `Instant`. The zone the pages show and read times in is a setting,
-  `filemanagement.time-zone` (`Asia/Tehran`), never the server's - a host or container on UTC can
-  no longer shift new rows three and a half hours off the old ones.
-* **Searches served by indexes** (issue 21): `V3.2` adds `pg_trgm` and a trigram index on every
-  searched key, and the file list's and the public list's searches are rewritten to use them - 73
-  seconds to a few milliseconds on 205,000 files, with exactly the same results.
+1. **Recording downloads** (9.2): the one event the file history does not hold yet - who, or which
+   key, downloaded which revision, when. The history and the key activity page are built for it;
+   what needs deciding is volume, since a download is the commonest request there is (one row per
+   download, kept for a set time, never counted on a page).
+2. **Phase 4 - S3 as a storage backend** ([the plan](#phase-4--s3-as-a-storage-backend)): one
+   bucket for the whole application with every `storage_key` unchanged, so no migration; versions
+   and formats stay rows, one object each; a proof of concept of the store first (SeaweedFS the
+   first candidate); a copy in two passes, most of it while the service runs, and a window of
+   minutes. An S3-compatible API for standard tools is planned separately
+   ([9.10](#910-an-s3-compatible-mode--planned)).
+3. **Phase 8 - IMS** (controlled documents, forms on `jsonb`, full-text search of their contents),
+   when it is wanted.
+4. **Issues 18 and 19** - one REST surface and coarse permission verbs - one release of their own,
+   whenever the permission model is taken up; both rename permissions and migrate their rows.
+5. **Deferred by decision**: CI (step 3 below). And the operational leftovers: the credentials
+   still in the git history rotated ([issue 11](issues.md#11-credentials-and-infrastructure-details-are-committed--s1)),
+   and the `Admin` password changed on every installation that still has the first one.
 
-**Deploy them in order**: 2.1.0 after 2026-10-10, when the rollback window closes; then 2.2.0 and
-2.3.0, whose rollback is a database restore, since each changes the schema, then 2.4.0, a jar swap
-([deployment.md](deployment.md#upgrading-from-210-to-220--instants-and-indexed-search),
-[2.2.0 to 2.3.0](deployment.md#upgrading-from-220-to-230--which-api-key-did-it)).
-
-2.1.0 is release C and three things beside it:
-
-* **Release C** (step 8): MySQL is gone from the code - its driver, its Flyway module, its
-  migrations `V1.0` to `V2.19`, the copy tool of the cut-over and the tests of the move between
-  the two. `V3.0` is the baseline, the suite runs on PostgreSQL only, and `docs/schema.md` is
-  generated from PostgreSQL's catalogue. Production meets no migration: its history already says
-  `3.0`, and Flyway records a migration by file name.
-* **Per-feature mappers** in place of `ModelConverterUtil` (issue 29), unit-tested without a
-  database; and **the packages sliced by feature** - `audit`, `file`, `folder`, `identity`,
-  `settings`, `storage`, `shared`, each with `domain`, `persistence`, `web` (2.3).
-* **Two fixes**: lists ordered by a whole-second timestamp now break ties by id, so a page never
-  repeats or skips a row (issue 95); and an administrator can change only the case of a username
-  (issue 88).
-
-**Deploy 2.1.0 after 2026-10-10**, when the rollback window closes: until then the way back to
-MySQL is the 2.0.0 jar, which 2.1.0 no longer is ([deployment.md](deployment.md#upgrading-from-200-to-210--postgresql-only)).
-**After it**: the MySQL service is decommissioned; then Phase 8 (controlled documents, forms on
-`jsonb`, full-text search of their contents) and Phase 4 (S3). Issues 18 and 19 are one release of
-their own, whenever the permission model is taken up.
-
-1.9.0 is role administration: ADMIN and USER defined in code and reset on every start without
-taking access from anyone (`FixedRole`), the role page in three tabs saved separately, permission
-groups on it as a shortcut (issue 19 eased, not fixed), copying a role, usernames changed by an
-administrator only, and a folder check on the four file writes that lacked one (issue 90), with a
-review of the whole codebase (issues 91 to 94). 1.7.0 is PostgreSQL release A
-([3.3](#33-release-a--what-to-neutralise-on-mysql-first--done-170)); 1.8.0 is steps 2 and 4 of
-the table below.
+**The PostgreSQL migration, as it was ordered** - kept for the record of why each step came where
+it did.
 
 **The order from here**, and why each step is where it is. One rule sets most of it: from
 release B until release C every migration has to be written twice, once per database, and in the
@@ -111,24 +105,17 @@ is therefore cheapest **before** B, where it is written once and lands in the `V
 | # | Step | Why it is here | Where it is specified |
 |---|---|---|---|
 | 1 | **Done (1.9.0 in production).** **Deploy 1.9.0** (with 1.7.0 and 1.8.0 in it) and let it run on MySQL for a while - after checking what the USER role holds today, and that folder access is on | the point of release A is that anything it broke shows up while there is no PostgreSQL in the picture; the rollback is a restore, not the old jar. The checksum backfill runs once after the first start and reports what it could not read | [deployment.md, 1.6.1 → 1.7.0](deployment.md#upgrading-from-161-to-170--ready-for-postgresql-still-on-mysql), [1.7.0 → 1.8.0](deployment.md#upgrading-from-170-to-180--checksums-external-ids-and-persian-search) |
-| 2 | **Done (1.8.0).** **Real checksums and an external id**: a `checksum_sha256` column (`V2.16`), written on every upload, and a one-off job that reads every existing file and fills it in; in the same migration, `file_details.hash_id` - a random UUID despite its name - renamed `external_id`, and an `external_id` UUID added to `file_info`, so a client can name a file and a revision by something that is neither guessable nor a database row number. The v1 API takes either id and answers both, until the PL/SQL clients have moved over; the integer ids stay for the pages | the checksum: Phase 4 cannot verify that a file survived the copy to S3 without it, and 4.3 assigns the backfill to Phase 3. `StoredBlob` has computed the SHA-256 of every write since 1.6.0; only the column and the backfill are missing. The external id: sequential ids let anyone count the files and walk `/files/public-download/{id}`, and tie every client to this database's numbering. It is a second layer, never the access control - that stays the permission and the folder grant. Both are schema changes, so before B they are one migration instead of two | [issue 7](issues.md#7-hash_id-is-not-a-hash--s2), [4.3](#43-migrating-existing-bytes) |
+| 2 | **Done (1.8.0).** **Real checksums and an external id**: a `checksum_sha256` column (`V2.16`), written on every upload, and a one-off job that reads every existing file and fills it in; in the same migration, `file_details.hash_id` - a random UUID despite its name - renamed `external_id`, and an `external_id` UUID added to `file_info`, so a client can name a file and a revision by something that is neither guessable nor a database row number. The v1 API takes either id and answers both, until the PL/SQL clients have moved over; the integer ids stay for the pages | the checksum: Phase 4 cannot verify that a file survived the copy to S3 without it, and 4.3 assigns the backfill to Phase 3. `StoredBlob` has computed the SHA-256 of every write since 1.6.0; only the column and the backfill are missing. The external id: sequential ids let anyone count the files and walk `/files/public-download/{id}`, and tie every client to this database's numbering. It is a second layer, never the access control - that stays the permission and the folder grant. Both are schema changes, so before B they are one migration instead of two | [issue 7](issues.md#7-hash_id-is-not-a-hash--s2), [4.4](#44-moving-the-bytes-two-passes-and-a-short-window) |
 | 3 | **Deferred to the end, by decision** (2026-09-26). **Restore CI**: one workflow, `./mvnw verify` on JDK 25 with a Docker daemon, and the same with `-Ddb=postgresql` | release B's plan was "CI runs the suite twice". Until there is CI, every change in the dual period is tested by hand on both databases - `./mvnw verify` and `./mvnw verify -Ddb=postgresql` - before it is committed; 2.0.0 was | [issue 38](issues.md#38-no-ci--s1), [issue 83](issues.md#83-the-docs-describe-a-ci-workflow-that-was-removed--s3) |
 | 4 | **Done (1.8.0).** **Digit, accent and half-space folding**: decided for a normalised copy of each searched column - `search_name`, `search_description`, `search_display_name` on `file_info`, `file_details` and `folder`, written by the entities through `SearchKey` and filled for existing rows by the Java migration `V2_17`. Persian and Arabic digits as ASCII, the half-space and the marks dropped, Arabic `ي`/`ك` as Persian (which MySQL never did), upper case; a search also drops the spaces. A file or folder name that folds to a sibling's is refused as a duplicate | MySQL found `۱۴۰۳` when `1403` was typed and treated a name with and without the half-space as one; PostgreSQL would not. A schema change, so before B | [issue 86](issues.md#86-case-insensitive-equality-and-uniqueness-come-from-the-mysql-collation-and-release-a-plans-only-for-like--s2) |
 | 5 | **Only if planned soon**: coarse permission verbs | it migrates the `permission` rows, so before B or after C, never in between | [issue 19](issues.md#19-permissionenum-is-a-hardcoded-list-of-endpoint-names--s2), [2.4](#24-authorization) |
-| 6 | **Done (2.0.0, not yet deployed).** **Release B (2.0.0)**: migrations moved to `db/migration/mysql/`, the hand-written PostgreSQL baseline `V3.0` (with the `upper(column)` unique indexes, the `varchar_pattern_ops` index on `folder.path`, the seed rows), the PostgreSQL driver and Flyway module, the suite on both databases | the jar that can run on either, chosen by `FILEMANAGEMENT_DB_URL` - nothing is switched yet | [3.4](#34-release-b--the-dual-database-jar--done-200) |
+| 6 | **Done (2.0.0).** **Release B (2.0.0)**: migrations moved to `db/migration/mysql/`, the hand-written PostgreSQL baseline `V3.0` (with the `upper(column)` unique indexes, the `varchar_pattern_ops` index on `folder.path`, the seed rows), the PostgreSQL driver and Flyway module, the suite on both databases | the jar that can run on either, chosen by `FILEMANAGEMENT_DB_URL` - nothing is switched yet | [3.4](#34-release-b--the-dual-database-jar--done-200) |
 | 7 | **Done (2026-09-26).** Rehearsed on production-like data the same morning (3.6), then carried out in production. One thing went wrong, and it was the configuration: the datasource URL kept MySQL's port when its scheme was changed, and the driver's two errors did not say so - now in the runbook and in [deployment.md](deployment.md#when-it-will-not-start). **Rehearsal, then the cut-over** - the data copied, sequences set, verified, the service pointed at PostgreSQL | the one irreversible-feeling step; taken only when decided, with the rollback window announced | [3.5](#35-copying-the-data), [3.6](#36-production-runbook) |
-| 8 | **Done (2.1.0, not yet deployed).** **Release C (2.1.0)**: MySQL removed, after the rollback window | from here migrations are PostgreSQL-only | [3.2](#32-strategy-one-release-that-runs-on-both-then-a-cut-over-that-is-only-data) |
-| 9 | **Done (2.2.0, not yet deployed): `TIMESTAMPTZ` and indexed search.** **After C**: `TIMESTAMPTZ`, full-text search (`tsvector`, issue 21), then Phase 4 (S3). As shipped, search is a trigram index on each folded key rather than `tsvector`, which matches words, not the fragments of names people type; full-text search belongs to the contents of documents, in Phase 8 | these use what only PostgreSQL has, and Phase 4 needs step 2 | [issue 24](issues.md#24-timestamps-are-hand-set-localdatetime--s2), [issue 21](issues.md#21-search-is-like-term-across-the-whole-graph--s2), [Phase 4](#phase-4--s3-as-a-storage-backend) |
+| 8 | **Done (2.1.0, in production; MySQL decommissioned 2026-09-30).** **Release C (2.1.0)**: MySQL removed, after the rollback window | from here migrations are PostgreSQL-only | [3.2](#32-strategy-one-release-that-runs-on-both-then-a-cut-over-that-is-only-data) |
+| 9 | **Done (2.2.0, in production): `TIMESTAMPTZ` and indexed search.** **After C**: `TIMESTAMPTZ`, full-text search (`tsvector`, issue 21), then Phase 4 (S3). As shipped, search is a trigram index on each folded key rather than `tsvector`, which matches words, not the fragments of names people type; full-text search belongs to the contents of documents, in Phase 8 | these use what only PostgreSQL has, and Phase 4 needs step 2 | [issue 24](issues.md#24-timestamps-are-hand-set-localdatetime--s2), [issue 21](issues.md#21-search-is-like-term-across-the-whole-graph--s2), [Phase 4](#phase-4--s3-as-a-storage-backend) |
 
-**Not tied to that order** - any time, and none of it touches the database migration:
-
-* the rest of Phase 2: the package re-slice by feature, one REST surface (issue 18), per-feature
-  mappers in place of `ModelConverterUtil` (issue 29);
-* [issue 88](issues.md#88-a-user-cannot-change-only-the-case-of-their-own-username--s3) - a user cannot change only the case of their own username; one query;
-* Phase 5's drag-and-drop handlers, and Phase 8 (IMS) when it is wanted;
-* the operational leftovers of Phase 0: the credentials still in the git history rotated
-  ([issue 11](issues.md#11-credentials-and-infrastructure-details-are-committed--s1)), and the bootstrap administrator's password changed on every
-  installation that still has the first one.
+**Not tied to any order**: Phase 5's drag-and-drop handlers. (The package re-slice, the
+per-feature mappers and issue 88 were done in 2.1.0.)
 
 ---
 
@@ -379,7 +366,7 @@ enforced in the domain, and the storage contract test green.
 
 ---
 
-## Phase 3 — PostgreSQL migration
+## Phase 3 — PostgreSQL migration — **done**
 
 > **Run [Phase 7](#phase-7--nested-folders-replace-the-taxonomy) first.** This phase's whole strategy
 > is a fresh baseline rather than a portable rewrite (§3.2), and a baseline written while
@@ -750,96 +737,189 @@ job drops `mysqldump`, and `deployment.md` describes PostgreSQL only.
 
 **Done when:** release C is in production, the suite runs against PostgreSQL only, the copied
 data has been verified with the script, `schema.md` is generated from PostgreSQL, and the MySQL
-service is decommissioned.
+service is decommissioned. **All of it true since 2026-09-30** (2.5.0 in production, MySQL off).
 
 ---
 
 ## Phase 4 — S3 as a storage backend
 
-**Target: AWS SDK for Java v2** (`software.amazon.awssdk:bom` 2.54.x), which works against S3, MinIO,
-Ceph RGW, Backblaze B2 and Cloudflare R2. `io.awspring.cloud:spring-cloud-aws-dependencies` 4.1.1 is
-an alternative if the Spring-native configuration story is worth the extra abstraction; the plain SDK
-is the lighter choice here.
+**Target: AWS SDK for Java v2** (`software.amazon.awssdk:bom`, the current 2.x pinned when the
+work starts), which talks to S3 and to every self-hosted store that speaks its protocol -
+SeaweedFS, Ceph RGW, RustFS, Garage. The plain SDK, not Spring Cloud AWS: five operations do not
+need the extra abstraction.
 
-Phase 2 already introduced `BlobStore` and its contract test, so this phase adds an implementation
-rather than restructuring anything.
+This phase makes the application a **client** of an object store. It has nothing to do with the
+v2 API's buckets, which are a view of the folder tree offered to callers
+([9.0](#90-first-two-different-things-were-both-called-s3-compatible), [9.10](#910-an-s3-compatible-mode--planned)).
 
-### Where this stands (1.9.0)
+### Where this stands (2.5.0)
 
-**The groundwork is done; the adapter is not written.** What is in place, and what it means here:
+**The groundwork is done; the adapter is not written.**
 
 * **One port for every byte** (`BlobStore`, Phase 2): nothing outside `FilesystemBlobStore`
   touches the filesystem, so S3 is a second implementation of five methods and nothing else in
   the application changes. Its promises are `BlobStoreContractTest`, which an `S3BlobStore`
   passes to be done.
-* **One opaque key per object** (`file_details.storage_key`), never rebuilt from the folders:
-  a rename or a move touches no byte, which is exactly the shape an object store wants.
-* **A checksum for every revision** (1.8.0, issue 7): what proves an object arrived whole. It was
-  the prerequisite 4.3 named.
-* **Writes that cannot outlive their transaction** (`StorageWriter`, `StorageSweeper`): store-agnostic.
-* The staging key and `copy` in 4.1 are obsolete: roadmap 2.3 decided on writing to the final key
-  and a journal, so the adapter needs no server-side copy.
+* **One opaque key per object** (`file_details.storage_key`), never rebuilt from the folders: a
+  rename or a move touches no byte, which is exactly the shape an object store wants.
+* **A checksum for every revision** (1.8.0, issue 7): what proves an object arrived whole.
+* **Writes that cannot outlive their transaction** (`StorageWriter`, `StorageSweeper`):
+  store-agnostic.
+* The staging key and the server-side `copy` an earlier draft of this phase planned are
+  obsolete: roadmap 2.3 decided on writing to the final key and a journal.
 
-What is left: `S3BlobStore` (AWS SDK v2, path-style access for MinIO and self-hosted stores), the
-backend switch (`filemanagement.storage.backend`), the copying tool, a health indicator, and a new
-**backup procedure** - `deployment.md`'s backups copy the storage directory. One trap in the
-adapter: `deleteDirectory(prefix)` must list with the prefix **and a trailing `/`**, or deleting
-`files/s000/12` takes `files/s000/123` with it.
+### 4.1 Decisions: one bucket, the keys unchanged
 
-**Two ways to move the bytes - choose by volume:**
+**One bucket for the whole application, one per environment** - `file-management-prod`,
+`file-management-staging`, named in `filemanagement.storage.s3.bucket`. Not a bucket per
+top-level folder:
 
-* **At once, in a maintenance window** (recommended at today's volume): stop the service, copy
-  every object with the checksum verified on both sides, switch `filemanagement.storage.backend`,
-  start. **No schema change**, so it does not interact with the PostgreSQL releases and can be
-  done before, between or after them.
-* **Gradually, with no downtime** (4.2, 4.3 below): new writes to S3, old rows moved in the
-  background. Needs `file_details.storage_backend` - a schema change, so before release B or
-  after C - and the `TieredBlobStore`. Worth it only when the copy would take hours.
+* **the storage key is independent of the folders on purpose** (Phase 7.1). With a bucket per
+  top-level folder, moving a file from one to another would copy its bytes between buckets -
+  the one thing a move must never do here;
+* top-level folders are created and renamed by people, from a page; a bucket is created by
+  whoever administers the store, under naming rules a Persian folder name cannot meet, and a store
+  caps how many there are;
+* access policy, encryption, versioning, lifecycle and backup are set once, on one bucket.
 
-### 4.1 `S3BlobStore`
+**Every object's key is its row's `storage_key`, byte for byte** - `files/s000/123/report/v1/report.pdf`,
+and the older layouts' keys as they are. So **no migration and no schema change**: the copy
+writes each object where the row already says it is, and switching the backend is a setting.
+An optional `filemanagement.storage.s3.prefix` puts the whole key space under a prefix, for a
+bucket shared with something else; empty by default.
 
-Implement the port against `S3Client` / `S3TransferManager`:
+### 4.2 Versions and formats in the bucket
 
-* `put` — `S3TransferManager.upload` with multipart for large objects, computing SHA-256 on the way
-  through so it never buffers the whole file (issue 44). Set `ContentType` from the *sniffed* type.
-* `open` — `getObject` returning the response stream.
-* `presignedGet` — `S3Presigner.presignGetObject` with `ResponseContentDisposition` set. This is the
-  big win: downloads stop flowing through the application entirely.
-* `copy` — `copyObject`, server-side, used by the two-phase write's staging promotion.
-* `delete`, `exists` — direct mappings.
+**Nothing about them changes.** A version and a format are rows, not storage features: each
+`file_details` row - one format of one version - has its own `storage_key`, so it is one object:
 
-Configuration must support `path-style-access: true`; MinIO and most self-hosted S3 stores require it.
+```
+files/s000/123/report/v1/report.pdf     version 1, pdf
+files/s000/123/report/v1/report.docx    version 1, docx - another format of the same version
+files/s000/123/report/v2/report.pdf     version 2
+```
 
-### 4.2 Backend selection
+Uploading a version or a format writes a new object and never replaces one (`put` refuses an
+existing key, in the contract). Deleting a revision deletes its object; deleting the whole file
+deletes the prefix `files/s000/123/` (with the trailing `/` - see 4.3). The file history, the
+checksums and the external ids stay in PostgreSQL, where they are today.
 
-`filemanagement.storage.backend` picks the implementation via `@ConditionalOnProperty`. Both beans
-stay on the classpath, because reads must keep working against whichever backend a given row was
-written to — that is what `file_details.storage_backend` records.
+**The bucket's own versioning is not the application's versions.** It is switched on as a safety
+net - an object deleted or overwritten by mistake, by a person or a bug, can be brought back for
+a while (4.5) - and the application never reads it.
 
-A `TieredBlobStore` composite reads from the backend named on the row and writes to the currently
-configured one. That is what makes a gradual migration possible with zero downtime.
+### 4.3 `S3BlobStore`
 
-### 4.3 Migrating existing bytes
+* `put` - `PutObject`, computing the SHA-256 and the byte count on the way through, as
+  `FilesystemBlobStore` does, and sending `x-amz-checksum-sha256` so a store that checks it
+  refuses a damaged upload. **The length must be known before the request: the port's `put`
+  takes it** (`MultipartFile` knows it; spooling a 100 MB file to a second temporary file only to
+  measure it would double the disk traffic). **Above a threshold (64 MB), multipart upload** in
+  16-64 MB parts - files average about 100 MB. `If-None-Match: *` where the store supports it,
+  `HEAD` first where it does not, to keep "never overwrite" true.
+* `open` - `GetObject`, streamed; `exists` - `HeadObject`; `delete` - `DeleteObject`, a 404
+  from `HeadObject` first answering `ResourceNotFoundException` as the contract demands.
+* `deleteDirectory(prefix)` - `ListObjectsV2` and `DeleteObjects` in batches of 1,000. **List
+  with the prefix and a trailing `/`**, or deleting `files/s000/12` takes `files/s000/123` with
+  it.
+* Path-style addressing (`forcePathStyle(true)`) - every self-hosted store needs it.
+* A key that would leave the store's space (`..`, a leading `/`) is refused, as the contract
+  requires of every implementation, although a bucket has no directory to escape.
 
-1. Deploy with `backend: s3`. New uploads go to S3; existing rows still read from disk.
-2. Run a background job that, per `file_details` row with `storage_backend = FILESYSTEM`:
-   reads the file, verifies `checksum_sha256` (backfilled in Phase 3), uploads to S3, re-verifies the
-   stored object's checksum, then updates `storage_backend = S3` in a transaction.
-3. Once no rows remain on `FILESYSTEM`, retire the volume.
+`BlobStoreContractTest` runs against the store chosen in 4.6 in a Testcontainers container,
+beside the filesystem.
 
-Step 2's checksum verification on both sides is the whole reason Phase 3 backfills checksums.
+### 4.4 Moving the bytes: two passes and a short window
 
-### 4.4 Operational additions
+**A revision never changes after it is written** - it is created, and one day perhaps deleted.
+So almost everything can be copied **while the service runs**, and the maintenance window only
+has to catch up. No `TieredBlobStore`, no column saying where each row lives.
 
-* `BlobStore` health indicator — a `headBucket` call feeding `/actuator/health/readiness`.
-* Micrometer timers tagged `backend=s3|filesystem` on every port operation.
-* Server-side encryption (SSE-S3 or SSE-KMS) and a bucket lifecycle rule expiring `staging/`
-  after 24 hours, which doubles as the orphan sweeper from
-  [target-architecture.md](target-architecture.md#two-phase-write).
-* MinIO in `compose.yaml`, and a MinIO container as the second subject of the storage contract test.
+1. **The copy tool** - a `storage-copy` profile of the application itself, like the database copy
+   of 3.5: it starts no web server, walks `file_details` in id order and, for each row, reads the
+   file, checks its SHA-256 against `checksum_sha256`, uploads it to the same key, and verifies
+   what the store now holds (size from `HeadObject`, and the checksum - from the store if it keeps
+   `x-amz-checksum-sha256`, otherwise by reading the object back). **Resumable**: an object
+   already there with the right size and checksum is skipped. Parallel, with a report at the end
+   and a non-zero exit status on any row it could not copy or verify. It copies in both
+   directions, which is what makes the rollback below possible.
+2. **First pass, service running**: everything.
+3. **The window** (minutes): stop the service; a second pass copies only the rows added since the
+   first and deletes the objects whose rows were deleted since; a full verification of every row
+   against the bucket (count, size, checksum); `filemanagement.storage.backend=s3`; start;
+   download a few files, old and new.
+4. **Rollback**: the storage directory is left untouched and read-only for a few weeks. Going back
+   is the tool run the other way for what was written since, and `backend=filesystem`.
+5. After those weeks: the directory is archived and removed from the host.
 
-**Done when:** the contract test passes against both backends, uploads land in S3, downloads are
-served by pre-signed URL, and every legacy row has been migrated and checksum-verified.
+### 4.5 The bucket, backups and operations
+
+* **Private**: no public access; the application's credentials allowed only `GetObject`,
+  `PutObject`, `DeleteObject` and `ListBucket` on this one bucket.
+* **Versioning on**, with a lifecycle rule removing non-current versions after N days (30 to
+  start) - the safety net of 4.2 - and one aborting incomplete multipart uploads after a day.
+* **Server-side encryption** where the store offers it.
+* **Backups change**: `deployment.md`'s backups copy the storage directory; they become a
+  replication or a scheduled mirror of the bucket to a second store or site (`rclone sync`,
+  `weed filer.backup`, `mc mirror` - by the store chosen), beside `pg_dump` as now. A restore
+  needs the database and the bucket from the same moment, which versioning makes possible.
+  `deployment.md` is rewritten for it before the window, not after.
+* A `BlobStore` health indicator (`HeadBucket`) in `/actuator/health/readiness`, and timers
+  tagged `backend=s3|filesystem` on every port operation.
+* Later, optionally: downloads by pre-signed URL (`response-content-disposition` set as
+  `ContentDispositions` does), taking the bytes off the application. Recording downloads (9.2)
+  then happens before the redirect.
+
+### 4.6 Which store: a proof of concept first
+
+**The workload**: many files, of every size, averaging about 100 MB - tens of terabytes in a few
+years, before versions and formats. So what decides is durability and **how much raw disk a
+terabyte costs** (three replicas is 3x; erasure coding 4+2 is 1.5x), then how much operating it
+takes. What the application needs of the protocol is small - `PutObject` and multipart upload,
+`GetObject` with `Range`, `HeadObject`, `DeleteObject(s)`, `ListObjectsV2` with a prefix,
+`HeadBucket`, path style - and every candidate has it.
+
+Checked 2026-09-30:
+
+| Store | Licence, maturity | Redundancy | Versioning, lifecycle, object lock | Operating it | Verdict |
+|---|---|---|---|---|---|
+| **SeaweedFS** | Apache 2.0; in production use for a decade, one main maintainer and a community | replication for data being written, erasure coding (`ec.encode`) for sealed volumes - revisions never change, so most data ends up erasure-coded | versioning, lifecycle and object lock are there in current releases, but object lock was still being fixed in September 2026 (COMPLIANCE retention accepted and not enforced, issue #11333) | several processes (master, volume servers, filer, S3 gateway), light on memory; filer metadata in PostgreSQL; `vacuum` after deletions | **the choice**, subject to the proof of concept |
+| Ceph RGW | LGPL; the most proven and complete (Tentacle 20.2.x, maintained, CVE fixes in 2026) | erasure coding and replication, per pool | all of it, mature; multisite replication | a cluster: 3+ nodes, 16 GB+ RAM each, real expertise to run and to repair | the choice **if** the organisation has, or will have, people who run Ceph - or passes hundreds of terabytes or several sites |
+| RustFS | Apache 2.0; MinIO's design rewritten in Rust; **1.0 only on 2026-09-16** | erasure coding inline, in erasure sets and pools like MinIO | versioning, object lock, replication declared production-ready at 1.0 | one binary, a console, the simplest to run | the best fit on paper, too young for an organisation's documents today - **look again in mid-2027** |
+| MinIO (community) | AGPL; maintenance mode December 2025, **archived in 2026**: no releases, no fixes, no published builds | erasure coding | all of it | simple | **excluded** - an unpatched storage server; AIStor, its commercial successor, only with a licence |
+| Garage | AGPL; small and solid | **replication only** - 3x the disk | **no versioning, no lifecycle, no object lock** | the simplest of all | **excluded** at this volume |
+
+**SeaweedFS for this installation.** Before it is final:
+run the contract test against its container; check that it keeps `x-amz-checksum-sha256` (or
+settle for reading back in 4.4); check bucket versioning and the lifecycle rules of 4.5 on the
+release to be deployed; do not rely on object lock until the release in use enforces it; size the
+cluster - three servers, masters on all three, volume servers with the disks, replication `010`
+or `001` for what is being written and `ec.encode` for full, quiet volumes; put the filer's
+metadata in a PostgreSQL database of its own that is backed up; schedule `vacuum`; upload and
+download 1-2 GB files through the application; and rehearse a restore. The code stays store-neutral - AWS SDK, path style, nothing product-specific
+- so the choice can be revisited with `rclone` and a setting.
+
+### 4.7 The steps
+
+| # | Step | Schema change |
+|---|---|---|
+| 1 | Proof of concept of the store (4.6), with the contract test run against it | - |
+| 2 | `S3BlobStore`, `filemanagement.storage.backend` and the S3 settings, health indicator, contract test on both backends | - |
+| 3 | The `storage-copy` tool, both directions, resumable, verifying | - |
+| 4 | The bucket set up (4.5), the backup procedure written and rehearsed, a full rehearsal of 4.4 on a copy | - |
+| 5 | The cut-over window; the directory kept read-only for the rollback weeks | - |
+
+**Done when:** the contract test passes against both backends, production reads and writes the
+bucket, every row's object has been verified against its checksum, the backup of the bucket has
+been restored once on purpose, and the storage directory is archived.
+
+### Not chosen: a gradual move behind a `TieredBlobStore`
+
+An earlier draft moved the bytes in the background with no window at all: new writes to S3, a
+`file_details.storage_backend` column saying where each row lives, and a composite store reading
+from the right one. It costs a schema change and a store that knows two backends, and buys
+minutes of downtime that the two-pass copy already brings down to a few. Worth reopening only if
+the volume grows to where a second pass takes hours.
 
 ---
 
@@ -1634,7 +1714,7 @@ than through a second storage path.
   indexes, and every report becomes a self-join per field.
 
 With Hibernate 7 this is `@JdbcTypeCode(SqlTypes.JSON)`. It works on the MySQL 8 in use today and
-gets better, not worse, on the `jsonb` that [Phase 3](#phase-3--postgresql-migration) brings.
+gets better, not worse, on the `jsonb` that [Phase 3](#phase-3--postgresql-migration--done) brings.
 
 ### 8.5 Three decisions that are expensive to get wrong
 
@@ -1711,7 +1791,7 @@ of them whose shape an integrator already knows.
 ### 9.0 First: two different things were both called "S3-compatible"
 
 [Phase 4](#phase-4--s3-as-a-storage-backend) makes this application a **client** of S3 — bytes move
-to MinIO or S3 and `BlobStore` reads them back. This phase makes it look like a **server** of S3 —
+to an object store and `BlobStore` reads them back. This phase makes it look like a **server** of S3 —
 callers address objects the way they would address them in a bucket.
 
 They point in opposite directions and both were called "S3-compatible". Phase 4's heading was
@@ -1916,7 +1996,7 @@ The goal is a shape people recognise, not a protocol they can point tooling at. 
 therefore a bearer credential — `Authorization: Bearer fmk_…` — and the documentation must say
 outright that this is S3-*style*, so nobody plans an integration around a CLI that will never
 connect. If real S3 compatibility is ever wanted it is its own phase, and it starts by making
-secrets recoverable.
+secrets recoverable - planned in [9.10](#910-an-s3-compatible-mode--planned).
 
 ### 9.5 Actuator — **done**
 
@@ -2027,6 +2107,69 @@ is shown once and never again; it reaches exactly the folders it was scoped to a
 v2 operations work against a bucket with the version in the key; uploading is refused where the
 grant is read-only; `/actuator/health` reflects the database; and the API documents itself at a URL
 that can be switched off without a rebuild.
+
+### 9.10 An S3-compatible mode — planned
+
+§9.4 still stands for v2: it is S3-*style*. This is the plan for the day standard tools - `aws s3`,
+`rclone`, `boto3`, the SDKs - should connect. **v1 and v2 stay as they are**; this is a third
+surface, on a host name of its own.
+
+**Where it is served.** S3 clients build every path from the root - `/{bucket}/{key}` - and the
+root belongs to the pages. So a host name of its own (`s3.files.example`), which the reverse
+proxy maps onto an internal prefix (`/s3/**`) with its own security chain. Path style only, one
+fixed region (`us-east-1`).
+
+**Credentials: Signature V4, and a secret that can be read back.** SigV4 is an HMAC the server
+recomputes, so it must hold the secret itself - the reason §9.2 could hash secrets. A new kind of
+API key, an "S3 access key": an access key id and a secret encrypted with AES-GCM under a master
+key from the environment, shown once like every key, scoped by the key's folder grants like every
+key. Verified: the `Authorization` header, pre-signed URLs (`X-Amz-*`), `UNSIGNED-PAYLOAD`,
+chunked uploads (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`) and the checksum trailers recent SDKs send
+by default (`STREAMING-UNSIGNED-PAYLOAD-TRAILER`, `x-amz-checksum-crc32`). A migration: the key
+kind and the encrypted secret.
+
+**A bucket is a top-level folder with a bucket name.** A column, `folder.bucket_name`, set by an
+administrator on a top-level folder and checked against S3's naming rules (lower case, digits,
+`-`, 3 to 63 characters); only a folder with one is a bucket, so a Persian folder name is never a
+problem. `ListBuckets` answers the buckets the key can read. Keys may be Persian - S3 keys are
+UTF-8 - and the canonical URI of SigV4 must be encoded exactly as S3 does (each segment once, `/`
+kept).
+
+**Versions: the bucket behaves as an S3 bucket with versioning on.** The key carries no version
+segment - `reports/2026/report.pdf` - and:
+
+| S3 request | Here |
+|---|---|
+| `GET key` | the latest version, in the format the extension names |
+| `PUT key` | a new version - an overwrite to the client, an appended immutable revision here |
+| `GET key?versionId=` | that revision; the `versionId` is the revision's external id |
+| `ListObjectVersions` | the file's versions, from `file_details` |
+| `DELETE key?versionId=` | that revision |
+| `DELETE key` | refused by default: in S3 it is a delete marker, here it would remove the whole file |
+
+Formats stay distinct keys: `report.pdf` and `report.docx` are one file's two formats.
+
+**ETags.** Some clients compare the ETag with the MD5 of what they sent, so an `md5` column is
+written on upload and backfilled like the checksum; a multipart ETag is the MD5 of the parts'
+MD5s followed by `-N`.
+
+**Listing must be served by an index.** v2 gathers a bucket's subtree in memory (9.3); here
+`ListObjectsV2` pages by folder path and name, with `continuation-token` and `start-after`, from
+an index - not from memory.
+
+**Answers are S3's XML**, errors included (`NoSuchKey`, `NoSuchBucket`, `AccessDenied`,
+`SignatureDoesNotMatch`), with S3's status codes.
+
+**Tests run a real client**: the AWS SDK for Java v2 pointed at the application in the
+integration tests, and `aws`, `rclone` and `boto3` by hand before each release of it.
+
+| # | Step | What then works |
+|---|---|---|
+| 1 | S3 access keys, SigV4, the host name; `ListBuckets`, `HeadBucket`, `GetBucketLocation`, `ListObjectsV2`, `GetObject` with `Range`, `HeadObject`, XML errors | `aws s3 ls`, `aws s3 cp s3://… .`, `rclone sync` downloading - most of the value |
+| 2 | `PutObject` (chunked, checksum trailers), `DeleteObject(s)`, `versionId`, `ListObjectVersions`, the `md5` column | uploads from any S3 tool |
+| 3 | Multipart upload (create, parts, complete, abort, list parts) | large uploads - the CLI switches to multipart above 8 MB by itself |
+
+If nothing uses v2 by then, this can replace it; until then both are kept.
 
 ---
 

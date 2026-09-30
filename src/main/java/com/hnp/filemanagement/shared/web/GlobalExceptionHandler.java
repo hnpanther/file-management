@@ -9,12 +9,14 @@ import com.hnp.filemanagement.identity.security.UserDetailsImpl;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.util.unit.DataSize;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.ModelAndView;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -60,9 +63,13 @@ public class GlobalExceptionHandler {
     private static final String PROBLEM_BASE = "https://github.com/hnpanther/file-management/blob/main/docs/issues.md#";
 
     private final MessageSource messageSource;
+    /** The server's upload cap, named in the answer to an upload above it. */
+    private final DataSize uploadCap;
 
-    public GlobalExceptionHandler(MessageSource messageSource) {
+    public GlobalExceptionHandler(MessageSource messageSource,
+                                  @Value("${spring.servlet.multipart.max-file-size:20MB}") DataSize uploadCap) {
         this.messageSource = messageSource;
+        this.uploadCap = uploadCap;
     }
 
     // ------------------------------------------------------------------ domain failures
@@ -174,6 +181,25 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * An upload above the server's cap ({@code spring.servlet.multipart.max-file-size}): a form
+     * part Tomcat refused to parse - which happens before any handler runs, so only an advice can
+     * answer it - or a v2 body cut off while it was spooled. 413 with the cap in the sentence; it
+     * used to fall through to {@link #uncaughtException} and answer 500.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public Object uploadTooLarge(MaxUploadSizeExceededException e, @AuthenticationPrincipal UserDetailsImpl principal,
+                                 HttpServletRequest request) {
+
+        log(principal, request, "MaxUploadSizeExceededException: " + e.getMessage(), HttpStatus.CONTENT_TOO_LARGE);
+
+        String cap = readable(e.getMaxUploadSize() > 0 ? e.getMaxUploadSize() : uploadCap.toBytes());
+        String detail = isMachineApi(request)
+                ? "the upload is larger than the server's cap of " + cap
+                : messageSource.getMessage("error.uploadTooLarge", new Object[]{cap}, LocaleContextHolder.getLocale());
+        return respond(request, HttpStatus.CONTENT_TOO_LARGE, detail, "UploadTooLarge");
+    }
+
+    /**
      * The client hung up while the bytes were going out. Not an error on this side, and not one
      * that can be answered: the response is already committed.
      *
@@ -270,6 +296,20 @@ public class GlobalExceptionHandler {
     private static boolean isMachineApi(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         return path.startsWith("/api/");
+    }
+
+    /** {@code 1 GB}, {@code 20 MB}, {@code 4 KB} - the largest whole unit, as a cap is set. */
+    static String readable(long bytes) {
+        long kb = 1024L;
+        long mb = kb * 1024L;
+        long gb = mb * 1024L;
+        if (bytes >= gb && bytes % gb == 0) {
+            return bytes / gb + " GB";
+        }
+        if (bytes >= mb) {
+            return bytes / mb + " MB";
+        }
+        return Math.max(bytes / kb, 1) + " KB";
     }
 
     private String message(String code) {

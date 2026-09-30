@@ -203,8 +203,9 @@ database **and** `base-dir` together.
 | `spring.jpa.hibernate.ddl-auto` | `validate` | schema is owned by Flyway |
 | `file.management.base-dir` | `./TempFiles/files/main/` | storage root; must exist and end with a separator |
 | `filemanagement.time-zone` | `Asia/Tehran` | the zone the pages show times in (`FILEMANAGEMENT_TIME_ZONE`); the database stores instants, and the server's own zone is never used |
-| `spring.servlet.multipart.max-file-size` | `20MB` | per-file upload cap |
-| `spring.servlet.multipart.max-request-size` | `20MB` | per-request upload cap |
+| `spring.servlet.multipart.max-file-size` | `20MB` | per-file upload cap (`FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE`, e.g. `1GB`); above it a 413. Uploads stream, so memory does not grow with it - see [deployment.md, Large uploads](docs/deployment.md#large-uploads) |
+| `spring.servlet.multipart.max-request-size` | `21MB` | per-request cap (`FILEMANAGEMENT_UPLOAD_MAX_REQUEST_SIZE`), a little above the file cap |
+| `spring.servlet.multipart.location` | *(Tomcat's)* | where an upload is written while it arrives (`FILEMANAGEMENT_UPLOAD_TEMP_DIR`) |
 | `filemanagement.default.page-size` | `30` | rows per page in list views (at most 200) |
 | `filemanagement.folder-access.enabled` | `false` | whether a person's folder grants are enforced as well as their permissions (API keys are always scoped) |
 | `filemanagement.folders.max-depth` | `6` | how deep the tree may go below `Home` |

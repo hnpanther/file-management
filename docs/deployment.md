@@ -87,6 +87,9 @@ Do this **before** the first start.
 | `FILEMANAGEMENT_BASE_DIR` | `./TempFiles/files/main/` | Where every uploaded file is written. The default is inside the working tree, **and `TempFiles/` is in `.gitignore`** — so on a real host the data lands in a directory the repository deliberately ignores ([issue 45](issues.md#45-the-prod-profile-writes-into-the-working-tree--s3)) |
 | `FILEMANAGEMENT_LOG_PATH` | `./logs` | Same problem: relative to the working directory |
 | `FILEMANAGEMENT_TIME_ZONE` | `Asia/Tehran` | The zone the pages show times in and the day an API key expires on is read in (2.2.0). Leave it unless the people using the system are elsewhere; the database stores instants and the server's own zone is never used for either. An unknown zone stops the start |
+| **`FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE`** | `20MB` | **Set it: `1GB`.** The largest file the server takes; everything above it is a 413. The proxy in front must allow as much ([Large uploads](#large-uploads)) |
+| **`FILEMANAGEMENT_UPLOAD_MAX_REQUEST_SIZE`** | `21MB` | **Set it: `1025MB`** - a little above the file cap, for the form's other fields |
+| **`FILEMANAGEMENT_UPLOAD_TEMP_DIR`** | Tomcat's own directory on the **system drive** | **Set it: `D:\MyApp\file-management\upload-tmp`.** Every upload is written here while it arrives; it needs room for all the uploads in flight at once - ten 1 GB uploads, 10 GB. Created at the start if missing |
 | `FILEMANAGEMENT_BOOTSTRAP_ADMIN_PASSWORD` (`filemanagement.bootstrap.admin-password`) | *(empty)* | The `Admin` account's password, used once: on the first start against an empty database, when `DataInitializer` creates the account. With nothing set it generates a random password and prints it **once**, at WARN, to the console and to `app_log.log` under `FILEMANAGEMENT_LOG_PATH` - see [finding it](#4-confirm-it-is-actually-up) below. Miss that line and the account is unusable. Changing the variable later changes nothing: the account exists |
 
 > **`FILEMANAGEMENT_BASE_DIR` with or without a trailing separator - both work, since 1.1.0.**
@@ -128,6 +131,92 @@ find it again.
 > only meaningful as a pair: `file_info` and `file_details` hold the paths, never the content. A
 > restore of one without the other leaves rows pointing at files that are gone, or files nothing
 > references. See [Backups](#backups--one-job-both-halves).
+
+### Large uploads
+
+The server's cap on one file is **20 MB** unless it is set. Three variables:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE` | `20MB` | the largest file the server takes - `500MB`, `1GB`. The upload policy's per-kind limits sit under it, the ADMIN role may upload up to it, and a v2 `PUT` is bounded by it too. Above it: `413`, with the cap in the answer |
+| `FILEMANAGEMENT_UPLOAD_MAX_REQUEST_SIZE` | `21MB` | the whole request - the file plus the form's other fields, a few hundred bytes; keep it a little above the file cap (`1025MB` for `1GB`) |
+| `FILEMANAGEMENT_UPLOAD_TEMP_DIR` | *(Tomcat's own - below)* | where an upload is written while it arrives |
+
+> **Set all three on every installation that takes large files** - production included:
+>
+> ```ini
+> FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE=1GB
+> FILEMANAGEMENT_UPLOAD_MAX_REQUEST_SIZE=1025MB
+> FILEMANAGEMENT_UPLOAD_TEMP_DIR=D:\MyApp\file-management\upload-tmp
+> ```
+>
+> In `FileManagement.xml` they are three `<env>` entries ([the service definition](#2-the-service-definition));
+> on Linux, three lines of `/etc/file-management.env`. And raise the proxy's limit with them
+> (below) - without it, the proxy refuses what the application would take.
+
+**Memory does not grow with the cap; the temporary directory does.** Nothing holds a file in
+memory: Tomcat writes a form's file part to a temporary file as it arrives (a v2 `PUT` is written
+to the same directory), and the application streams it from there to storage, computing its
+SHA-256 on the way. So the heap stays as it is - a 1 GB upload was verified with a 256 MB heap -
+and the temporary directory needs room for every upload in flight at once: ten simultaneous 1 GB
+uploads need 10 GB there. A finished or refused upload's temporary file is deleted at once.
+
+**When `FILEMANAGEMENT_UPLOAD_TEMP_DIR` is not set**, uploads wait in Tomcat's own temporary
+directory, which Spring Boot creates at every start and removes at a clean stop:
+
+```text
+{java.io.tmpdir}\tomcat.8122.{a number}\work\Tomcat\localhost\ROOT
+```
+
+`java.io.tmpdir` is the temporary directory of the account the process runs as. For a Windows
+service under LocalSystem - WinSW's default - that is a folder under `C:\Windows`
+(`C:\Windows\Temp`, or `C:\Windows\system32\config\systemprofile\AppData\Local\Temp`,
+depending on the Windows version): **the system drive**, which a few large uploads can fill. On
+some Linux hosts `/tmp` is in memory (tmpfs). **The start says which directory it is**, in one line
+of `app_log.log`:
+
+```text
+uploads are written to C:\Windows\Temp\tomcat.8122.123456\work\Tomcat\localhost\ROOT while they arrive (Tomcat's own directory, because FILEMANAGEMENT_UPLOAD_TEMP_DIR is not set)
+uploads are written to D:\MyApp\file-management\upload-tmp while they arrive (FILEMANAGEMENT_UPLOAD_TEMP_DIR)
+```
+
+When it is set, the directory is created at the start if it does not exist, and the start stops
+with the reason if the service account cannot write to it - rather than the first upload failing.
+It must not be inside `FILEMANAGEMENT_BASE_DIR`, and it is not backed up.
+
+The storage directory needs the space as well, of course, and a quota on a personal folder counts
+every revision.
+
+**The reverse proxy has its own limit, and it is usually the one that refuses first**:
+
+* **IIS**: `maxAllowedContentLength` (request filtering) is **30,000,000 bytes by default** - about
+  28 MB. Raise it in the site's `web.config`, and ARR's proxy time-out with it, so a slow upload is
+  not cut off halfway:
+
+  ```xml
+  <system.webServer>
+    <security>
+      <requestFiltering>
+        <requestLimits maxAllowedContentLength="1100000000" />  <!-- bytes: a little above 1 GB -->
+      </requestFiltering>
+    </security>
+  </system.webServer>
+  ```
+
+  and in IIS Manager, *Application Request Routing Cache* → *Server Proxy Settings* → *Time-out*:
+  several minutes (600 seconds for 1 GB over a slow link).
+* **nginx**: `client_max_body_size 1100m;`, `proxy_request_buffering off;` (otherwise nginx
+  writes the whole upload to its own temporary file before passing it on - twice the disk, and the
+  application sees nothing until the end), and `client_body_timeout`, `proxy_send_timeout`,
+  `proxy_read_timeout` of several minutes.
+
+A refused upload is not always the application's 413 page: when the proxy refuses it, the proxy
+answers; and when a file is far above the cap, Tomcat stops reading after a few megabytes and the
+browser may report a reset connection instead. Both mean the same thing - the file is larger than a
+limit on the way.
+
+**A download of a large file** streams from storage and honours `Range`, so a client can resume;
+nothing to set.
 
 ### One decision to make deliberately: folder access
 
@@ -183,6 +272,12 @@ FILEMANAGEMENT_PORT=8122
 
 # Only on the very first boot, to avoid hunting for the generated password in the log.
 FILEMANAGEMENT_BOOTSTRAP_ADMIN_PASSWORD=<a real password>
+
+# Uploads up to 1 GB, waiting on the data disk while they arrive - set all three.
+# See "Large uploads", and raise the proxy's limit with them.
+FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE=1GB
+FILEMANAGEMENT_UPLOAD_MAX_REQUEST_SIZE=1025MB
+FILEMANAGEMENT_UPLOAD_TEMP_DIR=/opt/file-management/upload-tmp
 
 # Leave false until the folder grants exist.
 FILEMANAGEMENT_FOLDER_ACCESS_ENABLED=false
@@ -616,6 +711,34 @@ the `seeded 5 new permission(s)` line.
 
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
+
+### Upgrading from 2.5.0 to 2.5.1 — the upload cap from the environment
+
+A jar swap; no migration. Take the backups as always. **Before starting it, add the three upload
+variables** to `FileManagement.xml` - the cap stays 20 MB without them, and uploads keep waiting on
+the system drive:
+
+```xml
+<env name="FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE" value="1GB"/>
+<env name="FILEMANAGEMENT_UPLOAD_MAX_REQUEST_SIZE" value="1025MB"/>
+<env name="FILEMANAGEMENT_UPLOAD_TEMP_DIR" value="D:\MyApp\file-management\upload-tmp"/>
+```
+
+and raise IIS's `maxAllowedContentLength` and ARR's time-out ([Large uploads](#large-uploads)).
+After the start, `app_log.log` has the line `uploads are written to D:\MyApp\file-management\upload-tmp
+while they arrive` - the check that the variables were read.
+
+* **The upload cap is set in the environment now**: `FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE`
+  (default `20MB`, as before), `FILEMANAGEMENT_UPLOAD_MAX_REQUEST_SIZE` (default `21MB` - it was
+  `20MB`, which refused a file of exactly the cap once the form's other fields were counted) and
+  `FILEMANAGEMENT_UPLOAD_TEMP_DIR`. Nothing to do to keep 20 MB. To raise it, read
+  [Large uploads](#large-uploads) first: the reverse proxy's limit has to rise with it, and IIS's
+  default is about 28 MB.
+* **A file above the cap is answered 413**, with the cap in the sentence, on the pages and on both
+  APIs; it was a 500 with the generic error.
+* **A v2 `PUT` is bounded by the same cap** and no longer held in memory (issue 44). A v2 client
+  that sent bodies above 20 MB - which the policy then refused anyway - now gets a 413 before the
+  body is read.
 
 ### Upgrading from 2.4.0 to 2.5.0 — the file history
 
@@ -1473,6 +1596,11 @@ not optional.
     <env name="FILEMANAGEMENT_LOG_PATH" value="D:\MyApp\file-management\ProdLog"/>
     <env name="FILEMANAGEMENT_PORT" value="8122"/>
     <env name="FILEMANAGEMENT_FOLDER_ACCESS_ENABLED" value="false"/>
+    <!-- Uploads up to 1 GB, waiting on D: rather than under C:\Windows while they arrive.
+         Set all three; see "Large uploads" - and raise the proxy's limit with them. -->
+    <env name="FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE" value="1GB"/>
+    <env name="FILEMANAGEMENT_UPLOAD_MAX_REQUEST_SIZE" value="1025MB"/>
+    <env name="FILEMANAGEMENT_UPLOAD_TEMP_DIR" value="D:\MyApp\file-management\upload-tmp"/>
 
     <startmode>Automatic</startmode>
 
@@ -1498,10 +1626,10 @@ not optional.
 
 | Argument | Reason |
 |---|---|
-| `-Xms256m -Xmx1g` | This application holds no large caches; the heap is dominated by the multipart buffer, capped at 20 MB per request |
+| `-Xms256m -Xmx1g` | This application holds no large caches, and no upload is held in memory - a file streams from a temporary file to storage, whatever the cap ([Large uploads](#large-uploads)) |
 | `-XX:+ExitOnOutOfMemoryError` | A JVM that has hit `OutOfMemoryError` is not reliably usable. Exiting turns an invisible sick process into a visible failure the service recovery can act on |
 | `-Dfile.encoding=UTF-8` | Every user-visible string here is Persian, and so are most document titles in the database |
-| `-Duser.timezone=Asia/Tehran` | `created_at` / `updated_at` are written by Hibernate against the JVM's zone |
+| `-Duser.timezone=Asia/Tehran` | **Only the log's timestamps.** Since 2.2.0 the database stores instants (`TIMESTAMPTZ`) and the pages show them in `FILEMANAGEMENT_TIME_ZONE` (`Asia/Tehran` by default), whatever the JVM's or the server's zone. Leaving the flag out changes nothing stored or shown - only the times in `app_log.log`, which would follow the server's zone |
 
 The `prod` profile is **not** passed on the command line: it is already the default in
 `application.properties`. Passing `--spring.profiles.active=prod` does no harm, but leaving it out is
