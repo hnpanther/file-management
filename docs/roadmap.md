@@ -896,7 +896,19 @@ release to be deployed; do not rely on object lock until the release in use enfo
 cluster - three servers, masters on all three, volume servers with the disks, replication `010`
 or `001` for what is being written and `ec.encode` for full, quiet volumes; put the filer's
 metadata in a PostgreSQL database of its own that is backed up; schedule `vacuum`; upload and
-download 1-2 GB files through the application; and rehearse a restore. The code stays store-neutral - AWS SDK, path style, nothing product-specific
+download 1-2 GB files through the application; and rehearse a restore.
+
+**First results (2026-09-30)**, with the compose file in
+[deploy/seaweedfs](../deploy/seaweedfs/README.md) - SeaweedFS 4.48, one host, two volume servers,
+the filer on PostgreSQL, the admin UI and a maintenance worker - driven by the AWS CLI:
+`x-amz-checksum-sha256` **is kept and returned**, so the copy of 4.4 can verify against the store
+without reading every object back; versioning with delete markers and the two lifecycle rules of
+4.5 work; a multipart upload, `Range`, prefix listing, the per-bucket key scope and the refusal of
+anonymous and wrongly signed requests all behave; replication `001` keeps identical bytes on both
+servers. Three lessons are in the file: the filer's database needs byte collation (`C`), `weed
+admin` needs an explicit `-ip` for its workers to connect, and every bucket takes its own volumes -
+a disk needs room for at least six of them. Still to do: the contract test against it (4.3), a
+1-2 GB file through the application, and a restore. The code stays store-neutral - AWS SDK, path style, nothing product-specific
 - so the choice can be revisited with `rclone` and a setting.
 
 ### 4.7 The steps

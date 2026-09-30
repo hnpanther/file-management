@@ -1,0 +1,172 @@
+# SeaweedFS for file-management - one host, two disks (roadmap Phase 4, 4.5 and 4.6).
+#
+#   cp .env.example .env            # directories and passwords - never committed
+#   cp s3.json.example s3.json      # the S3 access keys - never committed
+#   docker compose up -d
+#
+# What runs, and why each piece is here:
+#
+#   master      the cluster's directory: which volume holds which file id, and volume growth.
+#               Replication "001" by default: every volume on two volume servers (below).
+#   volume1/2   the bytes, one per disk. With replication 001 each file is on both, so one disk
+#               can fail without losing anything. Put VOLUME1_DIR and VOLUME2_DIR on two
+#               physical disks - two directories on one disk protect nothing.
+#   filer       the names: bucket/key -> chunks. Its metadata lives in PostgreSQL (filer-db) -
+#               backed up with pg_dump like the application's own database. Lose it and the
+#               bytes are still there but nameless.
+#   filer-db    the filer's own PostgreSQL. Not the application's database.
+#   s3          the S3 gateway the application talks to (port 8333). Credentials come from
+#               s3.json only: with a static file the gateway authenticates from its first
+#               request - with none, SeaweedFS accepts anonymous requests until an identity is
+#               created, which is not a state to start a production store in.
+#   admin       the web UI (port 23646, loopback only): topology, volumes, buckets, a file
+#               browser, maintenance settings. Behind a password.
+#   worker      runs the maintenance the admin schedules: vacuum after deletions, balance,
+#               replication repair.
+#
+# One host is not high availability: the host itself is still one machine. Durability against a
+# lost host comes from the mirror to a second store (deployment.md, and roadmap 4.5). Erasure
+# coding is deliberately not used here: with two volume servers, losing one loses half the
+# shards of every encoded volume - more than erasure coding survives. It is for four servers and
+# more; until then replication 001 is the safer layout, at twice the disk.
+#
+# Exposed: only S3 (on the host's address) and, on loopback, the admin UI and the master's own
+# page. Everything else talks on the compose network only.
+
+name: seaweedfs
+
+x-weed: &weed
+  image: chrislusf/seaweedfs:4.48   # pin a version; upgrade on purpose, after reading its release notes
+  restart: unless-stopped
+  networks: [weed]
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "5"
+
+services:
+  filer-db:
+    image: postgres:18.4
+    restart: unless-stopped
+    networks: [weed]
+    environment:
+      POSTGRES_DB: seaweedfs_filer
+      POSTGRES_USER: seaweedfs
+      POSTGRES_PASSWORD: ${FILER_DB_PASSWORD:?set FILER_DB_PASSWORD in .env}
+      # Byte order ("C"), not a language's: an S3 listing is byte-lexicographic, and the filer
+      # warns and falls back to a slower unindexed sort on a database created otherwise.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    volumes:
+      # PostgreSQL 18's image keeps its data under /var/lib/postgresql/18/docker.
+      - ${FILER_DB_DIR:?set FILER_DB_DIR in .env}:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "seaweedfs", "-d", "seaweedfs_filer"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  master:
+    <<: *weed
+    command: >
+      master -ip=master -ip.bind=0.0.0.0 -port=9333 -mdir=/data
+      -defaultReplication=001 -volumeSizeLimitMB=${VOLUME_SIZE_LIMIT_MB:-30000} -garbageThreshold=0.3
+      -metricsPort=9324
+    volumes:
+      - ${MASTER_DIR:?set MASTER_DIR in .env}:/data
+    ports:
+      - "127.0.0.1:9333:9333"   # the master's status page, for this machine only
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9333/cluster/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  volume1:
+    <<: *weed
+    command: >
+      volume -ip=volume1 -ip.bind=0.0.0.0 -port=8080 -master=master:9333
+      -dir=/data -max=0 -minFreeSpace=5 -dataCenter=dc1 -rack=rack1
+      -metricsPort=9325
+    volumes:
+      - ${VOLUME1_DIR:?set VOLUME1_DIR in .env}:/data
+    depends_on:
+      master:
+        condition: service_healthy
+
+  volume2:
+    <<: *weed
+    command: >
+      volume -ip=volume2 -ip.bind=0.0.0.0 -port=8080 -master=master:9333
+      -dir=/data -max=0 -minFreeSpace=5 -dataCenter=dc1 -rack=rack1
+      -metricsPort=9325
+    volumes:
+      - ${VOLUME2_DIR:?set VOLUME2_DIR in .env}:/data
+    depends_on:
+      master:
+        condition: service_healthy
+
+  filer:
+    <<: *weed
+    command: filer -ip=filer -ip.bind=0.0.0.0 -port=8888 -master=master:9333 -metricsPort=9326
+    environment:
+      # The filer's metadata in PostgreSQL rather than the default LevelDB file inside the
+      # container: backed up with pg_dump, and the table is created at the first start.
+      WEED_LEVELDB2_ENABLED: "false"
+      WEED_POSTGRES2_ENABLED: "true"
+      WEED_POSTGRES2_HOSTNAME: filer-db
+      WEED_POSTGRES2_PORT: "5432"
+      WEED_POSTGRES2_DATABASE: seaweedfs_filer
+      WEED_POSTGRES2_USERNAME: seaweedfs
+      WEED_POSTGRES2_PASSWORD: ${FILER_DB_PASSWORD:?set FILER_DB_PASSWORD in .env}
+      WEED_POSTGRES2_SSLMODE: disable
+    depends_on:
+      filer-db:
+        condition: service_healthy
+      master:
+        condition: service_healthy
+      volume1:
+        condition: service_started
+      volume2:
+        condition: service_started
+
+  s3:
+    <<: *weed
+    command: s3 -ip.bind=0.0.0.0 -port=8333 -filer=filer:8888 -config=/etc/seaweedfs/s3.json -metricsPort=9327
+    volumes:
+      - ./s3.json:/etc/seaweedfs/s3.json:ro
+    ports:
+      # Where the application connects: FILEMANAGEMENT_S3_ENDPOINT=http://<this host>:8333.
+      # Reachable on the network - keep it behind the firewall, or put TLS in front.
+      - "${S3_BIND:-0.0.0.0}:8333:8333"
+    depends_on:
+      filer:
+        condition: service_started
+
+  admin:
+    <<: *weed
+    # -ip explicitly: without it 4.48 keeps the workers' gRPC port (23646 + 10000) on loopback,
+    # where the worker container cannot reach it. It is not published - the compose network only.
+    command: admin -ip=0.0.0.0 -port=23646 -master=master:9333 -dataDir=/data
+    environment:
+      WEED_ADMIN_USER: admin
+      WEED_ADMIN_PASSWORD: ${ADMIN_UI_PASSWORD:?set ADMIN_UI_PASSWORD in .env}
+    volumes:
+      - ${ADMIN_DIR:?set ADMIN_DIR in .env}:/data
+    ports:
+      - "127.0.0.1:23646:23646"   # the admin UI, for this machine only (an SSH tunnel from elsewhere)
+    depends_on:
+      master:
+        condition: service_healthy
+
+  worker:
+    <<: *weed
+    command: worker -admin=admin:23646 -jobType=all -workingDir=/work
+    volumes:
+      - ${WORKER_DIR:?set WORKER_DIR in .env}:/work
+    depends_on:
+      admin:
+        condition: service_started
+
+networks:
+  weed:
