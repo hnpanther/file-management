@@ -191,6 +191,6 @@ class StorageSweeperTest extends DatabaseSupport {
 
     private FileManagementProperties sweepDisabled() {
         return new FileManagementProperties(baseDir, null, null, null, null, null,
-                new FileManagementProperties.Storage(false, null, null, null, false, null), null, null, null);
+                new FileManagementProperties.Storage(null, null, false, null, null, null, false, null), null, null, null);
     }
 }

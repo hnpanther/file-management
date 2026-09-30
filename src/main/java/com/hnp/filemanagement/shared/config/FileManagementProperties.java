@@ -8,6 +8,8 @@ import org.springframework.boot.context.properties.bind.Name;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Every setting this application owns, in one tree ({@code docs/issues.md} issue 27, roadmap 2.1).
@@ -24,7 +26,8 @@ import java.time.ZoneId;
  * that is read here, {@code spring.servlet.multipart.max-file-size}, is a ceiling the upload
  * policy must not exceed, so it is read as what it is: Spring's.
  *
- * @param baseDir      the storage root; every stored byte is under it. Must exist and be writable
+ * @param baseDir      the storage root when {@code storage.backend} is {@code filesystem}: every
+ *                     stored byte is under it. Must exist and be writable
  * @param timeZone     the zone people read and type times in - the pages, the Jalali dates, the
  *                     day an API key expires on. Stored times are instants and need none; this
  *                     is only where they become a wall clock. {@code Asia/Tehran} unless set, and
@@ -36,7 +39,7 @@ import java.time.ZoneId;
  * @param folderAccess whether a person's folder grants are enforced as well as their permissions
  * @param folders      the shape of the folder tree
  * @param profiles     personal folders
- * @param storage      how unfinished byte writes are cleaned up
+ * @param storage      where the bytes are stored, and how unfinished writes are cleaned up
  * @param shareLinks   temporary share links
  * @param bootstrap    what the first start creates
  * @param auth         Active Directory, off by default
@@ -64,7 +67,7 @@ public record FileManagementProperties(
         folderAccess = folderAccess == null ? new FolderAccess(null) : folderAccess;
         folders = folders == null ? new Folders(null, null) : folders;
         profiles = profiles == null ? new Profiles(null) : profiles;
-        storage = storage == null ? new Storage(null, null, null, null, null, null) : storage;
+        storage = storage == null ? new Storage(null, null, null, null, null, null, null, null) : storage;
         shareLinks = shareLinks == null ? new ShareLinks(null, null, null, null, null) : shareLinks;
         bootstrap = bootstrap == null ? new Bootstrap(null) : bootstrap;
         auth = auth == null ? new Auth(null) : auth;
@@ -123,8 +126,14 @@ public record FileManagementProperties(
     }
 
     /**
-     * The sweeper that settles byte writes nobody finished (roadmap 2.3, {@code StorageSweeper}).
+     * Where the bytes are stored (roadmap Phase 4), and the sweeper that settles byte writes nobody
+     * finished (roadmap 2.3, {@code StorageSweeper}).
      *
+     * @param backend               {@code filesystem} - under {@code base-dir}, as always, and the
+     *                              default - or {@code s3}, an object store reached with the
+     *                              settings in {@code s3}. One backend for the whole installation:
+     *                              every row's {@code storage_key} is looked up in it
+     * @param s3                    the object store, read only when {@code backend} is {@code s3}
      * @param sweepEnabled          false stops the scheduled run; the sweep can still be called
      * @param sweepEveryMinutes     how often it runs. Read here for the record's sake - the
      *                              schedule itself reads the property, because an annotation is
@@ -138,16 +147,83 @@ public record FileManagementProperties(
      *                              start; it can still be called
      * @param checksumBackfillBatchSize revisions read per batch by the backfill
      */
-    public record Storage(Boolean sweepEnabled, @Min(1) Integer sweepEveryMinutes,
+    public record Storage(Backend backend, @Valid S3 s3,
+                          Boolean sweepEnabled, @Min(1) Integer sweepEveryMinutes,
                           @Min(1) Integer unfinishedAfterMinutes, @Min(1) Integer sweepBatchSize,
                           Boolean checksumBackfillEnabled, @Min(1) Integer checksumBackfillBatchSize) {
+
+        /** Where the bytes are: a directory, or an object store. */
+        public enum Backend { FILESYSTEM, S3 }
+
         public Storage {
+            backend = backend == null ? Backend.FILESYSTEM : backend;
+            s3 = s3 == null ? new S3(null, null, null, null, null, null, null, null) : s3;
             sweepEnabled = sweepEnabled == null || sweepEnabled;
             sweepEveryMinutes = sweepEveryMinutes == null ? 15 : sweepEveryMinutes;
             unfinishedAfterMinutes = unfinishedAfterMinutes == null ? 60 : unfinishedAfterMinutes;
             sweepBatchSize = sweepBatchSize == null ? 200 : sweepBatchSize;
             checksumBackfillEnabled = checksumBackfillEnabled == null || checksumBackfillEnabled;
             checksumBackfillBatchSize = checksumBackfillBatchSize == null ? 50 : checksumBackfillBatchSize;
+        }
+    }
+
+    /**
+     * An S3-compatible object store (roadmap Phase 4): SeaweedFS, Ceph RGW, MinIO or S3 itself.
+     *
+     * @param endpoint        {@code http://host:8333} - the store's S3 address
+     * @param region          what the store calls its region; self-hosted stores accept
+     *                        {@code us-east-1}, the default
+     * @param bucket          the one bucket every object is in; it must exist before the start
+     * @param accessKey       the application's access key
+     * @param secretKey       its secret - never printed
+     * @param pathStyleAccess {@code http://host/bucket/key} rather than {@code http://bucket.host/key};
+     *                        every self-hosted store needs it, so true unless set
+     * @param prefix          put every key under this prefix, for a bucket shared with something
+     *                        else; empty by default
+     * @param partSizeMb      a file larger than this is uploaded in parts of this size, and at most
+     *                        one part per upload is held in memory; S3's minimum is 5
+     */
+    public record S3(String endpoint, String region, String bucket, String accessKey, String secretKey,
+                     Boolean pathStyleAccess, String prefix, @Min(5) Integer partSizeMb) {
+        public S3 {
+            endpoint = endpoint == null ? "" : endpoint.trim();
+            region = region == null || region.isBlank() ? "us-east-1" : region.trim();
+            bucket = bucket == null ? "" : bucket.trim();
+            accessKey = accessKey == null ? "" : accessKey;
+            secretKey = secretKey == null ? "" : secretKey;
+            pathStyleAccess = pathStyleAccess == null || pathStyleAccess;
+            prefix = prefix == null ? "" : prefix.trim();
+            partSizeMb = partSizeMb == null ? 16 : partSizeMb;
+        }
+
+        /**
+         * The settings a start with the {@code s3} backend cannot do without and does not have,
+         * by the environment variable that sets each - empty when nothing is missing.
+         */
+        public List<String> missing() {
+            List<String> missing = new ArrayList<>();
+            if (endpoint.isBlank()) {
+                missing.add("FILEMANAGEMENT_S3_ENDPOINT");
+            }
+            if (bucket.isBlank()) {
+                missing.add("FILEMANAGEMENT_S3_BUCKET");
+            }
+            if (accessKey.isBlank()) {
+                missing.add("FILEMANAGEMENT_S3_ACCESS_KEY");
+            }
+            if (secretKey.isBlank()) {
+                missing.add("FILEMANAGEMENT_S3_SECRET_KEY");
+            }
+            return missing;
+        }
+
+        /** Every setting but the secret, which a record would otherwise print. */
+        @Override
+        public String toString() {
+            return "S3[endpoint=" + endpoint + ", region=" + region + ", bucket=" + bucket
+                    + ", accessKey=" + accessKey + ", secretKey=" + (secretKey.isEmpty() ? "" : "***")
+                    + ", pathStyleAccess=" + pathStyleAccess + ", prefix=" + prefix
+                    + ", partSizeMb=" + partSizeMb + "]";
         }
     }
 

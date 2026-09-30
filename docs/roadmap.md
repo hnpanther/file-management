@@ -39,7 +39,9 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
-2.5.1 is written: the upload cap from the environment, uploads of any size never held in memory -
+2.6.0 is written: **the storage backend is a setting** - `filesystem`, as always, or `s3`, an
+S3-compatible object store (Phase 4, step 2 of 4.7); nothing changes until it is set, and an
+installation with files needs the copy of 4.4 before it is switched. 2.5.1 is written too: the upload cap from the environment, uploads of any size never held in memory -
 the v2 `PUT` included, which was (issue 44) - and a 413 above the cap
 ([deployment.md](deployment.md#upgrading-from-250-to-251--the-upload-cap-from-the-environment)). Every
 release up to 2.5.0 is deployed. The cut-over's rollback window, announced to 2026-10-10, was
@@ -923,7 +925,7 @@ are the next step, not a rebuild. The code stays store-neutral - AWS SDK, path s
 | # | Step | Schema change |
 |---|---|---|
 | 1 | Proof of concept of the store (4.6), with the contract test run against it | - |
-| 2 | `S3BlobStore`, `filemanagement.storage.backend` and the S3 settings, health indicator, contract test on both backends | - |
+| 2 | **Done (2.6.0).** `S3BlobStore`, `filemanagement.storage.backend` and the S3 settings (`BlobStoreConfig`), health indicator, contract test on both backends - the S3 one against a SeaweedFS container, and the whole application on the s3 backend (`S3BackendTest`) | - |
 | 3 | The `storage-copy` tool, both directions, resumable, verifying | - |
 | 4 | The bucket set up (4.5), the backup procedure written and rehearsed, a full rehearsal of 4.4 on a copy | - |
 | 5 | The cut-over window; the directory kept read-only for the rollback weeks | - |

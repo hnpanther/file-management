@@ -201,7 +201,8 @@ database **and** `base-dir` together.
 | `filemanagement.bootstrap.admin-password` | *(none)* | the `Admin` account's password on the first start of an empty database (`FILEMANAGEMENT_BOOTSTRAP_ADMIN_PASSWORD`); unset, a random one is printed once to `app_log.log` |
 | `spring.datasource.*` | — | PostgreSQL connection (`FILEMANAGEMENT_DB_URL`, `_USERNAME`, `_PASSWORD`) |
 | `spring.jpa.hibernate.ddl-auto` | `validate` | schema is owned by Flyway |
-| `file.management.base-dir` | `./TempFiles/files/main/` | storage root; must exist and end with a separator |
+| `filemanagement.storage.backend` | `filesystem` | where the bytes are: `filesystem` (under the storage root below) or `s3`, an S3-compatible object store (`FILEMANAGEMENT_S3_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY`, `_SECRET_KEY`; see [deployment.md](docs/deployment.md#upgrading-from-251-to-260--an-object-store-as-the-backend-if-chosen)) |
+| `file.management.base-dir` | `./TempFiles/files/main/` | storage root of the filesystem backend; must exist |
 | `filemanagement.time-zone` | `Asia/Tehran` | the zone the pages show times in (`FILEMANAGEMENT_TIME_ZONE`); the database stores instants, and the server's own zone is never used |
 | `spring.servlet.multipart.max-file-size` | `20MB` | per-file upload cap (`FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE`, e.g. `1GB`); above it a 413. Uploads stream, so memory does not grow with it - see [deployment.md, Large uploads](docs/deployment.md#large-uploads) |
 | `spring.servlet.multipart.max-request-size` | `21MB` | per-request cap (`FILEMANAGEMENT_UPLOAD_MAX_REQUEST_SIZE`), a little above the file cap |
