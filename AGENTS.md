@@ -390,6 +390,14 @@ Rules for new tests:
   unique ones; override only what the test is about.
 * **Name what the test proves**, not the method it calls: `refusesToDeleteATagInUse`, not
   `deleteFolderTest`. Add `@DisplayName` in a sentence.
+* **An object-store test uses `support/TestObjectStores`**: one SeaweedFS container per run
+  (`chrislusf/seaweedfs`, the version `deploy/seaweedfs` runs) with one bucket. Give each store a
+  prefix of its own (`S3BlobStoreContractTest` does) rather than a bucket - every bucket is a
+  collection with volumes of its own.
+* **A test that is not `@Transactional` commits what it writes into the database every later test
+  shares.** Write nothing another test creates for itself - a role named `ADMIN` is the one that
+  bit (`S3BackendTest`): other tests save their own, and the second is a unique-key violation in
+  a test that has nothing to do with it.
 * **Anything time-dependent takes the clock as a bean.** `ClockConfig` provides it and
   `support/MutableClock` replaces it (`@Import(MutableClock.Config.class)`), so expiry and locks
   are tested by moving time, never by sleeping.

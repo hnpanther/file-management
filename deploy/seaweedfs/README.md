@@ -58,6 +58,15 @@ What to know before creating it:
   `storage_key` (`files/s000/123/report/v1/report.pdf`). Do not put anything else in it.
 * **Versioning on** - the safety net for a mistaken delete or overwrite; old versions are removed
   after 30 days by the lifecycle rule. The application's own versions are rows, not these.
+* **One lifecycle rule, over the whole bucket** (an empty prefix), with three actions: a version
+  that stopped being current is removed 30 days later; a delete marker with nothing left behind
+  it is removed; an unfinished multipart upload is aborted after a day. **Nothing current ever
+  expires** - only the application deletes a file.
+* **No object lock, no quota, no bucket policy.** Object lock would stop the application deleting
+  a revision and cannot be switched off again; the quota is the application's; and access is
+  `s3.json`'s - a policy with `"Principal": "*"` would make the bucket public.
+
+Three ways to do it, all with the same result - pick one.
 
 **With the AWS CLI** (`aws configure` with the `operator` key, region `us-east-1`):
 
@@ -70,9 +79,11 @@ aws --endpoint-url $S3 s3api put-bucket-versioning --bucket file-management-prod
     --versioning-configuration Status=Enabled
 
 aws --endpoint-url $S3 s3api put-bucket-lifecycle-configuration --bucket file-management-prod \
-    --lifecycle-configuration '{"Rules":[
-      {"ID":"expire-noncurrent","Status":"Enabled","Filter":{"Prefix":""},"NoncurrentVersionExpiration":{"NoncurrentDays":30}},
-      {"ID":"abort-multipart","Status":"Enabled","Filter":{"Prefix":""},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":1}}]}'
+    --lifecycle-configuration '{"Rules":[{"ID":"cleanup-old-versions","Status":"Enabled",
+      "Filter":{"Prefix":""},
+      "Expiration":{"ExpiredObjectDeleteMarker":true},
+      "NoncurrentVersionExpiration":{"NoncurrentDays":30},
+      "AbortIncompleteMultipartUpload":{"DaysAfterInitiation":1}}]}'
 ```
 
 **Or with Python (boto3)** - the same three steps. Give the client the region and path-style
@@ -95,15 +106,61 @@ s3.create_bucket(Bucket="file-management-prod")
 s3.put_bucket_versioning(Bucket="file-management-prod",
                          VersioningConfiguration={"Status": "Enabled"})
 s3.put_bucket_lifecycle_configuration(Bucket="file-management-prod", LifecycleConfiguration={"Rules": [
-    {"ID": "expire-noncurrent", "Status": "Enabled", "Filter": {"Prefix": ""},
-     "NoncurrentVersionExpiration": {"NoncurrentDays": 30}},
-    {"ID": "abort-multipart", "Status": "Enabled", "Filter": {"Prefix": ""},
+    {"ID": "cleanup-old-versions", "Status": "Enabled", "Filter": {"Prefix": ""},
+     "Expiration": {"ExpiredObjectDeleteMarker": True},
+     "NoncurrentVersionExpiration": {"NoncurrentDays": 30},
      "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 1}},
 ]})
 ```
 
-**Or in the admin UI** (Object Store → Buckets → create): the same name. Then set versioning and
-the lifecycle rules with one of the two above if the form does not offer them.
+**Or in the admin UI** (`http://127.0.0.1:23646`, user `admin`) - done this way on 2026-09-30, and
+read back identical to the two above:
+
+1. **Object Store → Buckets → Create New S3 Bucket**:
+
+   | Field | Value |
+   |---|---|
+   | Bucket Name | `file-management-prod` |
+   | Owner | `file-management` if the list offers it; otherwise leave *No owner* - access comes from `s3.json` (`Write:file-management-prod`) either way, which the check below proves |
+   | Enable Storage Quota | **off** |
+   | Enable Object Versioning | **on** |
+   | Enable Object Lock | **off** - it cannot be turned off again, and it stops the application deleting revisions |
+
+2. **Bucket Policy**: leave it as it is - `"Statement": []` - and save nothing there. It is access
+   control, not the lifecycle; "Use Sample Policy" is not a starting point for this bucket.
+3. **Lifecycle → Add rule**:
+
+   | Field | Value |
+   |---|---|
+   | ID | `cleanup-old-versions` |
+   | Status | **Enabled** |
+   | Prefix | **empty** - the grey `logs/` is only a placeholder; empty means the whole bucket |
+   | Tags, Size greater / less than | empty |
+   | Expire after … days | **off - never.** It deletes the *current* files after that many days |
+   | Expire on date | **off** - the same, by date |
+   | Remove expired object delete markers | **on** |
+   | Limit noncurrent versions | **on**: after `30` days; keep *newest* empty |
+   | Abort incomplete multipart uploads after | **on**: `1` day |
+
+   **Save rule.** The rule as the store keeps it (the admin UI shows it as XML):
+
+   ```xml
+   <LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Rule>
+     <ID>cleanup-old-versions</ID><Status>Enabled</Status><Filter><Prefix></Prefix></Filter>
+     <Expiration><ExpiredObjectDeleteMarker>true</ExpiredObjectDeleteMarker></Expiration>
+     <NoncurrentVersionExpiration><NoncurrentDays>30</NoncurrentDays></NoncurrentVersionExpiration>
+     <AbortIncompleteMultipartUpload><DaysAfterInitiation>1</DaysAfterInitiation></AbortIncompleteMultipartUpload>
+   </Rule></LifecycleConfiguration>
+   ```
+
+   There must be no `<Days>` inside `<Expiration>` - that would expire the current files - and
+   `<Prefix>` must be empty.
+
+Stored is not the same as carried out. **The rule is carried out by the `worker` service** (its S3
+lifecycle job), so the worker must run - and that SeaweedFS actually removes the old versions has
+not been seen yet. The test that settles it, on a bucket of its own with a one-day rule, is in
+[roadmap 4.5.1](../../docs/roadmap.md#451-the-lifecycle-rule-stored-not-yet-seen-carried-out);
+until it has passed, look at the bucket's size in the admin UI a month after the first deletes.
 
 **Then check it with the application's key**, not the operator's - that is the key the
 application will use:
@@ -114,6 +171,8 @@ AWS_ACCESS_KEY_ID=APP_KEY AWS_SECRET_ACCESS_KEY=APP_SECRET \
 AWS_ACCESS_KEY_ID=APP_KEY AWS_SECRET_ACCESS_KEY=APP_SECRET \
   aws --endpoint-url $S3 --region us-east-1 s3 rm s3://file-management-prod/check/test.txt
 aws --endpoint-url $S3 s3api get-bucket-versioning --bucket file-management-prod    # "Status": "Enabled"
+aws --endpoint-url $S3 s3api get-bucket-lifecycle-configuration --bucket file-management-prod
+    # one rule: "Prefix": "", NoncurrentDays 30, DaysAfterInitiation 1, ExpiredObjectDeleteMarker true
 ```
 
 An `AccessDenied` on the first command means the bucket's name and the one in `s3.json` differ.
@@ -122,7 +181,7 @@ An `AccessDenied` on the first command means the bucket's name and the one in `s
 
 | What | Where | For |
 |---|---|---|
-| **Admin UI** (`weed admin`, in this file) | `http://127.0.0.1:23646` on the host - from another machine through an SSH tunnel: `ssh -L 23646:127.0.0.1:23646 HOST` | the store: volumes and disk, buckets, a file browser, maintenance (vacuum, balance), the worker. User `admin`, `ADMIN_UI_PASSWORD`. Its **Users** page does not apply here: keys come from `s3.json`, which takes precedence over keys made in the UI. Keep it on loopback - published on `0.0.0.0` it puts the store's administration on the network |
+| **Admin UI** (`weed admin`, in this file) | `http://127.0.0.1:23646` on the host - from another machine through an SSH tunnel: `ssh -L 23646:127.0.0.1:23646 HOST` | the store: volumes and disk, buckets and their lifecycle rules, a file browser, maintenance (vacuum, balance, the lifecycle job), the worker. User `admin`, `ADMIN_UI_PASSWORD`. Its **Users** page does not apply here: keys come from `s3.json`, which takes precedence over keys made in the UI. Keep it on loopback - published on `0.0.0.0` it puts the store's administration on the network |
 | Master's page | `http://127.0.0.1:9333` on the host | the topology at a glance, read-only |
 | An S3 desktop client - **Cyberduck** or **WinSCP** (free), S3 Browser | the operator's own machine, with the `operator` key, path-style | looking at, fetching or restoring a single object by hand |
 | **Grafana** with SeaweedFS's dashboard (`other/metrics/grafana_seaweedfs.json` in its repository) | a Prometheus scraping each service's `-metricsPort` on the compose network | disk use, request rates, errors over time - the one to alert from |

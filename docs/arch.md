@@ -1,7 +1,8 @@
 # Architecture — Current State
 
-> Snapshot of the codebase as it exists on branch `redesign-arch` (version 1.5.0, HEAD `ac5ac68`).
-> For where we are going, see [target-architecture.md](target-architecture.md).
+> The codebase as it stands - kept current with each release, 2.6.0 the latest; a section names
+> the release that last changed what it describes. For where it is going, see
+> [target-architecture.md](target-architecture.md); for the order, [roadmap.md](roadmap.md).
 
 ## 1. What the application is
 

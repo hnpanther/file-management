@@ -12,7 +12,7 @@ working, and to depend only on what came before.
 | 1 | Spring Boot 4.1.1, staying on Java 21 | 0 | **done**; the language level moved to 25 in 1.4.0, on its own, once every host ran a JDK 25 |
 | 2 | Architectural restructuring | 1 | **nearly done**: 2.1, 2.2, 2.3 (the two-phase write 1.6.1; per-feature mappers and the package re-slice by feature 2.1.0) and most of 2.4 (issues 8, 12, 13; 14 by Phase 6); left, **together**: one REST surface (issue 18) and coarse permission verbs (issue 19) - both rename permissions and need a migration of their rows |
 | 3 | PostgreSQL migration | 1, partly 2, **and 7** | **done**: three releases, the middle one runs on both databases (3.2): release A (1.7.0), release B (2.0.0), the cut-over (2026-09-26, production on PostgreSQL), release C (2.1.0, MySQL removed from the code), then what only PostgreSQL has, `TIMESTAMPTZ` and trigram-indexed search (2.2.0) - all in production, and the MySQL service decommissioned (2026-09-30) |
-| 4 | An S3-compatible object store (SeaweedFS, subject to a proof of concept) as the storage backend, in place of the filesystem | 2, 3 | **planned** (4.1-4.7): one bucket, keys unchanged, a proof of concept of the store, a two-pass copy |
+| 4 | An S3-compatible object store (SeaweedFS, subject to a proof of concept) as the storage backend, in place of the filesystem | 2, 3 | **in progress** (4.7): the backend switch and `S3BlobStore` built (2.6.0); the proof of concept partly done - the lifecycle open (4.5.1); the copy, the backups and the window to come |
 | 5 | Folder tree: read-only view, then drag-and-drop | 3, 4 | view **done**; the move it needs **done** (7.2 step 5d, 1.4.0); the drag handlers are what is left |
 | 6 | Two-tier authorization: endpoint permissions + inherited folder access | 5.1 | **done**; enforcement switched on per installation, after the grants exist |
 | 7 | Nested folders replace the taxonomy; the four levels become tags | 6 | **done** (`V2.8` 1.3.0, `V2.9` 1.4.0): the taxonomy is gone, the folder is the structure at any depth up to a limit, and it is created, renamed, moved and deleted from the explorer |
@@ -78,21 +78,25 @@ What the releases since the cut-over brought, newest first:
 
 **What comes next**, in the order proposed:
 
-1. **Recording downloads** (9.2): the one event the file history does not hold yet - who, or which
+1. **Deploy 2.5.1 and 2.6.0**, on the filesystem backend as today: a jar swap, no migration. With
+   them the three upload settings and the reverse proxy's limit - IIS's is about 28 MB by default
+   ([deployment.md, Large uploads](deployment.md#large-uploads)).
+2. **Phase 4, the rest of it** ([the plan](#phase-4--s3-as-a-storage-backend), steps in
+   [4.7](#47-the-steps)): the backend switch is built (2.6.0) and SeaweedFS runs locally with the
+   bucket made. Left, in order: the proof of concept finished - **whether SeaweedFS actually
+   carries out the lifecycle rule** ([4.5.1](#451-the-lifecycle-rule-stored-not-yet-seen-carried-out)),
+   the application run against the real stack, a 1-2 GB file through it, a restore; then the copy
+   tool (4.4); then the backup procedure written and rehearsed; then the window. An S3-compatible
+   API for standard tools is planned separately ([9.10](#910-an-s3-compatible-mode--planned)).
+3. **Recording downloads** (9.2): the one event the file history does not hold yet - who, or which
    key, downloaded which revision, when. The history and the key activity page are built for it;
    what needs deciding is volume, since a download is the commonest request there is (one row per
-   download, kept for a set time, never counted on a page).
-2. **Phase 4 - S3 as a storage backend** ([the plan](#phase-4--s3-as-a-storage-backend)): one
-   bucket for the whole application with every `storage_key` unchanged, so no migration; versions
-   and formats stay rows, one object each; a proof of concept of the store first (SeaweedFS the
-   first candidate); a copy in two passes, most of it while the service runs, and a window of
-   minutes. An S3-compatible API for standard tools is planned separately
-   ([9.10](#910-an-s3-compatible-mode--planned)).
-3. **Phase 8 - IMS** (controlled documents, forms on `jsonb`, full-text search of their contents),
+   download, kept for a set time, never counted on a page). Small, and independent of Phase 4.
+4. **Phase 8 - IMS** (controlled documents, forms on `jsonb`, full-text search of their contents),
    when it is wanted.
-4. **Issues 18 and 19** - one REST surface and coarse permission verbs - one release of their own,
+5. **Issues 18 and 19** - one REST surface and coarse permission verbs - one release of their own,
    whenever the permission model is taken up; both rename permissions and migrate their rows.
-5. **Deferred by decision**: CI (step 3 below). And the operational leftovers: the credentials
+6. **Deferred by decision**: CI (step 3 below). And the operational leftovers: the credentials
    still in the git history rotated ([issue 11](issues.md#11-credentials-and-infrastructure-details-are-committed--s1)),
    and the `Admin` password changed on every installation that still has the first one.
 
@@ -148,7 +152,8 @@ per-feature mappers and issue 88 were done in 2.1.0.)
    interrupted run. The hardcoded `jdbc:mysql://localhost:3306/file_management_test` and
    `D:/files/test/` are gone.
 3. **`compose.yaml`** — MySQL for local runs, with `--lower-case-table-names=0` so identifier-casing
-   bugs surface on Windows too. PostgreSQL and MinIO join it in Phases 3 and 4.
+   bugs surface on Windows too. PostgreSQL replaced MySQL in it (Phase 3); the object store of
+   Phase 4 has a compose file of its own, `deploy/seaweedfs`.
 4. **CI.** `.github/workflows/build.yml` ran `./mvnw verify` on JDK 21 **and** 25 and added
    `dependency-review-action` on pull requests; `.github/dependabot.yml` scheduled weekly updates.
    **Both are gone** - removed by commit `d07fa86` and never replaced, so nothing builds or scans
@@ -754,14 +759,16 @@ This phase makes the application a **client** of an object store. It has nothing
 v2 API's buckets, which are a view of the folder tree offered to callers
 ([9.0](#90-first-two-different-things-were-both-called-s3-compatible), [9.10](#910-an-s3-compatible-mode--planned)).
 
-### Where this stands (2.5.0)
+### Where this stands (2.6.0)
 
-**The groundwork is done; the adapter is not written.**
+**The adapter is written; production still stores on the filesystem.** `S3BlobStore` and the
+setting that chooses it (`filemanagement.storage.backend`, `BlobStoreConfig`) are in 2.6.0, tested
+against SeaweedFS - the storage contract and the whole application (4.7, step 2). What made that a
+second implementation and nothing more:
 
 * **One port for every byte** (`BlobStore`, Phase 2): nothing outside `FilesystemBlobStore`
   touches the filesystem, so S3 is a second implementation of five methods and nothing else in
-  the application changes. Its promises are `BlobStoreContractTest`, which an `S3BlobStore`
-  passes to be done.
+  the application changes. Its promises are `BlobStoreContractTest`, which `S3BlobStore` passes.
 * **One opaque key per object** (`file_details.storage_key`), never rebuilt from the folders: a
   rename or a move touches no byte, which is exactly the shape an object store wants.
 * **A checksum for every revision** (1.8.0, issue 7): what proves an object arrived whole.
@@ -812,13 +819,12 @@ a while (4.5) - and the application never reads it.
 
 ### 4.3 `S3BlobStore`
 
-* `put` - `PutObject`, computing the SHA-256 and the byte count on the way through, as
-  `FilesystemBlobStore` does, and sending `x-amz-checksum-sha256` so a store that checks it
-  refuses a damaged upload. **The length must be known before the request: the port's `put`
-  takes it** (`MultipartFile` knows it; spooling a 100 MB file to a second temporary file only to
-  measure it would double the disk traffic). **Above a threshold (64 MB), multipart upload** in
-  16-64 MB parts - files average about 100 MB. `If-None-Match: *` where the store supports it,
-  `HEAD` first where it does not, to keep "never overwrite" true.
+* `put` - computing the SHA-256 and the byte count on the way through, as `FilesystemBlobStore`
+  does, and sending `x-amz-checksum-sha256` so a store that checks it refuses a damaged upload.
+  **Built (2.6.0) without changing the port:** an object store wants the length before the first
+  byte, so up to one part (`part-size-mb`, 16) is read first - a file that ends within it is one
+  `PutObject`, a larger one a multipart upload of parts that size, one part in memory at a time.
+  A `HeadObject` first keeps "never overwrite" true.
 * `open` - `GetObject`, streamed; `exists` - `HeadObject`; `delete` - `DeleteObject`, a 404
   from `HeadObject` first answering `ResourceNotFoundException` as the contract demands.
 * `deleteDirectory(prefix)` - `ListObjectsV2` and `DeleteObjects` in batches of 1,000. **List
@@ -858,8 +864,11 @@ has to catch up. No `TieredBlobStore`, no column saying where each row lives.
 
 * **Private**: no public access; the application's credentials allowed only `GetObject`,
   `PutObject`, `DeleteObject` and `ListBucket` on this one bucket.
-* **Versioning on**, with a lifecycle rule removing non-current versions after N days (30 to
-  start) - the safety net of 4.2 - and one aborting incomplete multipart uploads after a day.
+* **Versioning on**, with one lifecycle rule over the whole bucket: non-current versions
+  removed after 30 days, expired delete markers removed, incomplete multipart uploads aborted
+  after a day - the safety net of 4.2 (`deploy/seaweedfs/README.md`, "The bucket"). Never an
+  `Expiration` in days: it would remove the *current* files - and SeaweedFS stamps it on each
+  object as it is written, so taking the rule away later does not save them (its issue #11183).
 * **Server-side encryption** where the store offers it.
 * **Backups change**: `deployment.md`'s backups copy the storage directory; they become a
   replication or a scheduled mirror of the bucket to a second store or site (`rclone sync`,
@@ -871,6 +880,34 @@ has to catch up. No `TieredBlobStore`, no column saying where each row lives.
 * Later, optionally: downloads by pre-signed URL (`response-content-disposition` set as
   `ContentDispositions` does), taking the bytes off the application. Recording downloads (9.2)
   then happens before the redirect.
+
+### 4.5.1 The lifecycle rule: stored, not yet seen carried out
+
+**Open, and to be settled before the cut-over.** The rule is made (2026-09-30, in the admin UI)
+and read back exactly as intended - but that SeaweedFS *acts* on it has not been seen. In
+SeaweedFS the rule is carried out by the maintenance worker (`weed worker`, its S3 lifecycle job;
+`NoncurrentVersionExpiration` since 4.18), which walks the filer's metadata log - so the
+`worker` service of `deploy/seaweedfs` is required, not optional, and the log must reach back
+further than the 30 days. If the rule is never carried out, every deleted or replaced file keeps
+its bytes forever: the bucket grows by everything ever deleted.
+
+**The test**, on the local stack, in a bucket of its own (`lifecycle-test`) so that nothing real
+is involved, with the same rule but `NoncurrentDays` 1:
+
+1. Put `a.txt` twice (the first becomes non-current); put `b.txt` and delete it (a delete marker
+   over a non-current version); start a multipart upload of `c.bin` and never complete it.
+2. Write down `list-object-versions`, `list-multipart-uploads` and the volume sizes in the admin
+   UI.
+3. After a day and a little more, and once the admin UI shows the lifecycle job has run: `a.txt`
+   has one version; `b.txt`'s old version is gone and then its marker (possibly a run later);
+   the multipart upload is gone. After a vacuum (the worker's job, above the garbage threshold of
+   0.3) the volume is smaller.
+
+**The outcome goes here and into `deploy/seaweedfs/README.md`.** If the rule is carried out: the
+30 days stand, and the check becomes a line in the monthly look at the bucket. If it is not, or
+only partly: a scheduled job does it instead - `ListObjectVersions` and `DeleteObject` with the
+version id for every non-current version older than 30 days, `AbortMultipartUpload` for anything
+a day old - from the `operator` key, run by the host, not by the application.
 
 ### 4.6 Which store: a proof of concept first
 
@@ -909,8 +946,10 @@ without reading every object back; versioning with delete markers and the two li
 anonymous and wrongly signed requests all behave; replication `001` keeps identical bytes on both
 servers. Three lessons are in the file: the filer's database needs byte collation (`C`), `weed
 admin` needs an explicit `-ip` for its workers to connect, and every bucket takes its own volumes -
-a disk needs room for at least six of them. Still to do: the contract test against it (4.3), a
-1-2 GB file through the application, and a restore.
+a disk needs room for at least six of them. Since done: the contract test against it (4.3,
+2.6.0, `S3BlobStoreContractTest`). Still to do: whether the lifecycle rule is carried out
+([4.5.1](#451-the-lifecycle-rule-stored-not-yet-seen-carried-out)), the application run against
+the real stack, a 1-2 GB file through it, and a restore.
 
 **Phase one runs on one host with one volume server and one data disk** (replication `000`), the
 compose file rewritten and verified for it the same day: one copy of every file, so RAID 1 under
@@ -924,7 +963,7 @@ are the next step, not a rebuild. The code stays store-neutral - AWS SDK, path s
 
 | # | Step | Schema change |
 |---|---|---|
-| 1 | Proof of concept of the store (4.6), with the contract test run against it | - |
+| 1 | Proof of concept of the store (4.6), with the contract test run against it. **Partly done (2026-09-30):** the compose file and its checks, the bucket, versioning and the lifecycle rule made, the contract test on SeaweedFS. **Left:** the lifecycle rule seen carried out (4.5.1), the application on the real stack, a 1-2 GB file through it, a restore | - |
 | 2 | **Done (2.6.0).** `S3BlobStore`, `filemanagement.storage.backend` and the S3 settings (`BlobStoreConfig`), health indicator, contract test on both backends - the S3 one against a SeaweedFS container, and the whole application on the s3 backend (`S3BackendTest`) | - |
 | 3 | The `storage-copy` tool, both directions, resumable, verifying | - |
 | 4 | The bucket set up (4.5), the backup procedure written and rehearsed, a full rehearsal of 4.4 on a copy | - |
@@ -1905,8 +1944,9 @@ api_key_folder (api_key_id, folder_id, permission)
   Still to come, **not started**:
   * **Recording downloads.** No download is recorded in the database - a person's or a key's; the
     log has each one, with the key's id (`userId/keyId`). For a controlled document "who read this
-    revision" is a real question; the likely shape is an `action_history` row per API download (a
-    person's are many more, and a page view is not a record), decided with Phase 8.
+    revision" is a real question; since 2.5.0 the file history is where it would go (a
+    `DOWNLOADED` event), what is left to decide is volume - one row per download, kept for a set
+    time. Listed third in "What comes next", after Phase 4.
   * ~~**A key's activity page.**~~ — **done (2.5.0)**: `/api-keys/{id}/activity`
     (`API_KEY_ACTIVITY_PAGE`, in the API keys group), what the key uploaded, added, changed and
     deleted, newest first, read from the file history (`file_history.api_key_id`, indexed), under

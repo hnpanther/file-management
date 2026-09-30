@@ -126,7 +126,7 @@ find it again.
 | Path | Holds | Back up? |
 |---|---|---|
 | `FILEMANAGEMENT_LOG_PATH` | `app_log.log` and `archived/` | No — rotated daily / 10 MB, 10 kept |
-| `FILEMANAGEMENT_BASE_DIR` | every uploaded file, as `files/s{id ÷ 1000}/{file id}/{FileName}/v{n}/{file}.{ext}` since 1.5.0 (older files keep their own layout) | **Yes, with the database** |
+| `FILEMANAGEMENT_BASE_DIR` | every uploaded file, as `files/s{id ÷ 1000}/{file id}/{FileName}/v{n}/{file}.{ext}` since 1.5.0 (older files keep their own layout) - on the `filesystem` backend; on `s3` the same keys are objects in the bucket | **Yes, with the database** |
 
 > **The file directory and the database must be backed up together.** The rows and the bytes are
 > only meaningful as a pair: `file_info` and `file_details` hold the paths, never the content. A
@@ -861,7 +861,7 @@ The first release that uses what only PostgreSQL has (roadmap step 9). **Two mig
 by the first start: `V3.1` makes every timestamp an instant (issue 24) and `V3.2` indexes the
 searches (issue 21). On a copy of production's data they took 0.3 seconds (8 seconds on the same
 data scaled to 205,000 files); the service is stopped for the upgrade anyway. Deploy it **after 2.1.0**, never in its place while the MySQL rollback window
-is open.
+is open. *(Deployed; MySQL decommissioned on 2026-09-30 - the window no longer applies.)*
 
 **Before the start**
 
@@ -936,6 +936,7 @@ to configure; take the database backup first, as always, and watch the start for
 * **Deploy it after 2026-10-10**, when the rollback window of the cut-over closes. Until then the
   way back to MySQL is the 2.0.0 jar with the MySQL URL - 2.1.0 has no MySQL driver and no MySQL
   migrations, and cannot start on MySQL at all. Keep the 2.0.0 jar until the MySQL is gone.
+  *(Deployed; the window was closed early and MySQL decommissioned on 2026-09-30.)*
 * **The baseline moved** inside the jar, from `db/migration/postgresql/V3.0__Baseline.sql` to
   `db/migration/V3.0__Baseline.sql`, byte for byte. Flyway records a migration by its file name
   and checksum, not its path, so the history of 2026-09-26 validates as it is. A
@@ -952,7 +953,7 @@ to configure; take the database backup first, as always, and watch the start for
 
 **Rollback** is the 2.0.0 jar, on the same PostgreSQL: no schema, no data and no setting changed.
 
-**After it, the MySQL** can be decommissioned: [MySQL, until it is decommissioned](#mysql-until-it-is-decommissioned).
+**After it, the MySQL** can be decommissioned: [MySQL - decommissioned (2026-09-30)](#mysql---decommissioned-2026-09-30).
 
 ### Upgrading from 1.9.0 to 2.0.0 — able to run on PostgreSQL, still on MySQL
 
@@ -1827,14 +1828,13 @@ New-NetFirewallRule -DisplayName "File Management 8122" -Direction Inbound -Loca
 
 ---
 
-## MySQL, until it is decommissioned
+## MySQL - decommissioned (2026-09-30)
 
 Production has run on PostgreSQL since 2026-09-26 ([below](#postgresql-the-database-and-the-copy)),
-and from 2.1.0 on the application cannot use MySQL at all. What is left of MySQL is the copy of the
-data as it stood on the night of the cut-over, kept **read-only** for the rollback window, which
-closes on **2026-10-10**; the way back inside the window is the 2.0.0 jar (roadmap 3.6, "Rollback").
-
-After the window, and once 2.1.0 is in production:
+and from 2.1.0 on the application cannot use MySQL at all. The rollback window, announced to
+2026-10-10, was closed early: **MySQL is switched off**, and the way back from here is a PostgreSQL
+restore, never the MySQL or a 2.0.0 jar. What was done - kept as the record, and as the steps for
+any other host that still runs it:
 
 1. Keep the last MySQL dump - the one taken on the night of the cut-over - with the backups, as the
    record of the data before the move; it restores into MySQL only.
@@ -1856,8 +1856,9 @@ After the window, and once 2.1.0 is in production:
 ## PostgreSQL: the database and the copy
 
 From 2.0.0 the jar runs on PostgreSQL (17 or 18) as well as on MySQL; which one is the datasource
-URL. **Production moved to PostgreSQL on 2026-09-26** (roadmap 3.6); the MySQL stays, read-only,
-until the rollback window closes on 2026-10-10, and goes with release C. This section is what that plan refers to: how the PostgreSQL database and
+URL. **Production moved to PostgreSQL on 2026-09-26** (roadmap 3.6), and MySQL was decommissioned
+on 2026-09-30. This section is what that plan referred to - and still how a new installation's
+database is made: how the PostgreSQL database and
 its account are created, what goes into the configuration, and how the copy is run. Nothing here is
 done on the MySQL.
 
@@ -2055,11 +2056,16 @@ anonymous bytes that nothing can place.
 
 **Both halves, one run, restored as the pair they were taken as.**
 
-> **The MySQL after the cut-over** is read-only until the rollback window closes, so it no longer
-> changes and needs no nightly dump: the one taken on the night of the cut-over is its backup,
-> kept until MySQL is decommissioned (release C). The scripts below dump PostgreSQL. A dump taken
-> *before* the cut-over (`db.sql`, from `mysqldump`) restores into MySQL only, and only matters
-> for a rollback inside the window (roadmap 3.6).
+> **MySQL is decommissioned** (2026-09-30). Its last dump, taken on the night of the cut-over,
+> is kept with the backups as the record of the data before the move; it restores into MySQL only.
+> The scripts below dump PostgreSQL.
+
+> **On the `s3` backend** (`FILEMANAGEMENT_STORAGE_BACKEND=s3`, 2.6.0) the second half is the
+> bucket, not the directory, and the directory steps below do not apply to it: the bucket is
+> mirrored to a second store, and the object store's own metadata database is dumped with the
+> application's (`deploy/seaweedfs/README.md`, "Backups"). That procedure is to be written here in
+> full and rehearsed with a restore before production moves (roadmap 4.7, step 4). The rule of
+> this section stands: database and bytes, together, as one pair.
 
 ### Order: database first, then files
 
