@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<!--
+  The record of downloads (2.7.0), shared by the downloads page and the file page: a page of
+  downloads as a table. Every value is what was recorded at the time - a deleted file still reads
+  as it was; one that is still there is a link. Who: the person, the API key by its current title,
+  or nobody - a share link or the public files - with the address in every case.
+-->
+<body>
+
+<div th:fragment="downloads-table(entries, showFile)" class="table-responsive">
+    <table class="table history-table">
+        <thead>
+        <tr>
+            <th scope="col" th:text="#{fileDownloads.column.when}">زمان</th>
+            <th scope="col" th:if="${showFile}" th:text="#{fileDownloads.column.file}">فایل</th>
+            <th scope="col" th:text="#{fileDownloads.column.version}">نسخه</th>
+            <th scope="col" th:text="#{fileDownloads.column.by}">دریافت‌کننده</th>
+            <th scope="col" th:text="#{fileDownloads.column.ip}">نشانی IP</th>
+            <th scope="col" th:text="#{fileDownloads.column.channel}">از طریق</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="d : ${entries}">
+            <td class="history-when technical" dir="ltr" th:text="${@jalali.format(d.occurredAt())}">۱۴۰۵/۰۷/۰۵ ۱۰:۲۰</td>
+            <td th:if="${showFile}" class="history-file">
+                <a th:if="${d.liveFileId() != null}" class="technical" dir="auto"
+                   th:href="@{'/files/file-info/' + ${d.liveFileId()}}" th:text="${d.fileName()}">report.pdf</a>
+                <span th:unless="${d.liveFileId() != null}" class="technical" dir="auto" th:text="${d.fileName()}">report.pdf</span>
+                <span th:if="${d.liveFileId() == null}" class="badge history-gone" th:text="#{fileHistory.gone}">حذف‌شده</span>
+            </td>
+            <td class="technical" dir="ltr" th:text="${d.version() == null} ? '-' : 'v' + ${d.version()}">v1</td>
+            <td>
+                <span th:if="${d.apiKeyId() != null}" class="history-actor is-key">
+                    <i class="bi bi-key" aria-hidden="true"></i>
+                    <span th:text="#{field.createdByApiKey(${d.apiKeyTitle() != null ? d.apiKeyTitle() : d.apiKeyId()})}">از طریق API با کلید «…»</span>
+                </span>
+                <span th:if="${d.apiKeyId() == null and d.username() != null}" class="history-actor technical" dir="auto"
+                      th:text="${d.username()}">user</span>
+                <span th:if="${d.apiKeyId() == null and d.username() == null}" class="text-ink-500"
+                      th:text="#{fileDownloads.anonymous}">بدون ورود</span>
+            </td>
+            <td class="technical" dir="ltr">
+                <a th:if="${d.clientIp() != null}" th:href="@{/files/downloads(ip=${d.clientIp()})}" th:text="${d.clientIp()}">10.0.0.5</a>
+            </td>
+            <td th:text="#{'fileDownloads.channel.' + ${d.channel().name()}}">صفحهٔ فایل</td>
+        </tr>
+        </tbody>
+    </table>
+</div>
+
+</body>
+</html>

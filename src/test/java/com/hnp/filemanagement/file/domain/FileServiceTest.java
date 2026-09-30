@@ -78,7 +78,7 @@ class FileServiceTest extends DatabaseSupport {
     @Autowired
     private EntityManager entityManager;
 
-    @Value("${file.management.base-dir}")
+    @Value("${filemanagement.base-dir}")
     private String baseDir;
 
     private User creator;

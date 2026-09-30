@@ -27,4 +27,12 @@ public class FileDownloadDTO {
 
     /** Lower-case hex SHA-256 of the stored bytes; null for a revision the backfill has not read. */
     private String checksumSha256;
+
+    /** The file and the folder it is in - what the record of the download names (2.7.0). */
+    private Integer fileInfoId;
+
+    private Integer folderId;
+
+    /** The share link it went out through, or null for every other way. */
+    private Integer shareLinkId;
 }

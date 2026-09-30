@@ -214,6 +214,23 @@
                  th:replace="~{file-management/files/history-fragments.html :: history-table(${history}, false)}"></div>
         </div>
     </section>
+    <section class="card mt-5" aria-labelledby="file-downloads-title" th:if="${downloads != null}"
+             sec:authorize="hasAuthority('FILE_DOWNLOADS_PAGE') || hasAuthority('ADMIN')">
+        <div class="card-body">
+            <div class="section-heading">
+                <i class="bi bi-cloud-arrow-down" aria-hidden="true"></i>
+                <div>
+                    <h2 id="file-downloads-title" th:text="#{fileDownloads.fileSection}">دانلودهای این فایل</h2>
+                    <p th:text="#{fileDownloads.fileSectionHint}"></p>
+                </div>
+                <a class="btn btn-sm btn-outline-secondary ms-auto" th:href="@{/files/downloads(file=${file.getId()})}"
+                   th:text="#{fileDownloads.seeAll}">همهٔ دانلودهای این فایل</a>
+            </div>
+            <p th:if="${#lists.isEmpty(downloads)}" class="text-ink-500" th:text="#{fileDownloads.empty}">دانلودی پیدا نشد.</p>
+            <div th:unless="${#lists.isEmpty(downloads)}"
+                 th:replace="~{file-management/files/download-fragments.html :: downloads-table(${downloads}, false)}"></div>
+        </div>
+    </section>
 </main>
 <th:block th:replace="~{fragments.html :: scripts}"></th:block>
 

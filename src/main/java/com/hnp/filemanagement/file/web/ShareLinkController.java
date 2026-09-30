@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.web;
 
+import com.hnp.filemanagement.file.domain.DownloadChannel;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
 import com.hnp.filemanagement.file.domain.FileDownloadDTO;
 import com.hnp.filemanagement.file.domain.FileShareLink;
@@ -36,10 +37,13 @@ public class ShareLinkController {
 
     private final GlobalGeneralLogging globalGeneralLogging;
     private final ShareLinkService shareLinkService;
+    private final DownloadAudit downloadAudit;
 
-    public ShareLinkController(GlobalGeneralLogging globalGeneralLogging, ShareLinkService shareLinkService) {
+    public ShareLinkController(GlobalGeneralLogging globalGeneralLogging, ShareLinkService shareLinkService,
+                               DownloadAudit downloadAudit) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.shareLinkService = shareLinkService;
+        this.downloadAudit = downloadAudit;
     }
 
     // ------------------------------------------------------------------ the public side
@@ -63,6 +67,7 @@ public class ShareLinkController {
         globalGeneralLogging.detail("download via share link");
         ShareLinkService.Attempt attempt = shareLinkService.download(token, password == null ? "" : password);
         if (attempt.outcome() == ShareLinkService.Outcome.DOWNLOAD) {
+            downloadAudit.served(attempt.file(), DownloadChannel.SHARE_LINK);
             return attachment(attempt.file());
         }
         // Re-read for the page: the attempt may have locked the link.

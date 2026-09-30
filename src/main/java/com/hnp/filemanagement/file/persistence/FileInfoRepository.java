@@ -341,4 +341,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
                                  OR UPPER(tg.name) NOT IN (SELECT UPPER(a.name) FROM folder a WHERE a.depth > 0 AND t.path LIKE CONCAT(a.path, '%'))))
             """, nativeQuery = true)
     List<Integer> findIdsWhoseTagsDisagreeWithTheFolders();
+
+    /** Which of these files still exist - one query for a page of download records (2.7.0). */
+    @Query("SELECT f.id FROM FileInfo f WHERE f.id IN :ids")
+    List<Integer> findExistingIds(@Param("ids") Collection<Integer> ids);
 }

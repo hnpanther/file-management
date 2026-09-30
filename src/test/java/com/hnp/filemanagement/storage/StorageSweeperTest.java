@@ -67,7 +67,7 @@ class StorageSweeperTest extends DatabaseSupport {
     private UserRepository userRepository;
     @Autowired
     private MutableClock clock;
-    @Value("${file.management.base-dir}")
+    @Value("${filemanagement.base-dir}")
     private String baseDir;
 
     private int adminId;
@@ -191,6 +191,6 @@ class StorageSweeperTest extends DatabaseSupport {
 
     private FileManagementProperties sweepDisabled() {
         return new FileManagementProperties(baseDir, null, null, null, null, null,
-                new FileManagementProperties.Storage(null, null, false, null, null, null, false, null), null, null, null);
+                new FileManagementProperties.Storage(null, null, false, null, null, null, false, null), null, null, null, null);
     }
 }

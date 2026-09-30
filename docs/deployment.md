@@ -713,6 +713,59 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 2.6.0 to 2.7.0 — who downloaded what, and one setting renamed
+
+One migration (`V3.6`, a new table `file_download` - quick, it starts empty); take the backups as
+always. **Before starting it, check the storage root's name**:
+
+* **`file.management.base-dir` is gone.** The root is `filemanagement.base-dir` - or, as every
+  service definition here already sets it, `FILEMANAGEMENT_BASE_DIR`. An installation that still
+  sets the old name anywhere (an external `application.properties`, an `application-local.properties`,
+  a `-D` argument) **stops at the start**, saying what to rename and to which directory it pointed:
+  otherwise it would have started, ignored the old name and written every new upload under the
+  default directory, beside the real files. `FILEMANAGEMENT_BASE_DIR` needs nothing.
+
+What is new:
+
+* **Every download is recorded** - the file, the revision, the time, who (the person signed in,
+  the API key and its creator, or nobody for a share link and the public files) and **the address
+  it came from**, and which way: the file page, a preview, the public files, a share link, API v1
+  or v2. `/files/downloads` lists them with filters (file, username, address, channel, API key,
+  dates), a file's page shows its latest 20, and an API key's activity page links to the key's.
+  Grant **`FILE_DOWNLOADS_PAGE`** to whoever should see them (`ADMIN` needs nothing); like the
+  file history, a reader sees only the downloads of folders their folder access reaches.
+* **A download never waits for its record and never fails because of it.** The record is queued
+  in memory and written by a thread of its own once a second, in batches, outside the request's
+  transaction; a database that is slow or down costs a download nothing (tested with it hanging
+  and then refusing). What can be lost is said plainly: the last second's records if the process
+  is killed, and the records of a database outage. A `HEAD`, the later ranges of a PDF preview and
+  the same download again within a minute are not recorded twice.
+* **Two settings**, both optional:
+
+  | Variable | Default | |
+  |---|---|---|
+  | `FILEMANAGEMENT_DOWNLOADS_ENABLED` | `true` | `false` records nothing and starts no writer; the pages still show what was recorded before |
+  | `FILEMANAGEMENT_DOWNLOADS_RETENTION_DAYS` | `365` | Records older than this are removed every night at 03:40 (in `FILEMANAGEMENT_TIME_ZONE`), in batches; `0` keeps them for ever |
+
+* **The address is the client's only if the proxy says so.** Behind IIS/ARR or nginx the
+  application records the address from `X-Forwarded-For`, which it honours from loopback and
+  private addresses only ([section 9](#9-windows-firewall)); make sure the proxy sends it. Two
+  consequences: without the header every download is recorded from the proxy's address; and a
+  client that reaches port 8122 directly *from a private address* could write any address it
+  likes into that header - one more reason not to open 8122. To trust the proxy alone, set
+  `server.tomcat.remoteip.internal-proxies` to its address (a regular expression, e.g.
+  `127\.0\.0\.1`).
+* **An address is personal data.** One year is the default because it answers "who took this
+  file" for a year; set the retention to what your policy allows.
+* **On the `s3` backend only**: `FILEMANAGEMENT_S3_MAX_CONNECTIONS` (default `200`). A download
+  holds a connection to the store until its last byte is sent; 2.6.0 had the AWS SDK's own pool of
+  50, so the 51st download at once waited 40 seconds and failed while the store was idle. Keep it
+  at least `server.tomcat.threads.max` (200 unless you changed it).
+
+**Rollback** is the backup restored and the 2.6.0 jar, in the same operation ([Rollback](#7-rollback));
+what is lost is the download records since. No setting has to be taken back: `FILEMANAGEMENT_BASE_DIR`
+is what 2.6.0 reads too.
+
 ### Upgrading from 2.5.1 to 2.6.0 — an object store as the backend, if chosen
 
 A jar swap; no migration, and **nothing changes unless it is asked for**: the files stay on the
@@ -728,7 +781,8 @@ FILEMANAGEMENT_S3_BUCKET=file-management-prod
 FILEMANAGEMENT_S3_ACCESS_KEY=<the application's key in the store>
 FILEMANAGEMENT_S3_SECRET_KEY=<its secret>
 # optional: FILEMANAGEMENT_S3_REGION (us-east-1), FILEMANAGEMENT_S3_PATH_STYLE_ACCESS (true),
-#           FILEMANAGEMENT_S3_PREFIX (none), FILEMANAGEMENT_S3_PART_SIZE_MB (16)
+#           FILEMANAGEMENT_S3_PREFIX (none), FILEMANAGEMENT_S3_PART_SIZE_MB (16),
+#           FILEMANAGEMENT_S3_MAX_CONNECTIONS (200, since 2.7.0)
 ```
 
 **Do not switch an installation that has files** until they have been copied into the bucket
@@ -1631,6 +1685,9 @@ not optional.
     <env name="FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE" value="1GB"/>
     <env name="FILEMANAGEMENT_UPLOAD_MAX_REQUEST_SIZE" value="1025MB"/>
     <env name="FILEMANAGEMENT_UPLOAD_TEMP_DIR" value="D:\MyApp\file-management\upload-tmp"/>
+    <!-- Who downloaded what (2.7.0): on by default, kept a year. Optional. -->
+    <env name="FILEMANAGEMENT_DOWNLOADS_ENABLED" value="true"/>
+    <env name="FILEMANAGEMENT_DOWNLOADS_RETENTION_DAYS" value="365"/>
 
     <startmode>Automatic</startmode>
 
@@ -1677,7 +1734,7 @@ Three places work; pick one per setting.
 1. **`<env>` entries in `FileManagement.xml`**, as above. Simplest, and what the file shows.
 2. **`D:\MyApp\file-management\config\application.properties`** — read automatically because the
    service's working directory is `D:\MyApp\file-management`. Holds any property, in the same
-   names as the packaged file (`spring.datasource.password=…`, `file.management.base-dir=…`). No
+   names as the packaged file (`spring.datasource.password=…`, `filemanagement.base-dir=…`). No
    flag is needed. Details in [Configuring it from outside the jar](#configuring-it-from-outside-the-jar).
 3. **`application-local.properties` beside the jar**, activated with
    `--spring.profiles.active=prod,local` in `<arguments>`. The repository ships
@@ -1815,7 +1872,8 @@ The proxy is also where TLS ends. The application speaks plain HTTP on 8122 and 
 reached only through a proxy (IIS with ARR, nginx, or the load balancer) that holds the
 certificate, listens on 443 and forwards to `127.0.0.1:8122` with the standard headers -
 `X-Forwarded-Proto`, `X-Forwarded-For`, `X-Forwarded-Host`. The application honours those
-headers from loopback and private addresses (`server.forward-headers-strategy=native`), and once
+headers from loopback and private addresses (`server.forward-headers-strategy=native`) - the
+client's address in `X-Forwarded-For` is the one the download records keep (2.7.0) - and once
 it knows a request came in over https it marks the session cookie `Secure`, redirects to `https://`
 after login, and sends `Strict-Transport-Security` on its own. API credentials - Basic and Bearer
 alike - cross the wire in the clear on any hop that is not TLS, which is the whole reason for the

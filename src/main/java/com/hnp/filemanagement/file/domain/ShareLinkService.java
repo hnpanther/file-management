@@ -268,7 +268,9 @@ public class ShareLinkService {
                 link.getCreatedBy().getId(), "DOWNLOAD VIA SHARE LINK",
                 "download " + link.getDownloadCount() + (link.getMaxDownloads() == null ? "" : " of " + link.getMaxDownloads())
                         + " of fileDetails id=" + link.getFileDetails().getId() + " via share link id=" + link.getId());
-        return new Attempt(Outcome.DOWNLOAD, fileService.downloadViaShareLink(link.getFileDetails().getId()), null);
+        FileDownloadDTO file = fileService.downloadViaShareLink(link.getFileDetails().getId());
+        file.setShareLinkId(link.getId());
+        return new Attempt(Outcome.DOWNLOAD, file, null);
     }
 
     // ------------------------------------------------------------------ the page

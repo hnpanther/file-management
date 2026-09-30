@@ -82,6 +82,35 @@ class S3BlobStoreTest {
                 .isEqualTo(Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(bytes)));
     }
 
+    /**
+     * Above one part the store keeps a <em>composite</em> checksum, not the file's: the SHA-256 of
+     * the parts' SHA-256s one after another, with {@code -n} for n parts (seen on the 1 GB run of
+     * 2.7.0: {@code ...=-64}). It cannot be compared with {@code checksum_sha256}, but it can be
+     * computed from the file and the part size alone - which is what the copy of 4.4 checks a
+     * multipart object against without reading it back.
+     */
+    @Test
+    @DisplayName("above one part the store keeps the composite checksum of the parts, computable from the file and the part size")
+    void aMultipartObjectKeepsTheCompositeChecksum() throws NoSuchAlgorithmException {
+        String prefix = "unit-" + UUID.randomUUID();
+        S3BlobStore store = new S3BlobStore(s3, TestObjectStores.BUCKET, prefix, PART);
+        byte[] bytes = random(2 * PART + 12_345);
+        store.put(StorageKey.of("files/s000/1/big/v1/big.pdf"), new ByteArrayInputStream(bytes));
+
+        HeadObjectResponse head = s3.headObject(request -> request.bucket(TestObjectStores.BUCKET)
+                .key(prefix + "/files/s000/1/big/v1/big.pdf").checksumMode(ChecksumMode.ENABLED));
+
+        MessageDigest ofParts = MessageDigest.getInstance("SHA-256");
+        int parts = 0;
+        for (int from = 0; from < bytes.length; from += PART) {
+            ofParts.update(MessageDigest.getInstance("SHA-256").digest(
+                    Arrays.copyOfRange(bytes, from, Math.min(from + PART, bytes.length))));
+            parts++;
+        }
+        assertThat(parts).isEqualTo(3);
+        assertThat(head.checksumSHA256()).isEqualTo(Base64.getEncoder().encodeToString(ofParts.digest()) + "-" + parts);
+    }
+
     @Test
     @DisplayName("a skip before the first read is a ranged request: the bytes served are the ones asked for")
     void aSkipIsARange() throws IOException {

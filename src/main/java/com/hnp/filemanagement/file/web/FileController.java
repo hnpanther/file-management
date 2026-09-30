@@ -1,5 +1,7 @@
 package com.hnp.filemanagement.file.web;
 
+import com.hnp.filemanagement.file.domain.FileDownloadService;
+import com.hnp.filemanagement.file.domain.DownloadChannel;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
 import com.hnp.filemanagement.file.domain.FileDetailsDTO;
 import com.hnp.filemanagement.file.domain.FileDownloadDTO;
@@ -57,6 +59,8 @@ public class FileController {
 
     private final GlobalGeneralLogging globalGeneralLogging;
     private final FileService fileService;
+    private final FileDownloadService fileDownloadService;
+    private final DownloadAudit downloadAudit;
     private final UploadPolicyService uploadPolicyService;
     private final UiMessages messages;
     private final FileHistoryService fileHistoryService;
@@ -65,13 +69,16 @@ public class FileController {
 
     public FileController(GlobalGeneralLogging globalGeneralLogging, FileService fileService,
                           UploadPolicyService uploadPolicyService, FileManagementProperties properties,
-                          UiMessages messages, FileHistoryService fileHistoryService) {
+                          UiMessages messages, FileHistoryService fileHistoryService,
+                          FileDownloadService fileDownloadService, DownloadAudit downloadAudit) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.fileService = fileService;
         this.uploadPolicyService = uploadPolicyService;
         this.defaultPageSize = properties.defaults().pageSize();
         this.messages = messages;
         this.fileHistoryService = fileHistoryService;
+        this.fileDownloadService = fileDownloadService;
+        this.downloadAudit = downloadAudit;
     }
 
     /** Whether this person holds the permission, ADMIN counting as every permission. */
@@ -315,6 +322,10 @@ public class FileController {
         if (holds(userDetails, "FILE_HISTORY_PAGE")) {
             model.addAttribute("history", fileHistoryService.ofFile(fileInfoDTO.getExternalId()));
         }
+        // And who downloaded it (2.7.0), likewise only for whoever may read the downloads.
+        if (holds(userDetails, "FILE_DOWNLOADS_PAGE")) {
+            model.addAttribute("downloads", fileDownloadService.ofFile(fileInfoId, principalId));
+        }
         return "file-management/files/file-info-page.html";
     }
 
@@ -326,6 +337,7 @@ public class FileController {
         globalGeneralLogging.detail("download public fileDetails with id=" + fileDetailsId);
 
         FileDownloadDTO fileDownloadDTO = fileService.downloadPublicFile(fileDetailsId);
+        downloadAudit.served(fileDownloadDTO, DownloadChannel.PUBLIC);
         return download(fileDownloadDTO, "1".equals(inline));
     }
 
@@ -365,6 +377,8 @@ public class FileController {
         globalGeneralLogging.detail("download fileDetails with id=" + fileDetailsId);
 
         FileDownloadDTO fileDownloadDTO = fileService.downloadFile(fileDetailsId, principalId);
+        boolean shownInline = "1".equals(inline) && fileDownloadDTO.isInlineSafe();
+        downloadAudit.served(fileDownloadDTO, shownInline ? DownloadChannel.PREVIEW : DownloadChannel.PAGE);
         return download(fileDownloadDTO, "1".equals(inline));
     }
 

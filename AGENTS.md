@@ -282,6 +282,12 @@ mismatch. PostgreSQL only since release C (2.1.0): `V3.0__Baseline.sql` in
   same transaction, beside the `actionHistoryService` call - a new way to change, create or delete
   a file or a revision without it leaves the file's history silently incomplete. The history is
   followed by external id and never counted.
+* **Every way a file's bytes leave records the download** (2.7.0): a handler that sends a
+  revision calls `downloadAudit.served(download, DownloadChannel.X)` once it has decided to send it
+  (after the access checks, before the body) - the six today are in `FileController`, `FileApi`,
+  `ObjectStoreApi` and `ShareLinkController`. Never write `file_download` from a request thread or
+  inside its transaction: `DownloadRecorder` queues and writes it apart, so a download never waits
+  for its record or fails because of it.
 * **A search term is escaped for `LIKE`** (2.5.0, issue 96): `SearchTerms.escapeLike` after
   `SearchKey.forSearch`, and `ESCAPE '\'` on the query's `LIKE`.
 * **The v1 API names files and revisions by external id only** (2.4.0): a path variable is an
@@ -393,7 +399,13 @@ Rules for new tests:
 * **An object-store test uses `support/TestObjectStores`**: one SeaweedFS container per run
   (`chrislusf/seaweedfs`, the version `deploy/seaweedfs` runs) with one bucket. Give each store a
   prefix of its own (`S3BlobStoreContractTest` does) rather than a bucket - every bucket is a
-  collection with volumes of its own.
+  collection with volumes of its own. `TestObjectStores.useAsBackend(registry, prefix)` puts a
+  whole context on it, and a storage test on the filesystem runs on s3 too by a subclass that does
+  only that (`S3StorageWriterTest`); a test that stops the store starts one of its own
+  (`startPrivateStore`, `S3OutageTest`).
+* **A download test flushes the recorder** (`downloadRecorder.flush()`) before it reads
+  `file_download`, and asserts on its own file ids: the writer thread may have committed rows
+  outside the test's transaction.
 * **A test that is not `@Transactional` commits what it writes into the database every later test
   shares.** Write nothing another test creates for itself - a role named `ADMIN` is the one that
   bit (`S3BackendTest`): other tests save their own, and the second is a unique-key violation in

@@ -47,6 +47,9 @@ public enum PermissionGroup {
     /** The history of every file, deleted ones included, and each file's own on its page. */
     FILE_HISTORY(FILE_HISTORY_PAGE),
 
+    /** Who downloaded which file, when and from which address, and each file's own on its page. */
+    FILE_DOWNLOADS(FILE_DOWNLOADS_PAGE),
+
     /** Deleting a file, or one of its versions. */
     FILE_DELETE(REST_DELETE_FILE_INFO, REST_DELETE_FILE_DETAILS),
 

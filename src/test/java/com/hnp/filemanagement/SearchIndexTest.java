@@ -1,6 +1,8 @@
 package com.hnp.filemanagement;
 
 import com.hnp.filemanagement.file.persistence.FileDetailsRepository;
+import com.hnp.filemanagement.file.persistence.FileDownloadQuery;
+import com.hnp.filemanagement.file.persistence.FileDownloadSearch;
 import com.hnp.filemanagement.file.persistence.FileHistoryQuery;
 import com.hnp.filemanagement.file.persistence.FileHistoryRepository;
 import com.hnp.filemanagement.file.persistence.FileHistorySearch;
@@ -215,13 +217,48 @@ class SearchIndexTest extends DatabaseSupport {
     }
 
     private List<String> planOfEach(Runnable call, boolean bitmapOnly) {
+        return planOfEachOn("file_history", call, bitmapOnly);
+    }
+
+    /** The plans of the statements on this table this call prepares - at least one. */
+    private List<String> planOfEachOn(String table, Runnable call, boolean bitmapOnly) {
         Recorder.STATEMENTS.clear();
         call.run();
         List<String> statements = Recorder.STATEMENTS.stream()
-                .filter(sql -> sql.toLowerCase(Locale.ROOT).contains("from file_history"))
+                .filter(sql -> sql.toLowerCase(Locale.ROOT).contains("from " + table))
                 .distinct().toList();
-        assertThat(statements).as("statements on file_history").isNotEmpty();
+        assertThat(statements).as("statements on " + table).isNotEmpty();
         return plans(statements, bitmapOnly);
+    }
+
+    // ---------------------------------------------------------------- the downloads (2.7.0)
+
+    @Autowired
+    private FileDownloadSearch fileDownloadSearch;
+
+    /**
+     * The record of downloads grows faster than anything else here, and each way it is read has an
+     * index in the order it sorts by - newest first - so a page reads its fifty rows, not the table.
+     */
+    @Test
+    @DisplayName("each way the downloads are read has its index: everything, one file, one person, one API key, one address")
+    void theDownloadsAreReadThroughTheirIndexes() {
+        var page = PageRequest.of(0, 50);
+        FileDownloadQuery none = FileDownloadQuery.everything();
+
+        assertThat(planOfEachOn("file_download", () -> fileDownloadSearch.find(none, page), false))
+                .allSatisfy(plan -> assertThat(plan).contains("ix_file_download_occurred_at"));
+        assertThat(planOfEachOn("file_download", () -> fileDownloadSearch.find(none.ofFile(7), page), false))
+                .allSatisfy(plan -> assertThat(plan).contains("ix_file_download_file"));
+        assertThat(planOfEachOn("file_download", () -> fileDownloadSearch.find(
+                new FileDownloadQuery(null, 7, null, null, null, null, null, null), page), false))
+                .allSatisfy(plan -> assertThat(plan).contains("ix_file_download_user"));
+        assertThat(planOfEachOn("file_download", () -> fileDownloadSearch.find(
+                new FileDownloadQuery(null, null, 7, null, null, null, null, null), page), false))
+                .allSatisfy(plan -> assertThat(plan).contains("ix_file_download_api_key"));
+        assertThat(planOfEachOn("file_download", () -> fileDownloadSearch.find(
+                new FileDownloadQuery(null, null, null, "10.0.0.1", null, null, null, null), page), false))
+                .allSatisfy(plan -> assertThat(plan).contains("ix_file_download_client_ip"));
     }
 
     // ---------------------------------------------------------------- the plan

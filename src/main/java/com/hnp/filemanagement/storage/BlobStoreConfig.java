@@ -8,8 +8,10 @@ import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.http.apache5.Apache5HttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
@@ -42,18 +44,38 @@ public class BlobStoreConfig {
 
     private static final String BACKEND = "filemanagement.storage.backend";
 
+    /** The storage root's name until 2.7.0. */
+    static final String RETIRED_BASE_DIR = "file.management.base-dir";
+
     @Bean
     @ConditionalOnProperty(name = BACKEND, havingValue = "filesystem", matchIfMissing = true)
-    public BlobStore filesystemBlobStore(FileManagementProperties properties) {
+    public BlobStore filesystemBlobStore(FileManagementProperties properties, Environment environment) {
+        refuseRetiredBaseDir(environment);
         Path root = Path.of(properties.baseDir()).toAbsolutePath().normalize();
         logger.info("files are stored on the filesystem, under {}{}", root,
                 Files.isDirectory(root) ? "" : " - which does not exist yet");
         return new FilesystemBlobStore(properties);
     }
 
+    /**
+     * The storage root was named {@code file.management.base-dir} until 2.7.0. An installation that
+     * still sets it - in an external {@code application.properties}, say - would otherwise start,
+     * ignore it and store every upload under the default directory, beside the real files and not
+     * among them; so the start stops and says what to rename. On s3 too: base-dir is still where
+     * the copy tool reads from and where a rollback returns to.
+     */
+    static void refuseRetiredBaseDir(Environment environment) {
+        if (environment.containsProperty(RETIRED_BASE_DIR)) {
+            throw new IllegalStateException(RETIRED_BASE_DIR + " is no longer read (2.7.0): set filemanagement.base-dir,"
+                    + " or the environment variable FILEMANAGEMENT_BASE_DIR, to the same directory - and remove "
+                    + RETIRED_BASE_DIR + ". It is set to " + environment.getProperty(RETIRED_BASE_DIR));
+        }
+    }
+
     @Bean(destroyMethod = "close")
     @ConditionalOnProperty(name = BACKEND, havingValue = "s3")
-    public S3Client s3Client(FileManagementProperties properties) {
+    public S3Client s3Client(FileManagementProperties properties, Environment environment) {
+        refuseRetiredBaseDir(environment);
         FileManagementProperties.S3 settings = properties.storage().s3();
         if (!settings.missing().isEmpty()) {
             throw new IllegalStateException("filemanagement.storage.backend is s3, and these are not set: "
@@ -65,6 +87,9 @@ public class BlobStoreConfig {
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(settings.accessKey(), settings.secretKey())))
                 .forcePathStyle(settings.pathStyleAccess())
+                // A download streams from its own connection until its last byte, so the pool is
+                // as large as the number of downloads that can be in progress (S3ConcurrencyTest).
+                .httpClientBuilder(Apache5HttpClient.builder().maxConnections(settings.maxConnections()))
                 .build();
     }
 

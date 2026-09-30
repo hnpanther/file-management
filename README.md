@@ -202,7 +202,7 @@ database **and** `base-dir` together.
 | `spring.datasource.*` | — | PostgreSQL connection (`FILEMANAGEMENT_DB_URL`, `_USERNAME`, `_PASSWORD`) |
 | `spring.jpa.hibernate.ddl-auto` | `validate` | schema is owned by Flyway |
 | `filemanagement.storage.backend` | `filesystem` | where the bytes are: `filesystem` (under the storage root below) or `s3`, an S3-compatible object store (`FILEMANAGEMENT_S3_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY`, `_SECRET_KEY`; see [deployment.md](docs/deployment.md#upgrading-from-251-to-260--an-object-store-as-the-backend-if-chosen)) |
-| `file.management.base-dir` | `./TempFiles/files/main/` | storage root of the filesystem backend; must exist |
+| `filemanagement.base-dir` | `./TempFiles/files/main/` | storage root of the filesystem backend (`FILEMANAGEMENT_BASE_DIR`); unused on `s3` except by the copy to it. Named `file.management.base-dir` until 2.7.0 - the old name now stops the start |
 | `filemanagement.time-zone` | `Asia/Tehran` | the zone the pages show times in (`FILEMANAGEMENT_TIME_ZONE`); the database stores instants, and the server's own zone is never used |
 | `spring.servlet.multipart.max-file-size` | `20MB` | per-file upload cap (`FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE`, e.g. `1GB`); above it a 413. Uploads stream, so memory does not grow with it - see [deployment.md, Large uploads](docs/deployment.md#large-uploads) |
 | `spring.servlet.multipart.max-request-size` | `21MB` | per-request cap (`FILEMANAGEMENT_UPLOAD_MAX_REQUEST_SIZE`), a little above the file cap |
@@ -215,6 +215,9 @@ database **and** `base-dir` together.
 | `filemanagement.share-links.max-minutes` | `1440` | the longest a share link may live; a longer request is clamped to it |
 | `filemanagement.share-links.default-minutes` | `60` | its validity when the maker does not say |
 | `filemanagement.share-links.password` | `OPTIONAL` | `REQUIRED` refuses a link without a password |
+| `filemanagement.downloads.enabled` | `true` | whether each download is recorded - who, from which address, which way (`FILEMANAGEMENT_DOWNLOADS_ENABLED`); never slows or fails a download |
+| `filemanagement.downloads.retention-days` | `365` | how long a download record is kept; removed nightly, `0` keeps them for ever (`FILEMANAGEMENT_DOWNLOADS_RETENTION_DAYS`) |
+| `filemanagement.storage.s3.max-connections` | `200` | connections to the object store at once; each download in progress holds one - at least the server's request threads (`FILEMANAGEMENT_S3_MAX_CONNECTIONS`) |
 | `filemanagement.storage.sweep-enabled` | `true` | whether the scheduled sweep of unfinished byte writes runs |
 | `filemanagement.storage.sweep-every-minutes` | `15` | how often it runs |
 | `filemanagement.storage.unfinished-after-minutes` | `60` | how old a byte write must be before it is treated as abandoned |

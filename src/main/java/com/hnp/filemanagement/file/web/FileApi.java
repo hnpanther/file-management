@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.web;
 
+import com.hnp.filemanagement.file.domain.DownloadChannel;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
 import com.hnp.filemanagement.shared.web.ApiResult;
 import com.hnp.filemanagement.file.domain.FileDetailsDTO;
@@ -71,10 +72,12 @@ public class FileApi {
 
     private final GlobalGeneralLogging globalGeneralLogging;
     private final FileService fileService;
+    private final DownloadAudit downloadAudit;
 
-    public FileApi(GlobalGeneralLogging globalGeneralLogging, FileService fileService) {
+    public FileApi(GlobalGeneralLogging globalGeneralLogging, FileService fileService, DownloadAudit downloadAudit) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.fileService = fileService;
+        this.downloadAudit = downloadAudit;
     }
 
     /** A liveness probe that also proves the caller's token and permission still work. */
@@ -196,7 +199,9 @@ public class FileApi {
         int fileDetailsId = fileService.fileDetailsIdOf(fileDetailsReference);
         globalGeneralLogging.detail("download file details id=" + fileDetailsId);
 
-        return serve(fileService.downloadFile(fileDetailsId, userDetails.getId()), method);
+        FileDownloadDTO download = fileService.downloadFile(fileDetailsId, userDetails.getId());
+        downloadAudit.served(download, DownloadChannel.API_V1);
+        return serve(download, method);
     }
 
     /**
@@ -220,7 +225,9 @@ public class FileApi {
         globalGeneralLogging.detail("download file info id=" + fileInfoId + " version=" + (version == null ? "latest" : version)
                 + (format == null ? "" : " format=" + format));
 
-        return serve(fileService.downloadFileRevision(fileInfoId, version, format, userDetails.getId()), method);
+        FileDownloadDTO download = fileService.downloadFileRevision(fileInfoId, version, format, userDetails.getId());
+        downloadAudit.served(download, DownloadChannel.API_V1);
+        return serve(download, method);
     }
 
     /**
