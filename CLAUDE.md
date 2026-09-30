@@ -22,7 +22,8 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   25 now, but a merge once discarded an upgrade and left the commit log claiming a version the
   build never had ([issue 1](docs/issues.md#1-the-spring-boot-upgrade-was-silently-reverted-by-a-merge--s1)).
 * **The tests need only a Docker daemon.** `support/DatabaseSupport` starts a PostgreSQL 18
-  container and `support/StorageRootSupport` uses `./target/test-storage/`. Run `./mvnw verify`;
+  container, `support/TestObjectStores` a SeaweedFS one for the object-store tests (2.6.0), and
+  `support/StorageRootSupport` uses `./target/test-storage/`. Run `./mvnw verify`;
   if you did not run it, say you did not run it - do not describe a change as verified.
 * **PostgreSQL only since release C (2.1.0).** A schema change is the next
   `db/migration/V3.x__Description.sql`, never an edit of `V3.0` or any applied migration (Flyway
