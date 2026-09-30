@@ -52,3 +52,7 @@ node_modules/
 
 ### v2 client example ###
 template/downloaded-*
+
+### SeaweedFS - the real environment file and S3 keys, never committed
+deploy/seaweedfs/.env
+deploy/seaweedfs/s3.json

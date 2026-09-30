@@ -1,0 +1,29 @@
+{
+  "identities": [
+    {
+      "name": "file-management",
+      "credentials": [
+        {
+          "accessKey": "REPLACE-with-20-random-characters",
+          "secretKey": "REPLACE-with-40-random-characters"
+        }
+      ],
+      "actions": [
+        "Read:file-management-prod",
+        "Write:file-management-prod",
+        "List:file-management-prod",
+        "Tagging:file-management-prod"
+      ]
+    },
+    {
+      "name": "operator",
+      "credentials": [
+        {
+          "accessKey": "REPLACE-with-20-random-characters",
+          "secretKey": "REPLACE-with-40-random-characters"
+        }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
