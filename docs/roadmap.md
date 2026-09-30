@@ -908,7 +908,14 @@ anonymous and wrongly signed requests all behave; replication `001` keeps identi
 servers. Three lessons are in the file: the filer's database needs byte collation (`C`), `weed
 admin` needs an explicit `-ip` for its workers to connect, and every bucket takes its own volumes -
 a disk needs room for at least six of them. Still to do: the contract test against it (4.3), a
-1-2 GB file through the application, and a restore. The code stays store-neutral - AWS SDK, path style, nothing product-specific
+1-2 GB file through the application, and a restore.
+
+**Phase one runs on one host with one volume server and one data disk** (replication `000`), the
+compose file rewritten and verified for it the same day: one copy of every file, so RAID 1 under
+the data disk and the scheduled mirror of 4.5 are what stand between a failure and a loss; the
+master creates three volumes at a time per collection instead of seven
+(`WEED_MASTER_VOLUME_GROWTH_COPY_1`), six to start. A second volume server and replication `001`
+are the next step, not a rebuild. The code stays store-neutral - AWS SDK, path style, nothing product-specific
 - so the choice can be revisited with `rclone` and a setting.
 
 ### 4.7 The steps
