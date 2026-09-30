@@ -24,6 +24,8 @@
             <span class="technical" dir="ltr" th:text="'fmk_' + ${apiKey.keyId}">fmk_…</span>
             ·
             <span th:text="#{apiKeyActivity.description(${apiKey.createdBy})}">کلید در نام سازنده‌اش عمل می‌کند.</span>
+            <a sec:authorize="hasAuthority('FILE_DOWNLOADS_PAGE') || hasAuthority('ADMIN')"
+               th:href="@{/files/downloads(key=${apiKey.id})}" th:text="#{fileDownloads.ofKey}">دانلودهای این کلید</a>
         </p>
     </header>
 

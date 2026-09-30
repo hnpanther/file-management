@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{fileDownloads.pageTitle}">دانلودها | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  Who downloaded which file (2.7.0): FileDownloadController, over FileDownloadService.search. The
+  filters are a GET form, so a filtered view is a link that can be kept; the pager is newer and
+  older only - the downloads are never counted.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{nav.section.files}">مدیریت فایل‌ها</div>
+        <h1 th:text="#{fileDownloads.heading}">دانلودها</h1>
+        <p class="page-description" th:text="#{fileDownloads.description}">چه کسی، کی و از کدام نشانی هر فایل را دریافت کرده است.</p>
+    </header>
+
+    <section class="card" aria-labelledby="downloads-title">
+        <div class="card-body">
+            <h2 id="downloads-title" class="sr-only" th:text="#{fileDownloads.heading}">دانلودها</h2>
+
+            <form class="history-filters" method="get" th:action="@{/files/downloads}" role="search">
+                <input type="hidden" name="file" th:if="${file != null}" th:value="${file}">
+                <input type="hidden" name="key" th:if="${key != null}" th:value="${key}">
+                <div class="history-filter">
+                    <label for="downloads-user" th:text="#{fileDownloads.filter.user}">نام کاربری</label>
+                    <input id="downloads-user" class="form-control" type="search" name="user" th:value="${user}"
+                           dir="ltr" autocomplete="off">
+                </div>
+                <div class="history-filter">
+                    <label for="downloads-ip" th:text="#{fileDownloads.filter.ip}">نشانی IP</label>
+                    <input id="downloads-ip" class="form-control" type="search" name="ip" th:value="${ip}"
+                           dir="ltr" autocomplete="off">
+                </div>
+                <div class="history-filter">
+                    <label for="downloads-channel" th:text="#{fileDownloads.filter.channel}">از طریق</label>
+                    <select id="downloads-channel" class="form-control" name="channel">
+                        <option value="" th:text="#{fileDownloads.filter.anyChannel}">همه</option>
+                        <option th:each="c : ${channels}" th:value="${c.name()}" th:selected="${c.name() == channel}"
+                                th:text="#{'fileDownloads.channel.' + ${c.name()}}">صفحهٔ فایل</option>
+                    </select>
+                </div>
+                <div class="history-filter">
+                    <label for="downloads-from" th:text="#{fileHistory.filter.from}">از تاریخ</label>
+                    <input id="downloads-from" class="form-control" type="date" name="from" th:value="${from}" dir="ltr">
+                </div>
+                <div class="history-filter">
+                    <label for="downloads-to" th:text="#{fileHistory.filter.to}">تا تاریخ</label>
+                    <input id="downloads-to" class="form-control" type="date" name="to" th:value="${to}" dir="ltr">
+                </div>
+                <div class="history-filter-actions">
+                    <button class="btn btn-primary" type="submit" th:text="#{fileHistory.filter.submit}">اعمال</button>
+                    <a class="btn btn-outline-secondary" th:href="@{/files/downloads}" th:text="#{fileHistory.filter.clear}">پاک کردن فیلترها</a>
+                </div>
+            </form>
+            <p class="field-hint mb-4">
+                <span th:if="${file != null}" class="badge me-1">
+                    <i class="bi bi-funnel" aria-hidden="true"></i>
+                    <span th:text="#{fileDownloads.filter.oneFile}">فقط دانلودهای یک فایل</span>
+                </span>
+                <span th:if="${key != null}" class="badge me-1">
+                    <i class="bi bi-key" aria-hidden="true"></i>
+                    <span th:text="#{fileDownloads.filter.oneKey}">فقط دانلودهای یک کلید API</span>
+                </span>
+                <span th:text="#{fileHistory.filter.dateHint(${timeZone})}">تاریخ‌ها میلادی خوانده می‌شوند.</span>
+            </p>
+
+            <div th:if="${#lists.isEmpty(downloads.entries())}" class="empty-state empty-state-panel" role="status">
+                <strong th:text="#{fileDownloads.empty}">دانلودی پیدا نشد.</strong>
+            </div>
+
+            <div th:unless="${#lists.isEmpty(downloads.entries())}"
+                 th:replace="~{file-management/files/download-fragments.html :: downloads-table(${downloads.entries()}, true)}"></div>
+
+            <nav th:if="${downloads.hasPrevious() or downloads.hasNext()}" class="mt-3" th:aria-label="#{fileDownloads.heading}">
+                <ul class="pagination mb-0">
+                    <li th:if="${downloads.hasPrevious()}" class="page-item">
+                        <a class="page-link" th:href="@{/files/downloads(file=${file}, key=${key}, user=${user}, ip=${ip}, channel=${channel}, from=${from}, to=${to}, page=${downloads.page() - 1})}"
+                           th:text="#{action.previous}">قبلی</a>
+                    </li>
+                    <li class="page-item active" aria-current="page"><span class="page-link" th:text="${downloads.page() + 1}">1</span></li>
+                    <li th:if="${downloads.hasNext()}" class="page-item">
+                        <a class="page-link" th:href="@{/files/downloads(file=${file}, key=${key}, user=${user}, ip=${ip}, channel=${channel}, from=${from}, to=${to}, page=${downloads.page() + 1})}"
+                           th:text="#{action.next}">بعدی</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

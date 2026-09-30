@@ -26,6 +26,9 @@ public enum PermissionEnum {
     //@GetMapping("history") - the history of every file: who uploaded, changed or deleted what, when,
     //with which API key - deleted files included (2.5.0). Also shows a file's own history on its page.
     FILE_HISTORY_PAGE,
+    //@GetMapping("downloads") - who downloaded which file, when, from which address: a person, an
+    //API key, a share link or nobody (2.7.0). Also shows a file's own downloads on its page.
+    FILE_DOWNLOADS_PAGE,
 
     //@GetMapping("file-info/{fileInfoId}/file-details/create")
     SAVE_NEW_FILE_DETAILS_PAGE,

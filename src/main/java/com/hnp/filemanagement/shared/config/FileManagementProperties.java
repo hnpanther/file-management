@@ -43,6 +43,7 @@ import java.util.List;
  * @param shareLinks   temporary share links
  * @param bootstrap    what the first start creates
  * @param auth         Active Directory, off by default
+ * @param downloads    the record of who downloaded which file (2.7.0)
  */
 @Validated
 @ConfigurationProperties(prefix = "filemanagement")
@@ -56,7 +57,8 @@ public record FileManagementProperties(
         @Valid Storage storage,
         @Valid ShareLinks shareLinks,
         @Valid Bootstrap bootstrap,
-        @Valid Auth auth) {
+        @Valid Auth auth,
+        @Valid Downloads downloads) {
 
     /** The zone of every installation so far, whose times before 2.2.0 were written in it. */
     public static final ZoneId DEFAULT_TIME_ZONE = ZoneId.of("Asia/Tehran");
@@ -71,17 +73,34 @@ public record FileManagementProperties(
         shareLinks = shareLinks == null ? new ShareLinks(null, null, null, null, null) : shareLinks;
         bootstrap = bootstrap == null ? new Bootstrap(null) : bootstrap;
         auth = auth == null ? new Auth(null) : auth;
+        downloads = downloads == null ? new Downloads(null, null) : downloads;
     }
 
     /** The tree with nothing set but the storage root: every other value its documented default. */
     public static FileManagementProperties defaults(String baseDir) {
-        return new FileManagementProperties(baseDir, null, null, null, null, null, null, null, null, null);
+        return new FileManagementProperties(baseDir, null, null, null, null, null, null, null, null, null, null);
     }
 
     /** The same tree with different directory settings - what a test varies. */
     public FileManagementProperties withActiveDirectory(ActiveDirectory activedirectory) {
         return new FileManagementProperties(baseDir, timeZone, defaults, folderAccess, folders, profiles,
-                storage, shareLinks, bootstrap, new Auth(new Ldap(activedirectory)));
+                storage, shareLinks, bootstrap, new Auth(new Ldap(activedirectory)), downloads);
+    }
+
+    /**
+     * The record of downloads (2.7.0): who - a person, an API key, a share link, or nobody - took
+     * which revision, when, from which address. Written off the request's path, so it neither slows
+     * a download nor stops one when it cannot be written ({@code DownloadRecorder}).
+     *
+     * @param enabled       false records nothing and starts no writer; what is recorded stays
+     * @param retentionDays how long a record is kept; older ones are removed every night. 0 keeps
+     *                      them for ever
+     */
+    public record Downloads(Boolean enabled, @Min(0) Integer retentionDays) {
+        public Downloads {
+            enabled = enabled == null || enabled;
+            retentionDays = retentionDays == null ? 365 : retentionDays;
+        }
     }
 
     /** Rows per page in a list view; a page never holds more than {@code PageRequests.MAX_PAGE_SIZE}. */
@@ -157,7 +176,7 @@ public record FileManagementProperties(
 
         public Storage {
             backend = backend == null ? Backend.FILESYSTEM : backend;
-            s3 = s3 == null ? new S3(null, null, null, null, null, null, null, null) : s3;
+            s3 = s3 == null ? new S3(null, null, null, null, null, null, null, null, null) : s3;
             sweepEnabled = sweepEnabled == null || sweepEnabled;
             sweepEveryMinutes = sweepEveryMinutes == null ? 15 : sweepEveryMinutes;
             unfinishedAfterMinutes = unfinishedAfterMinutes == null ? 60 : unfinishedAfterMinutes;
@@ -182,9 +201,14 @@ public record FileManagementProperties(
      *                        else; empty by default
      * @param partSizeMb      a file larger than this is uploaded in parts of this size, and at most
      *                        one part per upload is held in memory; S3's minimum is 5
+     * @param maxConnections  connections to the store at once, 200 unless set: a download holds one
+     *                        until its last byte is sent, so no fewer than the server's request
+     *                        threads ({@code server.tomcat.threads.max}, 200) - the AWS SDK's own
+     *                        default of 50 failed the 51st download at once (2.7.0)
      */
     public record S3(String endpoint, String region, String bucket, String accessKey, String secretKey,
-                     Boolean pathStyleAccess, String prefix, @Min(5) Integer partSizeMb) {
+                     Boolean pathStyleAccess, String prefix, @Min(5) Integer partSizeMb,
+                     @Min(1) Integer maxConnections) {
         public S3 {
             endpoint = endpoint == null ? "" : endpoint.trim();
             region = region == null || region.isBlank() ? "us-east-1" : region.trim();
@@ -194,6 +218,7 @@ public record FileManagementProperties(
             pathStyleAccess = pathStyleAccess == null || pathStyleAccess;
             prefix = prefix == null ? "" : prefix.trim();
             partSizeMb = partSizeMb == null ? 16 : partSizeMb;
+            maxConnections = maxConnections == null ? 200 : maxConnections;
         }
 
         /**
@@ -223,7 +248,7 @@ public record FileManagementProperties(
             return "S3[endpoint=" + endpoint + ", region=" + region + ", bucket=" + bucket
                     + ", accessKey=" + accessKey + ", secretKey=" + (secretKey.isEmpty() ? "" : "***")
                     + ", pathStyleAccess=" + pathStyleAccess + ", prefix=" + prefix
-                    + ", partSizeMb=" + partSizeMb + "]";
+                    + ", partSizeMb=" + partSizeMb + ", maxConnections=" + maxConnections + "]";
         }
     }
 

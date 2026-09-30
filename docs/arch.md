@@ -1,6 +1,6 @@
 # Architecture — Current State
 
-> The codebase as it stands - kept current with each release, 2.6.0 the latest; a section names
+> The codebase as it stands - kept current with each release, 2.7.0 the latest; a section names
 > the release that last changed what it describes. For where it is going, see
 > [target-architecture.md](target-architecture.md); for the order, [roadmap.md](roadmap.md).
 
@@ -249,11 +249,18 @@ A file is publicly downloadable only when **both** `FileDetails.state = 0` **and
 The key is the same on both, byte for byte: moving an installation from one to the other is a copy
 of the bytes (roadmap 4.4), not a change to any row. `S3BlobStore` writes a file that fits in one
 part (`part-size-mb`, 16) as one `PutObject` and a larger one as a multipart upload, holding one
-part in memory at most; it sends the SHA-256 it computes, which the store keeps; it refuses to
-overwrite (a `HeadObject` first); it serves a download lazily, so a `Range` request is a ranged
-`GetObject`; and `deleteDirectory` lists `prefix + "/"` and deletes a thousand at a time. A start
-with `s3` refuses a missing setting, a missing bucket and refused credentials, and adds the bucket
-to `/actuator/health/readiness`. The layout below is the filesystem's; in a bucket the same keys
+part in memory at most; it sends the SHA-256 it computes, which the store keeps - the file's own
+for a single part, and for a multipart object a *composite*, the SHA-256 of the parts' SHA-256s
+with `-n` (so a copy verifies a large object by computing the same from the file and the part
+size, not against `checksum_sha256`); it refuses to overwrite (a `HeadObject` first); it serves a
+download lazily, so a `Range` request is a ranged `GetObject`, and holds one of the client's
+connections until the last byte is sent - so the pool is `max-connections` (200), no smaller than
+the server's request threads (2.7.0; the SDK's own 50 failed the 51st download at once); and
+`deleteDirectory` lists `prefix + "/"` and deletes a thousand at a time. A start with `s3` refuses
+a missing setting, a missing bucket, refused credentials and a store that does not answer, and adds
+the bucket to `/actuator/health/readiness`. A store that goes away while running fails uploads and
+downloads with an error (417, a `BusinessException`, as on the filesystem - issue 100) and leaves
+no row and no note behind; the pages that do not need bytes go on working (`S3OutageTest`). The layout below is the filesystem's; in a bucket the same keys
 are object keys.
 
 `FilesystemBlobStore` takes the storage root from `FileManagementProperties` and resolves every
@@ -929,6 +936,28 @@ name found in a few rows. A reader sees the events of the folders their access r
 `/files/history` (`FILE_HISTORY_PAGE`), a file's own on its page, `/api-keys/{id}/activity`
 (`API_KEY_ACTIVITY_PAGE`). `action_history` stays as it was - the general audit trail.
 
+**Who downloaded what** (2.7.0) — `file_download`, one row per download: the time, the channel
+(`DownloadChannel`: the file page, a preview, the public files, a share link, API v1, API v2), the
+file and revision with their name and version copied in, the folder, the person (id and username)
+or the API key, the share link, and the client's address - so a file is answered for with or
+without a user behind it. Every handler that sends bytes calls `DownloadAudit.served` once it has
+decided to; that is where a `HEAD` and a `Range` that does not start at byte 0 (a PDF viewer's
+later requests) are told apart from a download, and where the address is read - the request's
+remote address, which Tomcat takes from `X-Forwarded-For` when the proxy sending it is trusted
+(`server.forward-headers-strategy=native`). `DownloadRecorder` never makes a download wait or fail:
+`record` puts the event on a bounded queue (10,000) and returns; a daemon thread writes what is
+queued every second with one batched `INSERT` per 500, through `JdbcTemplate` on a connection of
+its own, outside any request's transaction; a batch the database refuses is logged and dropped, a
+full queue drops and warns at most once a minute, and a clean stop writes what is queued (it is a
+`SmartLifecycle` below the web server's phase, so it stops after the last request). The same
+actor taking the same revision through the same channel within 60 seconds is one download. No
+foreign key: a record outlives the file, the link and the folder. Read like the file history - a
+`Slice`, newest first, one index per way of reading (everything, one file, one person, one key, one
+address), scoped by folder access - at `/files/downloads` and on a file's page
+(`FILE_DOWNLOADS_PAGE`). `DownloadRetention` removes records older than
+`filemanagement.downloads.retention-days` every night, 10,000 rows a statement;
+`filemanagement.downloads.enabled=false` records nothing.
+
 **Which API key did it** (2.3.0) — a request made with an API key runs as the key's creator, so
 `userId`, `created_by` and `action_history.user_id` are that person. The key itself is read from
 the request by `ActingApiKey` and recorded beside them without any caller passing it:
@@ -1052,6 +1081,7 @@ MySQL compared without case, an index on every foreign key.
 |---|---|
 | `V3.0__Baseline.sql` | the whole schema and its seed rows (release B, 2.0.0) |
 | `V3.1__Timestamps_with_time_zone.sql` | 2.2.0, issue 24: all 28 timestamp columns `TIMESTAMPTZ(0)`, the values already there read as `Asia/Tehran` (the summer time before 1401 included); refuses to finish if a timestamp without a zone is left |
+| `V3.6__File_downloads.sql` | 2.7.0: `file_download`, no foreign key, and its five indexes, each newest first: by time, file, person, API key, address |
 | `V3.5__File_history.sql` | 2.5.0: `file_history` and its six indexes, filled from the files and revisions there are (exact: their own rows), from what `action_history` recorded about them after they were made, and from the files it records as gone (by number, nameless - their names were never recorded) |
 | `V3.4__Sequences_past_every_id_ever_used.sql` | 2.5.0, issue 98: each identity sequence moved past every id its table or its audit rows ever used, only forward |
 | `V3.3__Record_the_acting_api_key.sql` | 2.3.0: `created_by_api_key_id` on `file_info` and `file_details`, `api_key_id` on `action_history` - the API key an upload, a new version or a delete was made with, beside the key's creator |
@@ -1121,9 +1151,9 @@ schema at startup but never modifies it.
 | `spring.datasource.*` | `jdbc:postgresql://localhost:5434/file_management?sslmode=disable` (the port `compose.yaml` publishes), user/pass `file_management` | |
 | `spring.jpa.hibernate.ddl-auto` | `validate` | |
 | `spring.flyway.baseline-on-migrate` | `true` | |
-| `file.management.base-dir` | `./TempFiles/files/main/` | `FilesystemBlobStore` - the storage root when the backend is `filesystem` |
+| `filemanagement.base-dir` | `./TempFiles/files/main/` | `FilesystemBlobStore` - the storage root when the backend is `filesystem` (`FILEMANAGEMENT_BASE_DIR`). `file.management.base-dir` until 2.7.0; setting the old name stops the start (`BlobStoreConfig.refuseRetiredBaseDir`) |
 | `filemanagement.storage.backend` | `filesystem` | `BlobStoreConfig`: `filesystem` or `s3` (2.6.0) |
-| `filemanagement.storage.s3.*` | endpoint, bucket, keys empty; region `us-east-1`; path-style `true`; prefix empty; part size 16 MB | `S3BlobStore`, read only for the `s3` backend (`FILEMANAGEMENT_S3_*`) |
+| `filemanagement.storage.s3.*` | endpoint, bucket, keys empty; region `us-east-1`; path-style `true`; prefix empty; part size 16 MB; `max-connections` 200 | `S3BlobStore`, read only for the `s3` backend (`FILEMANAGEMENT_S3_*`) |
 | `filemanagement.time-zone` | `Asia/Tehran` | the zone of the application's `Clock`: what the pages show times in, and what a typed date is read in (§8, "Time"). Never the server's zone; an unknown zone fails the start |
 | `spring.servlet.multipart.max-file-size` / `max-request-size` | `20MB` | |
 | `filemanagement.default.page-size` | `30` | rows per list page, read from `FileManagementProperties`; a `page-size` in the URL is clamped to 200 and a bad one falls back to this (`PageRequests`) |
@@ -1135,6 +1165,8 @@ schema at startup but never modifies it.
 | `filemanagement.share-links.password` | `OPTIONAL` | `REQUIRED` refuses a link without a password |
 | `filemanagement.share-links.max-failed-attempts` | `5` | wrong passwords before a link locks |
 | `filemanagement.share-links.lock-minutes` | `15` | how long it stays locked |
+| `filemanagement.downloads.enabled` | `true` | `DownloadRecorder`: whether downloads are recorded (2.7.0); off, nothing is queued and no writer starts |
+| `filemanagement.downloads.retention-days` | `365` | `DownloadRetention`: records older than this go every night at 03:40; `0` keeps them |
 | `filemanagement.storage.sweep-enabled` | `true` | `StorageSweeper`: whether the scheduled sweep of unfinished byte writes runs. Off leaves the notes for an operator to settle by hand |
 | `filemanagement.storage.sweep-every-minutes` | `15` | how often it runs. Read by the `@Scheduled` annotation from the raw property, because an annotation is resolved before any binding happens |
 | `filemanagement.storage.unfinished-after-minutes` | `60` | how old a byte write must be before it is treated as abandoned; longer than any upload could possibly take |
@@ -1143,10 +1175,11 @@ schema at startup but never modifies it.
 | `filemanagement.storage.checksum-backfill-batch-size` | `50` | revisions read per batch |
 | `filemanagement.auth.ldap.activedirectory.enabled` / `.domain` / `.url` | `false`, `hnp.local`, `ldap://172.29.76.9` | |
 
-Note the two different prefixes: `filemanagement.*` is the application's own settings, bound and
-validated once in `FileManagementProperties` (roadmap 2.1), while `file.management.base-dir` keeps
-the spelling it has always had — renaming a published setting silently changes behaviour on every
-installation that sets it.
+Every setting of the application's own is under `filemanagement.*`, bound and validated once in
+`FileManagementProperties` (roadmap 2.1). The last one with another prefix, `file.management.base-dir`,
+was retired in 2.7.0 - not silently: an installation that still sets it is refused at the start
+and told the new name, because a renamed setting that is simply ignored changes behaviour without a
+word.
 
 ## 12. Tests
 
@@ -1210,6 +1243,9 @@ generates the unique ones, so a test overrides only what it is actually about.
 | `SearchIndexTest` | every search's actual SQL is planned by PostgreSQL onto its trigram indexes (issue 21), and each way the file history is read onto its index |
 | `SearchWildcardTest` | `%` and `_` in every search stand for themselves (issue 96) |
 | `file/domain/FileHistoryServiceTest`, `FileHistoryFolderAccessTest`, `file/web/FileHistoryPageTest` | one event per change, in its transaction, outliving the file; the pages behind their permissions, under folder access, in a fixed number of statements |
+| `file/web/DownloadRecordingTest`, `DownloadRecordingResilienceTest`, `DownloadRecordingDisabledTest`, `DownloadClientAddressTest`, `DownloadAuditTest`, `file/domain/DownloadRecorderTest`, `FileDownloadServiceTest` | every way out records one row with its person, key, link and address; a `HEAD`, a later range and a repeat do not; a database hanging and then down costs twenty downloads nothing; `X-Forwarded-For` through the real server; the pages, folder access, a fixed number of statements, the retention (2.7.0) |
+| `storage/S3StorageWriterTest`, `S3StorageSweeperTest`, `S3ChecksumBackfillTest` | every case of the filesystem's storage tests, again on the s3 backend |
+| `file/web/S3ScenariosTest`, `S3OutageTest`, `storage/S3ConcurrencyTest` | on the s3 backend, object by object: a duplicate stores nothing (also under a race), a rollback removes its object, versions and formats are objects of their own, each delete removes exactly its objects, a move or rename none, every download reads the bucket; the store going away; 120 downloads at once |
 | `file/web/ApiKeyAttributionTest` | an upload, a new version and a delete with a real `Bearer` key record the key on the rows and the audit trail, and the file page names it (2.3.0) |
 | `MigrationTest` | `V3.1` turns times already written into their instants; every migration runs as a database owner that is no superuser, as production's |
 

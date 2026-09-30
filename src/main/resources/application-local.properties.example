@@ -4,11 +4,25 @@
 #
 # Anything here overrides application.properties. Never commit the real file.
 
-spring.datasource.url=jdbc:mysql://localhost:3306/file_management
+# The database compose.yaml starts (PostgreSQL 18 on 127.0.0.1:5434).
+spring.datasource.url=jdbc:postgresql://localhost:5434/file_management?sslmode=disable
 spring.datasource.username=file_management
 spring.datasource.password=change-me
 
-file.management.base-dir=./TempFiles/files/main/
+# The filesystem backend's root (named file.management.base-dir until 2.7.0 - that name now stops
+# the start).
+filemanagement.base-dir=./TempFiles/files/main/
 filemanagement.log.path=./logs
 
 filemanagement.auth.ldap.activedirectory.enabled=false
+
+# The s3 backend, against deploy/seaweedfs on this machine:
+#filemanagement.storage.backend=s3
+#filemanagement.storage.s3.endpoint=http://localhost:8333
+#filemanagement.storage.s3.bucket=file-management-prod
+#filemanagement.storage.s3.access-key=<the application's key in s3.json>
+#filemanagement.storage.s3.secret-key=<its secret>
+
+# Download records (2.7.0):
+#filemanagement.downloads.enabled=true
+#filemanagement.downloads.retention-days=365

@@ -81,7 +81,7 @@ class FolderTreeDeleteServiceTest extends DatabaseSupport {
     private EntityManager entityManager;
     @Autowired
     private JdbcTemplate jdbcTemplate;
-    @Value("${file.management.base-dir}")
+    @Value("${filemanagement.base-dir}")
     private String baseDir;
 
     private User admin;

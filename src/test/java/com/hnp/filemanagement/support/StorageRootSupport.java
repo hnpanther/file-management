@@ -17,7 +17,7 @@ import java.util.stream.Stream;
 /**
  * Base class for tests that touch the file storage root.
  * <p>
- * The tests in this project create {@code ${file.management.base-dir}} themselves in their own
+ * The tests in this project create {@code ${filemanagement.base-dir}} themselves in their own
  * {@code @BeforeEach} and delete it in their own {@code @AfterEach}. That only works if the
  * directory is absent to begin with, so a crashed or interrupted run used to leave the whole suite
  * failing until the directory was removed by hand.
@@ -30,7 +30,7 @@ public abstract class StorageRootSupport {
 
     private static final Logger log = LoggerFactory.getLogger(StorageRootSupport.class);
 
-    @Value("${file.management.base-dir}")
+    @Value("${filemanagement.base-dir}")
     private String storageRoot;
 
     @BeforeEach

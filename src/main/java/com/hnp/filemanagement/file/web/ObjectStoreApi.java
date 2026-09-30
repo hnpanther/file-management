@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.web;
 
+import com.hnp.filemanagement.file.domain.DownloadChannel;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
 import com.hnp.filemanagement.file.domain.FileDownloadDTO;
 import com.hnp.filemanagement.file.domain.ObjectListingDTO;
@@ -72,16 +73,19 @@ public class ObjectStoreApi {
 
     private final GlobalGeneralLogging globalGeneralLogging;
     private final ObjectStoreService objectStoreService;
+    private final DownloadAudit downloadAudit;
     private final UploadPolicyService uploadPolicyService;
     /** Where a PUT body is spooled - the same directory a form's file part is written to. */
     private final UploadTempDirectory uploadTempDirectory;
 
     public ObjectStoreApi(GlobalGeneralLogging globalGeneralLogging, ObjectStoreService objectStoreService,
-                          UploadPolicyService uploadPolicyService, UploadTempDirectory uploadTempDirectory) {
+                          UploadPolicyService uploadPolicyService, UploadTempDirectory uploadTempDirectory,
+                          DownloadAudit downloadAudit) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.objectStoreService = objectStoreService;
         this.uploadPolicyService = uploadPolicyService;
         this.uploadTempDirectory = uploadTempDirectory;
+        this.downloadAudit = downloadAudit;
     }
 
     /**
@@ -144,6 +148,7 @@ public class ObjectStoreApi {
 
         ObjectMetadataDTO metadata = objectStoreService.head(bucket, key, userDetails.getId());
         FileDownloadDTO download = objectStoreService.get(bucket, key, userDetails.getId());
+        downloadAudit.served(download, DownloadChannel.API_V2);
 
         // Served as the extension's type, as an attachment, with nosniff - the v1 rules (issue 13).
         return ResponseEntity.ok()

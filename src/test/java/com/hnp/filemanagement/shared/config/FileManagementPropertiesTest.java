@@ -54,6 +54,27 @@ class FileManagementPropertiesTest {
         assertThat(properties.auth().ldap().activedirectory().verifyHostname()).isTrue();
         assertThat(properties.auth().ldap().activedirectory().connectTimeoutMs()).isEqualTo(5000);
         assertThat(properties.auth().ldap().activedirectory().readTimeoutMs()).isEqualTo(10000);
+        assertThat(properties.downloads().enabled()).as("downloads are recorded unless switched off").isTrue();
+        assertThat(properties.downloads().retentionDays()).isEqualTo(365);
+    }
+
+    @Test
+    @DisplayName("the record of downloads is switched and kept by filemanagement.downloads.*; a negative retention is refused")
+    void downloads() {
+        FileManagementProperties properties = bind(Map.of("filemanagement.base-dir", "D:/files/",
+                "filemanagement.downloads.enabled", "false",
+                "filemanagement.downloads.retention-days", "90"));
+        assertThat(properties.downloads().enabled()).isFalse();
+        assertThat(properties.downloads().retentionDays()).isEqualTo(90);
+        assertThat(bind(Map.of("filemanagement.base-dir", "D:/files/",
+                "filemanagement.downloads.retention-days", "0")).downloads().retentionDays())
+                .as("0 keeps them for ever").isZero();
+
+        assertThatThrownBy(() -> bind(Map.of("filemanagement.base-dir", "D:/files/",
+                "filemanagement.downloads.retention-days", "-1")))
+                .isInstanceOf(BindException.class)
+                .hasRootCauseInstanceOf(BindValidationException.class)
+                .rootCause().hasMessageContaining("retentionDays");
     }
 
     @Test
@@ -110,6 +131,7 @@ class FileManagementPropertiesTest {
         assertThat(unset.storage().s3().region()).isEqualTo("us-east-1");
         assertThat(unset.storage().s3().pathStyleAccess()).isTrue();
         assertThat(unset.storage().s3().partSizeMb()).isEqualTo(16);
+        assertThat(unset.storage().s3().maxConnections()).as("as many as the server's request threads").isEqualTo(200);
         assertThat(unset.storage().s3().missing()).containsExactly("FILEMANAGEMENT_S3_ENDPOINT",
                 "FILEMANAGEMENT_S3_BUCKET", "FILEMANAGEMENT_S3_ACCESS_KEY", "FILEMANAGEMENT_S3_SECRET_KEY");
 
@@ -122,13 +144,15 @@ class FileManagementPropertiesTest {
                 "filemanagement.storage.s3.secret-key", "the-secret",
                 "filemanagement.storage.s3.path-style-access", "false",
                 "filemanagement.storage.s3.prefix", "app",
-                "filemanagement.storage.s3.part-size-mb", "32"));
+                "filemanagement.storage.s3.part-size-mb", "32",
+                "filemanagement.storage.s3.max-connections", "300"));
         assertThat(s3.storage().backend()).isEqualTo(FileManagementProperties.Storage.Backend.S3);
         assertThat(s3.storage().s3().endpoint()).isEqualTo("http://storage:8333");
         assertThat(s3.storage().s3().bucket()).isEqualTo("file-management-prod");
         assertThat(s3.storage().s3().pathStyleAccess()).isFalse();
         assertThat(s3.storage().s3().prefix()).isEqualTo("app");
         assertThat(s3.storage().s3().partSizeMb()).isEqualTo(32);
+        assertThat(s3.storage().s3().maxConnections()).isEqualTo(300);
         assertThat(s3.storage().s3().missing()).isEmpty();
         assertThat(s3.storage().s3().toString()).contains("the-key").doesNotContain("the-secret");
 

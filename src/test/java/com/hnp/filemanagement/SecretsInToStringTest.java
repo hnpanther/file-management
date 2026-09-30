@@ -41,7 +41,7 @@ class SecretsInToStringTest {
                 "trust.p12", SECRET, null, null, null).toString())
                 .contains("example.test").doesNotContain(SECRET);
         assertThat(new FileManagementProperties.S3("http://storage:8333", null, "bucket", "the-key", SECRET,
-                null, null, null).toString())
+                null, null, null, null).toString())
                 .contains("the-key").doesNotContain(SECRET);
     }
 }

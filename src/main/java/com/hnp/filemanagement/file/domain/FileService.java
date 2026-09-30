@@ -989,6 +989,11 @@ public class FileService {
         fileDownloadDTO.setFileExternalId(fileDetails.getFileInfo().getExternalId());
         fileDownloadDTO.setVersion(fileDetails.getVersion());
         fileDownloadDTO.setChecksumSha256(fileDetails.getChecksumSha256());
+        // The parent is loaded (above); its folder is read by id, which a lazy reference answers
+        // without loading the folder.
+        fileDownloadDTO.setFileInfoId(fileDetails.getFileInfo().getId());
+        fileDownloadDTO.setFolderId(fileDetails.getFileInfo().getFolder() == null
+                ? null : fileDetails.getFileInfo().getFolder().getId());
         return fileDownloadDTO;
     }
 

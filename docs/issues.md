@@ -1905,3 +1905,61 @@ every developer machine, which is `localhost`.
 > button, so it works inside the dialog), synchronously in the click; the share dialog and the
 > external-id button of 2.4.0 both use it. Checked in a browser over the machine's LAN address -
 > no secure context, no Clipboard API, as in production: both buttons copied, three times of three.
+
+## Found while building 2.7.0
+
+### 100. A storage failure answers 417 Expectation Failed — **S3**
+
+`FilesystemBlobStore` and `S3BlobStore` turn a failed write, read or delete into a
+`BusinessException`, whose `@ResponseStatus` is `417 EXPECTATION_FAILED`. With the object store
+unreachable, an upload and a download are therefore 417s (`S3OutageTest` pins it) - a status that
+means "your `Expect` header could not be met", which says nothing true to a client and tells a
+retrying one (APEX) not to retry. What happened is `503 Service Unavailable`: the request was fine,
+the storage behind it is not, and trying again later is right.
+
+Fix: a `StorageUnavailableException` (503, a `Retry-After`) thrown by both stores for an I/O or SDK
+failure, `BusinessException` kept for what is really a refusal. It changes what a v1 client sees
+for a failure, so it goes with a note in [api-v1.md](api-v1.md) - with Phase 4, before the switch
+of 4.4.
+
+### 101. The S3 client has no time limit on a call — **S2**
+
+`BlobStoreConfig.s3Client` sets the connection pool (2.7.0) and nothing else of the HTTP client, so
+the AWS SDK's defaults apply: 2 s to connect, 30 s of silence on a socket, four attempts. A store
+that accepts connections and then does not answer - a hung volume server, a full disk - holds each
+request thread for about two minutes before the error, and so does the readiness check
+(`bucketReachable` is a `HeadBucket`). A store that refuses is quick (`S3OutageTest`: under a
+second); one that hangs is not tested and not bounded.
+
+Fix: an `apiCallAttemptTimeout` (a few seconds) and fewer attempts for the calls that move no body
+- `HeadObject`, `HeadBucket`, `ListObjectsV2`, `DeleteObject(s)` - through a request override, and
+the socket timeout alone for the streaming ones, whose length is the file's; a hung-store case in
+`S3OutageTest` (a container paused rather than stopped). Before the switch of 4.4.
+
+### 102. The S3 client's connection pool was 50, and a download holds one to its end — **S2**
+
+2.6.0 built the `S3Client` with the SDK's default HTTP client: at most 50 connections, 10 s to wait
+for one. `S3BlobStore` serves a download as a stream over one `GetObject`, held until the last byte
+is sent - so with 50 downloads in progress the 51st waited 10 s for a connection, four times, and
+failed after 40 s while the store was idle (reproduced by `S3ConcurrencyTest`). Tomcat serves 200
+requests at once.
+
+> **Fixed in 2.7.0.** `filemanagement.storage.s3.max-connections` (`FILEMANAGEMENT_S3_MAX_CONNECTIONS`,
+> default 200 - Tomcat's `threads.max`) sizes the pool; `S3ConcurrencyTest` holds 120 downloads open
+> and starts one more at once.
+
+### 103. A local object store's settings, secret included, were committed as the defaults — **S1**
+
+Commit `634ed10` (a documentation commit, pushed to `origin/redesign-arch`) changed the shipped
+`application.properties` to `filemanagement.storage.backend=${FILEMANAGEMENT_STORAGE_BACKEND:s3}`
+with a developer machine's endpoint, bucket, access key and **secret key** as the defaults. Two
+consequences: a production start without `FILEMANAGEMENT_STORAGE_BACKEND` would have looked for an
+object store on its own `localhost:8333` - refused at the start, or, if one answered, every new
+upload written to it while every old file stayed on disk; and the secret is in the repository's
+history.
+
+> **Fixed in 2.7.0**: the shipped defaults are back to `filesystem` and empty S3 settings, as
+> documented; the machine's values live in its gitignored `application-local.properties`
+> (`--spring.profiles.active=prod,local`). **The secret stays in the history**: rotate it in that
+> store's `s3.json` if it is used for anything beyond that machine, and never reuse it for
+> production's key.

@@ -70,7 +70,7 @@ class FileApiDeleteTest extends DatabaseSupport {
     @Autowired
     private TagGroupRepository tagGroupRepository;
 
-    @Value("${file.management.base-dir}")
+    @Value("${filemanagement.base-dir}")
     private String baseDir;
 
     private int principalId;

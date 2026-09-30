@@ -106,6 +106,9 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 * **Every change to a file records a `file_history` event** (2.5.0): `fileHistoryService.record`
   in the transaction of the change, as `FileService` does - and a search term goes through
   `SearchTerms.escapeLike` with `ESCAPE '\'` on its `LIKE` (issue 96).
+* **Every way bytes leave records the download** (2.7.0): `downloadAudit.served(download, channel)`
+  in the handler once it has decided to send them; `DownloadRecorder` writes it off the request, so
+  never write `file_download` in a request's transaction.
 * **A search must hit its trigram index** (2.2.0,
   [issue 21](docs/issues.md#21-search-is-like-term-across-the-whole-graph--s2)): keep
   `REPLACE(x.searchName, ' ', '')` exactly as written, match through another table with a `UNION`

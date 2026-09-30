@@ -39,6 +39,10 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.7.0 is written: **every download recorded** - who, or which key, from which address, which way -
+without a download ever waiting for it (9.2), `file.management.base-dir` retired for
+`filemanagement.base-dir`, and the s3 backend tested case by case and through a 1 GB file, which
+found and fixed its connection pool (issue 102).
 2.6.0 is written: **the storage backend is a setting** - `filesystem`, as always, or `s3`, an
 S3-compatible object store (Phase 4, step 2 of 4.7); nothing changes until it is set, and an
 installation with files needs the copy of 4.4 before it is switched. 2.5.1 is written too: the upload cap from the environment, uploads of any size never held in memory -
@@ -50,6 +54,17 @@ closed early by that decision: the way back from here is a PostgreSQL restore
 
 What the releases since the cut-over brought, newest first:
 
+* **2.7.0 - who downloaded what** (9.2): `file_download` (`V3.6`), one row per download through
+  any of the six ways out - the file page, a preview, the public files, a share link, API v1, v2 -
+  with the person or the key, the share link and the client's address, read at `/files/downloads`
+  and on a file's page (`FILE_DOWNLOADS_PAGE`). Written off the request, in batches, by a thread of
+  its own: a database that hangs and then refuses costs a download nothing (tested); switched by
+  `filemanagement.downloads.enabled`, kept `retention-days` (365). With it, the s3 backend tested
+  as the filesystem is - every storage test run again on it, and each operation counted object by
+  object (duplicates, a race, a rollback, versions, formats, deletes, moves, every download, the
+  store going away) - and a 1 GB file up and down through the jar with a 256 MB heap. Found on the
+  way: issue 102 (fixed), 100 and 101 (before the switch), 103 (the committed local defaults,
+  fixed).
 * **2.5.0 - the file history**: one row per thing that happened to a file - uploaded, a version
   or a format added, described, moved, made public or private, a revision or the whole file
   deleted, a share link made or revoked - with who, when, with which API key, and a snapshot of
@@ -78,20 +93,21 @@ What the releases since the cut-over brought, newest first:
 
 **What comes next**, in the order proposed:
 
-1. **Deploy 2.5.1 and 2.6.0**, on the filesystem backend as today: a jar swap, no migration. With
-   them the three upload settings and the reverse proxy's limit - IIS's is about 28 MB by default
-   ([deployment.md, Large uploads](deployment.md#large-uploads)).
+1. **Deploy 2.5.1, 2.6.0 and 2.7.0**, on the filesystem backend as today: one migration (`V3.6`,
+   a new empty table). With them the three upload settings and the reverse proxy's limit - IIS's
+   is about 28 MB by default ([deployment.md, Large uploads](deployment.md#large-uploads)) - and
+   `X-Forwarded-For` from the proxy, which the download records take the address from
+   ([2.6.0 → 2.7.0](deployment.md#upgrading-from-260-to-270--who-downloaded-what-and-one-setting-renamed)).
 2. **Phase 4, the rest of it** ([the plan](#phase-4--s3-as-a-storage-backend), steps in
    [4.7](#47-the-steps)): the backend switch is built (2.6.0) and SeaweedFS runs locally with the
    bucket made. Left, in order: the proof of concept finished - **whether SeaweedFS actually
    carries out the lifecycle rule** ([4.5.1](#451-the-lifecycle-rule-stored-not-yet-seen-carried-out)),
-   the application run against the real stack, a 1-2 GB file through it, a restore; then the copy
-   tool (4.4); then the backup procedure written and rehearsed; then the window. An S3-compatible
+   a restore; issues 100 and 101 (a storage failure as a 503, and a time limit on the calls that
+   move no body); then the copy tool (4.4); then the backup procedure written and rehearsed; then
+   the window. Done in 2.7.0: the application against a SeaweedFS stack case by case, and a 1 GB
+   file through it. An S3-compatible
    API for standard tools is planned separately ([9.10](#910-an-s3-compatible-mode--planned)).
-3. **Recording downloads** (9.2): the one event the file history does not hold yet - who, or which
-   key, downloaded which revision, when. The history and the key activity page are built for it;
-   what needs deciding is volume, since a download is the commonest request there is (one row per
-   download, kept for a set time, never counted on a page). Small, and independent of Phase 4.
+3. ~~**Recording downloads** (9.2)~~ - **done (2.7.0)**.
 4. **Phase 8 - IMS** (controlled documents, forms on `jsonb`, full-text search of their contents),
    when it is wanted.
 5. **Issues 18 and 19** - one REST surface and coarse permission verbs - one release of their own,
@@ -847,7 +863,12 @@ has to catch up. No `TieredBlobStore`, no column saying where each row lives.
    of 3.5: it starts no web server, walks `file_details` in id order and, for each row, reads the
    file, checks its SHA-256 against `checksum_sha256`, uploads it to the same key, and verifies
    what the store now holds (size from `HeadObject`, and the checksum - from the store if it keeps
-   `x-amz-checksum-sha256`, otherwise by reading the object back). **Resumable**: an object
+   `x-amz-checksum-sha256`, otherwise by reading the object back). **Above one part the store's
+   checksum is composite** (found in 2.7.0, on a 1 GB file: `...=-64`): the SHA-256 of the parts'
+   SHA-256s, one after another, then `-n` for n parts - not the file's, so it is never compared with
+   `checksum_sha256`. The tool computes the same from the file and the part size it uploads with
+   (`S3BlobStoreTest` pins the formula), and compares that; the file's own SHA-256 it checks on the
+   way in. Most files are above 16 MB, so this is the common case, not the exception. **Resumable**: an object
    already there with the right size and checksum is skipped. Parallel, with a report at the end
    and a non-zero exit status on any row it could not copy or verify. It copies in both
    directions, which is what makes the rollback below possible.
@@ -1942,11 +1963,13 @@ api_key_folder (api_key_id, folder_id, permission)
   is created and in `ActionHistoryService`, so no caller can forget it. The file page shows
   «از طریق API با کلید «title»» in the creator's place, the title as the key has it now.
   Still to come, **not started**:
-  * **Recording downloads.** No download is recorded in the database - a person's or a key's; the
-    log has each one, with the key's id (`userId/keyId`). For a controlled document "who read this
-    revision" is a real question; since 2.5.0 the file history is where it would go (a
-    `DOWNLOADED` event), what is left to decide is volume - one row per download, kept for a set
-    time. Listed third in "What comes next", after Phase 4.
+  * ~~**Recording downloads.**~~ — **done (2.7.0)**, in a table of its own rather than as a
+    `DOWNLOADED` event of the file history: a download is tens of times as common as a change, and
+    kept for a period of its own (`filemanagement.downloads.retention-days`, 365). One row per
+    download - the person, or the key and its creator, or nobody (a share link, the public files),
+    always the address - through each of the six ways out; written off the request by
+    `DownloadRecorder`, so it never slows or fails one. `/files/downloads`, a file's page and the key's
+    activity page read it (`FILE_DOWNLOADS_PAGE`).
   * ~~**A key's activity page.**~~ — **done (2.5.0)**: `/api-keys/{id}/activity`
     (`API_KEY_ACTIVITY_PAGE`, in the API keys group), what the key uploaded, added, changed and
     deleted, newest first, read from the file history (`file_history.api_key_id`, indexed), under

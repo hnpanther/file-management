@@ -56,7 +56,7 @@ class StorageKeyTest extends DatabaseSupport {
     private String categoryName;
     private String subCategoryName;
 
-    @org.springframework.beans.factory.annotation.Value("${file.management.base-dir}")
+    @org.springframework.beans.factory.annotation.Value("${filemanagement.base-dir}")
     private String baseDir;
 
     @BeforeEach

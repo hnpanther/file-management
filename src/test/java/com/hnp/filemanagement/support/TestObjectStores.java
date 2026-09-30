@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.support;
 
+import org.springframework.test.context.DynamicPropertyRegistry;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.Transferable;
@@ -10,6 +11,8 @@ import software.amazon.awssdk.services.s3.S3Client;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The object store the S3 tests run against: one SeaweedFS container per JVM - the store and the
@@ -39,6 +42,38 @@ public final class TestObjectStores {
         return endpointOf(SeaweedFs.CONTAINER);
     }
 
+    /**
+     * The application on this store: the s3 backend, the suite's bucket and key, and a prefix of the
+     * test's own, so that what one test class writes is never another's to find.
+     */
+    public static void useAsBackend(DynamicPropertyRegistry registry, String prefix) {
+        registry.add("filemanagement.storage.backend", () -> "s3");
+        registry.add("filemanagement.storage.s3.endpoint", TestObjectStores::endpoint);
+        registry.add("filemanagement.storage.s3.bucket", () -> BUCKET);
+        registry.add("filemanagement.storage.s3.access-key", () -> ACCESS_KEY);
+        registry.add("filemanagement.storage.s3.secret-key", () -> SECRET_KEY);
+        registry.add("filemanagement.storage.s3.prefix", () -> prefix);
+        registry.add("filemanagement.storage.s3.part-size-mb", () -> "5");
+    }
+
+    /** Every key in the bucket under this prefix, without the prefix - what the store holds for the application. */
+    public static List<String> keysUnder(String prefix) {
+        List<String> keys = new ArrayList<>();
+        try (S3Client s3 = client()) {
+            s3.listObjectsV2Paginator(request -> request.bucket(BUCKET).prefix(prefix + "/"))
+                    .contents().forEach(object -> keys.add(object.key().substring(prefix.length() + 1)));
+        }
+        return keys;
+    }
+
+    /** Removes everything under this prefix - between tests, what clearing the storage root is on disk. */
+    public static void clear(String prefix) {
+        try (S3Client s3 = client()) {
+            s3.listObjectsV2Paginator(request -> request.bucket(BUCKET).prefix(prefix + "/"))
+                    .contents().forEach(object -> s3.deleteObject(request -> request.bucket(BUCKET).key(object.key())));
+        }
+    }
+
     /** A client with the suite's key, as the application builds one. */
     public static S3Client client() {
         return client(ACCESS_KEY, SECRET_KEY);
@@ -59,14 +94,26 @@ public final class TestObjectStores {
 
     // A holder: the container starts when this class is first touched, and never otherwise.
     private static final class SeaweedFs {
-        static final GenericContainer<?> CONTAINER = started(new GenericContainer<>("chrislusf/seaweedfs:4.48")
+        static final GenericContainer<?> CONTAINER = started(container());
+    }
+
+    /**
+     * A store of the test's own, started with the suite's bucket and key - for a test that stops it
+     * halfway, which the shared one must never be. The caller stops it.
+     */
+    public static GenericContainer<?> startPrivateStore() {
+        return started(container());
+    }
+
+    private static GenericContainer<?> container() {
+        return new GenericContainer<>("chrislusf/seaweedfs:4.48")
                 .withCommand("server", "-dir=/data", "-ip.bind=0.0.0.0",
                         "-master.volumeSizeLimitMB=64", "-volume.max=100",
                         "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json")
                 .withCopyToContainer(Transferable.of(S3_CONFIG), "/etc/seaweedfs/s3.json")
                 .withExposedPorts(8333)
                 .waitingFor(Wait.forLogMessage(".*Start Seaweed S3 API Server.*\\n", 1)
-                        .withStartupTimeout(Duration.ofMinutes(2))));
+                        .withStartupTimeout(Duration.ofMinutes(2)));
     }
 
     private static GenericContainer<?> started(GenericContainer<?> container) {
@@ -75,7 +122,8 @@ public final class TestObjectStores {
         return container;
     }
 
-    private static String endpointOf(GenericContainer<?> container) {
+    /** {@code http://host:port} of this store's S3 gateway. */
+    public static String endpointOf(GenericContainer<?> container) {
         return "http://" + container.getHost() + ":" + container.getMappedPort(8333);
     }
 

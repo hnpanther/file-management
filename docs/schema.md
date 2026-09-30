@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.5`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.6`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -284,6 +284,31 @@ _As of migration `V3.5`. Types and defaults are PostgreSQL's own; every table is
 * **index** `ix_file_details_search_description_trgm` (`replace(search_description, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 * **index** `ix_file_details_search_name_trgm` (`replace(search_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 * **index** `ix_file_details_state` (`state`)
+
+### `file_download`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `bigint` | no |  | identity |
+| `occurred_at` | `timestamptz(0)` | no |  |  |
+| `channel` | `varchar(12)` | no |  |  |
+| `file_info_id` | `integer` | no |  |  |
+| `file_details_id` | `integer` | no |  |  |
+| `file_name` | `varchar(255)` | no |  |  |
+| `version` | `integer` | yes |  |  |
+| `folder_id` | `integer` | yes |  |  |
+| `user_id` | `integer` | yes |  |  |
+| `username` | `varchar(150)` | yes |  |  |
+| `api_key_id` | `integer` | yes |  |  |
+| `share_link_id` | `integer` | yes |  |  |
+| `client_ip` | `varchar(45)` | yes |  |  |
+
+* **primary key** `id`
+* **index** `ix_file_download_api_key` (`api_key_id`, `occurred_at`, `id`)
+* **index** `ix_file_download_client_ip` (`client_ip`, `occurred_at`, `id`)
+* **index** `ix_file_download_file` (`file_info_id`, `occurred_at`, `id`)
+* **index** `ix_file_download_occurred_at` (`occurred_at`, `id`)
+* **index** `ix_file_download_user` (`user_id`, `occurred_at`, `id`)
 
 ### `file_history`
 
