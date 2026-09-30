@@ -34,11 +34,14 @@ class SecretsInToStringTest {
     }
 
     @Test
-    @DisplayName("the bootstrap password and the truststore password are never printed")
+    @DisplayName("the bootstrap password, the truststore password and the object store's secret are never printed")
     void configuration() {
         assertThat(new FileManagementProperties.Bootstrap(SECRET).toString()).doesNotContain(SECRET);
         assertThat(new FileManagementProperties.ActiveDirectory(true, "example.test", "ldaps://dc", null, null,
                 "trust.p12", SECRET, null, null, null).toString())
                 .contains("example.test").doesNotContain(SECRET);
+        assertThat(new FileManagementProperties.S3("http://storage:8333", null, "bucket", "the-key", SECRET,
+                null, null, null).toString())
+                .contains("the-key").doesNotContain(SECRET);
     }
 }

@@ -103,6 +103,45 @@ class FileManagementPropertiesTest {
     }
 
     @Test
+    @DisplayName("the files are on the filesystem unless the backend says s3, whose settings bind under storage.s3")
+    void storageBackend() {
+        FileManagementProperties unset = bind(Map.of("filemanagement.base-dir", "D:/files/"));
+        assertThat(unset.storage().backend()).isEqualTo(FileManagementProperties.Storage.Backend.FILESYSTEM);
+        assertThat(unset.storage().s3().region()).isEqualTo("us-east-1");
+        assertThat(unset.storage().s3().pathStyleAccess()).isTrue();
+        assertThat(unset.storage().s3().partSizeMb()).isEqualTo(16);
+        assertThat(unset.storage().s3().missing()).containsExactly("FILEMANAGEMENT_S3_ENDPOINT",
+                "FILEMANAGEMENT_S3_BUCKET", "FILEMANAGEMENT_S3_ACCESS_KEY", "FILEMANAGEMENT_S3_SECRET_KEY");
+
+        FileManagementProperties s3 = bind(Map.of(
+                "filemanagement.base-dir", "D:/files/",
+                "filemanagement.storage.backend", "s3",
+                "filemanagement.storage.s3.endpoint", "http://storage:8333",
+                "filemanagement.storage.s3.bucket", "file-management-prod",
+                "filemanagement.storage.s3.access-key", "the-key",
+                "filemanagement.storage.s3.secret-key", "the-secret",
+                "filemanagement.storage.s3.path-style-access", "false",
+                "filemanagement.storage.s3.prefix", "app",
+                "filemanagement.storage.s3.part-size-mb", "32"));
+        assertThat(s3.storage().backend()).isEqualTo(FileManagementProperties.Storage.Backend.S3);
+        assertThat(s3.storage().s3().endpoint()).isEqualTo("http://storage:8333");
+        assertThat(s3.storage().s3().bucket()).isEqualTo("file-management-prod");
+        assertThat(s3.storage().s3().pathStyleAccess()).isFalse();
+        assertThat(s3.storage().s3().prefix()).isEqualTo("app");
+        assertThat(s3.storage().s3().partSizeMb()).isEqualTo(32);
+        assertThat(s3.storage().s3().missing()).isEmpty();
+        assertThat(s3.storage().s3().toString()).contains("the-key").doesNotContain("the-secret");
+
+        assertThatThrownBy(() -> bind(Map.of("filemanagement.base-dir", "D:/files/",
+                "filemanagement.storage.backend", "disk")))
+                .as("a backend that does not exist stops the start").isInstanceOf(BindException.class);
+        assertThatThrownBy(() -> bind(Map.of("filemanagement.base-dir", "D:/files/",
+                "filemanagement.storage.s3.part-size-mb", "4")))
+                .isInstanceOf(BindException.class)
+                .rootCause().hasMessageContaining("partSizeMb");
+    }
+
+    @Test
     @DisplayName("a value out of range fails the binding - the start, not the hundredth request")
     void validation() {
         // The binder wraps the validation failure; what matters is that the value is refused

@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
-import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,7 +25,8 @@ import java.util.Locale;
 import java.util.stream.Stream;
 
 /**
- * The local filesystem as a {@link BlobStore} - today the only implementation (roadmap 2.2).
+ * The local filesystem as a {@link BlobStore} (roadmap 2.2) - the default backend; the other is
+ * {@link S3BlobStore}, and {@link BlobStoreConfig} makes whichever one is configured.
  *
  * <p>It replaces {@code FileStorageFileSystemService}, whose interface had two shapes: a
  * key-shaped half that every read and write of a stored object already went through, and a
@@ -48,7 +48,6 @@ import java.util.stream.Stream;
  * spelled both ways must mean one directory - the first production deployment of 1.1.0 found out
  * what happens when the two halves disagree.
  */
-@Service
 public class FilesystemBlobStore implements BlobStore {
 
     private static final Logger logger = LoggerFactory.getLogger(FilesystemBlobStore.class);

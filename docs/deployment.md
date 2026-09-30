@@ -86,6 +86,7 @@ Do this **before** the first start.
 | `FILEMANAGEMENT_DB_PASSWORD` | `file_management` | A password published in this repository |
 | `FILEMANAGEMENT_BASE_DIR` | `./TempFiles/files/main/` | Where every uploaded file is written. The default is inside the working tree, **and `TempFiles/` is in `.gitignore`** — so on a real host the data lands in a directory the repository deliberately ignores ([issue 45](issues.md#45-the-prod-profile-writes-into-the-working-tree--s3)) |
 | `FILEMANAGEMENT_LOG_PATH` | `./logs` | Same problem: relative to the working directory |
+| `FILEMANAGEMENT_STORAGE_BACKEND` | `filesystem` | Where the bytes are: `filesystem` (under `FILEMANAGEMENT_BASE_DIR`) or `s3` (an object store, with `FILEMANAGEMENT_S3_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY`, `_SECRET_KEY`). **Switching an installation that already has files needs the copy first** ([2.5.1 → 2.6.0](#upgrading-from-251-to-260--an-object-store-as-the-backend-if-chosen)) |
 | `FILEMANAGEMENT_TIME_ZONE` | `Asia/Tehran` | The zone the pages show times in and the day an API key expires on is read in (2.2.0). Leave it unless the people using the system are elsewhere; the database stores instants and the server's own zone is never used for either. An unknown zone stops the start |
 | **`FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE`** | `20MB` | **Set it: `1GB`.** The largest file the server takes; everything above it is a 413. The proxy in front must allow as much ([Large uploads](#large-uploads)) |
 | **`FILEMANAGEMENT_UPLOAD_MAX_REQUEST_SIZE`** | `21MB` | **Set it: `1025MB`** - a little above the file cap, for the form's other fields |
@@ -711,6 +712,34 @@ the `seeded 5 new permission(s)` line.
 
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
+
+### Upgrading from 2.5.1 to 2.6.0 — an object store as the backend, if chosen
+
+A jar swap; no migration, and **nothing changes unless it is asked for**: the files stay on the
+filesystem, under `FILEMANAGEMENT_BASE_DIR`, as before.
+
+What is new is the choice. `FILEMANAGEMENT_STORAGE_BACKEND=s3` stores the bytes in an
+S3-compatible object store instead - SeaweedFS (`deploy/seaweedfs`), Ceph RGW, MinIO or S3 - with:
+
+```ini
+FILEMANAGEMENT_STORAGE_BACKEND=s3
+FILEMANAGEMENT_S3_ENDPOINT=http://storage-host:8333
+FILEMANAGEMENT_S3_BUCKET=file-management-prod
+FILEMANAGEMENT_S3_ACCESS_KEY=<the application's key in the store>
+FILEMANAGEMENT_S3_SECRET_KEY=<its secret>
+# optional: FILEMANAGEMENT_S3_REGION (us-east-1), FILEMANAGEMENT_S3_PATH_STYLE_ACCESS (true),
+#           FILEMANAGEMENT_S3_PREFIX (none), FILEMANAGEMENT_S3_PART_SIZE_MB (16)
+```
+
+**Do not switch an installation that has files** until they have been copied into the bucket
+(roadmap 4.4 - the copy tool is the next step, not part of 2.6.0). The rows keep their keys; the
+new backend looks every one of them up in the bucket, and an old file that is not there is a 404.
+On a new installation, or a copy of one for testing, switch freely.
+
+The start with `s3` checks the bucket and stops with the reason if a setting is missing, the
+bucket does not exist, or the key is refused; `app_log.log` then says either `files are stored on
+the filesystem, under ...` or `files are stored in the S3 bucket ... at ...`. With `s3` the bucket
+is part of `/actuator/health/readiness`.
 
 ### Upgrading from 2.5.0 to 2.5.1 — the upload cap from the environment
 

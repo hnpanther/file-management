@@ -237,8 +237,26 @@ A file is publicly downloadable only when **both** `FileDetails.state = 0` **and
 
 ## 5. Physical storage layout
 
-`FilesystemBlobStore` is the only implementation of `BlobStore` (roadmap 2.2). It takes the
-storage root from `FileManagementProperties` and resolves every key against it.
+`BlobStore` has two implementations, and one setting picks which the installation uses
+(`BlobStoreConfig`, 2.6.0):
+
+| `filemanagement.storage.backend` | Store | Where a key lands |
+|---|---|---|
+| `filesystem` (default) | `FilesystemBlobStore` | a path under `base-dir`, resolved by `within` |
+| `s3` | `S3BlobStore` - SeaweedFS, Ceph RGW, MinIO, S3 (AWS SDK v2, path-style) | an object in `filemanagement.storage.s3.bucket`, key = `[prefix/]storage_key` |
+
+The key is the same on both, byte for byte: moving an installation from one to the other is a copy
+of the bytes (roadmap 4.4), not a change to any row. `S3BlobStore` writes a file that fits in one
+part (`part-size-mb`, 16) as one `PutObject` and a larger one as a multipart upload, holding one
+part in memory at most; it sends the SHA-256 it computes, which the store keeps; it refuses to
+overwrite (a `HeadObject` first); it serves a download lazily, so a `Range` request is a ranged
+`GetObject`; and `deleteDirectory` lists `prefix + "/"` and deletes a thousand at a time. A start
+with `s3` refuses a missing setting, a missing bucket and refused credentials, and adds the bucket
+to `/actuator/health/readiness`. The layout below is the filesystem's; in a bucket the same keys
+are object keys.
+
+`FilesystemBlobStore` takes the storage root from `FileManagementProperties` and resolves every
+key against it.
 
 ```
 {base-dir}/
@@ -1102,7 +1120,9 @@ schema at startup but never modifies it.
 | `spring.datasource.*` | `jdbc:postgresql://localhost:5434/file_management?sslmode=disable` (the port `compose.yaml` publishes), user/pass `file_management` | |
 | `spring.jpa.hibernate.ddl-auto` | `validate` | |
 | `spring.flyway.baseline-on-migrate` | `true` | |
-| `file.management.base-dir` | `./TempFiles/files/main/` | `FilesystemBlobStore` |
+| `file.management.base-dir` | `./TempFiles/files/main/` | `FilesystemBlobStore` - the storage root when the backend is `filesystem` |
+| `filemanagement.storage.backend` | `filesystem` | `BlobStoreConfig`: `filesystem` or `s3` (2.6.0) |
+| `filemanagement.storage.s3.*` | endpoint, bucket, keys empty; region `us-east-1`; path-style `true`; prefix empty; part size 16 MB | `S3BlobStore`, read only for the `s3` backend (`FILEMANAGEMENT_S3_*`) |
 | `filemanagement.time-zone` | `Asia/Tehran` | the zone of the application's `Clock`: what the pages show times in, and what a typed date is read in (§8, "Time"). Never the server's zone; an unknown zone fails the start |
 | `spring.servlet.multipart.max-file-size` / `max-request-size` | `20MB` | |
 | `filemanagement.default.page-size` | `30` | rows per list page, read from `FileManagementProperties`; a `page-size` in the URL is clamped to 200 and a bad one falls back to this (`PageRequests`) |

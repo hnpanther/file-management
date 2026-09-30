@@ -44,7 +44,7 @@ motivate each change are numbered in [issues.md](issues.md); the order of work i
               ┌──────────────────────────┐   ┌──────────────────────────────┐
               │ persistence/  (JPA,      │   │ storage/                     │
               │   PostgreSQL, Flyway)    │   │   · FilesystemBlobStore      │
-              └──────────────────────────┘   │   · S3BlobStore (Phase 4)    │
+              └──────────────────────────┘   │   · S3BlobStore (2.6.0)      │
                                              └──────────────────────────────┘
 ```
 
@@ -79,7 +79,7 @@ implement honestly:
 public interface BlobStore {
 
     /** Stream bytes in; never overwrites. Returns the byte count and SHA-256 actually written. */
-    StoredBlob put(StorageKey key, InputStream data);   // Phase 4 adds the length - see below
+    StoredBlob put(StorageKey key, InputStream data);
 
     /** Stream bytes out. */
     Resource open(StorageKey key);
@@ -94,7 +94,8 @@ public interface BlobStore {
 ```
 
 Its promises are written in `BlobStoreContractTest`, which every implementation passes:
-`FilesystemBlobStore` today, `S3BlobStore` in Phase 4.
+`FilesystemBlobStore` and, since 2.6.0, `S3BlobStore` - against a real SeaweedFS in the suite.
+One setting, `filemanagement.storage.backend`, picks the one an installation uses.
 
 `StorageKey` is an opaque string built once at upload time and stored on the row
 (`file_details.storage_key`), never rebuilt:
@@ -112,12 +113,15 @@ they are.
 `StoredBlob` carries the SHA-256 and the byte count computed **while streaming**; the checksum is
 stored on the row (`checksum_sha256`, 1.8.0, issue 7) and is what proves a copy arrived whole.
 
-**Two additions come with Phase 4**, driven by the size of the files (below):
+**What the object store needed, and how 2.6.0 answered it** without changing the port:
 
-* `put` takes the length, which an object store needs before the first byte (`MultipartFile`
-  knows it), and uses multipart upload above a threshold;
-* an optional `presignedGet(key, ttl, disposition)`, so a download can be handed to the store
-  instead of streaming through the application - `Optional.empty()` from the filesystem.
+* an object store wants the length before the first byte, and the port gives a stream - so
+  `S3BlobStore` reads up to one part (16 MB) first: a file that ends within it is one
+  `PutObject`, a larger one a multipart upload of parts that size. One part in memory per upload,
+  whatever the file's size; no length on the port, no second temporary file;
+* still to come: an optional `presignedGet(key, ttl, disposition)`, so a download can be handed to
+  the store instead of streaming through the application - `Optional.empty()` from the filesystem.
+  Until then a download streams through, and a `Range` request is a ranged `GetObject`.
 
 A server-side `copy` is **not** needed: the write path below writes to the final key.
 
@@ -148,8 +152,8 @@ bytes take:
 * **The upload cap is a setting** (`spring.servlet.multipart.max-file-size`, and the reverse
   proxy's `client_max_body_size` and timeouts to match); the per-kind limits of the upload policy
   sit under it.
-* **Multipart upload to the store** above a threshold (16-64 MB parts), so a 1 GB file is not one
-  request that fails at 900 MB.
+* **Multipart upload to the store** above one part (16 MB, `part-size-mb`), so a 1 GB file is not
+  one request that fails at 900 MB (2.6.0).
 * **Downloads by pre-signed URL** once the bytes are in an object store - the biggest single
   saving: the application stops being the pipe every download flows through. A recorded download
   (roadmap 9.2) is written before the redirect.
@@ -222,17 +226,17 @@ the scattered `@Value` injections and the two competing prefixes (issue 27):
 ```yaml
 filemanagement:
   storage:
-    backend: s3                 # filesystem | s3 - one backend for the whole installation
-    filesystem:
-      base-dir: /var/lib/file-management
+    backend: s3                 # filesystem | s3 - one backend for the whole installation (2.6.0)
     s3:
-      endpoint: https://s3.storage.internal:8333   # SeaweedFS's S3 gateway, or whichever store 4.6 chose
+      endpoint: http://storage-host:8333           # SeaweedFS's S3 gateway, or whichever store 4.6 chose
       bucket: file-management-prod                 # one bucket per environment
+      access-key: ...                              # FILEMANAGEMENT_S3_ACCESS_KEY
+      secret-key: ...                              # FILEMANAGEMENT_S3_SECRET_KEY
       prefix: ""                                   # optional, for a bucket shared with something else
       region: us-east-1
       path-style-access: true   # required by every self-hosted S3-compatible store
-      multipart-threshold: 64MB
-      presigned-url-ttl: 15m
+      part-size-mb: 16          # a larger file goes up in parts of this size
+  base-dir: /var/lib/file-management               # the filesystem backend's root
   upload:
     max-file-size: 2GB          # the server's cap; the upload policy's per-kind limits sit under it
     allowed-types: [ application/pdf, image/png, ... ]

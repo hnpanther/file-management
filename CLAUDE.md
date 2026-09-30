@@ -70,12 +70,15 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   `file_storage_write` so `StorageSweeper` can settle what a killed process left (roadmap 2.3,
   [issue 3](docs/issues.md#3-storage-writes-are-not-atomic-with-the-database--s1)). Reads and
   deletes go straight to the port.
-* **Bytes go through `BlobStore`** (`put`, `open`, `exists`, `delete`, `deleteDirectory`), whose
-  only implementation today is `FilesystemBlobStore`. One opaque `StorageKey` names one object;
+* **Bytes go through `BlobStore`** (`put`, `open`, `exists`, `delete`, `deleteDirectory`): the
+  filesystem (`FilesystemBlobStore`, the default) or an S3-compatible store (`S3BlobStore`, 2.6.0),
+  one per installation, chosen by `filemanagement.storage.backend` in `BlobStoreConfig`. Nothing
+  else may know which. One opaque `StorageKey` names one object;
   do not add a method that takes a directory, a version and an extension, and do not rebuild a
   location from folder names — `file_details.storage_key` is the only record of where the bytes
   are, and folders are renamed without moving them. Anything the port promises is written in
-  `BlobStoreContractTest`, which every implementation must pass.
+  `BlobStoreContractTest`, which every implementation must pass - the S3 one against a real
+  SeaweedFS (`support/TestObjectStores`).
 * **A general tag is not a folder.** `Folder` kinds are `ROOT`, `FOLDER`, `PROFILES` (the one
   folder the personal folders sit under; takes nothing by hand) and `USER_HOME` (a user's own,
   renamed only with the user, moved and deleted by nobody, usually carrying `quota_bytes`); the
