@@ -19,6 +19,7 @@ working, and to depend only on what came before.
 | 8 | IMS: controlled documents, a form builder and approval workflow | 7 | planned |
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
 | 10 | After 1.4.0: sharded storage, download from the explorer, recursive delete, `Profiles` with a quota, share links | 7, 9 | **done** (1.5.0) |
+| 11 | Searching the contents of files: text from documents, OCR of scans and images, drawings and diagrams | 4 (for the backfill) | planned |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -108,11 +109,14 @@ What the releases since the cut-over brought, newest first:
    file through it. An S3-compatible
    API for standard tools is planned separately ([9.10](#910-an-s3-compatible-mode--planned)).
 3. ~~**Recording downloads** (9.2)~~ - **done (2.7.0)**.
-4. **Phase 8 - IMS** (controlled documents, forms on `jsonb`, full-text search of their contents),
-   when it is wanted.
-5. **Issues 18 and 19** - one REST surface and coarse permission verbs - one release of their own,
+4. **Phase 11 - searching the contents of files** ([the plan](#phase-11--searching-the-contents-of-files--planned)):
+   the pipeline and text documents first (11.1-11.2), the backfill after Phase 4's copy (11.3),
+   then OCR and drawings, each optional (11.4-11.5). It is also what Phase 8's "full-text search of
+   their contents" will use.
+5. **Phase 8 - IMS** (controlled documents, forms on `jsonb`), when it is wanted.
+6. **Issues 18 and 19** - one REST surface and coarse permission verbs - one release of their own,
    whenever the permission model is taken up; both rename permissions and migrate their rows.
-6. **Deferred by decision**: CI (step 3 below). And the operational leftovers: the credentials
+7. **Deferred by decision**: CI (step 3 below). And the operational leftovers: the credentials
    still in the git history rotated ([issue 11](issues.md#11-credentials-and-infrastructure-details-are-committed--s1)),
    and the `Admin` password changed on every installation that still has the first one.
 
@@ -2501,6 +2505,97 @@ an expired one.
 
 **Done when:** each step's tests are green, the four docs are true, and — for 10.1 — the release
 that began sharding is named in `deployment.md`.
+
+## Phase 11 — Searching the contents of files — **planned**
+
+Today a search matches names and descriptions (trigram indexes on folded keys, 2.2.0). This phase
+lets it match **what is inside the files**: the text of a PDF or a Word document, the cells of a
+spreadsheet, the words on a scanned page or a photographed form, the labels of a Visio diagram, the
+title block of a drawing. The design is in
+[target-architecture.md](target-architecture.md#searching-the-contents-of-files); what follows is
+the order, and why.
+
+### 11.0 The shape, in one paragraph
+
+Searching and reading are two jobs, done at two times. **Reading** - getting the text out of a file
+- happens **after** the upload, in the background, never in the request: a revision committed with
+its bytes gets a row in `file_content` saying *pending*, in the same transaction, so a rolled-back
+upload leaves none. Workers take pending rows (`FOR UPDATE SKIP LOCKED`), stream the bytes from the
+`BlobStore` to **Apache Tika running as a service of its own** (`tika-server`), and write back the
+text, or why there is none. Which tool reads a file is decided **then**, by the worker, from the
+file's detected kind - not at upload - so switching OCR on later, or adding a reader for a new
+kind, is a re-queue of the rows that were skipped, never a re-upload. **Searching** reads only the
+database: a `tsvector` of the folded text with a GIN index, scoped by folder access in the query
+itself, as every other search is.
+
+### 11.1 Decisions
+
+* **Tika out of the process.** Its parsers meet whatever people upload; a malformed or hostile file
+  (a zip bomb, a PDF that loops) can take all the memory or never return. `tika-server` in forked
+  mode restarts its own child, and the application only waits on an HTTP call with a timeout. The
+  application keeps `tika-core` (detection) and gains no parser jar.
+* **OCR is Tesseract, inside the Tika service**, with `fas` and `eng`. It is the expensive part -
+  seconds a page - so it has its own lane of workers, its own page cap, and a switch. A PDF is sent
+  to OCR only when it has no text layer (Tika's `ocr_auto`), so a text PDF never pays for it.
+* **AutoCAD**: DXF is text and is read directly (`TEXT`, `MTEXT`, block attributes). DWG has no
+  reliable open reader; the ODA File Converter (free, closed source, its terms to be checked)
+  converts it to DXF first. What is worth having is mostly the title block - drawing number, title,
+  project - which is enough to find a drawing.
+* **PostgreSQL first, not OpenSearch.** No new store to run, back up and keep in step; the folder
+  scoping is SQL the application already writes; a revision's text commits with its status. The
+  price is relevance: PostgreSQL has no Persian stemmer, so the `simple` configuration over text
+  folded as `SearchKey` folds names (ي/ك, the half-space, digits, case) - whole words and phrases
+  match, `کتاب‌ها` does not find `کتاب`. Search goes behind a `ContentSearch` port, so OpenSearch
+  with its Persian analyzer can replace it later without touching the callers (11.6).
+* **Every revision is read; a search finds files.** Results are grouped by file, the latest
+  revision first, with a filter for older ones.
+* **Bounded everywhere**: the bytes a file may have to be read (a setting), the text kept per
+  revision (a few MB), the text indexed (a `tsvector` is at most 1 MB - the first few hundred
+  thousand characters), the pages OCR reads, the time one file may take.
+
+### 11.2 The steps
+
+| Step | What | Schema | Depends on |
+|---|---|---|---|
+| 11.1 | **The pipeline**: `file_content` and its states, the outbox row written with each revision, the workers in two lanes, `tika-server` in `deploy/` and in the suite (Testcontainers), the settings, a page of what failed with a retry | `V3.x` | - |
+| 11.2 | **Text documents**: PDF with a text layer, Word, PowerPoint, Excel, OpenDocument, RTF, text, HTML; the `tsvector`, its GIN index, "search in contents" on the file list, the explorer and API v1, a highlighted snippet per result | (11.1's) | 11.1 |
+| 11.3 | **The backfill**: every existing revision queued, read at a set rate in the text lane, a report at the end - after Phase 4's copy, so every file is read once, from where it will stay | none | 11.2, 4.4 |
+| 11.4 | **OCR**: images and scanned PDFs, Persian and English, in the OCR lane; measured first on a sample of real scans, and switched on only if what it reads is worth the CPU | none | 11.2 |
+| 11.5 | **Drawings and diagrams**: Visio (`vsdx`, `vsd`) checked on real files; DXF read directly; DWG through the converter | none | 11.2 |
+| 11.6 | **Only if needed**: OpenSearch behind `ContentSearch` - stems, typo tolerance, better ranking | none | 11.2 |
+
+11.1 and 11.2 ship together - the first useful release; 11.3 runs once on production after it;
+11.4 and 11.5 are each a release of their own and each optional.
+
+### 11.3 What has to be true at each step
+
+* **An upload never waits for, and never fails because of, reading its contents.** Tika down,
+  slow or failing leaves rows *pending* or *failed* and uploads, downloads and name search exactly
+  as they were (the test of 2.7.0's download records, again).
+* **Nobody learns from a search what they could not open.** The snippet is the file's contents:
+  shown only for a revision the reader may read, filtered in the query, never after it. Public
+  files and share links grant nothing here.
+* **Every row ends in a state**: `DONE`, `EMPTY` (read, nothing in it), `SKIPPED` (a kind nothing
+  reads, OCR off, over a cap), `FAILED` (with the reason and the attempts, retried with a back-off,
+  then left for the failures page). A `PENDING` row older than a day is a stuck worker, and readiness
+  says so as a warning, not a DOWN.
+* **A revision deleted takes its text with it**; a file moved or renamed changes nothing (the text
+  belongs to the bytes, which do not move).
+
+### 11.4 Tests
+
+A corpus of real-shaped samples under `src/test/resources/content/` - Persian and English PDFs with
+and without a text layer, `docx`, `xlsx`, `pptx`, `vsdx`, a photographed form, a `dxf` - each with
+the words it must yield; Tika as a container, as SeaweedFS is; the worker with Tika stopped, slow,
+and given a corrupt file; folder access on results and snippets; `SearchIndexTest` cases for the GIN
+index; `ListQueryCountTest` for a results page.
+
+### 11.5 Open questions
+
+* The OCR budget: how many pages a day there will be, and whether the application's host has the
+  CPU, or the Tika service runs elsewhere.
+* The ODA converter's licence terms for this use.
+* Whether the text of old revisions is worth keeping once a newer one exists (11.1 keeps it).
 
 ---
 
