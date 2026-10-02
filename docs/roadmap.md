@@ -40,7 +40,9 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
-2.7.2 is written: a password is typed twice, on changing one and on creating a user.
+2.7.3 is written: readiness checks the database and the storage, as the documentation always
+said it did (issue 104). 2.7.2 is written: a password is typed twice, on changing one and on
+creating a user.
 2.7.1 is written: **a storage failure is a 503 with `Retry-After`** (issue 100), and **a hung
 object store costs a request seconds, not minutes** (issue 101) - both tested against a store
 stopped and a store paused. 2.7.0 is written: **every download recorded** - who, or which key, from which address, which way -
@@ -917,7 +919,8 @@ has to catch up. No `TieredBlobStore`, no column saying where each row lives.
   ([deployment.md](deployment.md#on-the-s3-backend--two-servers-one-pair),
   [deploy/seaweedfs](../deploy/seaweedfs/README.md#backups)). **Still to do: a restore rehearsed**
   from it, before the window.
-* A `BlobStore` health indicator (`HeadBucket`) in `/actuator/health/readiness`, and timers
+* A `BlobStore` health indicator (`HeadBucket`) in `/actuator/health/readiness` - in the
+  aggregate since 2.6.0, in readiness itself only since 2.7.3 (issue 104) - and timers
   tagged `backend=s3|filesystem` on every port operation.
 * Later, optionally: downloads by pre-signed URL (`response-content-disposition` set as
   `ContentDispositions` does), taking the bytes off the application. Recording downloads (9.2)

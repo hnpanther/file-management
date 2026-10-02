@@ -492,18 +492,41 @@ Three probes, and they answer different questions. **Point a load balancer at re
 the other two.
 
 ```bash
-# Readiness: can it serve traffic? Includes the database.
+# Readiness: can it serve traffic? UP only when the database answers AND the storage does - the
+# bucket on s3, the storage root (a writable directory) on the filesystem. What a load balancer
+# acts on.
 curl -sS http://localhost:8122/actuator/health/readiness    # {"status":"UP"}
 
-# Liveness: is the process alive? A DOWN here is what a restart fixes.
+# Liveness: is the process alive? A DOWN here is what a restart fixes - so nothing outside the
+# process is in it: a database that is down is not fixed by a restart.
 curl -sS http://localhost:8122/actuator/health/liveness     # {"status":"UP"}
 
-# The aggregate, which is what most tooling defaults to.
+# The aggregate: everything above, plus the working directory's free disk space.
 curl -sS http://localhost:8122/actuator/health              # {"status":"UP"}
 
 # Which build is actually running - the question to ask after every upgrade.
 curl -sS http://localhost:8122/actuator/info
 ```
+
+| Check | In readiness | In the aggregate | What it asks |
+|---|---|---|---|
+| `db` | yes | yes | a pooled connection answers `isValid()` |
+| `blobStore` | yes | yes | s3: the bucket answers a `HeadBucket` within `FILEMANAGEMENT_S3_TIMEOUT_HEALTH_SECONDS` (3 s); filesystem: `FILEMANAGEMENT_BASE_DIR` is a directory the service may write to |
+| `readinessState` | yes | yes | the application's own state: started, not shutting down |
+| `livenessState` | no - it is liveness, alone | yes | the process is not broken beyond what it can recover from |
+| `diskSpace` | no | yes | more than 10 MB free where the service started - the working directory, not the storage root |
+
+A DOWN is `503` with `{"status":"DOWN"}`. Two things for whoever sets the probe up:
+
+* **Give it a timeout of five seconds or more, and count a timeout as DOWN.** A store that hangs
+  answers DOWN in three seconds; a database that is gone can take up to the pool's connection
+  timeout (Hikari's 30 s) before the check gives up.
+* **On the filesystem backend the storage root must exist before the first start** - it is not
+  created for you (on a share that is not mounted, creating it would put new files on the wrong
+  disk); until it exists readiness is DOWN and `app_log.log` says so at the start.
+
+Until 2.7.3 readiness held only the application's own state and stayed UP with the database or
+the storage gone (issue 104); anything that watched it then saw nothing.
 
 The three health URLs need no credential, so a probe does not need one either. They answer `UP` or
 `DOWN` and nothing else: component names and failure reasons are switched off deliberately, in
@@ -713,6 +736,27 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 2.7.2 to 2.7.3 — readiness means what it says
+
+A jar swap; no migration, no permission, no setting.
+
+**`/actuator/health/readiness` now checks the database and the storage** (issue 104) - the bucket
+on `s3`, the storage root on the filesystem. Before, it checked only the application's own state:
+with the database or the store gone it still answered `UP`, and a load balancer watching it - as
+section 4 has always said to - kept sending people to an instance that could serve nothing.
+Liveness is unchanged, and stays out of it on purpose.
+
+Before starting it:
+
+* **`FILEMANAGEMENT_BASE_DIR` must exist** and be writable by the service account. It always has in
+  production; a fresh installation that relied on the first upload creating it now shows readiness
+  `DOWN` until it is created - `app_log.log` says so at the start.
+* **Whatever watches readiness** - a load balancer, IIS ARR's health test, monitoring - now sees a
+  DOWN when the database or the storage is gone: what it was always meant to see. Give the probe a
+  timeout of five seconds or more and count a timeout as DOWN ([section 4](#4-confirm-it-is-actually-up)).
+
+**Rollback** is the 2.7.2 jar alone.
+
 ### Upgrading from 2.7.1 to 2.7.2 — a password is typed twice
 
 A jar swap; no migration, no new permission, nothing to set. The two forms that set a password -
@@ -833,7 +877,8 @@ On a new installation, or a copy of one for testing, switch freely.
 The start with `s3` checks the bucket and stops with the reason if a setting is missing, the
 bucket does not exist, or the key is refused; `app_log.log` then says either `files are stored on
 the filesystem, under ...` or `files are stored in the S3 bucket ... at ...`. With `s3` the bucket
-is part of `/actuator/health/readiness`.
+is part of `/actuator/health/readiness` - since 2.7.3; before it, of the aggregate
+`/actuator/health` only (issue 104).
 
 ### Upgrading from 2.5.0 to 2.5.1 — the upload cap from the environment
 
@@ -1827,8 +1872,8 @@ clean up.
 
 ## 5. Confirm it is actually up
 
-The same three probes as on Linux — readiness is the one that includes the database, and the one
-a load balancer should watch:
+The same three probes as on Linux - readiness is the one that includes the database and the
+storage, and the one a load balancer should watch ([what each checks](#4-confirm-it-is-actually-up)):
 
 ```powershell
 (Invoke-WebRequest http://localhost:8122/actuator/health/readiness -UseBasicParsing).Content   # {"status":"UP"}
