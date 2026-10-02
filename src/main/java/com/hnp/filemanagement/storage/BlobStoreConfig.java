@@ -18,6 +18,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 
 /**
  * Which {@link BlobStore} this installation stores its bytes in, chosen by one setting
@@ -89,7 +90,12 @@ public class BlobStoreConfig {
                 .forcePathStyle(settings.pathStyleAccess())
                 // A download streams from its own connection until its last byte, so the pool is
                 // as large as the number of downloads that can be in progress (S3ConcurrencyTest).
-                .httpClientBuilder(Apache5HttpClient.builder().maxConnections(settings.maxConnections()))
+                .httpClientBuilder(Apache5HttpClient.builder()
+                        .maxConnections(settings.maxConnections())
+                        // The limits of issue 101: to connect, and of silence on a connection -
+                        // the one limit a transfer has, whatever the file's size.
+                        .connectionTimeout(Duration.ofSeconds(settings.timeouts().connectSeconds()))
+                        .socketTimeout(Duration.ofSeconds(settings.timeouts().readSeconds())))
                 .build();
     }
 
@@ -97,8 +103,11 @@ public class BlobStoreConfig {
     @ConditionalOnProperty(name = BACKEND, havingValue = "s3")
     public BlobStore s3BlobStore(S3Client s3Client, FileManagementProperties properties) {
         FileManagementProperties.S3 settings = properties.storage().s3();
+        FileManagementProperties.Timeouts timeouts = settings.timeouts();
         S3BlobStore store = new S3BlobStore(s3Client, settings.bucket(), settings.prefix(),
-                settings.partSizeMb() * 1024 * 1024);
+                settings.partSizeMb() * 1024 * 1024,
+                new S3BlobStore.Timeouts(Duration.ofSeconds(timeouts.attemptSeconds()),
+                        Duration.ofSeconds(timeouts.callSeconds()), Duration.ofSeconds(timeouts.healthSeconds())));
         store.requireBucket(settings.endpoint());
         logger.info("files are stored in the S3 bucket {} at {}{}", settings.bucket(), settings.endpoint(),
                 settings.prefix().isBlank() ? "" : ", under " + settings.prefix());

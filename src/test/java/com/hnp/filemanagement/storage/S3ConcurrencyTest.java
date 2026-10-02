@@ -64,7 +64,7 @@ class S3ConcurrencyTest {
     private static FileManagementProperties properties() {
         FileManagementProperties.S3 s3 = new FileManagementProperties.S3(TestObjectStores.endpoint(), null,
                 TestObjectStores.BUCKET, TestObjectStores.ACCESS_KEY, TestObjectStores.SECRET_KEY, null,
-                "concurrency-" + UUID.randomUUID(), null, null);
+                "concurrency-" + UUID.randomUUID(), null, null, null);
         return new FileManagementProperties("./target/unused", null, null, null, null, null,
                 new FileManagementProperties.Storage(FileManagementProperties.Storage.Backend.S3, s3,
                         null, null, null, null, null, null),

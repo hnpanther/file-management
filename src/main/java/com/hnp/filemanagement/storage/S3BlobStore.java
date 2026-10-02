@@ -3,10 +3,12 @@ package com.hnp.filemanagement.storage;
 import com.hnp.filemanagement.shared.exception.BusinessException;
 import com.hnp.filemanagement.shared.exception.DuplicateResourceException;
 import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.shared.exception.StorageUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.AbstractResource;
 import org.springframework.core.io.Resource;
+import software.amazon.awssdk.awscore.AwsRequestOverrideConfiguration;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.exception.SdkException;
@@ -26,12 +28,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * An S3-compatible object store as a {@link BlobStore} (roadmap Phase 4) - SeaweedFS, Ceph RGW,
@@ -56,6 +60,14 @@ import java.util.Optional;
  * opens the object lazily: a {@code Range} request - which Spring serves by skipping to the start
  * - becomes a ranged {@code GetObject}, not a read of every byte before it; and a stream closed
  * before its end aborts the rest instead of draining it.
+ *
+ * <p><b>A store that hangs costs seconds, not minutes</b> (2.7.1, issue 101). A call that moves no
+ * body - every {@code HeadObject}, which comes before every read and write, a listing, a delete -
+ * is limited per attempt and in all ({@link Timeouts}); a download is limited until its first byte
+ * and then only by the HTTP client's limit on silence, since its length is the file's; the
+ * readiness check has one short attempt. Whatever the store fails with is a
+ * {@link StorageUnavailableException}, a 503 (issue 100) - only "nothing at that key" is not a
+ * failure.
  */
 public class S3BlobStore implements BlobStore {
 
@@ -71,12 +83,33 @@ public class S3BlobStore implements BlobStore {
     private final String bucket;
     private final String prefix;
     private final int partSize;
+    private final Consumer<AwsRequestOverrideConfiguration.Builder> quick;
+    private final Consumer<AwsRequestOverrideConfiguration.Builder> health;
+
+    /**
+     * How long the calls that move no body may take, and the readiness check.
+     *
+     * @param attempt one attempt of a call that moves no body, and the wait for a download's first byte
+     * @param call    such a call in all, retries included
+     * @param health  the readiness check, one attempt
+     */
+    public record Timeouts(Duration attempt, Duration call, Duration health) {
+
+        /** The defaults of {@code filemanagement.storage.s3.timeouts}. */
+        public static final Timeouts DEFAULTS = new Timeouts(Duration.ofSeconds(5), Duration.ofSeconds(15),
+                Duration.ofSeconds(3));
+    }
+
+    /** With the default {@link Timeouts}. */
+    public S3BlobStore(S3Client s3, String bucket, String prefix, int partSizeBytes) {
+        this(s3, bucket, prefix, partSizeBytes, Timeouts.DEFAULTS);
+    }
 
     /**
      * @param prefix        put every key under this; blank for none
      * @param partSizeBytes the part size of a multipart upload, and the most one upload holds in memory
      */
-    public S3BlobStore(S3Client s3, String bucket, String prefix, int partSizeBytes) {
+    public S3BlobStore(S3Client s3, String bucket, String prefix, int partSizeBytes, Timeouts timeouts) {
         if (bucket == null || bucket.isBlank()) {
             throw new IllegalArgumentException("an S3 store needs a bucket");
         }
@@ -87,6 +120,10 @@ public class S3BlobStore implements BlobStore {
         this.bucket = bucket;
         this.prefix = normalisedPrefix(prefix);
         this.partSize = partSizeBytes;
+        // For a download this limits the wait for the response's headers only: once the stream is
+        // handed over, the body is read at the person's pace (S3BlobStoreTest).
+        this.quick = override -> override.apiCallAttemptTimeout(timeouts.attempt()).apiCallTimeout(timeouts.call());
+        this.health = override -> override.apiCallAttemptTimeout(timeouts.health()).apiCallTimeout(timeouts.health());
     }
 
     /**
@@ -95,7 +132,7 @@ public class S3BlobStore implements BlobStore {
      */
     public void requireBucket(String endpoint) {
         try {
-            s3.headBucket(request -> request.bucket(bucket));
+            s3.headBucket(request -> request.bucket(bucket).overrideConfiguration(quick));
         } catch (S3Exception e) {
             String reason = switch (e.statusCode()) {
                 case 404 -> "the bucket " + bucket + " does not exist - create it first (deploy/seaweedfs/README.md, \"The bucket\")";
@@ -109,10 +146,10 @@ public class S3BlobStore implements BlobStore {
         }
     }
 
-    /** Whether the bucket answers - for the health check. */
+    /** Whether the bucket answers - for the health check, within its own short limit. */
     public boolean bucketReachable() {
         try {
-            s3.headBucket(request -> request.bucket(bucket));
+            s3.headBucket(request -> request.bucket(bucket).overrideConfiguration(health));
             return true;
         } catch (SdkException e) {
             logger.warn("S3 bucket {} does not answer: {}", bucket, e.getMessage());
@@ -152,7 +189,7 @@ public class S3BlobStore implements BlobStore {
             }
         } catch (IOException | SdkException e) {
             logger.error("put key=" + key + " failed", e);
-            throw new BusinessException("error in saving file, check logs");
+            throw new StorageUnavailableException("error in saving file, check logs");
         }
         return new StoredBlob(key, size, HexFormat.of().formatHex(digest.digest()).toLowerCase(Locale.ROOT));
     }
@@ -179,10 +216,10 @@ public class S3BlobStore implements BlobStore {
             throw new ResourceNotFoundException("file not found, key=" + key);
         }
         try {
-            s3.deleteObject(request -> request.bucket(bucket).key(objectKey));
+            s3.deleteObject(request -> request.bucket(bucket).key(objectKey).overrideConfiguration(quick));
         } catch (SdkException e) {
             logger.error("delete key=" + key + " failed", e);
-            throw new BusinessException("can not delete file=" + key + ", please check logs");
+            throw new StorageUnavailableException("can not delete file=" + key + ", please check logs");
         }
     }
 
@@ -195,7 +232,8 @@ public class S3BlobStore implements BlobStore {
         String listed = objectKey(StorageKey.of(directory)) + "/";
         try {
             List<ObjectIdentifier> keys = new ArrayList<>();
-            for (S3Object object : s3.listObjectsV2Paginator(request -> request.bucket(bucket).prefix(listed)).contents()) {
+            for (S3Object object : s3.listObjectsV2Paginator(request -> request.bucket(bucket).prefix(listed)
+                    .overrideConfiguration(quick)).contents()) {
                 keys.add(ObjectIdentifier.builder().key(object.key()).build());
             }
             if (keys.isEmpty()) {
@@ -206,13 +244,13 @@ public class S3BlobStore implements BlobStore {
                 DeleteObjectsResponse response = s3.deleteObjects(request -> request.bucket(bucket)
                         .delete(delete -> delete.objects(batch).quiet(true)));
                 if (response.hasErrors() && !response.errors().isEmpty()) {
-                    throw new BusinessException("can not delete directory=" + directory + ": "
+                    throw new StorageUnavailableException("can not delete directory=" + directory + ": "
                             + response.errors().size() + " object(s) refused, first: " + response.errors().getFirst().message());
                 }
             }
         } catch (SdkException e) {
             logger.error("deleteDirectory " + directory + " failed", e);
-            throw new BusinessException("can not delete directory=" + directory + ", please check logs");
+            throw new StorageUnavailableException("can not delete directory=" + directory + ", please check logs");
         }
     }
 
@@ -221,7 +259,7 @@ public class S3BlobStore implements BlobStore {
     /** The rest of a file larger than one part, one part at a time; aborted if anything fails. */
     private long putInParts(String objectKey, byte[] first, InputStream in, MessageDigest digest) throws IOException {
         String uploadId = s3.createMultipartUpload(request -> request.bucket(bucket).key(objectKey)
-                .checksumAlgorithm(ChecksumAlgorithm.SHA256)).uploadId();
+                .checksumAlgorithm(ChecksumAlgorithm.SHA256).overrideConfiguration(quick)).uploadId();
         try {
             List<CompletedPart> parts = new ArrayList<>();
             long size = 0;
@@ -247,7 +285,8 @@ public class S3BlobStore implements BlobStore {
             return size;
         } catch (IOException | RuntimeException e) {
             try {
-                s3.abortMultipartUpload(request -> request.bucket(bucket).key(objectKey).uploadId(uploadId));
+                s3.abortMultipartUpload(request -> request.bucket(bucket).key(objectKey).uploadId(uploadId)
+                        .overrideConfiguration(quick));
             } catch (SdkException abortFailed) {
                 logger.warn("could not abort the multipart upload of {}: {}", objectKey, abortFailed.getMessage());
             }
@@ -258,16 +297,16 @@ public class S3BlobStore implements BlobStore {
     /** The object's metadata, or empty when nothing is stored at the key. */
     private Optional<HeadObjectResponse> head(String objectKey) {
         try {
-            return Optional.of(s3.headObject(request -> request.bucket(bucket).key(objectKey)));
+            return Optional.of(s3.headObject(request -> request.bucket(bucket).key(objectKey).overrideConfiguration(quick)));
         } catch (S3Exception e) {
             if (e.statusCode() == 404) {
                 return Optional.empty();
             }
             logger.error("head " + objectKey + " failed", e);
-            throw new BusinessException("storage error for " + objectKey + ", please check logs");
+            throw new StorageUnavailableException("storage error for " + objectKey + ", please check logs");
         } catch (SdkClientException e) {
-            logger.error("head " + objectKey + " failed", e);
-            throw new BusinessException("storage cannot be reached, please check logs");
+            logger.error("head {} failed: {}", objectKey, e.getMessage());
+            throw new StorageUnavailableException("storage cannot be reached, please check logs");
         }
     }
 
@@ -407,19 +446,27 @@ public class S3BlobStore implements BlobStore {
             }
         }
 
-        /** The request, made on first use; null when skipped to the end. */
-        private InputStream current() {
+        /**
+         * The request, made on first use; null when skipped to the end. A store that fails, or
+         * says nothing until the limit, before the first byte is an {@code IOException}: the
+         * response's headers may already be out, so all that is left is to end it.
+         */
+        private InputStream current() throws IOException {
             if (opened == null) {
                 if (position >= size && size > 0) {
                     return null;
                 }
                 long from = position;
-                opened = s3.getObject(request -> {
-                    request.bucket(bucket).key(objectKey);
-                    if (from > 0) {
-                        request.range("bytes=" + from + "-");
-                    }
-                });
+                try {
+                    opened = s3.getObject(request -> {
+                        request.bucket(bucket).key(objectKey).overrideConfiguration(quick);
+                        if (from > 0) {
+                            request.range("bytes=" + from + "-");
+                        }
+                    });
+                } catch (SdkException e) {
+                    throw new IOException("the storage did not serve " + objectKey + ": " + e.getMessage(), e);
+                }
             }
             return opened;
         }

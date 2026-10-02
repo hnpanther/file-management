@@ -4,6 +4,7 @@ import com.hnp.filemanagement.shared.config.FileManagementProperties;
 import com.hnp.filemanagement.shared.exception.BusinessException;
 import com.hnp.filemanagement.shared.exception.DuplicateResourceException;
 import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.shared.exception.StorageUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
@@ -84,7 +85,7 @@ public class FilesystemBlobStore implements BlobStore {
             // A half-written object is worse than none: the key would then be taken, and the
             // next attempt would be refused as a duplicate of something unreadable.
             deleteQuietly(target);
-            throw new BusinessException("error in saving file, check logs");
+            throw new StorageUnavailableException("error in saving file, check logs");
         }
         return new StoredBlob(key, size, HexFormat.of().formatHex(digest.digest()).toLowerCase(Locale.ROOT));
     }
@@ -122,7 +123,7 @@ public class FilesystemBlobStore implements BlobStore {
             Files.delete(target);
         } catch (IOException e) {
             logger.error("delete key=" + key + " failed", e);
-            throw new BusinessException("can not delete file=" + target + ", please check logs");
+            throw new StorageUnavailableException("can not delete file=" + target + ", please check logs");
         }
     }
 
@@ -139,7 +140,7 @@ public class FilesystemBlobStore implements BlobStore {
             }
         } catch (IOException e) {
             logger.error("deleteDirectory " + directory + " failed", e);
-            throw new BusinessException("can not delete directory=" + directory + ", please check logs");
+            throw new StorageUnavailableException("can not delete directory=" + directory + ", please check logs");
         }
     }
 

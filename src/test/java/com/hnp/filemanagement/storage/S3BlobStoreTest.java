@@ -168,6 +168,34 @@ class S3BlobStoreTest {
         new S3BlobStore(s3, TestObjectStores.BUCKET, "", PART).requireBucket("the test store");
     }
 
+    /**
+     * The limits of issue 101 bound the wait for a download's first byte - never the download. A
+     * person on a slow line reads a large file for longer than any call limit; were the limit
+     * applied to the whole response, every such download would be cut off part-way (2.7.1).
+     */
+    @Test
+    @DisplayName("a download read slowly, for longer than every call limit, is not cut off")
+    void aSlowDownloadIsNotCutOff() throws Exception {
+        S3BlobStore store = new S3BlobStore(s3, TestObjectStores.BUCKET, "unit-" + UUID.randomUUID(), PART,
+                new S3BlobStore.Timeouts(java.time.Duration.ofSeconds(1), java.time.Duration.ofSeconds(2),
+                        java.time.Duration.ofSeconds(1)));
+        byte[] bytes = random(PART + 4321);
+        StorageKey key = StorageKey.of("files/s000/1/slow/v1/slow.pdf");
+        store.put(key, new ByteArrayInputStream(bytes));
+
+        try (InputStream in = store.open(key).getInputStream()) {
+            byte[] read = new byte[bytes.length];
+            int at = in.readNBytes(read, 0, 1000);
+            // Three seconds of nothing: past the attempt (1 s) and the call (2 s) limits both.
+            Thread.sleep(3_000);
+            at += in.readNBytes(read, at, 1000);
+            Thread.sleep(1_500);
+            at += in.readNBytes(read, at, read.length - at);
+            assertThat(at).isEqualTo(bytes.length);
+            assertThat(read).isEqualTo(bytes);
+        }
+    }
+
     @Test
     @DisplayName("a prefix is written one way, however it was spelled")
     void prefixes() {

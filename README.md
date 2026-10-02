@@ -217,6 +217,7 @@ database **and** `base-dir` together.
 | `filemanagement.share-links.password` | `OPTIONAL` | `REQUIRED` refuses a link without a password |
 | `filemanagement.downloads.enabled` | `true` | whether each download is recorded - who, from which address, which way (`FILEMANAGEMENT_DOWNLOADS_ENABLED`); never slows or fails a download |
 | `filemanagement.downloads.retention-days` | `365` | how long a download record is kept; removed nightly, `0` keeps them for ever (`FILEMANAGEMENT_DOWNLOADS_RETENTION_DAYS`) |
+| `filemanagement.storage.s3.timeouts.*` | connect `2`, read `30`, attempt `5`, call `15`, health `3` (seconds) | how long a call to the object store may take, so a hung store costs a request seconds (`FILEMANAGEMENT_S3_TIMEOUT_*`; 2.7.1) |
 | `filemanagement.storage.s3.max-connections` | `200` | connections to the object store at once; each download in progress holds one - at least the server's request threads (`FILEMANAGEMENT_S3_MAX_CONNECTIONS`) |
 | `filemanagement.storage.sweep-enabled` | `true` | whether the scheduled sweep of unfinished byte writes runs |
 | `filemanagement.storage.sweep-every-minutes` | `15` | how often it runs |

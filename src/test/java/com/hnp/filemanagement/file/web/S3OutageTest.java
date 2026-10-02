@@ -23,6 +23,8 @@ import org.springframework.boot.health.contributor.Status;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -37,13 +39,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * The object store going away while the application runs (2.7.0): an upload is refused with an
- * error and leaves nothing behind - no row, no note - a download is an error, not a hang; the
- * readiness check says DOWN; and everything that does not need the bytes goes on working. On a
- * store of its own, since this one is stopped halfway.
+ * The object store going away while the application runs (2.7.0): an upload is refused with a
+ * 503 and {@code Retry-After} (2.7.1, issue 100) and leaves nothing behind - no row, no note - a
+ * download is the same 503, not a hang; the readiness check says DOWN; and everything that does
+ * not need the bytes goes on working. On a store of its own, since this one is stopped halfway.
+ * A store that hangs rather than stops is {@code S3HungStoreTest}.
  *
  * <p>Not {@code @Transactional}: what is under test is what the requests commit.
  */
@@ -111,13 +118,16 @@ class S3OutageTest extends DatabaseSupport {
         // An upload: an error, soon, and nothing of it anywhere.
         String after = "after" + TestData.nextSequence();
         long started = System.nanoTime();
-        int uploadStatus = mockMvc.perform(multipart("/api/v1/files")
+        // A storage failure is a 503 with Retry-After (2.7.1, issue 100): the request was fine and
+        // is worth sending again - it was a 417, which told the client the opposite.
+        mockMvc.perform(multipart("/api/v1/files")
                         .file(new MockMultipartFile("multipartFile", after + ".txt", "text/plain", TestData.bytesFor(after + ".txt")))
                         .param("description", "while the store is down").param("folderId", String.valueOf(folderId))
                         .with(user(principal)))
-                .andReturn().getResponse().getStatus();
-        // A storage failure is a BusinessException, 417 - on the filesystem as on s3 (issue 100).
-        assertThat(uploadStatus).as("the upload's answer").isEqualTo(417);
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "30"))
+                .andExpect(jsonPath("$.title").value("StorageUnavailable"))
+                .andExpect(jsonPath("$.detail").value("the file storage is not available; try again shortly"));
         assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(30));
         assertThat(fileInfoRepository.findAll()).as("no row for the refused upload")
                 .noneMatch(file -> file.getFileName().equals(after));
@@ -125,11 +135,17 @@ class S3OutageTest extends DatabaseSupport {
 
         // A download: an error, soon.
         started = System.nanoTime();
-        int downloadStatus = mockMvc.perform(get("/api/v1/files/file-details/{id}/download", revision)
-                        .with(user(principal)))
-                .andReturn().getResponse().getStatus();
-        assertThat(downloadStatus).as("the download's answer").isEqualTo(417);
+        mockMvc.perform(get("/api/v1/files/file-details/{id}/download", revision).with(user(principal)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "30"));
         assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(30));
+
+        // A person on the file page is told the same, in the page's language.
+        mockMvc.perform(get("/files/file-info/{file}/file-details/{revision}/download", fileInfoId, revisionId)
+                        .accept(MediaType.TEXT_HTML).with(user(principal)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "30"))
+                .andExpect(content().string(containsString("فضای ذخیرهٔ فایل‌ها موقتاً در دسترس نیست")));
 
         // What does not need the bytes is untouched.
         mockMvc.perform(get("/files/file-info/{id}", fileInfoId).with(user(principal)))
@@ -146,7 +162,7 @@ class S3OutageTest extends DatabaseSupport {
         principal.setState(0);
         principal.setLoginType(0);
         principal.setPermissions(List.of(PermissionEnum.API_SAVE_NEW_FILE, PermissionEnum.API_DOWNLOAD_FILE,
-                PermissionEnum.FILE_INFO_PAGE));
+                PermissionEnum.FILE_INFO_PAGE, PermissionEnum.DOWNLOAD_FILE));
         return principal;
     }
 }

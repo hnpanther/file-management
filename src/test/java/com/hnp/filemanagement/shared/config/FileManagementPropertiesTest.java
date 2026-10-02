@@ -132,6 +132,8 @@ class FileManagementPropertiesTest {
         assertThat(unset.storage().s3().pathStyleAccess()).isTrue();
         assertThat(unset.storage().s3().partSizeMb()).isEqualTo(16);
         assertThat(unset.storage().s3().maxConnections()).as("as many as the server's request threads").isEqualTo(200);
+        assertThat(unset.storage().s3().timeouts())
+                .isEqualTo(new FileManagementProperties.Timeouts(2, 30, 5, 15, 3));
         assertThat(unset.storage().s3().missing()).containsExactly("FILEMANAGEMENT_S3_ENDPOINT",
                 "FILEMANAGEMENT_S3_BUCKET", "FILEMANAGEMENT_S3_ACCESS_KEY", "FILEMANAGEMENT_S3_SECRET_KEY");
 
@@ -153,6 +155,14 @@ class FileManagementPropertiesTest {
         assertThat(s3.storage().s3().prefix()).isEqualTo("app");
         assertThat(s3.storage().s3().partSizeMb()).isEqualTo(32);
         assertThat(s3.storage().s3().maxConnections()).isEqualTo(300);
+        FileManagementProperties.Timeouts timeouts = bind(Map.of("filemanagement.base-dir", "D:/files/",
+                "filemanagement.storage.s3.timeouts.attempt-seconds", "7")).storage().s3().timeouts();
+        assertThat(timeouts.attemptSeconds()).isEqualTo(7);
+        assertThat(timeouts.callSeconds()).as("the others keep their defaults").isEqualTo(15);
+        assertThatThrownBy(() -> bind(Map.of("filemanagement.base-dir", "D:/files/",
+                "filemanagement.storage.s3.timeouts.health-seconds", "0")))
+                .isInstanceOf(BindException.class)
+                .rootCause().hasMessageContaining("healthSeconds");
         assertThat(s3.storage().s3().missing()).isEmpty();
         assertThat(s3.storage().s3().toString()).contains("the-key").doesNotContain("the-secret");
 
