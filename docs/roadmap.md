@@ -112,7 +112,10 @@ What the releases since the cut-over brought, newest first:
 4. **Phase 11 - searching the contents of files** ([the plan](#phase-11--searching-the-contents-of-files--planned)):
    the pipeline and text documents first (11.1-11.2), the backfill after Phase 4's copy (11.3),
    then OCR and drawings, each optional (11.4-11.5). It is also what Phase 8's "full-text search of
-   their contents" will use.
+   their contents" will use. Wanted before it starts, and can be gathered now: a sample of real
+   scans (Persian and English) and of real drawings (DWG and DXF with Persian text), how many
+   scanned pages there are, and a Linux host for Tika - separate from the object store's
+   ([deployment.md](deployment.md#the-hosts-and-what-each-needs)).
 5. **Phase 8 - IMS** (controlled documents, forms on `jsonb`), when it is wanted.
 6. **Issues 18 and 19** - one REST surface and coarse permission verbs - one release of their own,
    whenever the permission model is taken up; both rename permissions and migrate their rows.
@@ -2512,62 +2515,206 @@ Today a search matches names and descriptions (trigram indexes on folded keys, 2
 lets it match **what is inside the files**: the text of a PDF or a Word document, the cells of a
 spreadsheet, the words on a scanned page or a photographed form, the labels of a Visio diagram, the
 title block of a drawing. The design is in
-[target-architecture.md](target-architecture.md#searching-the-contents-of-files); what follows is
-the order, and why.
+[target-architecture.md](target-architecture.md#searching-the-contents-of-files); the hosts and
+their sizes in [deployment.md](deployment.md#the-hosts-and-what-each-needs). What follows is the
+order, the decisions behind it, and what is still to be measured.
 
-### 11.0 The shape, in one paragraph
+Its steps are numbered 11.1 to 11.6 (the table below); the sections around them are not numbered,
+so that a step and a section never share a number.
+
+### The shape, in one paragraph
 
 Searching and reading are two jobs, done at two times. **Reading** - getting the text out of a file
 - happens **after** the upload, in the background, never in the request: a revision committed with
 its bytes gets a row in `file_content` saying *pending*, in the same transaction, so a rolled-back
 upload leaves none. Workers take pending rows (`FOR UPDATE SKIP LOCKED`), stream the bytes from the
-`BlobStore` to **Apache Tika running as a service of its own** (`tika-server`), and write back the
-text, or why there is none. Which tool reads a file is decided **then**, by the worker, from the
-file's detected kind - not at upload - so switching OCR on later, or adding a reader for a new
-kind, is a re-queue of the rows that were skipped, never a re-upload. **Searching** reads only the
-database: a `tsvector` of the folded text with a GIN index, scoped by folder access in the query
-itself, as every other search is.
+`BlobStore` to **Apache Tika running as a service of its own** (`tika-server`, in Docker, on a host
+of its own), and write back the text, or why there is none. **Which tool reads a file is decided
+then, by the worker, from the file's detected kind - not at upload** - so switching OCR on later,
+or adding a reader for a new kind, is a re-queue of the rows that were skipped, never a re-upload.
+**Searching** reads only the database: a `tsvector` of the folded text with a GIN index, scoped by
+folder access in the query itself, as every other search is.
 
-### 11.1 Decisions
+### Decisions
 
+* **Every file goes through the same pipeline; OCR is one of its routes, not the pipeline.** The
+  worker detects the kind and routes it:
+
+  | Kind | Read by | When OCR is off |
+  |---|---|---|
+  | PDF with a text layer, Word, PowerPoint, Excel, OpenDocument, RTF, text, HTML | Tika, no OCR | the same |
+  | Image (`jpg`, `png`, `tiff`), a PDF page with no text layer | Tika with Tesseract (`fas+eng`) | `SKIPPED` (a PDF: its text pages only, marked partial) |
+  | Visio (`vsdx`, `vsd`) | Tika (the shapes' text) | the same |
+  | DXF | read in the application, no Tika | the same |
+  | DWG | the converter to DXF, then as DXF | the same |
+  | Video, archives, anything else | nothing: the name and the metadata only | `SKIPPED` |
+
+* **Two lanes of workers.** A text lane - fast, a few workers - and an OCR lane - slow, as many
+  workers as the OCR service has cores. Each worker reads one file at a time; the lanes exist so a
+  300-page scan never holds up a hundred Word documents behind it.
 * **Tika out of the process.** Its parsers meet whatever people upload; a malformed or hostile file
   (a zip bomb, a PDF that loops) can take all the memory or never return. `tika-server` in forked
   mode restarts its own child, and the application only waits on an HTTP call with a timeout. The
   application keeps `tika-core` (detection) and gains no parser jar.
-* **OCR is Tesseract, inside the Tika service**, with `fas` and `eng`. It is the expensive part -
-  seconds a page - so it has its own lane of workers, its own page cap, and a switch. A PDF is sent
-  to OCR only when it has no text layer (Tika's `ocr_auto`), so a text PDF never pays for it.
-* **AutoCAD**: DXF is text and is read directly (`TEXT`, `MTEXT`, block attributes). DWG has no
-  reliable open reader; the ODA File Converter (free, closed source, its terms to be checked)
-  converts it to DXF first. What is worth having is mostly the title block - drawing number, title,
-  project - which is enough to find a drawing.
+* **Tesseract lives inside the Tika image**, not on the application's host and not as a service:
+  Tika runs the `tesseract` binary as a local process. The official `apache/tika:<version>-full`
+  image has it, with a few European languages; Persian is added by a small image built on it
+  (`tesseract-ocr-fas`, or `fas.traineddata` from `tessdata_best` - more accurate, slower), at the
+  same Tika version as the application's `tika-core`. `tesseract --list-langs` inside it must name
+  `fas` and `eng`.
+* **The OCR settings travel with each request**, as `tika-server` headers - the text lane sends
+  "skip OCR" and the PDF strategy `no_ocr`; the OCR lane sends `fas+eng`, the strategy `auto` and a
+  timeout from the page count - so one Tika configuration serves both lanes, and a change of
+  language or strategy is an application setting, not a rebuilt image. (The exact header names are
+  checked against the version used, in 11.1.)
+* **Two Tika containers on the Tika host**: `tika-text` (the plain image, no Tesseract, two cores,
+  a few GB) and `tika-ocr` (the image with Tesseract and Persian, the rest of the cores). A flood of
+  OCR - the backfill - then never slows the reading of new documents, and an enormous spreadsheet
+  that exhausts `tika-text`'s memory does not kill the OCR in progress. Each lane has its own URL.
 * **PostgreSQL first, not OpenSearch.** No new store to run, back up and keep in step; the folder
   scoping is SQL the application already writes; a revision's text commits with its status. The
   price is relevance: PostgreSQL has no Persian stemmer, so the `simple` configuration over text
   folded as `SearchKey` folds names (ي/ك, the half-space, digits, case) - whole words and phrases
   match, `کتاب‌ها` does not find `کتاب`. Search goes behind a `ContentSearch` port, so OpenSearch
-  with its Persian analyzer can replace it later without touching the callers (11.6).
+  with its Persian analyzer can replace it later without touching the callers (step 11.6).
 * **Every revision is read; a search finds files.** Results are grouped by file, the latest
   revision first, with a filter for older ones.
+* **Pages are kept.** The text of a paged document is stored with where each page starts, so a
+  result can say *page 37* and open the preview there (`#page=37`).
 * **Bounded everywhere**: the bytes a file may have to be read (a setting), the text kept per
   revision (a few MB), the text indexed (a `tsvector` is at most 1 MB - the first few hundred
-  thousand characters), the pages OCR reads, the time one file may take.
+  thousand characters), the pages OCR reads, the time one file may take - and what was cut off is
+  recorded, never silently dropped.
 
-### 11.2 The steps
+### AutoCAD drawings
+
+The two formats are different problems.
+
+**DXF is text**: a sequence of group-code / value pairs, read as a stream by a small parser in the
+application - no Tika, no library. Taken from it:
+
+* `TEXT` and `MTEXT` - notes and labels; `MTEXT`'s formatting codes (`\P`, `{\fArial|b0;...}`,
+  `\~`) stripped;
+* `ATTRIB` - the values of block attributes, which is where a **title block** keeps the drawing
+  number, title, project, designer and date: the most valuable text in a drawing, and usually
+  enough to find it;
+* the text inside block definitions and on paper-space layouts, and the text of tables.
+
+Dimension values are left out: numbers by the thousand that would only crowd the index. An XRef
+(an externally referenced drawing) is indexed in its own file, not in the one that references it.
+
+**DWG is binary, closed and changes with every AutoCAD release.** Tika reads only its metadata
+(title, author, keywords), not the drawing's text. The options:
+
+| Option | Licence | Notes |
+|---|---|---|
+| **ODA File Converter** - the proposal | free, closed source; **its terms for server use to be checked** | command line on Windows and Linux; DWG of every version to DXF, then read as DXF |
+| LibreDWG (`dwg2dxf`) | GPL-3.0 | open, but its coverage of recent versions is incomplete |
+| Aspose.CAD for Java | commercial | reads DWG text in process, no conversion |
+
+The worker writes the DWG to a temporary directory, runs the converter with a time limit, reads the
+DXF and removes both. It can run on the Tika host, beside `tika-text`, so the application's host
+runs no converter.
+
+**A risk to settle on real drawings before promising anything - Persian in AutoCAD:**
+
+* text written in a **TrueType** font (Arial, B Nazanin, ...) is Unicode and reads correctly - in a
+  DXF from before AutoCAD 2007 as `\U+0627` escapes or in the drawing's code page (`$DWGCODEPAGE`,
+  `ANSI_1256`), both convertible;
+* text written in one of the **Persian SHX fonts** common in Iranian drawings is stored as **Latin
+  letters** that the font merely draws as Persian - read out, it is `hgsghl`, not `السلام`. It can
+  only be recovered with a mapping per font; whether the drawings here use such fonts, and which,
+  is the first thing 11.5 finds out.
+
+### A PDF with both text and scanned pages
+
+Tika's `auto` OCR strategy decides **page by page**: a page with a text layer is read as text; a
+page with no text, too little, or text in characters that map to nothing is rendered (about
+300 dpi) and given to Tesseract. A 100-page PDF of 60 text pages and 40 scans is read in two passes:
+
+1. **The text lane** (seconds): the whole PDF without OCR. The 60 text pages are **searchable at
+   once**; the worker sees 40 pages with no text and, with OCR on, queues the file in the OCR lane.
+2. **The OCR lane** (minutes): the PDF again with `auto` - the text pages pass quickly, only the 40
+   scans are recognised, at an estimated 2-5 s a page for Persian on one core - and the complete
+   text, page by page, replaces the first.
+
+Two caps apply: `ocr.max-pages` (pages recognised per file - beyond it the row is `DONE` and marked
+**partial**, "OCR of pages 1-50 of 80", so nobody mistakes it for complete), and a time limit that
+grows with the number of pages, not a fixed one. Rendering happens in Tika's child process, a page
+at a time; the application holds none of it.
+
+Two things specific to Persian PDFs:
+
+* **A text PDF can read badly**: letters in reverse order, or as Arabic Presentation Forms (the
+  joined shapes, `U+FE70`-`U+FEFF`), or - when the font has no Unicode map - as nothing readable.
+  The first two are repaired by normalisation (NFKC, and the order put right); the third is what
+  `auto` catches as unmapped characters and sends to OCR. To be confirmed on real files in 11.4.
+* **A page that has text and also an image of text** (a stamp, a pasted scanned table) is not
+  recognised under `auto`, since the page has text. Recognising every page catches it, at the full
+  cost of OCR on every page; `auto` is the default, the other a setting.
+
+### Where Tika runs, and on what
+
+**A host of its own** - not the application's, and not the object store's:
+
+* **Isolation.** Tika opens whatever people upload, and parsers have had vulnerabilities over the
+  years. A file that exploits one should reach a machine that holds nothing - not the host with
+  every file and the store's keys.
+* **Contention.** OCR takes every core for hours during the backfill; beside SeaweedFS that is
+  slower uploads and downloads for everyone, and Tika's memory evicting the store's disk cache.
+* **Life cycle.** Tika holds no data: it is rebuilt, resized for the backfill and shrunk again
+  freely. The store's host should change rarely.
+* **Nothing is saved by putting them together**: the bytes go store → application → Tika, so Tika
+  beside the store saves no traffic.
+
+What it needs, as estimates until 11.4 measures real scans on the real host:
+
+| | CPU | RAM | Disk |
+|---|---|---|---|
+| Text only, no OCR | 2 vCPU | 4 GB | 20 GB |
+| **To start: text and everyday OCR** | **4-8 vCPU** | **16 GB** | **50 GB SSD** |
+| During the backfill | 8-16 vCPU, for the time it takes | 16 GB | 50 GB SSD |
+
+The memory, for four OCR workers: the system and Docker ~1 GB, Tika's server ~0.5 GB, its child
+2-4 GB, four Tesseract processes ~2 GB - 8 GB is the floor, 16 GB comfortable. No GPU: Tesseract
+runs on the CPU. No backup: nothing on it is data. `OMP_THREAD_LIMIT=1` in the OCR container, so
+each Tesseract uses one thread and the parallelism comes from the workers, as many as the cores
+given to `tika-ocr`.
+
+OCR time scales with cores, about 600-1,500 pages per core per hour:
+
+```
+hours = scanned pages x seconds a page / (cores x 3600)
+        50,000 pages x 4 s / (8 x 3600) ≈ 7 hours;  with 4 cores ≈ 14
+```
+
+**Only one host for both, for now?** Possible, with: `cpus` and `mem_limit` on the Tika containers
+(half the cores, say); few OCR workers, the backfill at night; Tika on a Docker network of its own,
+unable to reach the master, filer, volume or filer database; Tika as a non-root user on a
+read-only filesystem; port 9998 on the private interface only, open to the application's address
+alone. Moving it to its own host later is one URL in the application's settings.
+
+**`tika-server` has no authentication.** Whoever reaches port 9998 can have it parse anything: bind
+it to the private network and let the firewall admit the application's host only, as port 8122 is
+kept to the proxy; a TLS proxy in front if the network between the hosts is not trusted. Tika down
+is not an outage: rows stay pending, the readiness check warns and does not go DOWN, and reading
+resumes when it is back.
+
+### The steps
 
 | Step | What | Schema | Depends on |
 |---|---|---|---|
-| 11.1 | **The pipeline**: `file_content` and its states, the outbox row written with each revision, the workers in two lanes, `tika-server` in `deploy/` and in the suite (Testcontainers), the settings, a page of what failed with a retry | `V3.x` | - |
-| 11.2 | **Text documents**: PDF with a text layer, Word, PowerPoint, Excel, OpenDocument, RTF, text, HTML; the `tsvector`, its GIN index, "search in contents" on the file list, the explorer and API v1, a highlighted snippet per result | (11.1's) | 11.1 |
+| 11.1 | **The pipeline**: `file_content` and its states, the outbox row written with each revision, the workers in two lanes, `deploy/tika` (the two containers, the Persian image, `tika-config.xml`, a README like `deploy/seaweedfs`'s) and Tika in the suite (Testcontainers), the settings, a page of what failed with a retry | `V3.x` | - |
+| 11.2 | **Text documents**: PDF with a text layer, Word, PowerPoint, Excel, OpenDocument, RTF, text, HTML; page boundaries kept; the `tsvector`, its GIN index, "search in contents" on the file list, the explorer and API v1, a highlighted snippet per result with its page | (11.1's) | 11.1 |
 | 11.3 | **The backfill**: every existing revision queued, read at a set rate in the text lane, a report at the end - after Phase 4's copy, so every file is read once, from where it will stay | none | 11.2, 4.4 |
-| 11.4 | **OCR**: images and scanned PDFs, Persian and English, in the OCR lane; measured first on a sample of real scans, and switched on only if what it reads is worth the CPU | none | 11.2 |
-| 11.5 | **Drawings and diagrams**: Visio (`vsdx`, `vsd`) checked on real files; DXF read directly; DWG through the converter | none | 11.2 |
+| 11.4 | **OCR**: images and scanned PDFs, Persian and English, in the OCR lane, the two-pass PDF and the partial mark; **measured first** - pages a minute per core and the quality of Persian on a sample of real scans, on the real host - and switched on only if what it reads is worth the CPU. The Tika host sized from that measure | none | 11.2 |
+| 11.5 | **Drawings and diagrams**: first a sample of real drawings - which fonts their Persian is in (the SHX question); then DXF read directly, DWG through the converter, a mapping for each Persian SHX font found; Visio (`vsdx`, `vsd`) checked on real files | none | 11.2 |
 | 11.6 | **Only if needed**: OpenSearch behind `ContentSearch` - stems, typo tolerance, better ranking | none | 11.2 |
 
 11.1 and 11.2 ship together - the first useful release; 11.3 runs once on production after it;
 11.4 and 11.5 are each a release of their own and each optional.
 
-### 11.3 What has to be true at each step
+### What has to be true at each step
 
 * **An upload never waits for, and never fails because of, reading its contents.** Tika down,
   slow or failing leaves rows *pending* or *failed* and uploads, downloads and name search exactly
@@ -2575,27 +2722,30 @@ itself, as every other search is.
 * **Nobody learns from a search what they could not open.** The snippet is the file's contents:
   shown only for a revision the reader may read, filtered in the query, never after it. Public
   files and share links grant nothing here.
-* **Every row ends in a state**: `DONE`, `EMPTY` (read, nothing in it), `SKIPPED` (a kind nothing
-  reads, OCR off, over a cap), `FAILED` (with the reason and the attempts, retried with a back-off,
-  then left for the failures page). A `PENDING` row older than a day is a stuck worker, and readiness
-  says so as a warning, not a DOWN.
+* **Every row ends in a state**: `DONE` (marked *partial* when a cap cut it short), `EMPTY` (read,
+  nothing in it), `SKIPPED` (a kind nothing reads, OCR off, over a cap), `FAILED` (with the reason
+  and the attempts, retried with a back-off, then left for the failures page). A `PENDING` row older
+  than a day is a stuck worker, and readiness says so as a warning, not a DOWN.
 * **A revision deleted takes its text with it**; a file moved or renamed changes nothing (the text
   belongs to the bytes, which do not move).
 
-### 11.4 Tests
+### Tests
 
 A corpus of real-shaped samples under `src/test/resources/content/` - Persian and English PDFs with
-and without a text layer, `docx`, `xlsx`, `pptx`, `vsdx`, a photographed form, a `dxf` - each with
-the words it must yield; Tika as a container, as SeaweedFS is; the worker with Tika stopped, slow,
-and given a corrupt file; folder access on results and snippets; `SearchIndexTest` cases for the GIN
-index; `ListQueryCountTest` for a results page.
+and without a text layer, one mixing both, one whose Persian reads in presentation forms, `docx`,
+`xlsx`, `pptx`, `vsdx`, a photographed form, a `dxf` with a title block in TrueType and in an SHX
+font - each with the words it must yield; Tika as a container, as SeaweedFS is; the worker with
+Tika stopped, slow, and given a corrupt file; a cap that marks a row partial; folder access on
+results and snippets; `SearchIndexTest` cases for the GIN index; `ListQueryCountTest` for a results
+page.
 
-### 11.5 Open questions
+### Open questions
 
-* The OCR budget: how many pages a day there will be, and whether the application's host has the
-  CPU, or the Tika service runs elsewhere.
-* The ODA converter's licence terms for this use.
-* Whether the text of old revisions is worth keeping once a newer one exists (11.1 keeps it).
+* **The OCR budget**: how many scanned pages there are today, and how many a day after - which
+  sizes the Tika host (11.4).
+* **Persian in the drawings**: TrueType or SHX, and which SHX fonts (11.5).
+* **The ODA converter's licence terms** for this use.
+* **Whether the text of old revisions is worth keeping** once a newer one exists (11.1 keeps it).
 
 ---
 

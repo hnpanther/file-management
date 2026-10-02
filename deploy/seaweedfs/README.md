@@ -25,6 +25,33 @@ bytes are, so:
 Versioning (below) protects against an object deleted or overwritten by mistake - not against a
 lost disk.
 
+## What the host needs
+
+Little CPU or memory - **the disk is the resource**. For phase one: **4 vCPU, 8-16 GB RAM**, Linux
+with Docker, and a data disk sized as
+
+```
+usable space ≈ data × (1 + the share kept as old versions) × 1.4
+```
+
+- every file today plus two to three years of growth; the old versions versioning keeps for 30
+days; and 40 % that is not the data's, for space a vacuum has not yet freed and for free volume
+slots (below). 3 TB today growing 1 TB a year, for two years, is about **7 TB usable**. HDD is fine
+for the data (large files, read and written in sequence); the filer database and the volume
+indexes are better on SSD. 1 Gbit/s to the application's host at least.
+
+| Container | RAM | |
+|---|---|---|
+| master | ~0.5 GB | |
+| volume | 1-2 GB | an in-memory index per volume - small, since the files are large and few |
+| filer, s3 | 1-2 GB | streaming and checksums; CPU under load |
+| filer-db | 1-2 GB | metadata only |
+| admin, worker | ~0.5 GB | more CPU during a vacuum |
+
+**Nothing else on this host** - in particular not Apache Tika (roadmap Phase 11), which parses
+untrusted files and takes every core while it recognises scans. Why, and the three hosts together:
+[deployment.md, "The hosts, and what each needs"](../../docs/deployment.md#the-hosts-and-what-each-needs).
+
 ## Before the first start
 
 1. **A Linux host with Docker**, and the data disk mounted for `VOLUME_DIR`. Size it for all the
