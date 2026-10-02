@@ -40,6 +40,7 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.7.2 is written: a password is typed twice, on changing one and on creating a user.
 2.7.1 is written: **a storage failure is a 503 with `Retry-After`** (issue 100), and **a hung
 object store costs a request seconds, not minutes** (issue 101) - both tested against a store
 stopped and a store paused. 2.7.0 is written: **every download recorded** - who, or which key, from which address, which way -

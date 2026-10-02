@@ -106,6 +106,9 @@ public class UserController {
         if(bindingResult.hasErrors()) {
             message = messages.get("form.invalid");
             globalGeneralLogging.invalid(bindingResult);
+        } else if (!passwordConfirmed(userDTO)) {
+            message = messages.get("user.password.mismatch");
+            globalGeneralLogging.detail("new user refused: the password and its confirmation differ");
         } else {
             try {
                 userService.createUser(userDTO, principalId);
@@ -123,6 +126,7 @@ public class UserController {
 
 
         userDTO.setPassword("**********");
+        userDTO.setPasswordConfirmation("");
         model.addAttribute("user", userDTO);
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);
@@ -243,6 +247,15 @@ public class UserController {
         }
     }
 
+    /**
+     * Whether the password was typed the same way twice (2.7.2). Checked here, on the two forms
+     * that set one, so a typo is a message on the form rather than an account nobody can sign in
+     * to; the page checks it as it is typed too, but only this check counts.
+     */
+    private static boolean passwordConfirmed(UserDTO userDTO) {
+        return userDTO.getPassword() != null && userDTO.getPassword().equals(userDTO.getPasswordConfirmation());
+    }
+
     //CHANGE_USER_PASSWORD_PAGE
     @PreAuthorize("hasAuthority('CHANGE_USER_PASSWORD_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("{userId}/change-password")
@@ -273,6 +286,9 @@ public class UserController {
         if(bindingResult.hasErrors() || !userDTO.getId().equals(userId)) {
             message = messages.get("form.invalid");
             globalGeneralLogging.invalid(bindingResult);
+        } else if (!passwordConfirmed(userDTO)) {
+            message = messages.get("user.password.mismatch");
+            globalGeneralLogging.detail("password change refused: the password and its confirmation differ");
         } else {
             try {
                 userService.changePassword(userDTO, principalId);
@@ -289,6 +305,7 @@ public class UserController {
 
 
         userDTO.setPassword("");
+        userDTO.setPasswordConfirmation("");
         model.addAttribute("user", userDTO);
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);

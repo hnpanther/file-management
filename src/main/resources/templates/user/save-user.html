@@ -77,16 +77,27 @@
                             <p th:text="#{ui.user.accountHint}"></p>
                         </div>
                     </div>
-                    <div class="form-grid">
+                    <!-- The password twice (2.7.2): compared as it is typed, and again by the server. -->
+                    <div class="form-grid" x-data="{ password: '', confirmation: '' }">
                         <div th:if="${#strings.equals(pageType, 'create')}" class="form-group md:col-span-2">
                             <label for="password" th:text="#{field.password}">رمز عبور</label>
                             <div class="password-field" x-data="{ visible: false }">
-                                <input :type="visible ? 'text' : 'password'" id="password" th:field="*{password}" class="form-control technical"
+                                <input :type="visible ? 'text' : 'password'" id="password" th:field="*{password}" x-model="password" class="form-control technical"
                                     dir="ltr" type="password" autocomplete="new-password" required>
                                 <button type="button" class="password-toggle" @click="visible = !visible" :aria-pressed="visible" aria-controls="password" th:aria-label="#{ui.password.toggle}">
                                     <i class="bi" :class="visible ? 'bi-eye-slash' : 'bi-eye'" aria-hidden="true"></i>
                                 </button>
                             </div>
+                        </div>
+                        <div th:if="${#strings.equals(pageType, 'create')}" class="form-group md:col-span-2">
+                            <label for="passwordConfirmation" th:text="#{field.passwordConfirmation}">تکرار رمز عبور</label>
+                            <input id="passwordConfirmation" th:field="*{passwordConfirmation}" x-model="confirmation"
+                                   class="form-control technical" dir="ltr" type="password" autocomplete="new-password" required
+                                   aria-describedby="passwordMismatch"
+                                   :aria-invalid="confirmation !== '' && confirmation !== password">
+                            <p id="passwordMismatch" class="field-hint text-red-600" role="alert" x-cloak
+                               x-show="confirmation !== '' && confirmation !== password"
+                               th:text="#{user.password.mismatch}">رمز عبور و تکرار آن یکسان نیستند.</p>
                         </div>
                         <!--
                             The personal folder (roadmap 10.4): Profiles/{username}, with a WRITE grant for the user

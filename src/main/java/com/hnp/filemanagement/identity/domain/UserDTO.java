@@ -25,6 +25,14 @@ public class UserDTO {
     @ToString.Exclude
     private String password;
 
+    /**
+     * The password typed a second time, on the two forms that set one - a new user, a new password
+     * (2.7.2). Compared with {@link #password} by the controller, which names the mismatch; never
+     * stored, never printed.
+     */
+    @ToString.Exclude
+    private String passwordConfirmation;
+
     @NotNull(groups = {InsertValidation.class, UpdateValidation.class})
     @Min(value = 1111, groups = {InsertValidation.class, UpdateValidation.class})
     @Max(value = 9999, groups = {InsertValidation.class, UpdateValidation.class})
