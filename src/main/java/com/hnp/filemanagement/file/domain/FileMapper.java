@@ -81,6 +81,28 @@ public final class FileMapper {
     }
 
     /**
+     * A file as a row of the file list (2.7.4): what the list shows - id, name, description, folder
+     * - and nothing it would have to load per row. {@link #toDto(FileInfo, List)} also converts
+     * every revision and the creator, which the list never shows and which cost a query per file
+     * on every page ({@code PageQueryCountTest}).
+     */
+    public static FileInfoDTO toListDto(FileInfo file, List<Folder> ancestry) {
+        FileInfoDTO dto = new FileInfoDTO();
+        dto.setId(file.getId());
+        dto.setExternalId(file.getExternalId());
+        dto.setFileName(file.getFileName());
+        dto.setFileNameDescription(file.getFileNameDescription());
+        dto.setDescription(file.getDescription());
+        dto.setLastVersion(file.getLastVersion());
+        dto.setFolderId(file.getFolder().getId());
+        placeIn(dto, ancestry);
+        dto.setState(file.getState());
+        dto.setEnabled(file.getEnabled());
+        dto.setCreatedAt(file.getCreatedAt());
+        return dto;
+    }
+
+    /**
      * The file page's "created by" for what an API key created: the key's title as it is now, on
      * the file and on each revision (2.3.0). Kept out of {@link #toDto(FileInfo, List)}, which the
      * lists use too: the keys have to be fetched with the file - {@code findByIdAndFetchFileDetails}

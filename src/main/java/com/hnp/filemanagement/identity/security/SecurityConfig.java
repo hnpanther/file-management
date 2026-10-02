@@ -15,6 +15,11 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import com.hnp.filemanagement.identity.domain.ApiKeyService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import java.util.Map;
+import org.springframework.security.web.authentication.ExceptionMappingAuthenticationFailureHandler;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.web.SecurityFilterChain;
@@ -77,8 +82,12 @@ public class SecurityConfig {
         return daoAuthenticationProvider;
     }
 
+    /**
+     * The providers, with {@link LoginAttempts} around them (2.7.4, issue 105): both chains use
+     * this one manager, so the sign-in form and the API's HTTP Basic share one count of failures.
+     */
     @Bean
-    public AuthenticationManager authenticationManager(HttpSecurity httpSecurity) throws Exception {
+    public AuthenticationManager authenticationManager(HttpSecurity httpSecurity, LoginAttempts loginAttempts) throws Exception {
         AuthenticationManagerBuilder authenticationManagerBuilder = httpSecurity.getSharedObject(AuthenticationManagerBuilder.class);
 
         if(activeDirectoryEnabled) {
@@ -88,7 +97,7 @@ public class SecurityConfig {
             authenticationManagerBuilder.authenticationProvider(daoAuthenticationProvider());
         }
 
-        return authenticationManagerBuilder.build();
+        return new LockoutAuthenticationManager(authenticationManagerBuilder.build(), loginAttempts);
     }
 
     /**
@@ -135,7 +144,9 @@ public class SecurityConfig {
                         // "/" decides where a signed-in user actually belongs; see HomeController.
                         // Not alwaysUse, so a saved request still wins over the default target.
                         .defaultSuccessUrl("/")
-                        .failureUrl("/login?error")
+                        // A locked name says so (issue 105); every other failure is the same "wrong
+                        // username or password", whether or not the name exists.
+                        .failureHandler(loginFailureHandler())
                         .permitAll())
                 .logout(
                         logout -> logout
@@ -150,6 +161,11 @@ public class SecurityConfig {
                 // lets a disabled account's sessions be expired (ActiveUserSessions).
                 .sessionManagement(session -> session.maximumSessions(-1).sessionRegistry(sessionRegistry))
                 .requestCache(cache -> cache.requestCache(pageOnlyRequestCache()))
+                // No full URL in the Referer of a request that leaves the site (2.7.4): a share
+                // link's token is in its path. Spring Security sends the other protective headers
+                // by itself (X-Frame-Options, nosniff, Cache-Control; HSTS over https).
+                .headers(headers -> headers.referrerPolicy(referrer ->
+                        referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.SAME_ORIGIN)))
                 .exceptionHandling(ex -> ex
                         .accessDeniedPage("/access-denied")
                         // Two entry points, chosen by what made the request (issue 77). A script
@@ -175,6 +191,13 @@ public class SecurityConfig {
      * dump the person on raw JSON), and it is answered {@code 401} rather than redirected when the
      * session has ended (a redirect would hand the script the login page with a {@code 200}).
      */
+    private static AuthenticationFailureHandler loginFailureHandler() {
+        ExceptionMappingAuthenticationFailureHandler handler = new ExceptionMappingAuthenticationFailureHandler();
+        handler.setExceptionMappings(Map.of(LockedException.class.getName(), "/login?locked"));
+        handler.setDefaultFailureUrl("/login?error");
+        return handler;
+    }
+
     private static boolean isScriptCall(HttpServletRequest request) {
         if ("XMLHttpRequest".equals(request.getHeader("X-Requested-With"))) {
             return true;

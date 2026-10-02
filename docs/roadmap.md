@@ -40,6 +40,10 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.7.4 is written: a review of the whole application - a lock on wrong passwords (issue 105),
+share links scoped to the folders their reader may open (106), a file list without a query per row
+(107), `Referrer-Policy` (108), each with its test; and two found and recorded for later, the v2
+listing's reading of a whole bucket (109) and an upload's connection held during the transfer (110).
 2.7.3 is written: readiness checks the database and the storage, as the documentation always
 said it did (issue 104). 2.7.2 is written: a password is typed twice, on changing one and on
 creating a user.
@@ -2717,6 +2721,48 @@ kept to the proxy; a TLS proxy in front if the network between the hosts is not 
 is not an outage: rows stay pending, the readiness check warns and does not go DOWN, and reading
 resumes when it is back.
 
+### Who sees what: only the documents each person may open
+
+**A content search shows a person exactly the files that person may open - no more.** Not a
+result, not a snippet, not a count, not a "3 more files you cannot see": a document's contents
+are its contents, and a snippet of a confidential report is the report. The rule is the
+download's, word for word, so the two can never disagree:
+
+* **The same three questions as a download.** The endpoint's permission (a new
+  `SEARCH_FILE_CONTENTS`, in the files group, ADMIN holding it by itself); the reader's **folder
+  access** - every result's file in a folder the reader's grants reach for reading
+  (`FolderAccessService.readableFolderIds`, the filter the file list and the explorer already use);
+  and nothing else widens it.
+* **Filtered inside the query, never after it.** The search joins `file_content` to `file_info`
+  and keeps `file_info.folder_id IN (readable folders)` in the same statement as the text match and
+  the ranking. Filtering a page after the fact leaks through its size, its paging and its timing,
+  and drops results the reader should have had; the query never sees what the reader may not.
+* **Where the file is now, not where it was read.** Access is taken from `file_info.folder_id` at
+  search time - the text row carries no folder of its own - so a file moved into a restricted
+  folder disappears from everyone else's results at once, and a grant revoked is a grant revoked
+  on the next search, with nothing to re-index.
+* **Snippets only for rows the reader may open**, and only for the rows of the page shown -
+  `ts_headline` runs after the filter, on at most a page of rows.
+* **Nothing else grants it.** A public file is in its folder like any other: its contents are
+  searchable by those who may read that folder, not by anonymous visitors - the public files page
+  stays a list of names. A share link opens one revision to whoever holds the link and puts nothing
+  in anybody's search. An administrator, and anybody while folder access is off, sees what they
+  can already open: everything.
+* **API keys are scoped as for a download**: a key's search sees only the folders the key was
+  granted, never all of its creator's (Phase 9).
+* **Personal folders** (`Profiles/{username}`) are searched by their owner and by whoever holds a
+  grant on them - which is to say, as they are opened.
+* **The workers see everything; nobody sees the workers.** Extraction runs without a person and
+  reads every file, which is why its output is reachable only through the filtered search: no
+  endpoint returns a `file_content` row by id, and the failures page shows file names to those who
+  may already open them, and the reason - never the text.
+
+Tests that hold it: a reader with a grant on one folder of two finds only that folder's file, by a
+word that appears in both; a file moved into a folder the reader cannot read stops being found; a
+revoked grant is a lost result; a key finds only its folders; an anonymous visitor finds nothing; a
+snippet never contains a word from a file the reader cannot open; a page of results is the same
+number of statements whatever the reader's grants (`ListQueryCountTest`).
+
 ### The steps
 
 | Step | What | Schema | Depends on |
@@ -2736,9 +2782,9 @@ resumes when it is back.
 * **An upload never waits for, and never fails because of, reading its contents.** Tika down,
   slow or failing leaves rows *pending* or *failed* and uploads, downloads and name search exactly
   as they were (the test of 2.7.0's download records, again).
-* **Nobody learns from a search what they could not open.** The snippet is the file's contents:
-  shown only for a revision the reader may read, filtered in the query, never after it. Public
-  files and share links grant nothing here.
+* **Nobody learns from a search what they could not open** - a result, a snippet, a count: only
+  files in folders the reader may read, filtered in the query, never after it; public files and
+  share links grant nothing here ([Who sees what](#who-sees-what-only-the-documents-each-person-may-open)).
 * **Every row ends in a state**: `DONE` (marked *partial* when a cap cut it short), `EMPTY` (read,
   nothing in it), `SKIPPED` (a kind nothing reads, OCR off, over a cap), `FAILED` (with the reason
   and the attempts, retried with a back-off, then left for the failures page). A `PENDING` row older

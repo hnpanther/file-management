@@ -239,10 +239,16 @@ is folded the same way. Words and phrases match; inflected forms do not. That is
 `ContentSearch` port: OpenSearch's Persian analyzer is the upgrade if relevance proves to matter,
 and only the adapter changes.
 
-**Access.** A result, and above all its snippet, is the file's contents; both are filtered by the
-reader's folder access inside the query, as every list is (roadmap Phase 6). The snippet is made
-(`ts_headline`) only for the rows of the page shown, over a bounded prefix of the text, and names
-the page it is on.
+**Access: each person sees only the documents they may open.** A result, a snippet and a count are
+all the file's contents, so the rule is the download's: the endpoint's permission, then the
+reader's folder access - `file_info.folder_id IN (readable folders)` in the same statement as the
+text match, never a filter on the page afterwards, and taken from where the file is now, so a move
+or a revoked grant applies to the next search with nothing to re-index. A public file or a share
+link grants nothing here; an API key sees only its own folders; the workers, which read everything,
+expose nothing but through this filtered search. The snippet is made (`ts_headline`) only for the
+rows of the page shown, over a bounded prefix of the text, and names the page it is on. The rule
+in full, and its tests:
+[roadmap Phase 11, "Who sees what"](roadmap.md#who-sees-what-only-the-documents-each-person-may-open).
 
 ```yaml
 filemanagement:

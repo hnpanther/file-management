@@ -20,6 +20,9 @@
                 <p class="auth-subtitle" th:text="#{login.subtitle}">نام کاربری و رمز عبور خود را وارد کنید.</p>
             </div>
 
+            <div th:if="${param.locked}" class="alert alert-warning" role="alert" th:text="#{login.locked}">
+                تلاش‌های ناموفق زیاد بوده است. چند دقیقهٔ دیگر دوباره تلاش کنید.
+            </div>
             <div th:if="${param.error}" class="alert alert-warning" role="alert" th:text="#{login.error}">
                 نام کاربری یا رمز عبور صحیح نیست.
             </div>

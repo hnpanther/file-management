@@ -2032,3 +2032,103 @@ documentation's claims are then true as written.
 > time, liveness `UP` throughout. Run against the old configuration, both fail. Left as it is: a
 > database that is gone holds the check for up to Hikari's connection timeout (30 s) -
 > `deployment.md` asks for a probe timeout that counts as DOWN.
+
+
+## Found in the review of 2026-10-02 (2.7.4)
+
+A review of the whole application for security, access, performance and production readiness,
+each area checked by a test rather than by reading alone. What it found nothing in is listed at
+the end, with the test that now holds it.
+
+### 105. A password could be tried without limit — **S1**
+
+Neither the sign-in form nor the API's HTTP Basic counted failures: a script could try passwords
+against `Admin`, or any local account, as fast as the server answered. Share links have had a lock
+since 1.5.0; accounts had none.
+
+> **Fixed in 2.7.4.** `LoginAttempts`, wrapped around the application's one
+> `AuthenticationManager` (`LockoutAuthenticationManager`), so the form and HTTP Basic share a
+> count: after `filemanagement.auth.lockout.max-failed-attempts` (5) wrong passwords in a row for
+> one username it is refused for `lock-minutes` (15), the right password included; the form says
+> so (`/login?locked`), the API answers 401 as for any failure. Counted by the name typed, whether
+> or not an account has it, so a lock reveals nothing about which names exist; only a wrong
+> password counts, not a directory that does not answer; a success forgets the count. In memory -
+> one instance, a restart forgets. The price of any lock by name - someone can keep a person locked
+> out by failing on purpose, minutes at a time - is written in `deployment.md`. `LoginLockoutTest`.
+
+### 106. `REVOKE_SHARE_LINK` showed every share link, to files in folders its holder could not open — **S2**
+
+`/files/share-links` showed whoever held `REVOKE_SHARE_LINK` every link in the system, with its
+file's name, version and maker - files in folders that person's folder access does not reach
+included - and let them revoke any of them. Everywhere else a name is shown only to whoever may
+read its folder (the file history since 2.5.0, the downloads since 2.7.0). And the page had no
+paging: every link ever made, expired and revoked ones included, on one page.
+
+> **Fixed in 2.7.4.** The list is scoped by `FolderAccessService.readableFolderIds` in the query
+> (`FileShareLinkRepository.findPageWithinFolders`), every link for an unrestricted reader; revoking
+> someone else's link asks read access on its file. Fifty a page, newest first, with next and
+> previous - a slice, never a count. `ShareLinkWebTest` (a holder with no grant sees and revokes
+> nothing of another folder; with the grant, both), `PageQueryCountTest`.
+
+### 107. The file list loaded each file's revisions, one query per row — **S2**
+
+`/files/file-info` converted each row with `FileMapper.toDto`, which also converts every revision
+and the creator - neither of which the list shows. Each row was one more query for its revisions
+(and one per distinct creator): 6 statements for 3 files, 12 for 9, a hundred more for a page of a
+hundred.
+
+> **Fixed in 2.7.4.** `FileMapper.toListDto`: what the list shows and nothing it would load per
+> row. `PageQueryCountTest` counts the file list, the public files, the explorer's folder content,
+> a file's page and the share links with few rows and with several times as many: the same number
+> of statements each.
+
+### 108. No `Referrer-Policy` — **S3**
+
+The pages carried `X-Frame-Options`, `nosniff` and `Cache-Control` (Spring Security's defaults) but
+no `Referrer-Policy`, so a request leaving the site from a page would send its full URL - and a
+share link's token is in its path.
+
+> **Fixed in 2.7.4**: `Referrer-Policy: same-origin`. `SecurityHeadersTest`.
+
+### 109. A v2 listing reads the bucket's whole subtree on every request — **S2**
+
+`ObjectStoreService.list` loads every file and every revision under the top-level folder (the
+bucket), builds each key, filters by `prefix`, sorts and pages - in memory, on every request,
+continuation pages included; `max-keys` limits the answer, not the work. Roadmap 9.3 accepted it
+at 1,358 files ("right at this size"). With the volume expected - many files, around 100 MB each -
+one listing of a large top-level folder is hundreds of thousands of rows loaded per call.
+
+Fix: keys served by an index - the folder's materialised path and the file name ordered in the
+query, `prefix` narrowed to the folders it names before anything is read, a page fetched with
+`LIMIT` past the continuation key - as roadmap 9.10 already requires of the S3-compatible mode.
+Not changed in the review: it is a change of the listing's design, and APEX does not list.
+
+### 110. An upload holds a database connection while its bytes go to the store — **S3**
+
+The bytes are written inside the upload's transaction (`StorageWriter`, issue 3), so that a
+refused or failed upload leaves neither a row nor an object. The price is a pooled connection held
+for the transfer from the spooled temporary file to the store: about 15 s for 1 GB to SeaweedFS on
+the local network (measured in 2.7.0). The pool is 20 (`FILEMANAGEMENT_DB_POOL_SIZE`): twenty
+large uploads at once would make every other request wait for a connection.
+
+Fix, if it is ever seen: a larger pool first; then writing the bytes before the transaction and
+recording the row after, with `file_storage_write` still settling a write the row never followed.
+Not changed: no such load is expected, and the atomicity is worth more.
+
+### What the review found nothing wrong in - and the test that now holds each
+
+* **Every endpoint states who may call it**: `@PreAuthorize` on every handler but seven that are
+  open on purpose (sign-in, the public files, a share link, the error page), each named with its
+  reason - `EndpointGuardTest` fails on a new unguarded one.
+* **Every permission name in a guard exists** - `PermissionNamesTest`, as before.
+* **Every foreign key has an index** (46 of them) - `ForeignKeyIndexTest` fails on a new one without.
+* **The readable-folder filter scales**: 40,000 folder ids in one `IN` run (Hibernate binds them as
+  one array), so a reader with a large grant is not a failed query.
+* **No SQL is built from input** (every query is JPQL or parameterised); **no template writes
+  unescaped text** (`th:utext`, `innerHTML`: none); **no secret reaches the log** (the share token
+  is masked in every logged path; no password, key or token is logged); **no dead code, no `TODO`,
+  no swallowed exception, no `System.out`**; every page size from a URL is clamped (`PageRequests`).
+* **Kept as decisions, not defects**: `USERS_ADMIN`, `ROLES_ADMIN` and `API_KEYS_ADMIN` can widen
+  what a role or a key reaches (issue 91); the largest classes (`FileService`, 1,057 lines, much of
+  it explanation) are cohesive and left whole - splitting them is a refactor with risk and no
+  defect behind it.

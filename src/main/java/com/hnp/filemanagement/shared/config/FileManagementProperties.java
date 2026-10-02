@@ -72,7 +72,7 @@ public record FileManagementProperties(
         storage = storage == null ? new Storage(null, null, null, null, null, null, null, null) : storage;
         shareLinks = shareLinks == null ? new ShareLinks(null, null, null, null, null) : shareLinks;
         bootstrap = bootstrap == null ? new Bootstrap(null) : bootstrap;
-        auth = auth == null ? new Auth(null) : auth;
+        auth = auth == null ? new Auth(null, null) : auth;
         downloads = downloads == null ? new Downloads(null, null) : downloads;
     }
 
@@ -84,7 +84,7 @@ public record FileManagementProperties(
     /** The same tree with different directory settings - what a test varies. */
     public FileManagementProperties withActiveDirectory(ActiveDirectory activedirectory) {
         return new FileManagementProperties(baseDir, timeZone, defaults, folderAccess, folders, profiles,
-                storage, shareLinks, bootstrap, new Auth(new Ldap(activedirectory)), downloads);
+                storage, shareLinks, bootstrap, new Auth(new Ldap(activedirectory), auth.lockout()), downloads);
     }
 
     /**
@@ -328,9 +328,25 @@ public record FileManagementProperties(
     }
 
     /** @param ldap the directory settings; {@code enabled} false means the provider stands aside */
-    public record Auth(@Valid Ldap ldap) {
+    /**
+     * @param ldap    the directory a person may sign in against
+     * @param lockout how many wrong passwords lock a name, and for how long (2.7.4, issue 105)
+     */
+    public record Auth(@Valid Ldap ldap, @Valid Lockout lockout) {
         public Auth {
             ldap = ldap == null ? new Ldap(null) : ldap;
+            lockout = lockout == null ? new Lockout(null, null) : lockout;
+        }
+    }
+
+    /**
+     * @param maxFailedAttempts wrong passwords in a row, for one username, before it is locked; 5
+     * @param lockMinutes       how long it stays locked - the right password included; 15
+     */
+    public record Lockout(@Min(1) Integer maxFailedAttempts, @Min(1) Integer lockMinutes) {
+        public Lockout {
+            maxFailedAttempts = maxFailedAttempts == null ? 5 : maxFailedAttempts;
+            lockMinutes = lockMinutes == null ? 15 : lockMinutes;
         }
     }
 

@@ -222,6 +222,8 @@ database **and** `base-dir` together.
 | `filemanagement.storage.sweep-enabled` | `true` | whether the scheduled sweep of unfinished byte writes runs |
 | `filemanagement.storage.sweep-every-minutes` | `15` | how often it runs |
 | `filemanagement.storage.unfinished-after-minutes` | `60` | how old a byte write must be before it is treated as abandoned |
+| `filemanagement.auth.lockout.max-failed-attempts` | `5` | wrong passwords in a row before a username is locked, on the form and on HTTP Basic alike (`FILEMANAGEMENT_AUTH_MAX_FAILED_ATTEMPTS`; 2.7.4) |
+| `filemanagement.auth.lockout.lock-minutes` | `15` | how long it stays locked, the right password included (`FILEMANAGEMENT_AUTH_LOCK_MINUTES`) |
 | `filemanagement.auth.ldap.activedirectory.enabled` | `false` | |
 
 The full list, including the share links' lock settings, is in

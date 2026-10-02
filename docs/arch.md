@@ -1,6 +1,6 @@
 # Architecture — Current State
 
-> The codebase as it stands - kept current with each release, 2.7.3 the latest; a section names
+> The codebase as it stands - kept current with each release, 2.7.4 the latest; a section names
 > the release that last changed what it describes. For where it is going, see
 > [target-architecture.md](target-architecture.md); for the order, [roadmap.md](roadmap.md).
 
@@ -666,6 +666,13 @@ the folder from environment variables and never holds a credential in the file.
 `2` = Active Directory only. `UserDetailsServiceImpl` refuses `loginType != 0 && != 1`; the AD
 provider refuses `loginType != 0 && != 2`.
 
+**Wrong passwords are counted** (2.7.4, issue 105): the manager both chains use is the built one
+wrapped in `LockoutAuthenticationManager`, so the form and HTTP Basic share `LoginAttempts` - after
+`filemanagement.auth.lockout.max-failed-attempts` (5) wrong passwords in a row a username is refused
+for `lock-minutes` (15), the right password included, before any provider is asked. Counted by the
+name typed (no account needed, so a lock reveals no names), only for `BadCredentialsException`, in
+memory; the form redirects a lock to `/login?locked`. API keys are not counted.
+
 ### Authorization
 
 Authorities are **not** roles — they are `PermissionEnum` constants, one per handler method
@@ -1253,6 +1260,7 @@ generates the unique ones, so a test overrides only what it is actually about.
 | `file/domain/FileHistoryServiceTest`, `FileHistoryFolderAccessTest`, `file/web/FileHistoryPageTest` | one event per change, in its transaction, outliving the file; the pages behind their permissions, under folder access, in a fixed number of statements |
 | `file/web/DownloadRecordingTest`, `DownloadRecordingResilienceTest`, `DownloadRecordingDisabledTest`, `DownloadClientAddressTest`, `DownloadAuditTest`, `file/domain/DownloadRecorderTest`, `FileDownloadServiceTest` | every way out records one row with its person, key, link and address; a `HEAD`, a later range and a repeat do not; a database hanging and then down costs twenty downloads nothing; `X-Forwarded-For` through the real server; the pages, folder access, a fixed number of statements, the retention (2.7.0) |
 | `storage/S3StorageWriterTest`, `S3StorageSweeperTest`, `S3ChecksumBackfillTest` | every case of the filesystem's storage tests, again on the s3 backend |
+| `EndpointGuardTest`, `ForeignKeyIndexTest`, `PageQueryCountTest`, `identity/security/LoginLockoutTest`, `SecurityHeadersTest` | every handler guarded but the seven open on purpose; every foreign key indexed; the busy pages a fixed number of statements; wrong passwords locking a name on the form and HTTP Basic alike; the protective headers (2.7.4, issues 105-108) |
 | `shared/web/ActuatorTest`, `ReadinessProbeTest` | the probes themselves: readiness `503 DOWN` with the storage root gone, the store hung, the database stopped - each within seconds - and liveness `UP` throughout (2.7.3, issue 104) |
 | `file/web/S3HungStoreTest`, `FilesystemUnavailableTest` | a store paused, not stopped: every call a 503 within its limit, readiness DOWN at once, pages untouched, recovery without a restart; a storage root that cannot be written is the same 503 (2.7.1) |
 | `file/web/S3ScenariosTest`, `S3OutageTest`, `storage/S3ConcurrencyTest` | on the s3 backend, object by object: a duplicate stores nothing (also under a race), a rollback removes its object, versions and formats are objects of their own, each delete removes exactly its objects, a move or rename none, every download reads the bucket; the store going away; 120 downloads at once |

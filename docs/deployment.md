@@ -736,6 +736,34 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 2.7.3 to 2.7.4 — a review: sign-in attempts, share links, a faster file list
+
+A jar swap; no migration, no new permission. From a review of the whole application
+([issues 105 to 110](issues.md#found-in-the-review-of-2026-10-02-274)):
+
+* **Wrong passwords lock a username** (issue 105): five in a row, on the sign-in form or the API's
+  HTTP Basic - one count for both - and the name is refused for fifteen minutes, the right password
+  included. The form says so; the API answers 401. A success forgets the count; a restart forgets
+  every count. Settings, both optional:
+
+  | Variable | Default | |
+  |---|---|---|
+  | `FILEMANAGEMENT_AUTH_MAX_FAILED_ATTEMPTS` | `5` | wrong passwords in a row before the name locks |
+  | `FILEMANAGEMENT_AUTH_LOCK_MINUTES` | `15` | how long it stays locked |
+
+  Two consequences to know: **an integration whose stored password is wrong** - an APEX job after a
+  password change - now locks its account after five tries and keeps it locked while it retries;
+  the log says `sign-in locked ... username=[...]`. And anyone can lock a known username for fifteen
+  minutes by failing on purpose; that is the price of a lock by name, and it never lasts longer.
+  API keys are not counted - a key is a random 256-bit value, not a password.
+* **`REVOKE_SHARE_LINK` sees the links to files it may read** (issue 106), not every link in the
+  system; revoking someone else's link asks the same. Whoever holds ADMIN, or anyone while folder
+  access is off, still sees them all. The page is fifty links at a time, newest first.
+* **The file list is one query per page, not one per file** (issue 107).
+* **`Referrer-Policy: same-origin`** on every page (issue 108).
+
+**Rollback** is the 2.7.3 jar alone.
+
 ### Upgrading from 2.7.2 to 2.7.3 — readiness means what it says
 
 A jar swap; no migration, no permission, no setting.

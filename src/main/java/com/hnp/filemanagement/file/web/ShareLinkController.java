@@ -18,6 +18,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import com.hnp.filemanagement.shared.web.PageRequests;
 import org.springframework.web.bind.annotation.RequestParam;
 
 /**
@@ -36,6 +37,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 public class ShareLinkController {
 
     private final GlobalGeneralLogging globalGeneralLogging;
+    /** Links per page of /files/share-links, newest first (2.7.4: it was every link ever made). */
+    static final int PAGE_SIZE = 50;
+
+    /** The deepest page served. */
+    static final int MAX_PAGE = 2_000;
+
     private final ShareLinkService shareLinkService;
     private final DownloadAudit downloadAudit;
 
@@ -105,10 +112,16 @@ public class ShareLinkController {
     //SHARE_LINKS_PAGE
     @PreAuthorize("hasAuthority('SHARE_LINKS_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("/files/share-links")
-    public String shareLinksPage(@AuthenticationPrincipal UserDetailsImpl userDetails, Model model) {
-        globalGeneralLogging.detail("share links page");
+    public String shareLinksPage(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                 @RequestParam(value = "page", required = false) Integer page, Model model) {
+        int pageNumber = Math.min(PageRequests.number(page), MAX_PAGE);
+        globalGeneralLogging.detail("share links page=" + pageNumber);
         boolean all = holds(userDetails, PermissionEnum.REVOKE_SHARE_LINK);
-        model.addAttribute("links", all ? shareLinkService.listAll() : shareLinkService.listMine(userDetails.getId()));
+        ShareLinkService.LinkPage links = all
+                ? shareLinkService.listAll(userDetails.getId(), pageNumber, PAGE_SIZE)
+                : shareLinkService.listMine(userDetails.getId(), pageNumber, PAGE_SIZE);
+        model.addAttribute("links", links.links());
+        model.addAttribute("linkPage", links);
         model.addAttribute("allLinks", all);
         model.addAttribute("principalId", userDetails.getId());
         return "file-management/files/share-links.html";
