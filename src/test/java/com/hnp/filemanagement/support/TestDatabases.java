@@ -28,15 +28,27 @@ public final class TestDatabases {
                 + container.getMappedPort(PostgreSQLContainer.POSTGRESQL_PORT) + "/" + database;
     }
 
+    /**
+     * A database of the test's own, made as the shared one is - for a test that stops it halfway,
+     * which the shared one must never be. The caller stops it.
+     */
+    public static PostgreSQLContainer<?> startPrivatePostgres() {
+        return started(newPostgres());
+    }
+
+    private static PostgreSQLContainer<?> newPostgres() {
+        return new PostgreSQLContainer<>("postgres:18.4")
+                .withEnv("POSTGRES_INITDB_ARGS",
+                        "--encoding=UTF8 --locale-provider=icu --icu-locale=und --locale=en_US.utf8")
+                .withCommand("postgres", "-c", "fsync=off", "-c", "max_connections=400");
+    }
+
     // A holder: the container starts when this class is first touched, and never otherwise.
     private static final class Postgres {
         // max_connections: PostgreSQL allows 100 by default, and the suite keeps a dozen Spring
         // contexts cached, each with its own connection pool. fsync off is Testcontainers' own
         // default for this image, kept because naming a command replaces it.
-        static final PostgreSQLContainer<?> CONTAINER = started(new PostgreSQLContainer<>("postgres:18.4")
-                .withEnv("POSTGRES_INITDB_ARGS",
-                        "--encoding=UTF8 --locale-provider=icu --icu-locale=und --locale=en_US.utf8")
-                .withCommand("postgres", "-c", "fsync=off", "-c", "max_connections=400"));
+        static final PostgreSQLContainer<?> CONTAINER = started(newPostgres());
     }
 
     private static <C extends PostgreSQLContainer<?>> C started(C container) {

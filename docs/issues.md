@@ -1985,3 +1985,50 @@ history.
 > (`--spring.profiles.active=prod,local`). **The secret stays in the history**: rotate it in that
 > store's `s3.json` if it is used for anything beyond that machine, and never reuse it for
 > production's key.
+
+## Found while answering a question about the probes (2026-10-02)
+
+### 104. `/actuator/health/readiness` checks neither the database nor the object store — **S2**
+
+`management.properties` turns the probe groups on (`management.endpoint.health.probes.enabled`)
+and says readiness means "the database answers"; `deployment.md` (sections 4 and 5) says readiness
+"includes the database" and tells operators to point a load balancer at it; `arch.md`,
+`deployment.md` (2.6.0) and `BlobStoreConfig` say the bucket is part of it. None of it is true.
+Spring Boot's `readiness` group holds only `readinessState` - the application's own availability -
+unless `management.endpoint.health.group.readiness.include` adds more, and nothing does.
+
+Seen on 2026-10-02 with a store of its own, stopped halfway:
+
+| | store up | store stopped |
+|---|---|---|
+| `/actuator/health` | 200 `UP` | **503 `DOWN`** |
+| `/actuator/health/readiness` | 200 `UP` | **200 `UP`** |
+| `/actuator/health/liveness` | 200 `UP` | 200 `UP` |
+
+The components that exist, all in the aggregate only: `db` (`isValid()` on a pooled connection),
+`blobStore` (`HeadBucket`, s3 only), `diskSpace` (the **working directory**'s disk, 10 MB
+threshold - not `FILEMANAGEMENT_BASE_DIR`'s), `ping`, `ssl`, `livenessState`, `readinessState`.
+
+So a load balancer watching readiness, as the documentation says to, keeps sending traffic to an
+instance whose database or store is gone. The tests did not see it: `ActuatorTest` checks the
+groups answer `UP`, and `S3OutageTest` and `S3HungStoreTest` ask the indicator bean, never the
+endpoint.
+
+Fix: `management.endpoint.health.group.readiness.include=readinessState,db,blobStore` (with the
+group's membership validated, so a missing indicator stops the start - `blobStore` exists only on
+s3, so the filesystem backend needs its own list or an indicator of its own for the storage root);
+liveness left as it is - a database that is down is not something a restart fixes, and a liveness
+that followed it would restart the application in a loop. Tests on the endpoints themselves: the
+database unreachable and the store stopped make readiness `503 DOWN` and leave liveness `UP`. The
+documentation's claims are then true as written.
+
+> **Fixed in 2.7.3.** `management.endpoint.health.group.readiness.include=readinessState,db,blobStore`,
+> with group membership validated. `blobStore` is one indicator for either backend
+> (`BlobStoreConfig`): the bucket's `HeadBucket` on s3, and on the filesystem the root being a
+> directory the service may write to (`FilesystemBlobStore.rootUsable`) - not created at the start,
+> since on a share that is not mounted that would put files on the wrong disk; the start warns
+> instead. `ActuatorTest` takes the root away on the filesystem; `ReadinessProbeTest` pauses a
+> store of its own and then stops a database of its own: readiness `503 DOWN` within seconds each
+> time, liveness `UP` throughout. Run against the old configuration, both fail. Left as it is: a
+> database that is gone holds the check for up to Hikari's connection timeout (30 s) -
+> `deployment.md` asks for a probe timeout that counts as DOWN.

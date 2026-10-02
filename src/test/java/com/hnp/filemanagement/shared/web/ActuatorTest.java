@@ -5,9 +5,13 @@ import org.hamcrest.Matchers;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -29,6 +33,42 @@ class ActuatorTest extends DatabaseSupport {
 
     @Autowired
     private MockMvc mockMvc;
+    @Value("${filemanagement.base-dir}")
+    private String storageRoot;
+
+    /**
+     * Readiness is what a load balancer watches, so it has to say what the instance can serve
+     * (issue 104): on the filesystem backend, a storage root that is not a writable directory - a
+     * share not mounted, a root never created - is DOWN there and in the aggregate, while liveness
+     * stays UP, since a restart fixes none of it. Until 2.7.3 readiness held only the
+     * application's own state and stayed UP through all of this.
+     */
+    @Test
+    @DisplayName("on the filesystem, the storage root gone makes readiness and the aggregate 503 DOWN, not liveness; back, UP")
+    void readinessFollowsTheStorageRoot() throws Exception {
+        Path root = Path.of(storageRoot);
+        mockMvc.perform(get("/actuator/health/readiness")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+
+        deleteRecursively(root);
+        try {
+            mockMvc.perform(get("/actuator/health/readiness")).andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.status").value("DOWN"));
+            mockMvc.perform(get("/actuator/health")).andExpect(status().isServiceUnavailable());
+            mockMvc.perform(get("/actuator/health/liveness")).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("UP"));
+
+            // A file where the directory should be is no better.
+            Files.writeString(root, "not a directory");
+            mockMvc.perform(get("/actuator/health/readiness")).andExpect(status().isServiceUnavailable());
+            Files.delete(root);
+        } finally {
+            Files.createDirectories(root);
+        }
+
+        mockMvc.perform(get("/actuator/health/readiness")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+    }
 
     @Test
     @DisplayName("health answers a status without a credential, and does not redirect")

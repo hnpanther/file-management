@@ -1,6 +1,6 @@
 # Architecture — Current State
 
-> The codebase as it stands - kept current with each release, 2.7.2 the latest; a section names
+> The codebase as it stands - kept current with each release, 2.7.3 the latest; a section names
 > the release that last changed what it describes. For where it is going, see
 > [target-architecture.md](target-architecture.md); for the order, [roadmap.md](roadmap.md).
 
@@ -258,7 +258,8 @@ connections until the last byte is sent - so the pool is `max-connections` (200)
 the server's request threads (2.7.0; the SDK's own 50 failed the 51st download at once); and
 `deleteDirectory` lists `prefix + "/"` and deletes a thousand at a time. A start with `s3` refuses
 a missing setting, a missing bucket, refused credentials and a store that does not answer, and adds
-the bucket to `/actuator/health/readiness`. A store that goes away while running fails uploads and
+the bucket to `/actuator/health/readiness` (2.7.3, issue 104 - the filesystem's root likewise: one
+`blobStore` indicator for either backend, with `db`, in the readiness group). A store that goes away while running fails uploads and
 downloads with a `StorageUnavailableException` - **503 with `Retry-After`**, as on the filesystem
 (2.7.1, issue 100) - and leaves no row and no note behind; the pages that do not need bytes go on
 working (`S3OutageTest`). **A store that hangs** - takes the connection and says nothing - costs a
@@ -1252,6 +1253,7 @@ generates the unique ones, so a test overrides only what it is actually about.
 | `file/domain/FileHistoryServiceTest`, `FileHistoryFolderAccessTest`, `file/web/FileHistoryPageTest` | one event per change, in its transaction, outliving the file; the pages behind their permissions, under folder access, in a fixed number of statements |
 | `file/web/DownloadRecordingTest`, `DownloadRecordingResilienceTest`, `DownloadRecordingDisabledTest`, `DownloadClientAddressTest`, `DownloadAuditTest`, `file/domain/DownloadRecorderTest`, `FileDownloadServiceTest` | every way out records one row with its person, key, link and address; a `HEAD`, a later range and a repeat do not; a database hanging and then down costs twenty downloads nothing; `X-Forwarded-For` through the real server; the pages, folder access, a fixed number of statements, the retention (2.7.0) |
 | `storage/S3StorageWriterTest`, `S3StorageSweeperTest`, `S3ChecksumBackfillTest` | every case of the filesystem's storage tests, again on the s3 backend |
+| `shared/web/ActuatorTest`, `ReadinessProbeTest` | the probes themselves: readiness `503 DOWN` with the storage root gone, the store hung, the database stopped - each within seconds - and liveness `UP` throughout (2.7.3, issue 104) |
 | `file/web/S3HungStoreTest`, `FilesystemUnavailableTest` | a store paused, not stopped: every call a 503 within its limit, readiness DOWN at once, pages untouched, recovery without a restart; a storage root that cannot be written is the same 503 (2.7.1) |
 | `file/web/S3ScenariosTest`, `S3OutageTest`, `storage/S3ConcurrencyTest` | on the s3 backend, object by object: a duplicate stores nothing (also under a race), a rollback removes its object, versions and formats are objects of their own, each delete removes exactly its objects, a move or rename none, every download reads the bucket; the store going away; 120 downloads at once |
 | `file/web/ApiKeyAttributionTest` | an upload, a new version and a delete with a real `Bearer` key record the key on the rows and the audit trail, and the file page names it (2.3.0) |

@@ -53,8 +53,14 @@ public class BlobStoreConfig {
     public BlobStore filesystemBlobStore(FileManagementProperties properties, Environment environment) {
         refuseRetiredBaseDir(environment);
         Path root = Path.of(properties.baseDir()).toAbsolutePath().normalize();
-        logger.info("files are stored on the filesystem, under {}{}", root,
-                Files.isDirectory(root) ? "" : " - which does not exist yet");
+        if (Files.isDirectory(root)) {
+            logger.info("files are stored on the filesystem, under {}", root);
+        } else {
+            // Not created here: on a share that is not mounted, creating it would put new files
+            // on the wrong disk. Readiness is DOWN until it exists (issue 104).
+            logger.warn("files are stored on the filesystem, under {} - which does not exist: create it;"
+                    + " until then /actuator/health/readiness is DOWN", root);
+        }
         return new FilesystemBlobStore(properties);
     }
 
@@ -115,14 +121,21 @@ public class BlobStoreConfig {
     }
 
     /**
-     * The bucket answering is part of being ready: without it no file can be read or written
-     * ({@code /actuator/health/readiness}; issue 41). The filesystem needs no indicator of its own -
-     * Spring Boot's disk space check covers the working directory's disk.
+     * The storage answering is part of being ready: without it no file can be read or written
+     * (issue 41). One indicator, {@code blobStore}, whichever the backend - the bucket answering a
+     * {@code HeadBucket} within its limit, or the storage root being a directory the service may
+     * write to - so {@code management.endpoint.health.group.readiness} names it once, and the
+     * start fails if it is ever missing (issue 104: readiness used to check neither this nor the
+     * database). Spring Boot's own disk space check is of the working directory, not the root.
      */
     @Bean
-    @ConditionalOnProperty(name = BACKEND, havingValue = "s3")
     public HealthIndicator blobStoreHealthIndicator(BlobStore blobStore) {
-        S3BlobStore store = (S3BlobStore) blobStore;
-        return () -> store.bucketReachable() ? Health.up().build() : Health.down().build();
+        if (blobStore instanceof S3BlobStore store) {
+            return () -> store.bucketReachable() ? Health.up().build() : Health.down().build();
+        }
+        if (blobStore instanceof FilesystemBlobStore store) {
+            return () -> store.rootUsable() ? Health.up().build() : Health.down().build();
+        }
+        throw new IllegalStateException("no health check for " + blobStore.getClass().getName());
     }
 }

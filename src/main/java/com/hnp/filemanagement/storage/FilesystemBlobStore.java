@@ -145,6 +145,19 @@ public class FilesystemBlobStore implements BlobStore {
     }
 
     /**
+     * Whether the storage root is a directory this process may write to - for the readiness check
+     * (issue 104). A share that is not mounted, a root that was never created, one made read-only:
+     * every file would then be missing or unwritable, so the instance is not ready.
+     */
+    public boolean rootUsable() {
+        boolean usable = Files.isDirectory(root) && Files.isWritable(root);
+        if (!usable) {
+            logger.warn("the storage root {} is not a writable directory", root);
+        }
+        return usable;
+    }
+
+    /**
      * The one place a relative key becomes an absolute path, and the one place a path that would
      * leave the root is refused.
      */
