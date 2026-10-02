@@ -1886,6 +1886,102 @@ New-NetFirewallRule -DisplayName "File Management 8122" -Direction Inbound -Loca
 
 ---
 
+## The hosts, and what each needs
+
+With the object store (Phase 4) and, later, the reading of file contents (Phase 11), the system is
+three hosts. Each does one kind of work, and the reasons they are kept apart are below the table.
+
+| Host | Runs | CPU | RAM | Disk | Backed up |
+|---|---|---|---|---|---|
+| **Application** (today's Windows server) | the jar, behind IIS/ARR | as today | as today | the upload temporary directory (room for the uploads in flight) and logs | the configuration; the database with PostgreSQL's job |
+| **Object store** - Linux, Docker | SeaweedFS from [deploy/seaweedfs](../deploy/seaweedfs/README.md): master, volume, filer, S3, filer database, admin, worker | **4 vCPU** | **8-16 GB** | **the data** - sized below, on RAID | yes: the filer database and a mirror of the bucket |
+| **Tika** - Linux, Docker - *Phase 11, planned* | `tika-text` and `tika-ocr` (Tesseract, Persian), the DWG converter | **4-8 vCPU**, more for the backfill | **16 GB** | 50 GB SSD, temporary files only | no: nothing on it is data |
+
+Docker on Linux for both new hosts (Ubuntu 24.04 LTS, say): Docker Desktop on Windows is a
+development tool, not a server.
+
+### The object store's host
+
+SeaweedFS needs little CPU or memory; **its resource is the disk**. Files average around 100 MB, so
+they are few for their size, and the indexes the volume server keeps in memory stay small - even a
+few million chunks are tens of MB.
+
+| Container | CPU | RAM | |
+|---|---|---|---|
+| master | very little | ~0.5 GB | which volume is where |
+| volume | low to moderate | 1-2 GB | the bytes; an in-memory index per volume |
+| filer and S3 | moderate under load | 1-2 GB | the S3 requests, streaming and checksums |
+| filer database (PostgreSQL) | low | 1-2 GB | the names - metadata only |
+| admin and worker | low; more during vacuum | ~0.5 GB | maintenance, the lifecycle job |
+
+Memory beyond that is not wasted: the system uses it to cache the disk.
+
+**The disk:**
+
+```
+usable space ≈ data × (1 + the share kept as old versions) × 1.4
+```
+
+* *data*: every file today, plus two to three years of growth;
+* *old versions*: versioning is on, and the lifecycle rule keeps a replaced or deleted object 30
+  days - usually a small share;
+* *1.4*: room that is not the data's - space freed by a delete returns only after a vacuum, and
+  every bucket needs free volume slots to grow into (`6 × VOLUME_SIZE_LIMIT_MB` at least at the
+  start; the README says why - running out of slots is "No writable volumes", seen in 4.6).
+
+For example, 3 TB today and 1 TB a year, for two years: 5 TB × 1.4 ≈ **7 TB usable**.
+
+* **RAID 1 or RAID 10 under the data.** Phase one has replication `000`: every file is on one disk,
+  once. RAID is not a backup - the mirror of the bucket to a second store is
+  ([Backups](../deploy/seaweedfs/README.md#backups)) - but without it one failed disk is lost files.
+* **Disks**: HDD is acceptable for the data - large files are read and written in sequence; the
+  filer database and the volume indexes are better on SSD.
+* **Network**: 1 Gbit/s at least, about 110 MB/s for all transfers together - enough for everyday
+  use and for the copy of roadmap 4.4.
+
+### The Tika host
+
+Two kinds of work with different needs: reading text (Word, Excel, text PDFs) is light, and wants
+memory more than CPU - an enormous spreadsheet can take a few GB; OCR is CPU and little else, an
+estimated 2-6 s per A4 page in Persian on one core, a few hundred MB per Tesseract process. The
+sizes in the table are estimates until Phase 11's step 11.4 measures real scans on the real host;
+the arithmetic, the two-container layout and the backfill sizing are in
+[roadmap Phase 11, "Where Tika runs, and on what"](roadmap.md#where-tika-runs-and-on-what).
+
+### Why three hosts, not two
+
+**Tika does not go on the object store's host**, and not on the application's:
+
+* **Isolation.** Tika parses whatever people upload, and document parsers have had vulnerabilities
+  over the years. A file that exploits one should land on a machine holding nothing - not on the
+  host that holds every file and the store's keys.
+* **Contention.** OCR takes every core for hours during the backfill. Beside SeaweedFS that is
+  slower uploads and downloads for every user; beside the application, slower pages.
+* **Life cycle.** Tika keeps no data: it is rebuilt, enlarged for the backfill and shrunk again at
+  will. The store's host should change rarely, and only carefully.
+* **No traffic is saved** by putting Tika beside the store: the bytes go store → application →
+  Tika either way.
+
+**If only one host is available for both for now**: limit the Tika containers (`cpus`,
+`mem_limit` - half the cores, say); few OCR workers, the backfill at night; Tika on a Docker network
+of its own that cannot reach the master, volume, filer or filer database; Tika as a non-root user on
+a read-only filesystem; its ports on the private interface only. Moving it to its own host later is
+one URL in the application's settings.
+
+### What may reach what
+
+| From | To | Port | Why |
+|---|---|---|---|
+| clients | the reverse proxy | 443 | everything people and integrations use |
+| the reverse proxy | the application | 8122 | loopback, or the application's host only ([section 9](#9-windows-firewall)) |
+| the application | the object store's S3 | 8333 | every byte (`FILEMANAGEMENT_S3_ENDPOINT`) |
+| the application | Tika | 9998, 9999 | `tika-text`, `tika-ocr` - **nobody else**: `tika-server` has no authentication |
+| the operator | the store's admin UI | 23646 | through an SSH tunnel; it listens on loopback |
+| the backup job | the object store's S3 | 8333 | the mirror, with the `operator` key |
+
+Everything else between them closed. If the network between the hosts is not trusted, TLS in front
+of S3 and of Tika.
+
 ## MySQL - decommissioned (2026-09-30)
 
 Production has run on PostgreSQL since 2026-09-26 ([below](#postgresql-the-database-and-the-copy)),
