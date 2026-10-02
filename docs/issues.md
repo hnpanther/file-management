@@ -2055,6 +2055,9 @@ since 1.5.0; accounts had none.
 > password counts, not a directory that does not answer; a success forgets the count. In memory -
 > one instance, a restart forgets. The price of any lock by name - someone can keep a person locked
 > out by failing on purpose, minutes at a time - is written in `deployment.md`. `LoginLockoutTest`.
+> Planned: a page listing the locked names, with the addresses the attempts came from, to unlock
+> one early ([roadmap 12.1](roadmap.md#121-a-page-of-locked-sign-ins--planned)) - until then a lock
+> is waited out, or every lock is lifted by a restart.
 
 ### 106. `REVOKE_SHARE_LINK` showed every share link, to files in folders its holder could not open — **S2**
 

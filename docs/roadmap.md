@@ -20,6 +20,7 @@ working, and to depend only on what came before.
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
 | 10 | After 1.4.0: sharded storage, download from the explorer, recursive delete, `Profiles` with a quota, share links | 7, 9 | **done** (1.5.0) |
 | 11 | Searching the contents of files: text from documents, OCR of scans and images, drawings and diagrams | 4 (for the backfill) | planned |
+| 12 | Bounded additions after 2.7: a page of locked sign-ins (12.1) | - | planned |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -122,6 +123,10 @@ What the releases since the cut-over brought, newest first:
    bounded). An S3-compatible
    API for standard tools is planned separately ([9.10](#910-an-s3-compatible-mode--planned)).
 3. ~~**Recording downloads** (9.2)~~ - **done (2.7.0)**.
+   **A page of locked sign-ins** ([12.1](#121-a-page-of-locked-sign-ins--planned)): the usernames
+   2.7.4's lock holds, with the address the attempts came from, and a button to unlock one early.
+   Small, independent of everything else; worth having before the first time someone must wait
+   out a lock that should not have been there.
 4. **Phase 11 - searching the contents of files** ([the plan](#phase-11--searching-the-contents-of-files--planned)):
    the pipeline and text documents first (11.1-11.2), the backfill after Phase 4's copy (11.3),
    then OCR and drawings, each optional (11.4-11.5). It is also what Phase 8's "full-text search of
@@ -2809,6 +2814,47 @@ page.
 * **Persian in the drawings**: TrueType or SHX, and which SHX fonts (11.5).
 * **The ODA converter's licence terms** for this use.
 * **Whether the text of old revisions is worth keeping** once a newer one exists (11.1 keeps it).
+
+## Phase 12 — Bounded additions after 2.7 — **planned**
+
+Small things asked for once 2.7 was in use, each sized to ship on its own, none a redesign.
+
+| Step | What | Schema | Size |
+|---|---|---|---|
+| 12.1 | A page of locked sign-ins, to unlock one early | none | small |
+
+### 12.1 A page of locked sign-ins — **planned**
+
+**Why.** Since 2.7.4 five wrong passwords lock a username for fifteen minutes (issue 105). Most
+of the time waiting is the answer. Sometimes it is not: a person who must sign in now, an
+integration (APEX) that locked its own account with an old password and is fixed, or a name
+someone is locking on purpose. Today the only way to lift a lock early is to restart the
+application - which forgets every count, everyone's.
+
+**What.**
+
+* `/settings/locked-sign-ins` - the usernames that are locked now, and those with failures counted
+  against them: the name, whether an account has it, the failures, the time of the last one, when
+  the lock ends, and **the address the attempts came from** (`LoginAttempts` keeps the last few
+  addresses per name from then on - the client's, as the download records take it, from
+  `X-Forwarded-For` behind the proxy). Newest first; a slice, never a count. A name nobody has is
+  listed too: it is how a guessing attack shows itself.
+* **Unlock** - one name at a time: its count and its lock forgotten at once. Recorded in
+  `action_history` (`UNLOCK SIGN-IN`, the name) and logged, by whom.
+* Two permissions, each in exactly one `PermissionGroup`: `LOCKED_SIGN_INS_PAGE` to see,
+  `UNLOCK_SIGN_IN` to unlock; ADMIN holds both by itself. **Unlocking an account that holds ADMIN
+  asks ADMIN** (`UserService.requireAdministratorFor`, issue 91): otherwise the page would be a way
+  round the lock on the accounts it matters most for.
+* The page shows what is in memory - this instance's counts since its start. That is said on the
+  page; a restart empties it, as it lifts every lock.
+
+**Not in it.** No permanent lock, and no lock by address: both turn a lock into a way to keep
+people out for good. An administrator who wants an account kept out disables it (issue 91's page).
+
+**Tests.** A lock appears on the page with its name, failures, end and address; unlock lifts it and
+the right password then signs in at once; the page and the button behind their permissions; an
+account holding ADMIN unlocked only by ADMIN; the unlock recorded; the page a fixed number of
+statements.
 
 ---
 
