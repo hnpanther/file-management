@@ -215,6 +215,7 @@ class UserHomeWebTest extends DatabaseSupport {
         return post("/users")
                 .param("username", username)
                 .param("password", "a-password")
+                .param("passwordConfirmation", "a-password")
                 .param("personelCode", String.valueOf(1111 + (n % 8000)))
                 .param("nationalCode", String.format("3%09d", n))
                 .param("phoneNumber", "0914" + String.format("%07d", n))

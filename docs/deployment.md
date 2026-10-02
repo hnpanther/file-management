@@ -713,6 +713,17 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 2.7.1 to 2.7.2 — a password is typed twice
+
+A jar swap; no migration, no new permission, nothing to set. The two forms that set a password -
+**changing a user's password** and **creating a user** - ask for it a second time ("تکرار رمز
+عبور"). Two that differ are refused with «رمز عبور و تکرار آن یکسان نیستند.» and change nothing;
+the page also says so as it is typed, and the change-password form will not submit until they
+match. The server's check is the one that counts. Nothing changes for Active Directory accounts,
+whose password this application never holds, or for the APIs, which set none.
+
+**Rollback** is the 2.7.1 jar alone.
+
 ### Upgrading from 2.7.0 to 2.7.1 — a storage failure is a 503, and a hung store costs seconds
 
 A jar swap; no migration, no new permission, nothing to set.

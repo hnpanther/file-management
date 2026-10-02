@@ -1,6 +1,6 @@
 # Architecture — Current State
 
-> The codebase as it stands - kept current with each release, 2.7.1 the latest; a section names
+> The codebase as it stands - kept current with each release, 2.7.2 the latest; a section names
 > the release that last changed what it describes. For where it is going, see
 > [target-architecture.md](target-architecture.md); for the order, [roadmap.md](roadmap.md).
 
