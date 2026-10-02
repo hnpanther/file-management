@@ -159,6 +159,75 @@ bytes take:
   (roadmap 9.2) is written before the redirect.
 * **Range requests** keep working for both backends, so a client can resume.
 
+## Searching the contents of files
+
+Roadmap Phase 11. A search should find a file by what is inside it - not only by its name - across
+what this system actually holds: PDFs with and without a text layer, Word, Excel and PowerPoint,
+images and photographed forms, Visio diagrams and AutoCAD drawings, in Persian and English.
+
+```
+ upload ── commit ──► file_details + file_content(PENDING)          (one transaction)
+                                │
+         ┌──────────────────────┘
+         ▼
+ ContentWorker (text lane ×N, OCR lane ×M)   FOR UPDATE SKIP LOCKED, off any request
+   · detect the kind (tika-core)  →  route:
+       document / text PDF  ─────────────►  tika-server  (parsers)
+       image / PDF with no text layer ───►  tika-server  (Tesseract, fas+eng)   if OCR is on
+       dxf  ─────────────────────────────►  read in process (text entities)
+       dwg  ─────────────────────────────►  ODA converter → dxf → as above
+       anything else  ───────────────────►  SKIPPED
+   · bytes streamed from the BlobStore, a timeout and a size cap on every call
+   · text folded as SearchKey folds names → file_content: text, tsvector, state
+         │
+         ▼
+ ContentSearch (port) ── PostgreSQL: tsvector('simple') + GIN, folder scoping in the query
+                     └─ later, if needed: OpenSearch with the Persian analyzer
+```
+
+**Reading is not searching.** The two happen at different times and fail separately: an upload
+writes a *pending* row in its own transaction and is done; reading the text is a background job
+that may take seconds (a document) or minutes (OCR of a long scan), may fail, and is retried. A
+search reads only the database, whatever the state of the readers.
+
+**The tool is chosen when the file is read, not when it is uploaded.** The worker detects the kind
+from the bytes and routes it. So a reader added later (DWG, say), or OCR switched on after a year,
+applies to old files by re-queueing their `SKIPPED` rows - no re-upload, no migration of choices.
+
+**One table**, `file_content`, one row per revision: its state (`PENDING`, `DONE`, `EMPTY`,
+`SKIPPED`, `FAILED`), the lane, the attempts and the next one, the reader used and the language
+found, the text (capped), and a generated `tsvector` over its first part, GIN-indexed. It belongs
+to the revision - `ON DELETE CASCADE`, unlike the history and the download records, which outlive
+it. The queue is this table: a partial index on the pending rows is all the workers read.
+
+**Tika runs beside the application, not in it**: a container (`apache/tika`, the full image with
+Tesseract and the Persian data), in forked mode so a parser that dies is restarted, with a memory
+limit; the application talks to it over HTTP with a timeout and keeps only `tika-core`. Down, it
+leaves rows pending; nothing else notices.
+
+**Persian.** PostgreSQL has no Persian dictionary or stemmer, so the text is indexed with the
+`simple` configuration after the same folding as names (Arabic ي/ك to Persian, the half-space and
+marks dropped, digits to ASCII, upper case) - and the query is folded the same way. Words and
+phrases match; inflected forms do not. That is the reason for the `ContentSearch` port: OpenSearch's
+Persian analyzer is the upgrade if relevance proves to matter, and only the adapter changes.
+
+**Access.** A result, and above all its snippet, is the file's contents; both are filtered by the
+reader's folder access inside the query, as every list is (roadmap Phase 6). The snippet is made
+(`ts_headline`) only for the rows of the page shown, over a bounded prefix of the text.
+
+```yaml
+filemanagement:
+  content:
+    enabled: true
+    tika-url: http://localhost:9998
+    max-bytes: 200MB            # larger files are SKIPPED
+    max-text: 5MB               # text kept per revision; the tsvector covers its first part
+    timeout: 120s               # per file, per call
+    workers: { text: 2, ocr: 1 }
+    ocr: { enabled: false, languages: fas+eng, max-pages: 50 }
+    dwg-converter: ""           # path to the ODA File Converter; empty - DWG is SKIPPED
+```
+
 ## Domain model changes
 
 | Change | Closes | Notes |
