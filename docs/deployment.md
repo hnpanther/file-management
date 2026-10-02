@@ -755,6 +755,8 @@ A jar swap; no migration, no new permission. From a review of the whole applicat
   password change - now locks its account after five tries and keeps it locked while it retries;
   the log says `sign-in locked ... username=[...]`. And anyone can lock a known username for fifteen
   minutes by failing on purpose; that is the price of a lock by name, and it never lasts longer.
+  **To lift a lock early** there is, for now, only a restart of the service - which lifts every
+  lock at once; a page to unlock one name is planned ([roadmap 12.1](roadmap.md#121-a-page-of-locked-sign-ins--planned)).
   API keys are not counted - a key is a random 256-bit value, not a password.
 * **`REVOKE_SHARE_LINK` sees the links to files it may read** (issue 106), not every link in the
   system; revoking someone else's link asks the same. Whoever holds ADMIN, or anyone while folder
