@@ -138,8 +138,13 @@ Every failure is an RFC 9457 problem document, `application/problem+json`:
 ```
 
 `detail` is English and meant for a log, not for a person. A client should branch on the status
-code - `400`, `401`, `403` (no permission, or no access to that file's folder), `404`, `409` - and
-not on the wording, which may change.
+code - `400`, `401`, `403` (no permission, or no access to that file's folder), `404`, `409`,
+`413` (above the upload cap), `503` - and not on the wording, which may change.
+
+**`503 Service Unavailable` means "send it again later"** (2.7.1): the request was fine, and the
+file storage behind it did not answer - with a `Retry-After` header in seconds (`30`). An upload
+answered 503 was not stored: no row, no file; sending it again is safe. Before 2.7.1 the same
+failure was `417 Expectation Failed`, which reads as the client's mistake and is not worth retrying.
 
 ## A client that still holds numbers
 
@@ -167,6 +172,8 @@ whatever it is when the request is made.
 | 1.7.0 | a Persian file name arrives intact; **uploads private unless `public-file=1`**; a refused upload says why in `detail` |
 | 1.8.0 | external ids and `checksumSha256` in the upload's answer; every id segment takes the external id |
 | 1.9.0 | `file-info/{id}/download` by the file's id, with `?version=` and `?format=`; the `X-File-*` and `X-Checksum-SHA256` headers on every download; deleting or changing a file checks the file's folder (issue 90) |
+| 2.7.1 | **a storage failure is `503` with `Retry-After`**, no longer `417`: retry it. Nothing else changes |
+| 2.7.0 | nothing. (Every download is recorded - with the API key used and the client's address.) |
 | 2.5.0 | nothing. (What a client uploads, changes or deletes appears in the file history, under the API key it used.) |
 | 2.4.0 | **every path takes the external ids only**: a number in `{fileInfoId}` or `{fileDetailsId}` is `400 InvalidParameter`, saying the parameter takes the external id. Routes, methods, fields, answers and headers are otherwise unchanged - the numbers are still answered |
 | 2.3.0 | nothing. (What a request made with an API key uploads or deletes is now recorded as that key's, and the file page names the key.) |

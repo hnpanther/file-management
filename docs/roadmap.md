@@ -40,7 +40,9 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
-2.7.0 is written: **every download recorded** - who, or which key, from which address, which way -
+2.7.1 is written: **a storage failure is a 503 with `Retry-After`** (issue 100), and **a hung
+object store costs a request seconds, not minutes** (issue 101) - both tested against a store
+stopped and a store paused. 2.7.0 is written: **every download recorded** - who, or which key, from which address, which way -
 without a download ever waiting for it (9.2), `file.management.base-dir` retired for
 `filemanagement.base-dir`, and the s3 backend tested case by case and through a 1 GB file, which
 found and fixed its connection pool (issue 102).
@@ -55,6 +57,10 @@ closed early by that decision: the way back from here is a PostgreSQL restore
 
 What the releases since the cut-over brought, newest first:
 
+* **2.7.1 - when the storage fails**: a 503 with `Retry-After` instead of a 417 (issue 100), on
+  both backends; and limits on every call to the object store (issue 101) - a hung store answered
+  within seconds, readiness DOWN at once, a slow download never cut off, recovery without a
+  restart (`S3HungStoreTest` pauses the store).
 * **2.7.0 - who downloaded what** (9.2): `file_download` (`V3.6`), one row per download through
   any of the six ways out - the file page, a preview, the public files, a share link, API v1, v2 -
   with the person or the key, the share link and the client's address, read at `/files/downloads`
@@ -103,10 +109,10 @@ What the releases since the cut-over brought, newest first:
    [4.7](#47-the-steps)): the backend switch is built (2.6.0) and SeaweedFS runs locally with the
    bucket made. Left, in order: the proof of concept finished - **whether SeaweedFS actually
    carries out the lifecycle rule** ([4.5.1](#451-the-lifecycle-rule-stored-not-yet-seen-carried-out)),
-   a restore; issues 100 and 101 (a storage failure as a 503, and a time limit on the calls that
-   move no body); then the copy tool (4.4); then the backup procedure written and rehearsed; then
+   a restore; then the copy tool (4.4); then the backup procedure written and rehearsed; then
    the window. Done in 2.7.0: the application against a SeaweedFS stack case by case, and a 1 GB
-   file through it. An S3-compatible
+   file through it; in 2.7.1: issues 100 and 101 (a storage failure is a 503, a hung store is
+   bounded). An S3-compatible
    API for standard tools is planned separately ([9.10](#910-an-s3-compatible-mode--planned)).
 3. ~~**Recording downloads** (9.2)~~ - **done (2.7.0)**.
 4. **Phase 11 - searching the contents of files** ([the plan](#phase-11--searching-the-contents-of-files--planned)):

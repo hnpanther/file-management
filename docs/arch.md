@@ -1,6 +1,6 @@
 # Architecture — Current State
 
-> The codebase as it stands - kept current with each release, 2.7.0 the latest; a section names
+> The codebase as it stands - kept current with each release, 2.7.1 the latest; a section names
 > the release that last changed what it describes. For where it is going, see
 > [target-architecture.md](target-architecture.md); for the order, [roadmap.md](roadmap.md).
 
@@ -259,9 +259,15 @@ the server's request threads (2.7.0; the SDK's own 50 failed the 51st download a
 `deleteDirectory` lists `prefix + "/"` and deletes a thousand at a time. A start with `s3` refuses
 a missing setting, a missing bucket, refused credentials and a store that does not answer, and adds
 the bucket to `/actuator/health/readiness`. A store that goes away while running fails uploads and
-downloads with an error (417, a `BusinessException`, as on the filesystem - issue 100) and leaves
-no row and no note behind; the pages that do not need bytes go on working (`S3OutageTest`). The layout below is the filesystem's; in a bucket the same keys
-are object keys.
+downloads with a `StorageUnavailableException` - **503 with `Retry-After`**, as on the filesystem
+(2.7.1, issue 100) - and leaves no row and no note behind; the pages that do not need bytes go on
+working (`S3OutageTest`). **A store that hangs** - takes the connection and says nothing - costs a
+request seconds, not minutes (2.7.1, issue 101): a call that moves no body (every `HeadObject`,
+which comes before every read and write, a listing, a delete) has a limit per attempt and in all,
+a download waits a limited time for its first byte and is then limited only by silence (its length
+is the file's), and the readiness check has one short attempt (`filemanagement.storage.s3.timeouts`,
+`S3HungStoreTest`, `S3BlobStoreTest`). The layout below is the filesystem's; in a bucket the same
+keys are object keys.
 
 `FilesystemBlobStore` takes the storage root from `FileManagementProperties` and resolves every
 key against it.
@@ -488,6 +494,7 @@ source of truth:
 | `DependencyResourceException` | 409 | still referenced — a category with sub-categories, a tag with files |
 | `InvalidDataException` | 400 | a value outside the allowed set, or a missing required field |
 | `BusinessException` | 417 | a rule the caller could not have known from the request alone |
+| `StorageUnavailableException` | 503, `Retry-After: 30` | the storage behind the request failed - the object store does not answer or hangs, the disk is full (2.7.1, issue 100); the request is worth sending again. A `BusinessException` by type, so what caught one still does |
 | — (`AccessDenied`) | 403 | `@PreAuthorize` refused |
 | — (`InvalidRequestBody`) | 400 | the body is not readable JSON |
 | — (`InvalidParameter`) | 400 | a path variable or query parameter will not convert |
@@ -1153,7 +1160,7 @@ schema at startup but never modifies it.
 | `spring.flyway.baseline-on-migrate` | `true` | |
 | `filemanagement.base-dir` | `./TempFiles/files/main/` | `FilesystemBlobStore` - the storage root when the backend is `filesystem` (`FILEMANAGEMENT_BASE_DIR`). `file.management.base-dir` until 2.7.0; setting the old name stops the start (`BlobStoreConfig.refuseRetiredBaseDir`) |
 | `filemanagement.storage.backend` | `filesystem` | `BlobStoreConfig`: `filesystem` or `s3` (2.6.0) |
-| `filemanagement.storage.s3.*` | endpoint, bucket, keys empty; region `us-east-1`; path-style `true`; prefix empty; part size 16 MB; `max-connections` 200 | `S3BlobStore`, read only for the `s3` backend (`FILEMANAGEMENT_S3_*`) |
+| `filemanagement.storage.s3.*` | endpoint, bucket, keys empty; region `us-east-1`; path-style `true`; prefix empty; part size 16 MB; `max-connections` 200; `timeouts.*` (2.7.1): connect 2 s, read (silence) 30 s, attempt 5 s, call 15 s, health 3 s | `S3BlobStore`, read only for the `s3` backend (`FILEMANAGEMENT_S3_*`) |
 | `filemanagement.time-zone` | `Asia/Tehran` | the zone of the application's `Clock`: what the pages show times in, and what a typed date is read in (§8, "Time"). Never the server's zone; an unknown zone fails the start |
 | `spring.servlet.multipart.max-file-size` / `max-request-size` | `20MB` | |
 | `filemanagement.default.page-size` | `30` | rows per list page, read from `FileManagementProperties`; a `page-size` in the URL is clamped to 200 and a bad one falls back to this (`PageRequests`) |
@@ -1245,6 +1252,7 @@ generates the unique ones, so a test overrides only what it is actually about.
 | `file/domain/FileHistoryServiceTest`, `FileHistoryFolderAccessTest`, `file/web/FileHistoryPageTest` | one event per change, in its transaction, outliving the file; the pages behind their permissions, under folder access, in a fixed number of statements |
 | `file/web/DownloadRecordingTest`, `DownloadRecordingResilienceTest`, `DownloadRecordingDisabledTest`, `DownloadClientAddressTest`, `DownloadAuditTest`, `file/domain/DownloadRecorderTest`, `FileDownloadServiceTest` | every way out records one row with its person, key, link and address; a `HEAD`, a later range and a repeat do not; a database hanging and then down costs twenty downloads nothing; `X-Forwarded-For` through the real server; the pages, folder access, a fixed number of statements, the retention (2.7.0) |
 | `storage/S3StorageWriterTest`, `S3StorageSweeperTest`, `S3ChecksumBackfillTest` | every case of the filesystem's storage tests, again on the s3 backend |
+| `file/web/S3HungStoreTest`, `FilesystemUnavailableTest` | a store paused, not stopped: every call a 503 within its limit, readiness DOWN at once, pages untouched, recovery without a restart; a storage root that cannot be written is the same 503 (2.7.1) |
 | `file/web/S3ScenariosTest`, `S3OutageTest`, `storage/S3ConcurrencyTest` | on the s3 backend, object by object: a duplicate stores nothing (also under a race), a rollback removes its object, versions and formats are objects of their own, each delete removes exactly its objects, a move or rename none, every download reads the bucket; the store going away; 120 downloads at once |
 | `file/web/ApiKeyAttributionTest` | an upload, a new version and a delete with a real `Bearer` key record the key on the rows and the audit trail, and the file page names it (2.3.0) |
 | `MigrationTest` | `V3.1` turns times already written into their instants; every migration runs as a database owner that is no superuser, as production's |

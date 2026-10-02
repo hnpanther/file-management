@@ -5,13 +5,16 @@ import com.hnp.filemanagement.shared.exception.DependencyResourceException;
 import com.hnp.filemanagement.shared.exception.DuplicateResourceException;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.shared.exception.StorageUnavailableException;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -48,8 +51,10 @@ import java.net.URI;
  * <p>The status comes from the {@link ResponseStatus} annotation on the exception itself, so the
  * exception stays the single source of truth: {@code ResourceNotFoundException} is 404,
  * {@code DuplicateResourceException} and {@code DependencyResourceException} are 409,
- * {@code InvalidDataException} is 400, {@code BusinessException} is 417. Endpoints used to catch
- * these and flatten them all to 400 with a hand-written sentence; they no longer catch them at all.
+ * {@code InvalidDataException} is 400, {@code BusinessException} is 417 and
+ * {@code StorageUnavailableException} 503 (with {@code Retry-After}, handled on its own).
+ * Endpoints used to catch these and flatten them all to 400 with a hand-written sentence; they no
+ * longer catch them at all.
  *
  * <p>Messages from domain exceptions carry ids and occasionally paths, so they are logged but never
  * returned for an unexpected failure - a 500 gets a generic, translated message.
@@ -90,6 +95,25 @@ public class GlobalExceptionHandler {
                         LocaleContextHolder.getLocale())
                 : e.getMessage();
         return respond(request, status, detail, e.getClass().getSimpleName());
+    }
+
+    /**
+     * The storage behind the request failed - the object store does not answer, the disk is full
+     * (2.7.1, issue 100). 503 with {@code Retry-After}: the request was fine and is worth sending
+     * again. It was a {@code BusinessException}'s 417, which told a client it had asked wrongly and
+     * should not retry. The store's own message names a key, so it is logged and not returned.
+     */
+    @ExceptionHandler(StorageUnavailableException.class)
+    public Object storageUnavailable(StorageUnavailableException e, @AuthenticationPrincipal UserDetailsImpl principal,
+                                     HttpServletRequest request, HttpServletResponse response) {
+
+        logger.error("user=[{}] {} {} -> 503 storage unavailable: {}",
+                principal == null ? "anonymous" : principal.getId() + "/" + principal.getUsername(),
+                request.getMethod(), GlobalGeneralLogging.fullPath(request), e.getMessage());
+        response.setHeader(HttpHeaders.RETRY_AFTER, String.valueOf(StorageUnavailableException.RETRY_AFTER_SECONDS));
+        return respond(request, HttpStatus.SERVICE_UNAVAILABLE,
+                detail(request, "error.storageUnavailable", "the file storage is not available; try again shortly"),
+                "StorageUnavailable");
     }
 
     /**

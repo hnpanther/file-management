@@ -176,7 +176,7 @@ public record FileManagementProperties(
 
         public Storage {
             backend = backend == null ? Backend.FILESYSTEM : backend;
-            s3 = s3 == null ? new S3(null, null, null, null, null, null, null, null, null) : s3;
+            s3 = s3 == null ? new S3(null, null, null, null, null, null, null, null, null, null) : s3;
             sweepEnabled = sweepEnabled == null || sweepEnabled;
             sweepEveryMinutes = sweepEveryMinutes == null ? 15 : sweepEveryMinutes;
             unfinishedAfterMinutes = unfinishedAfterMinutes == null ? 60 : unfinishedAfterMinutes;
@@ -205,10 +205,11 @@ public record FileManagementProperties(
      *                        until its last byte is sent, so no fewer than the server's request
      *                        threads ({@code server.tomcat.threads.max}, 200) - the AWS SDK's own
      *                        default of 50 failed the 51st download at once (2.7.0)
+     * @param timeouts        how long a call to the store may take (2.7.1, issue 101)
      */
     public record S3(String endpoint, String region, String bucket, String accessKey, String secretKey,
                      Boolean pathStyleAccess, String prefix, @Min(5) Integer partSizeMb,
-                     @Min(1) Integer maxConnections) {
+                     @Min(1) Integer maxConnections, @Valid Timeouts timeouts) {
         public S3 {
             endpoint = endpoint == null ? "" : endpoint.trim();
             region = region == null || region.isBlank() ? "us-east-1" : region.trim();
@@ -219,6 +220,7 @@ public record FileManagementProperties(
             prefix = prefix == null ? "" : prefix.trim();
             partSizeMb = partSizeMb == null ? 16 : partSizeMb;
             maxConnections = maxConnections == null ? 200 : maxConnections;
+            timeouts = timeouts == null ? new Timeouts(null, null, null, null, null) : timeouts;
         }
 
         /**
@@ -248,7 +250,36 @@ public record FileManagementProperties(
             return "S3[endpoint=" + endpoint + ", region=" + region + ", bucket=" + bucket
                     + ", accessKey=" + accessKey + ", secretKey=" + (secretKey.isEmpty() ? "" : "***")
                     + ", pathStyleAccess=" + pathStyleAccess + ", prefix=" + prefix
-                    + ", partSizeMb=" + partSizeMb + ", maxConnections=" + maxConnections + "]";
+                    + ", partSizeMb=" + partSizeMb + ", maxConnections=" + maxConnections
+                    + ", timeouts=" + timeouts + "]";
+        }
+    }
+
+    /**
+     * How long a call to the object store may take (2.7.1, issue 101). A store that refuses is
+     * quick to fail; one that accepts the connection and then says nothing - a hung volume server,
+     * a paused container, a disk that stopped answering - held each request for minutes under the
+     * AWS SDK's defaults, and enough of them held every request thread. So: a call that moves no
+     * body (a {@code HEAD}, a listing, a delete) has a limit per attempt and in all; one that
+     * moves a file's bytes, whose length is the file's, has only a limit on silence; the readiness
+     * check has its own short one and is never retried.
+     *
+     * @param connectSeconds to open a connection, 2
+     * @param readSeconds    of silence on an open connection, 30 - the only limit on a transfer
+     * @param attemptSeconds one attempt of a call that moves no body, or the wait for a download's
+     *                       first byte, 5
+     * @param callSeconds    such a call in all, retries included, 15
+     * @param healthSeconds  the readiness check's one attempt, 3
+     */
+    public record Timeouts(@Min(1) Integer connectSeconds, @Min(1) Integer readSeconds,
+                           @Min(1) Integer attemptSeconds, @Min(1) Integer callSeconds,
+                           @Min(1) Integer healthSeconds) {
+        public Timeouts {
+            connectSeconds = connectSeconds == null ? 2 : connectSeconds;
+            readSeconds = readSeconds == null ? 30 : readSeconds;
+            attemptSeconds = attemptSeconds == null ? 5 : attemptSeconds;
+            callSeconds = callSeconds == null ? 15 : callSeconds;
+            healthSeconds = healthSeconds == null ? 3 : healthSeconds;
         }
     }
 

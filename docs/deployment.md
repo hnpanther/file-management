@@ -713,6 +713,34 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 2.7.0 to 2.7.1 — a storage failure is a 503, and a hung store costs seconds
+
+A jar swap; no migration, no new permission, nothing to set.
+
+* **A storage failure answers `503 Service Unavailable` with `Retry-After: 30`** (issue 100), on
+  the pages and on both APIs - a full disk or an unwritable `FILEMANAGEMENT_BASE_DIR` on the
+  filesystem, an object store that does not answer on `s3`. It was `417 Expectation Failed`, which
+  tells a client it asked wrongly and should not retry. **Tell whoever maintains the APEX
+  integration**: a `503` is worth retrying, and an upload answered `503` was not stored.
+  ([api-v1.md](api-v1.md#errors)). The page shows «فضای ذخیرهٔ فایل‌ها موقتاً در دسترس نیست».
+* **On the `s3` backend, a store that hangs costs seconds, not minutes** (issue 101). Under the
+  AWS SDK's defaults a store that took the connection and then said nothing held each request for
+  about two minutes, and enough such requests held every request thread - the whole application
+  stopped, not only the downloads. Now a call that moves no body is limited per attempt and in all,
+  a download waits a limited time for its first byte (then only silence is limited, so a slow
+  download of a large file is never cut off), and the readiness check gives up after one short
+  attempt. The defaults need no setting; to change them:
+
+  | Variable | Default | |
+  |---|---|---|
+  | `FILEMANAGEMENT_S3_TIMEOUT_CONNECT_SECONDS` | `2` | to open a connection |
+  | `FILEMANAGEMENT_S3_TIMEOUT_READ_SECONDS` | `30` | of silence on an open connection - the only limit a transfer has |
+  | `FILEMANAGEMENT_S3_TIMEOUT_ATTEMPT_SECONDS` | `5` | one attempt of a call that moves no body; a download's wait for its first byte |
+  | `FILEMANAGEMENT_S3_TIMEOUT_CALL_SECONDS` | `15` | such a call in all, retries included - what a hung store costs a request |
+  | `FILEMANAGEMENT_S3_TIMEOUT_HEALTH_SECONDS` | `3` | the readiness check, one attempt |
+
+**Rollback** is the 2.7.0 jar alone: no schema and no setting changed.
+
 ### Upgrading from 2.6.0 to 2.7.0 — who downloaded what, and one setting renamed
 
 One migration (`V3.6`, a new table `file_download` - quick, it starts empty); take the backups as
@@ -782,7 +810,8 @@ FILEMANAGEMENT_S3_ACCESS_KEY=<the application's key in the store>
 FILEMANAGEMENT_S3_SECRET_KEY=<its secret>
 # optional: FILEMANAGEMENT_S3_REGION (us-east-1), FILEMANAGEMENT_S3_PATH_STYLE_ACCESS (true),
 #           FILEMANAGEMENT_S3_PREFIX (none), FILEMANAGEMENT_S3_PART_SIZE_MB (16),
-#           FILEMANAGEMENT_S3_MAX_CONNECTIONS (200, since 2.7.0)
+#           FILEMANAGEMENT_S3_MAX_CONNECTIONS (200, since 2.7.0),
+#           FILEMANAGEMENT_S3_TIMEOUT_* (since 2.7.1 - see 2.7.0 → 2.7.1)
 ```
 
 **Do not switch an installation that has files** until they have been copied into the bucket

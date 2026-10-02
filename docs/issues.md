@@ -1922,6 +1922,17 @@ failure, `BusinessException` kept for what is really a refusal. It changes what 
 for a failure, so it goes with a note in [api-v1.md](api-v1.md) - with Phase 4, before the switch
 of 4.4.
 
+> **Fixed in 2.7.1**, as proposed. `StorageUnavailableException` extends `BusinessException` (what
+> caught one still does) with its own `503`; `GlobalExceptionHandler` adds `Retry-After: 30` and a
+> fixed message - English on `/api/**`, Persian (`error.storageUnavailable`) on the pages - and
+> logs the store's own, which names a key. Thrown for every failure of either store; what stays a
+> `BusinessException` is a refusal (null bytes, a key that would leave the root). A download whose
+> store fails after its headers went out ends as a broken transfer: nothing else is possible then.
+> `S3OutageTest` (store stopped), `S3HungStoreTest` (store paused), `FilesystemUnavailableTest`
+> (a root that cannot be written). Left as it is: on the filesystem, a share that is not mounted
+> makes every file look missing - a 404 per file rather than a 503 - since a missing file and a
+> missing disk look alike to `Files.exists`.
+
 ### 101. The S3 client has no time limit on a call — **S2**
 
 `BlobStoreConfig.s3Client` sets the connection pool (2.7.0) and nothing else of the HTTP client, so
@@ -1935,6 +1946,17 @@ Fix: an `apiCallAttemptTimeout` (a few seconds) and fewer attempts for the calls
 - `HeadObject`, `HeadBucket`, `ListObjectsV2`, `DeleteObject(s)` - through a request override, and
 the socket timeout alone for the streaming ones, whose length is the file's; a hung-store case in
 `S3OutageTest` (a container paused rather than stopped). Before the switch of 4.4.
+
+> **Fixed in 2.7.1.** `filemanagement.storage.s3.timeouts`: the HTTP client's connect (2 s) and
+> silence (30 s) limits; a per-attempt (5 s) and total (15 s) limit on `HeadObject`, `HeadBucket`
+> at the start, `ListObjectsV2`, `DeleteObject`, `CreateMultipartUpload` and
+> `AbortMultipartUpload`; the same on `GetObject`, where it bounds the wait for the headers only -
+> a stream read slowly for longer than every limit is not cut off (`S3BlobStoreTest`); one 3 s
+> attempt for the readiness check. `PutObject`, `UploadPart`, `CompleteMultipartUpload` and
+> `DeleteObjects` keep the silence limit alone - the `HeadObject` before every write is what meets
+> a hung store first. `S3HungStoreTest` pauses a store of its own and finds each call a 503 within
+> its limit, readiness DOWN within its own, a file page answered at once, and everything back after
+> the unpause without a restart; with the limits taken off, the same test fails.
 
 ### 102. The S3 client's connection pool was 50, and a download holds one to its end — **S2**
 

@@ -131,7 +131,9 @@ class FilesystemBlobStoreTest {
             }
         };
 
-        assertThatThrownBy(() -> store.put(key, failing)).isInstanceOf(BusinessException.class);
+        // A failed write is the storage's failure - a 503 to the caller (2.7.1, issue 100).
+        assertThatThrownBy(() -> store.put(key, failing))
+                .isInstanceOf(com.hnp.filemanagement.shared.exception.StorageUnavailableException.class);
 
         assertThat(store.exists(key)).isFalse();
         store.put(key, new ByteArrayInputStream("second attempt".getBytes(StandardCharsets.UTF_8)));
