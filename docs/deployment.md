@@ -2244,11 +2244,10 @@ anonymous bytes that nothing can place.
 > The scripts below dump PostgreSQL.
 
 > **On the `s3` backend** (`FILEMANAGEMENT_STORAGE_BACKEND=s3`, 2.6.0) the second half is the
-> bucket, not the directory, and the directory steps below do not apply to it: the bucket is
-> mirrored to a second store, and the object store's own metadata database is dumped with the
-> application's (`deploy/seaweedfs/README.md`, "Backups"). That procedure is to be written here in
-> full and rehearsed with a restore before production moves (roadmap 4.7, step 4). The rule of
-> this section stands: database and bytes, together, as one pair.
+> bucket on the object store's own server, not the directory: the database is dumped here as
+> below, and the bucket is mirrored by a job on that server, after the dump -
+> [On the `s3` backend](#on-the-s3-backend--two-servers-one-pair). To be rehearsed with a restore
+> before production moves (roadmap 4.7, step 4).
 
 ### Order: database first, then files
 
@@ -2379,6 +2378,7 @@ $PgBin      = 'C:\Program Files\PostgreSQL\18\bin'           # pg_dump.exe / pg_
 $DbUrl      = 'jdbc:postgresql://localhost:5432/file_management?sslmode=disable'   # the service's spring.datasource.url, verbatim
 $DbUser     = 'file_management_backup'                       # a read-only account - see below
 $DbPassword = 'a real password'
+$Backend    = 'filesystem'                                   # 's3' once the files are in the object store - see "On the s3 backend"
 $AppFiles   = 'D:\MyApp\file-management\files'               # the service's FILEMANAGEMENT_BASE_DIR
 $Dest       = 'D:\Backup\file-management'                    # where every run goes, one folder each
 $KeepDays   = 7
@@ -2414,16 +2414,20 @@ try {
         Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
     }
 
-    # 2) Files second, into this run's own folder - a full copy.
+    # 2) Files second, into this run's own folder - a full copy. On the filesystem backend only:
+    #    on s3 the bytes are on the object store's server, copied by its own job after this dump
+    #    ("On the s3 backend", below).
     #    /E copies the tree including empty directories. Not /MIR: the destination is new,
     #    so there is nothing to mirror away, and /MIR on a fresh folder only invites a typo
     #    in $Run to delete something else. /MT:8 uses eight threads.
-    robocopy $AppFiles "$Run\files" `
-        /E /R:2 /W:5 /MT:8 /NP /NDL /NFL /LOG:"$Run\robocopy.log"
-    # robocopy reports 0-7 for success and 8+ for a real failure, so it cannot be tested like
-    # an ordinary command. Reset the code or the next check inherits it.
-    if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
-    $global:LASTEXITCODE = 0
+    if ($Backend -eq 'filesystem') {
+        robocopy $AppFiles "$Run\files" `
+            /E /R:2 /W:5 /MT:8 /NP /NDL /NFL /LOG:"$Run\robocopy.log"
+        # robocopy reports 0-7 for success and 8+ for a real failure, so it cannot be tested like
+        # an ordinary command. Reset the code or the next check inherits it.
+        if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
+        $global:LASTEXITCODE = 0
+    }
 
     # 3) Prove the dump is complete now, not on the day it is needed. A dump cut short by a
     #    lost connection or a full disk has the right name and a plausible size. So: every table
@@ -2467,9 +2471,9 @@ Each run produces one folder:
 ```text
 D:\Backup\file-management\2026-09-16_010000\
 ├── db.dump          the database, one consistent snapshot (pg_dump, custom format)
-├── files\           every uploaded file, the tree as it is under FILEMANAGEMENT_BASE_DIR
-├── backup.log       everything the script printed
-└── robocopy.log     what was copied
+├── files\           every uploaded file, the tree as it is under FILEMANAGEMENT_BASE_DIR (filesystem backend only)
+├── backup.log       everything the script printed, with its start and end times
+└── robocopy.log     what was copied (filesystem backend only)
 ```
 
 **The script holds the database password, so restrict it** to the account the task runs as and
@@ -2524,6 +2528,104 @@ Register-ScheduledTask -TaskName 'File Management Backup' `
 > **A job that fails every night looks exactly like one that succeeds every night** — until the day
 > you need it. Add a second task that checks each morning that today's dump exists and is a
 > plausible size.
+
+### On the `s3` backend — two servers, one pair
+
+Once the files are in the object store, the two halves of a backup live on **two servers**, and
+the job that takes them is two jobs:
+
+| Server | Holds | Backed up by | When |
+|---|---|---|---|
+| **The application's** (Windows) | the jar, its configuration, **the application's PostgreSQL** | the script above, **without its file step** - `$Backend = 's3'` | 01:00, as now |
+| **The object store's** (Linux, Docker) | SeaweedFS: **the bucket's bytes** and **the filer's database** (which object is in which chunk) | `backup-storage.sh` from [deploy/seaweedfs](../deploy/seaweedfs/README.md#backups) | 02:30 |
+| **A third place** - a NAS, a backup server; never either of the two above | the dumps and the mirror of the bucket | - | - |
+
+The rule of this section stands - database and bytes, as one pair - and on two servers it is kept
+by two facts of this application rather than by a snapshot of both at one instant:
+
+* **A stored file never changes and its key is never reused.** A new version is a new object
+  under a new key. So a dump of the database taken at moment X is consistent with **any** copy
+  of the bucket that holds every object that existed at X - extra objects are orphans, harmless.
+* **The bytes are in the store before their row is committed** (`StorageWriter`): an object a
+  dump's row names was already in the bucket when the dump began.
+
+Which gives the two rules the jobs follow:
+
+1. **The bucket is copied after the database dump has finished** - the same order as on the
+   filesystem, across two servers. The application's dump starts at 01:00 and takes minutes; the
+   store's job starts at 02:30. A dump that ever takes longer than an hour is a reason to look,
+   and to move the 02:30 - the Windows script's log says how long each run took. (Stronger, if the
+   margin ever worries you: the Windows script starts the store's job itself over SSH once its
+   dump has passed its checks - Windows' own OpenSSH client and a key allowed to run that one
+   command.)
+2. **The copy of the bucket never loses an object a kept dump still names.** A file deleted the
+   morning after a dump is still a row in that dump. So the nightly copy only **adds** what is new
+   (`rclone copy`); the weekly pass that does carry deletions over **moves** them into a dated
+   `deleted/` folder instead of removing them (`rclone sync --backup-dir`), and that folder is
+   kept as long as the oldest dump that may be restored - **13 months**, since a monthly dump is
+   kept for 12 (below). The cost is what is deleted in a year, kept a year.
+
+Because nothing changes once written, the bucket needs **one mirror, not a copy per night**: each
+night copies only that day's new objects, minutes even when the total is terabytes.
+
+**On the Windows script** (above), one setting changes at the switch: `$Backend = 's3'` - the
+dump is taken as before and the file step is skipped.
+
+(On a Linux application server, the same: step 2's `rsync` only while the backend is
+`filesystem`.)
+
+**`FILEMANAGEMENT_BASE_DIR` after the switch.** It stays, read-only, for the rollback weeks
+(roadmap 4.4) - the way back is the copy tool run the other way. Keep the last filesystem backup
+taken before the switch until those weeks are over; nothing is added to the directory after it,
+so there is nothing new to back up.
+
+**Retention, both servers together:**
+
+| What | Daily | Weekly | Monthly |
+|---|---|---|---|
+| The application's dump (Windows) | 7, local | 12, NAS | 12, off-site |
+| The filer's dump (store's host) | 30, on the backup place | - | with the application's monthly, off-site |
+| The bucket | one mirror, updated nightly | - | the mirror copied off-site monthly |
+| Deleted objects (`deleted/`) | kept 13 months - longer than the oldest dump | | |
+
+**Restoring on `s3`** - the database to the moment chosen, the store from its mirror:
+
+1. **Stop the application.**
+2. **The database**: as in [Restoring](#restoring), step 2 - unchanged.
+3. **The store**, by what was lost:
+   * *The whole store host*: a new host with deploy/seaweedfs, the bucket created with versioning
+     and the lifecycle rule as at the first start, then the mirror copied in - the main mirror
+     **and every `deleted/` folder** (objects the restored dump may still name; the rest are
+     orphans): [the README, "Restoring the store"](../deploy/seaweedfs/README.md#restoring-the-store).
+   * *Only the filer's database* (the volumes intact): its dump restored, then the mirror copied
+     in, which adds only the objects written after that dump.
+4. **Check that every row has its object** - the one check that matters, below.
+5. **Start**, and download a few files, old and new.
+
+**Every row has its object.** On the store's host (Linux), with the application's keys exported
+from its database and copied across - `psql` on the application's server:
+
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" --host=localhost --username=file_management `
+    --dbname=file_management --tuples-only --no-align `
+    --command="SELECT storage_key FROM file_details ORDER BY 1" --output=db-keys.txt
+```
+
+```bash
+# on the store's host; prefix the keys if FILEMANAGEMENT_S3_PREFIX is set
+rclone lsf -R --files-only store:file-management-prod | sort > bucket-keys.txt
+tr -d '\r' < db-keys.txt | sort > db-keys.sorted
+comm -23 db-keys.sorted bucket-keys.txt > missing.txt
+wc -l < missing.txt        # must be 0: a row whose bytes are not in the bucket
+```
+
+Keys in the bucket and not in the database are the harmless orphans. The copy tool of roadmap 4.4
+will do this check, with sizes and checksums, as its *verify*; until then, this is it.
+
+**The monthly drill on `s3`**: the same as [below](#the-monthly-drill), into a throwaway SeaweedFS
+(a compose project of its own, on other ports) and a scratch database: a dump from last week, the
+mirror copied in, the check above at zero, one file downloaded through a scratch application.
+Write down how long the copy-in took - with terabytes it is the recovery time, and it is hours.
 
 ### Off this machine
 

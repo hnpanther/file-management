@@ -24,6 +24,19 @@
         }
       ],
       "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    },
+    {
+      "name": "backup",
+      "credentials": [
+        {
+          "accessKey": "REPLACE-with-20-random-characters",
+          "secretKey": "REPLACE-with-40-random-characters"
+        }
+      ],
+      "actions": [
+        "Read:file-management-prod",
+        "List:file-management-prod"
+      ]
     }
   ]
 }

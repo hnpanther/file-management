@@ -908,7 +908,14 @@ has to catch up. No `TieredBlobStore`, no column saying where each row lives.
   replication or a scheduled mirror of the bucket to a second store or site (`rclone sync`,
   `weed filer.backup`, `mc mirror` - by the store chosen), beside `pg_dump` as now. A restore
   needs the database and the bucket from the same moment, which versioning makes possible.
-  `deployment.md` is rewritten for it before the window, not after.
+  **Written (2026-10-02)**: the application's server dumps its database at 01:00 as now, without
+  the file step; the object store's server dumps the filer's database and mirrors the bucket at
+  02:30 - nightly only what is new, weekly a full pass that moves deletions into a dated folder
+  kept 13 months, longer than the oldest dump - since a stored object never changes, a dump is
+  consistent with any mirror that has every object it names
+  ([deployment.md](deployment.md#on-the-s3-backend--two-servers-one-pair),
+  [deploy/seaweedfs](../deploy/seaweedfs/README.md#backups)). **Still to do: a restore rehearsed**
+  from it, before the window.
 * A `BlobStore` health indicator (`HeadBucket`) in `/actuator/health/readiness`, and timers
   tagged `backend=s3|filesystem` on every port operation.
 * Later, optionally: downloads by pre-signed URL (`response-content-disposition` set as

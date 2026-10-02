@@ -217,12 +217,136 @@ People who use the documents never see any of these: they use the application.
 
 ## Backups
 
-* **The filer's database**, in the same job as the application's database:
-  `docker compose exec -T filer-db pg_dump -U seaweedfs -Fc seaweedfs_filer > filer-$(date +%F).dump`
-* **The bytes**: a mirror of the bucket to a second store or site, on a schedule - `rclone sync`
-  with the `operator` key, or SeaweedFS's own `weed filer.backup`. With one copy on one host this
-  is the only copy anywhere else.
-* `MASTER_DIR`, `ADMIN_DIR` and `WORKER_DIR` hold nothing that cannot be rebuilt.
+This host holds the bytes; the application's server holds the database. The two are one pair: a
+dump of the application's database is restorable only with a bucket that has every object it
+names. How the two jobs fit together - the order, why one mirror is enough, how long deleted
+objects are kept, and the check that every row has its object - is in
+[deployment.md, "On the `s3` backend"](../../docs/deployment.md#on-the-s3-backend--two-servers-one-pair).
+This is this host's half.
+
+**What is backed up here**
+
+* **The bucket** - mirrored to a place that is **not this host's disks** (a NAS mounted at
+  `/mnt/backup`, a backup server over SFTP): with one copy on one host, this is the only other
+  copy there is.
+* **The filer's database** - without it the volumes are chunks without names.
+* `MASTER_DIR`, `ADMIN_DIR` and `WORKER_DIR` hold nothing that cannot be rebuilt; `.env`,
+  `s3.json` and `compose.yaml` are kept with the installation's secrets, encrypted, off this host.
+
+**A key for the backup** - read and list only, so the job that reads every file can write none.
+In `s3.json`, beside the other two (`docker compose restart s3` after the change):
+
+```json
+{
+  "name": "backup",
+  "credentials": [{ "accessKey": "REPLACE-with-20-random-characters",
+                    "secretKey": "REPLACE-with-40-random-characters" }],
+  "actions": ["Read:file-management-prod", "List:file-management-prod"]
+}
+```
+
+**rclone** (one binary from rclone.org, or the `rclone/rclone` image with `--network host`),
+`/root/.config/rclone/rclone.conf`, `chmod 600`:
+
+```ini
+[store]
+type = s3
+provider = SeaweedFS
+endpoint = http://127.0.0.1:8333
+access_key_id = <the backup key>
+secret_access_key = <its secret>
+```
+
+**The job** - `/opt/seaweedfs/backup-storage.sh`, every night at 02:30, after the application's
+dump of 01:00 has finished (the order matters - deployment.md says why):
+
+```bash
+#!/usr/bin/env bash
+# The object store's half of the nightly backup. Exits non-zero on any failure, for cron to report.
+set -euo pipefail
+cd /opt/seaweedfs                                    # this compose project
+
+DEST=/mnt/backup/file-management-store               # NOT this host's disks
+BUCKET=file-management-prod
+KEEP_FILER_DUMPS_DAYS=30
+KEEP_DELETED_DAYS=400                                # longer than the oldest application dump kept (12 monthly)
+
+stamp=$(date +%F_%H%M%S)
+mkdir -p "$DEST"/{filer-db,bucket,deleted,logs}
+exec >>"$DEST/logs/$stamp.log" 2>&1
+echo "start $(date -Is)"
+
+# 1) The filer's database - which object is in which chunk.
+dump="$DEST/filer-db/filer-$stamp.dump"
+docker compose exec -T filer-db pg_dump -U seaweedfs -Fc seaweedfs_filer > "$dump"
+[ "$(stat -c %s "$dump")" -gt 10240 ] || { echo "filer dump implausibly small"; exit 1; }
+
+# 2) The bucket. Nightly: only what is new - a stored object never changes, so new is all there
+#    is to copy, and nothing is ever removed from the mirror. Weekly (Sunday): a full pass that
+#    also carries deletions over - into deleted/<date>, never removing them, since a dump still
+#    kept may name them.
+if [ "$(date +%u)" = 7 ]; then
+    rclone sync "store:$BUCKET" "$DEST/bucket" --backup-dir "$DEST/deleted/$stamp" \
+        --size-only --transfers 8 --checkers 16
+    # Everything in the bucket is in the mirror, by size - a stored object is never rewritten.
+    rclone check "store:$BUCKET" "$DEST/bucket" --one-way --size-only
+else
+    rclone copy "store:$BUCKET" "$DEST/bucket" --max-age 72h \
+        --size-only --transfers 8 --checkers 16
+fi
+
+# 3) Rotation.
+find "$DEST/filer-db" -name 'filer-*.dump' -mtime +"$KEEP_FILER_DUMPS_DAYS" -delete
+find "$DEST/deleted" -mindepth 1 -maxdepth 1 -type d -mtime +"$KEEP_DELETED_DAYS" -exec rm -rf {} +
+find "$DEST/logs" -name '*.log' -mtime +90 -delete
+
+echo "done $(date -Is)"
+```
+
+```bash
+chmod 700 /opt/seaweedfs/backup-storage.sh
+# crontab -e (root): the host's clock in the same zone as the application server's, or the
+# 02:30 is not after the 01:00.
+30 2 * * * /opt/seaweedfs/backup-storage.sh || echo "file-management store backup failed" | mail -s "backup failed" ops@example
+```
+
+Why it is shaped this way:
+
+* **`copy`, not `sync`, at night** - `sync` would delete from the mirror a file deleted in the
+  application that morning, while last night's dump of the database still names it.
+* **`--max-age 72h`** - the nightly pass looks only at the last three days, so it takes minutes
+  however large the bucket; three days, so one or two missed nights are caught up. The weekly full
+  pass catches anything else.
+* **`--size-only`** - an object's key is never reused, so a key with the right size is the right
+  object; the stores' ETags of multipart objects are not MD5s, so rclone could not compare those
+  anyway.
+* **`deleted/` kept 400 days** - as long as the oldest monthly dump of the application's database.
+* Off-site: copy `$DEST` once a month to the off-site place with the application's monthly dump
+  (`rclone copy` again - only what is new goes).
+
+## Restoring the store
+
+**The whole host is lost**:
+
+1. A new host: [Before the first start](#before-the-first-start), and [The bucket](#the-bucket) -
+   created, versioning on, the lifecycle rule, the keys.
+2. The mirror copied in with the `operator` key (a `[store-admin]` remote in `rclone.conf`):
+   ```bash
+   rclone copy /mnt/backup/file-management-store/bucket store-admin:file-management-prod --transfers 8
+   # and every deleted/ folder: objects the restored dump may still name; the others are orphans
+   for d in /mnt/backup/file-management-store/deleted/*/; do
+       rclone copy "$d" store-admin:file-management-prod --transfers 8
+   done
+   ```
+3. The check that every row of the restored database has its object - deployment.md,
+   "Every row has its object". Then start the application.
+
+Terabytes take hours to copy in: the monthly drill measures how many.
+
+**Only the filer's database is lost** (the volumes intact): recreate `filer-db` empty, restore the
+last dump (`docker compose exec -T filer-db pg_restore -U seaweedfs -d seaweedfs_filer --clean
+--if-exists < filer-….dump`), start the filer and S3, then copy the mirror in as in step 2 -
+`copy` adds only the objects written after that dump - and run the same check.
 
 ## Upgrading SeaweedFS
 
