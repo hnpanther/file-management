@@ -3,10 +3,13 @@ package com.hnp.filemanagement.file.persistence;
 import com.hnp.filemanagement.file.domain.FileShareLink;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -44,7 +47,7 @@ public interface FileShareLinkRepository extends JpaRepository<FileShareLink, In
             """)
     Optional<FileShareLink> findByIdWithDetails(@Param("id") int id);
 
-    /** A person's own links, newest first, with the revision and its file. */
+    /** A page of a person's own links, newest first, with the revision and its file. */
     @Query("""
             SELECT l FROM FileShareLink l
             JOIN FETCH l.fileDetails fd
@@ -53,9 +56,9 @@ public interface FileShareLinkRepository extends JpaRepository<FileShareLink, In
             WHERE l.createdBy.id = :userId
             ORDER BY l.id DESC
             """)
-    List<FileShareLink> findByCreator(@Param("userId") int userId);
+    Slice<FileShareLink> findPageByCreator(@Param("userId") int userId, Pageable pageable);
 
-    /** Every link, newest first - for whoever may revoke any. */
+    /** A page of every link, newest first - for whoever may revoke any and reads every folder. */
     @Query("""
             SELECT l FROM FileShareLink l
             JOIN FETCH l.fileDetails fd
@@ -63,7 +66,22 @@ public interface FileShareLinkRepository extends JpaRepository<FileShareLink, In
             JOIN FETCH l.createdBy
             ORDER BY l.id DESC
             """)
-    List<FileShareLink> findAllWithDetails();
+    Slice<FileShareLink> findPageOfAll(Pageable pageable);
+
+    /**
+     * A page of the links to files in these folders, newest first - every link a reader whose
+     * folder access is limited may see (2.7.4): a link names its file, and a file in a folder the
+     * reader cannot open is not theirs to know of.
+     */
+    @Query("""
+            SELECT l FROM FileShareLink l
+            JOIN FETCH l.fileDetails fd
+            JOIN FETCH fd.fileInfo fi
+            JOIN FETCH l.createdBy
+            WHERE fi.folder.id IN :folderIds
+            ORDER BY l.id DESC
+            """)
+    Slice<FileShareLink> findPageWithinFolders(@Param("folderIds") Collection<Integer> folderIds, Pageable pageable);
 
     long countByFileDetailsId(int fileDetailsId);
 

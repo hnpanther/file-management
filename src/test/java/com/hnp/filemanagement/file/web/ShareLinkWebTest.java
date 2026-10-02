@@ -7,6 +7,8 @@ import com.hnp.filemanagement.file.domain.ShareLinkDTO;
 import com.hnp.filemanagement.identity.domain.PermissionEnum;
 import com.hnp.filemanagement.identity.domain.Role;
 import com.hnp.filemanagement.identity.domain.User;
+import com.hnp.filemanagement.folder.domain.FolderPermission;
+import com.hnp.filemanagement.folder.domain.UserFolderGrant;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import com.hnp.filemanagement.identity.persistence.RoleRepository;
 import com.hnp.filemanagement.folder.persistence.TagGroupRepository;
@@ -127,7 +129,7 @@ class ShareLinkWebTest extends DatabaseSupport {
                 .andExpect(content().string(Matchers.containsString("shared.txt")))
                 .andExpect(content().string(Matchers.not(Matchers.containsString("content of shared.txt"))))
                 .andExpect(content().string(Matchers.not(Matchers.containsString("name=\"password\""))));
-        assertThat(shareLinkService.listMine(adminId).getFirst().downloadCount()).as("a GET spends nothing").isZero();
+        assertThat(shareLinkService.listMine(adminId, 0, 50).links().getFirst().downloadCount()).as("a GET spends nothing").isZero();
 
         // The POST is the download, with the same headers as the public download.
         mockMvc.perform(post("/share/{token}", token).with(csrf()))
@@ -145,7 +147,7 @@ class ShareLinkWebTest extends DatabaseSupport {
         // A POST without the CSRF token is refused before anything is counted.
         ShareLinkDTO another = shareLinkService.create(revision.getId(), 5, null, null, adminId);
         mockMvc.perform(post("/share/{token}", another.token())).andExpect(status().isForbidden());
-        assertThat(shareLinkService.listMine(adminId)).filteredOn(l -> l.id() == another.id()).singleElement()
+        assertThat(shareLinkService.listMine(adminId, 0, 50).links()).filteredOn(l -> l.id() == another.id()).singleElement()
                 .satisfies(l -> assertThat(l.downloadCount()).isZero());
     }
 
@@ -210,6 +212,12 @@ class ShareLinkWebTest extends DatabaseSupport {
         assertThat(shareLinkService.usable(mine.token())).isEmpty();
         mockMvc.perform(post("/share/{token}", mine.token()).with(csrf())).andExpect(status().isNotFound());
 
+        // REVOKE_SHARE_LINK reaches anyone's link - to a file the revoker may read (2.7.4).
+        mockMvc.perform(delete("/resource/share-links/{id}", alsoMine.id())
+                        .with(user(principal(otherId, PermissionEnum.REVOKE_SHARE_LINK))).with(csrf()))
+                .andExpect(status().isForbidden());
+        assertThat(shareLinkService.usable(alsoMine.token())).isPresent();
+        grantRead(otherId, chain.tagId());
         mockMvc.perform(delete("/resource/share-links/{id}", alsoMine.id())
                         .with(user(principal(otherId, PermissionEnum.REVOKE_SHARE_LINK))).with(csrf()))
                 .andExpect(status().isOk());
@@ -229,6 +237,13 @@ class ShareLinkWebTest extends DatabaseSupport {
         mockMvc.perform(get("/files/share-links").with(user(principal(otherId, PermissionEnum.SHARE_LINKS_PAGE))).accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk())
                 .andExpect(content().string(Matchers.not(Matchers.containsString("share-link-" + mine.id()))));
+        // Everyone's links for REVOKE_SHARE_LINK - in the folders its holder may read (2.7.4): a
+        // link names its file, and this one is in a folder otherId has no grant on.
+        mockMvc.perform(get("/files/share-links").with(user(principal(otherId, PermissionEnum.SHARE_LINKS_PAGE, PermissionEnum.REVOKE_SHARE_LINK))).accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.not(Matchers.containsString("share-link-" + mine.id()))))
+                .andExpect(content().string(Matchers.not(Matchers.containsString("shared.txt"))));
+        grantRead(otherId, chain.tagId());
         mockMvc.perform(get("/files/share-links").with(user(principal(otherId, PermissionEnum.SHARE_LINKS_PAGE, PermissionEnum.REVOKE_SHARE_LINK))).accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk())
                 .andExpect(content().string(Matchers.containsString("share-link-" + mine.id())));
@@ -256,7 +271,35 @@ class ShareLinkWebTest extends DatabaseSupport {
                 .andExpect(content().string(Matchers.not(Matchers.containsString("shareLinkPanel(SHARE_LINK)"))));
     }
 
+    @Test
+    @DisplayName("the share-links page is a page of fifty, newest first, with a next and a previous - never every link at once")
+    void thePageIsPaged() throws Exception {
+        for (int i = 0; i < ShareLinkController.PAGE_SIZE + 3; i++) {
+            shareLinkService.create(revision.getId(), 5, null, null, adminId);
+        }
+
+        String first = mockMvc.perform(get("/files/share-links").with(user(principal(adminId, PermissionEnum.SHARE_LINKS_PAGE)))
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(Matchers.containsString("/files/share-links?page=1").matches(first)).isTrue();
+        assertThat(first.split("id=\"share-link-", -1).length - 1).isEqualTo(ShareLinkController.PAGE_SIZE);
+
+        String second = mockMvc.perform(get("/files/share-links").param("page", "1")
+                        .with(user(principal(adminId, PermissionEnum.SHARE_LINKS_PAGE))).accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(second.split("id=\"share-link-", -1).length - 1).isEqualTo(3);
+        assertThat(second).contains("/files/share-links?page=0").doesNotContain("/files/share-links?page=2");
+    }
+
     // ---------------------------------------------------------------- helpers
+
+    private void grantRead(int userId, int folderId) {
+        User person = userRepository.findById(userId).orElseThrow();
+        List<UserFolderGrant> grants = new java.util.ArrayList<>(person.getFolderGrants());
+        grants.add(new UserFolderGrant(person, folderRepository.findById(folderId).orElseThrow(), FolderPermission.READ));
+        person.replaceFolderGrants(grants);
+        userRepository.saveAndFlush(person);
+    }
 
     private FileDetailsDTO upload(String fileName) {
         FileInfoDTO request = new FileInfoDTO();

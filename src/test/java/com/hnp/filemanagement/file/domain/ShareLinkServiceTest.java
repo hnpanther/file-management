@@ -130,9 +130,9 @@ class ShareLinkServiceTest extends DatabaseSupport {
                     assertThat(l.passwordProtected()).as("blank is no password").isFalse();
                     assertThat(l.maxDownloads()).isEqualTo(2);
                 });
-        assertThat(underTest.listMine(adminId)).hasSize(4);
-        assertThat(underTest.listMine(otherAdminId)).isEmpty();
-        assertThat(underTest.listAll()).hasSize(4);
+        assertThat(underTest.listMine(adminId, 0, 50).links()).hasSize(4);
+        assertThat(underTest.listMine(otherAdminId, 0, 50).links()).isEmpty();
+        assertThat(underTest.listAll(adminId, 0, 50).links()).hasSize(4);
     }
 
     @Test
@@ -168,8 +168,8 @@ class ShareLinkServiceTest extends DatabaseSupport {
 
         assertThat(underTest.usable(link.token())).as("used up").isEmpty();
         assertThatThrownBy(() -> underTest.download(link.token(), null)).isInstanceOf(ResourceNotFoundException.class);
-        assertThat(underTest.listMine(adminId).getFirst().status()).isEqualTo(ShareLinkDTO.Status.EXHAUSTED);
-        assertThat(underTest.listMine(adminId).getFirst().downloadCount()).isEqualTo(2);
+        assertThat(underTest.listMine(adminId, 0, 50).links().getFirst().status()).isEqualTo(ShareLinkDTO.Status.EXHAUSTED);
+        assertThat(underTest.listMine(adminId, 0, 50).links().getFirst().downloadCount()).isEqualTo(2);
         assertThat(actionHistoryService.getActionHistoriesOfEntity(link.id(), EntityEnum.FileShareLink))
                 .as("creation and two downloads, the downloads on the maker").hasSize(3);
     }
@@ -184,7 +184,7 @@ class ShareLinkServiceTest extends DatabaseSupport {
         assertThat(underTest.usable(expiring.token())).isPresent();
         clock.advance(Duration.ofMinutes(1));
         assertThat(underTest.usable(expiring.token())).as("at the minute, gone").isEmpty();
-        assertThat(underTest.listMine(adminId)).extracting(ShareLinkDTO::status)
+        assertThat(underTest.listMine(adminId, 0, 50).links()).extracting(ShareLinkDTO::status)
                 .containsExactlyInAnyOrder(ShareLinkDTO.Status.EXPIRED, ShareLinkDTO.Status.EXPIRED);
 
         ShareLinkDTO fresh = underTest.create(revision.getId(), 5, null, null, adminId);
@@ -193,7 +193,7 @@ class ShareLinkServiceTest extends DatabaseSupport {
         assertThat(underTest.usable(fresh.token())).isPresent();
         underTest.revoke(fresh.id(), otherAdminId, true);
         assertThat(underTest.usable(fresh.token())).isEmpty();
-        assertThat(underTest.listMine(adminId)).filteredOn(l -> l.id() == fresh.id()).singleElement()
+        assertThat(underTest.listMine(adminId, 0, 50).links()).filteredOn(l -> l.id() == fresh.id()).singleElement()
                 .satisfies(l -> {
                     assertThat(l.status()).isEqualTo(ShareLinkDTO.Status.REVOKED);
                     assertThat(l.revokedAt()).isEqualTo(Instant.now(clock));

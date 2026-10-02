@@ -888,7 +888,7 @@ public class FileService {
         Map<Integer, List<Folder>> ancestry = folderService.ancestryOf(
                 page.getContent().stream().map(FileInfo::getFolder).toList());
         return PageResponse.of(page, page.getContent().stream()
-                .map(f -> FileMapper.toDto(f, ancestry.get(f.getFolder().getId())))
+                .map(f -> FileMapper.toListDto(f, ancestry.get(f.getFolder().getId())))
                 .toList());
     }
 

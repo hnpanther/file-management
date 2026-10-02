@@ -12,6 +12,9 @@ import com.hnp.filemanagement.identity.persistence.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.hnp.filemanagement.shared.config.FileManagementProperties;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.SliceImpl;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,6 +32,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Temporary share links ({@code V2.12}, roadmap 10.5): a link to one stored revision, valid for
@@ -189,8 +193,13 @@ public class ShareLinkService {
     public void revoke(int linkId, int principalId, boolean any) {
         FileShareLink link = shareLinkRepository.findByIdWithDetails(linkId)
                 .orElseThrow(() -> new ResourceNotFoundException("share link with id=" + linkId + " not exists"));
-        if (!any && link.getCreatedBy().getId() != principalId) {
-            throw new AccessDeniedException("share link id=" + linkId + " belongs to someone else");
+        if (link.getCreatedBy().getId() != principalId) {
+            if (!any) {
+                throw new AccessDeniedException("share link id=" + linkId + " belongs to someone else");
+            }
+            // Anyone's link - but only to a file the revoker may read (2.7.4), as the list shows.
+            folderAccessService.requireReadAccess(folderAccessService.accessFor(principalId),
+                    link.getFileDetails().getFileInfo());
         }
         if (!link.isRevoked()) {
             link.setRevokedAt(Instant.now(clock));
@@ -275,18 +284,39 @@ public class ShareLinkService {
 
     // ------------------------------------------------------------------ the page
 
-    /** The caller's own links, newest first. */
+    /** A page of the caller's own links, newest first. */
     @Transactional(readOnly = true)
-    public List<ShareLinkDTO> listMine(int principalId) {
-        Instant now = Instant.now(clock);
-        return shareLinkRepository.findByCreator(principalId).stream().map(link -> ShareLinkDTO.of(link, null, now)).toList();
+    public LinkPage listMine(int principalId, int page, int size) {
+        return pageOf(shareLinkRepository.findPageByCreator(principalId, PageRequest.of(page, size)), page, size);
     }
 
-    /** Every link, newest first - for whoever may revoke any. */
+    /**
+     * A page of every link the caller may know of, newest first - for whoever may revoke any.
+     * Every link, for a reader whose access is not limited; otherwise the links to files in the
+     * folders the reader may read (2.7.4): the list names each link's file, and it used to name
+     * files in folders its reader could never open.
+     */
     @Transactional(readOnly = true)
-    public List<ShareLinkDTO> listAll() {
+    public LinkPage listAll(int principalId, int page, int size) {
+        Optional<Set<Integer>> readable = folderAccessService.readableFolderIds(folderAccessService.accessFor(principalId));
+        PageRequest request = PageRequest.of(page, size);
+        Slice<FileShareLink> links = readable.isEmpty() ? shareLinkRepository.findPageOfAll(request)
+                : readable.get().isEmpty() ? new SliceImpl<>(List.of(), request, false)
+                : shareLinkRepository.findPageWithinFolders(readable.get(), request);
+        return pageOf(links, page, size);
+    }
+
+    private LinkPage pageOf(Slice<FileShareLink> links, int page, int size) {
         Instant now = Instant.now(clock);
-        return shareLinkRepository.findAllWithDetails().stream().map(link -> ShareLinkDTO.of(link, null, now)).toList();
+        return new LinkPage(links.getContent().stream().map(link -> ShareLinkDTO.of(link, null, now)).toList(),
+                page, size, links.hasNext());
+    }
+
+    /** One page of links, and whether there is another after it - never a count. */
+    public record LinkPage(List<ShareLinkDTO> links, int page, int size, boolean hasNext) {
+        public boolean hasPrevious() {
+            return page > 0;
+        }
     }
 
     // ------------------------------------------------------------------ pieces
