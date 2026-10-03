@@ -15,6 +15,7 @@ import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.ChecksumAlgorithm;
+import software.amazon.awssdk.services.s3.model.ChecksumMode;
 import software.amazon.awssdk.services.s3.model.CompletedPart;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
@@ -31,9 +32,11 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -68,8 +71,19 @@ import java.util.function.Consumer;
  * readiness check has one short attempt. Whatever the store fails with is a
  * {@link StorageUnavailableException}, a 503 (issue 100) - only "nothing at that key" is not a
  * failure.
+ *
+ * <p><b>For the storage copy</b> ({@link CopyableStore}, roadmap 4.4): {@link #copyIn} sends the
+ * SHA-256 of each part as it computed it, so the store refuses a part that arrived damaged; it
+ * completes the object only once the whole file has hashed to what was expected, and then checks
+ * that the store reports the checksum it computed - otherwise the object is aborted or removed.
+ * The expected SHA-256 is kept with the object as user metadata ({@value #SHA256_METADATA}): an
+ * object written in parts carries only a composite checksum, and this is what lets a later run
+ * recognise it as verified without reading it back.
  */
-public class S3BlobStore implements BlobStore {
+public class S3BlobStore implements CopyableStore {
+
+    /** The user metadata ({@code x-amz-meta-sha256}) {@link #copyIn} records the verified SHA-256 in. */
+    static final String SHA256_METADATA = "sha256";
 
     private static final Logger logger = LoggerFactory.getLogger(S3BlobStore.class);
 
@@ -252,6 +266,176 @@ public class S3BlobStore implements BlobStore {
             logger.error("deleteDirectory " + directory + " failed", e);
             throw new StorageUnavailableException("can not delete directory=" + directory + ", please check logs");
         }
+    }
+
+    // ---------------------------------------------------------------- CopyableStore
+
+    @Override
+    public Optional<ObjectFacts> facts(StorageKey key) {
+        String objectKey = objectKey(key);
+        HeadObjectResponse head;
+        try {
+            head = s3.headObject(request -> request.bucket(bucket).key(objectKey)
+                    .checksumMode(ChecksumMode.ENABLED).overrideConfiguration(quick));
+        } catch (S3Exception e) {
+            if (e.statusCode() == 404) {
+                return Optional.empty();
+            }
+            logger.error("head " + objectKey + " failed", e);
+            throw new StorageUnavailableException("storage error for " + objectKey + ", please check logs");
+        } catch (SdkClientException e) {
+            logger.error("head {} failed: {}", objectKey, e.getMessage());
+            throw new StorageUnavailableException("storage cannot be reached, please check logs");
+        }
+        String checksum = head.checksumSHA256();
+        String sha256 = null;
+        String composite = null;
+        if (checksum != null && !checksum.isBlank()) {
+            if (checksum.contains("-")) {
+                composite = checksum;
+            } else {
+                sha256 = HexFormat.of().formatHex(Base64.getDecoder().decode(checksum));
+            }
+        }
+        String recorded = head.hasMetadata() ? head.metadata().get(SHA256_METADATA) : null;
+        return Optional.of(new ObjectFacts(head.contentLength(), sha256, composite, recorded));
+    }
+
+    @Override
+    public CopiedObject copyIn(StorageKey key, InputStream data, String expectedSha256) {
+        String objectKey = objectKey(key);
+        if (head(objectKey).isPresent()) {
+            throw new DuplicateResourceException("object already exists=" + key);
+        }
+        Map<String, String> metadata = Map.of(SHA256_METADATA, expectedSha256);
+        MessageDigest whole = sha256();
+        CopiedObject copied;
+        try (InputStream in = data) {
+            byte[] first = in.readNBytes(partSize);
+            whole.update(first);
+            if (first.length < partSize) {
+                byte[] digest = whole.digest();
+                String actual = HexFormat.of().formatHex(digest);
+                if (!actual.equals(expectedSha256)) {
+                    throw new ChecksumMismatchException(key, expectedSha256, actual, first.length);
+                }
+                // The checksum sent is the one computed here, so the store refuses a body that
+                // arrived different from what was read.
+                s3.putObject(request -> request.bucket(bucket).key(objectKey)
+                                .contentLength((long) first.length)
+                                .checksumSHA256(Base64.getEncoder().encodeToString(digest))
+                                .metadata(metadata),
+                        RequestBody.fromBytes(first));
+                copied = new CopiedObject(first.length, actual, null);
+            } else {
+                copied = copyInParts(key, objectKey, first, in, whole, expectedSha256, metadata);
+            }
+        } catch (IOException | SdkException e) {
+            logger.error("copyIn key=" + key + " failed", e);
+            throw new StorageUnavailableException("error in copying file " + key + ", check logs");
+        }
+        requireReported(key, objectKey, copied);
+        return copied;
+    }
+
+    @Override
+    public void forEachObject(Consumer<ListedObject> consumer) {
+        try {
+            for (S3Object object : s3.listObjectsV2Paginator(request -> request.bucket(bucket).prefix(prefix)
+                    .overrideConfiguration(quick)).contents()) {
+                String relative = object.key().substring(prefix.length());
+                StorageKey key;
+                try {
+                    key = StorageKey.of(relative);
+                } catch (BusinessException notAKey) {
+                    // No row can name it; left alone, and said.
+                    logger.warn("listing: {} is not a storage key and is left out: {}", object.key(), notAKey.getMessage());
+                    continue;
+                }
+                consumer.accept(new ListedObject(key, object.size(), object.lastModified()));
+            }
+        } catch (SdkException e) {
+            logger.error("listing the bucket " + bucket + " failed", e);
+            throw new StorageUnavailableException("can not list the bucket " + bucket + ", please check logs");
+        }
+    }
+
+    /**
+     * The parts of {@link #copyIn}: each sent with its own SHA-256, the object completed only when
+     * the whole has hashed to what was expected, aborted otherwise or on any failure.
+     */
+    private CopiedObject copyInParts(StorageKey key, String objectKey, byte[] first, InputStream in, MessageDigest whole,
+                                     String expectedSha256, Map<String, String> metadata) throws IOException {
+        String uploadId = s3.createMultipartUpload(request -> request.bucket(bucket).key(objectKey)
+                .checksumAlgorithm(ChecksumAlgorithm.SHA256).metadata(metadata).overrideConfiguration(quick)).uploadId();
+        try {
+            MessageDigest ofParts = sha256();
+            List<CompletedPart> parts = new ArrayList<>();
+            long size = 0;
+            byte[] part = first;
+            int number = 1;
+            while (part.length > 0) {
+                int partNumber = number;
+                byte[] body = part;
+                byte[] partDigest = sha256().digest(body);
+                ofParts.update(partDigest);
+                String partChecksum = Base64.getEncoder().encodeToString(partDigest);
+                UploadPartResponse uploaded = s3.uploadPart(request -> request.bucket(bucket).key(objectKey)
+                                .uploadId(uploadId).partNumber(partNumber)
+                                .contentLength((long) body.length)
+                                .checksumSHA256(partChecksum),
+                        RequestBody.fromBytes(body));
+                parts.add(CompletedPart.builder().partNumber(partNumber).eTag(uploaded.eTag())
+                        .checksumSHA256(partChecksum).build());
+                size += body.length;
+                number++;
+                part = in.readNBytes(partSize);
+                whole.update(part);
+            }
+            String actual = HexFormat.of().formatHex(whole.digest());
+            if (!actual.equals(expectedSha256)) {
+                throw new ChecksumMismatchException(key, expectedSha256, actual, size);
+            }
+            s3.completeMultipartUpload(request -> request.bucket(bucket).key(objectKey).uploadId(uploadId)
+                    .multipartUpload(upload -> upload.parts(parts)));
+            return new CopiedObject(size, actual,
+                    Base64.getEncoder().encodeToString(ofParts.digest()) + "-" + parts.size());
+        } catch (IOException | RuntimeException e) {
+            try {
+                s3.abortMultipartUpload(request -> request.bucket(bucket).key(objectKey).uploadId(uploadId)
+                        .overrideConfiguration(quick));
+            } catch (SdkException abortFailed) {
+                logger.warn("could not abort the multipart upload of {}: {}", objectKey, abortFailed.getMessage());
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * The store must now report what was sent: the length, and the checksum - the object's own, or
+     * the composite of its parts. An object it reports otherwise is removed, and the copy refused.
+     */
+    private void requireReported(StorageKey key, String objectKey, CopiedObject copied) {
+        ObjectFacts facts = facts(key).orElseThrow(() -> new StorageUnavailableException(
+                "the store does not show " + key + " just written"));
+        boolean sizeAgrees = facts.sizeBytes() == copied.sizeBytes();
+        boolean checksumAgrees = copied.compositeChecksum() == null
+                ? facts.sha256() == null || facts.sha256().equals(copied.sha256())
+                : facts.compositeChecksum() == null || facts.compositeChecksum().equals(copied.compositeChecksum());
+        boolean recordedAgrees = copied.sha256().equals(facts.recordedSha256());
+        if (sizeAgrees && checksumAgrees && recordedAgrees) {
+            return;
+        }
+        logger.error("copyIn {}: the store reports size={} sha256={} composite={} recorded={}, after {} bytes with "
+                        + "sha256={} composite={} were sent; the object is removed", key, facts.sizeBytes(), facts.sha256(),
+                facts.compositeChecksum(), facts.recordedSha256(), copied.sizeBytes(), copied.sha256(),
+                copied.compositeChecksum());
+        try {
+            s3.deleteObject(request -> request.bucket(bucket).key(objectKey).overrideConfiguration(quick));
+        } catch (SdkException e) {
+            logger.error("could not remove " + objectKey + " after its checksum disagreed", e);
+        }
+        throw new StorageUnavailableException("the store does not report what was written for " + key);
     }
 
     // ---------------------------------------------------------------- internals

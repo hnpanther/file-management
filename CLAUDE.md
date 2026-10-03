@@ -120,6 +120,11 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   recreate it, and never suggest a `DROP DATABASE` against anything but a throw-away local
   database — the one place the reset is written down, with that warning, is
   [docs/schema.md](docs/schema.md#a-throw-away-developer-database).
+* **`CopyableStore` is the storage copy's, never the application's** (2.8.0, roadmap 4.4): the
+  service reads and writes through `BlobStore` only. The copy (`storage.copy`) runs outside the
+  application on `--spring.profiles.active=storage-copy`, reads the database and never writes it,
+  and makes an object visible only once its bytes hash to the row's checksum; its guarantees are
+  `CopyableStoreContractTest`, which both stores pass.
 * **Every storage path is resolved by `FilesystemBlobStore.within`** against the absolute,
   normalised `base-dir`, and refused if it lands outside it or on the root itself. Do not build a
   `Path` from `baseDir` anywhere else. The root is resolved, never concatenated, so it means the

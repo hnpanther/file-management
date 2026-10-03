@@ -1,5 +1,6 @@
 package com.hnp.filemanagement;
 
+import com.hnp.filemanagement.storage.copy.StorageCopyCommand;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
@@ -25,6 +26,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 public class FileManagementApplication {
 
 	public static void main(String[] args) {
+		// The storage copy of roadmap 4.4 is the same jar with one argument, and must not start the
+		// application to run (StorageCopyCommand says why).
+		if (StorageCopyCommand.isRequested(args)) {
+			System.exit(StorageCopyCommand.run(args));
+		}
 		SpringApplication.run(FileManagementApplication.class, args);
 	}
 
