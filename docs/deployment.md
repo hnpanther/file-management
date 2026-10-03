@@ -2723,6 +2723,15 @@ Which gives the two rules the jobs follow:
 Because nothing changes once written, the bucket needs **one mirror, not a copy per night**: each
 night copies only that day's new objects, minutes even when the total is terabytes.
 
+**For now, without a third place**: the store's host can back itself up onto its own backup disk
+with nothing but Docker - `weed backup`, from the image it already runs, copies every volume
+incrementally and consistently while SeaweedFS runs, after the filer's dump, at the same 02:30
+([deploy/seaweedfs, "For now: on this host"](../deploy/seaweedfs/README.md#for-now-on-this-host-with-nothing-but-docker-weed-backup)).
+It keeps one copy of each volume, so a deleted object is in it for as long as versioning keeps it -
+30 days: the application's dumps restorable with it are those of the last 30 days, not 13 months.
+And on the same host it does not survive losing the host; it is the step before the `rclone` job,
+not instead of it.
+
 **On the Windows script** (above), one setting changes at the switch: `$Backend = 's3'` - the
 dump is taken as before and the file step is skipped.
 
