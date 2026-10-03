@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{lockedSignIns.pageTitle}">ورودهای قفل‌شده | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The locked sign-ins (roadmap 12.1): SignInLockController, over SignInLockService. What
+  LoginAttempts holds in memory - the names locked by wrong passwords and those with failures
+  still counted, the latest failure first, with the account each belongs to and the addresses the
+  attempts came from. The pager is newer and older only; nothing is counted.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{uploadPolicy.kicker}">تنظیمات</div>
+        <h1 th:text="#{lockedSignIns.heading}">ورودهای قفل‌شده</h1>
+        <p class="page-description"
+           th:text="#{lockedSignIns.description(${locks.maxFailures()}, ${locks.lockMinutes()})}">
+            نام‌های کاربری‌ای که پس از چند رمز اشتباه قفل شده‌اند.
+        </p>
+    </header>
+
+    <div th:if="${showMessage && valid}" class="alert alert-success mb-5" role="status"
+         id="success_message" th:text="${message}"></div>
+    <div th:if="${showMessage && !valid}" class="alert alert-warning mb-5" role="alert"
+         id="warning_message" th:text="${message}"></div>
+
+    <section class="card" aria-labelledby="locks-title">
+        <div class="card-body">
+            <h2 id="locks-title" class="sr-only" th:text="#{lockedSignIns.heading}">ورودهای قفل‌شده</h2>
+            <p class="field-hint mb-4">
+                <i class="bi bi-info-circle" aria-hidden="true"></i>
+                <span th:text="#{lockedSignIns.memoryHint}">این فهرست از حافظهٔ همین سرور خوانده می‌شود.</span>
+            </p>
+
+            <div th:if="${#lists.isEmpty(locks.rows())}" class="empty-state empty-state-panel" role="status">
+                <strong th:text="#{lockedSignIns.empty}">هیچ نام کاربری‌ای قفل نیست.</strong>
+            </div>
+
+            <div th:unless="${#lists.isEmpty(locks.rows())}" class="table-responsive">
+                <table class="table history-table" id="locked-sign-ins">
+                    <thead>
+                    <tr>
+                        <th scope="col" th:text="#{lockedSignIns.column.username}">نام کاربری</th>
+                        <th scope="col" th:text="#{lockedSignIns.column.account}">حساب</th>
+                        <th scope="col" th:text="#{lockedSignIns.column.failures}">تلاش ناموفق</th>
+                        <th scope="col" th:text="#{lockedSignIns.column.lastFailure}">آخرین تلاش ناموفق</th>
+                        <th scope="col" th:text="#{lockedSignIns.column.state}">وضعیت</th>
+                        <th scope="col" th:text="#{lockedSignIns.column.addresses}">نشانی IP تلاش‌ها</th>
+                        <th scope="col" sec:authorize="hasAuthority('UNLOCK_SIGN_IN') || hasAuthority('ADMIN')"
+                            th:text="#{apiKey.column.actions}">عملیات</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="l : ${locks.rows()}">
+                        <td class="technical font-semibold" dir="ltr" th:text="${l.username()}">user</td>
+                        <td>
+                            <span th:unless="${l.hasAccount()}" class="badge history-gone"
+                                  th:text="#{lockedSignIns.noAccount}">حسابی با این نام نیست</span>
+                            <span th:if="${l.hasAccount()}" class="technical" dir="ltr" th:text="${l.accountUsername()}">user</span>
+                            <span th:if="${l.administrator()}" class="badge">
+                                <i class="bi bi-shield-lock" aria-hidden="true"></i>
+                                <span th:text="#{lockedSignIns.administrator}">مدیر</span>
+                            </span>
+                            <span th:if="${l.hasAccount() and !l.accountEnabled()}" class="badge"
+                                  th:text="#{lockedSignIns.disabled}">غیرفعال</span>
+                        </td>
+                        <td class="text-nowrap" th:text="${l.failures()}">5</td>
+                        <td class="history-when technical" dir="ltr" th:text="${@jalali.format(l.lastFailure())}">۱۴۰۵/۰۷/۱۱ ۱۰:۲۰</td>
+                        <td>
+                            <span th:if="${l.locked()}" class="badge history-gone">
+                                <i class="bi bi-lock" aria-hidden="true"></i>
+                                <span th:text="#{lockedSignIns.lockedUntil(${@jalali.format(l.lockedUntil())})}">قفل تا …</span>
+                            </span>
+                            <span th:unless="${l.locked()}" class="text-ink-500" th:text="#{lockedSignIns.counting}">قفل نیست</span>
+                            <div th:if="${l.refusedWhileLocked() > 0}" class="field-hint"
+                                 th:text="#{lockedSignIns.refused(${l.refusedWhileLocked()})}">۳ تلاش در زمان قفل رد شد</div>
+                        </td>
+                        <td class="technical" dir="ltr">
+                            <div th:each="a : ${l.addresses()}" th:text="${a}">10.0.0.5</div>
+                        </td>
+                        <td sec:authorize="hasAuthority('UNLOCK_SIGN_IN') || hasAuthority('ADMIN')">
+                            <form th:action="@{/settings/locked-sign-ins/unlock}" method="post" class="inline">
+                                <input type="hidden" name="username" th:value="${l.key()}">
+                                <button type="submit" class="btn btn-sm"
+                                        th:attr="onclick=|return confirm('${#messages.msg('lockedSignIns.confirm')}')|"
+                                        th:classappend="${l.locked()} ? 'btn-danger' : 'btn-outline-secondary'">
+                                    <i class="bi bi-unlock" aria-hidden="true"></i>
+                                    <span th:text="${l.locked()} ? #{lockedSignIns.unlock} : #{lockedSignIns.forget}">باز کردن قفل</span>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <nav th:if="${locks.hasPrevious() or locks.hasNext()}" class="mt-3" th:aria-label="#{lockedSignIns.heading}">
+                <ul class="pagination mb-0">
+                    <li th:if="${locks.hasPrevious()}" class="page-item">
+                        <a class="page-link" th:href="@{/settings/locked-sign-ins(page=${locks.page() - 1})}"
+                           th:text="#{action.previous}">قبلی</a>
+                    </li>
+                    <li class="page-item active" aria-current="page"><span class="page-link" th:text="${locks.page() + 1}">1</span></li>
+                    <li th:if="${locks.hasNext()}" class="page-item">
+                        <a class="page-link" th:href="@{/settings/locked-sign-ins(page=${locks.page() + 1})}"
+                           th:text="#{action.next}">بعدی</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

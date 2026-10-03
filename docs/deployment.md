@@ -736,6 +736,32 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 2.7.4 to 2.7.5 — a page of locked sign-ins
+
+A jar swap; no migration. **Deploy it with 2.7.4** (or instead of it): 2.7.4 brings the lock on
+wrong passwords, and this release the way to lift one early without a restart
+([roadmap 12.1](roadmap.md#121-a-page-of-locked-sign-ins--done-275)).
+
+* **`/settings/locked-sign-ins`** ("ورودهای قفل‌شده" in the menu, under users and access): every
+  username locked by wrong passwords, or with failures still counted - the name, the account it
+  belongs to (or that none does, which is how someone guessing names shows itself), the failures,
+  the last of them, the end of the lock, the attempts the lock refused since, and the last five
+  addresses the attempts came from. The addresses are the client's only if the proxy sends
+  `X-Forwarded-For` - the same setting the download records need
+  ([2.6.0 → 2.7.0](#upgrading-from-260-to-270--who-downloaded-what-and-one-setting-renamed)).
+* **Unlock**, per name: its failures and its lock forgotten at once, recorded in `action_history`
+  (`UNLOCK SIGN-IN`) and in the log (`sign-in unlocked: username=[...]`). **An account holding
+  ADMIN is unlocked by an administrator only.**
+* **Two new permissions**, in a role-page group of their own ("ورودهای قفل‌شده"):
+  `LOCKED_SIGN_INS_PAGE` to see the page and `UNLOCK_SIGN_IN` to unlock. ADMIN holds both by itself;
+  give them to whoever answers "I cannot sign in".
+* What the page shows is the memory of the running service since its start, as it says: a restart
+  still empties it and lifts every lock.
+* **The menu**: someone given only "برچسب‌های عمومی" (`TAG_GROUP_PAGE`) or only "تنظیمات عمومی"
+  (`GENERAL_SETTINGS_PAGE`) now sees the link to it; the section around the links left both out.
+
+**Rollback** is the 2.7.4 jar alone.
+
 ### Upgrading from 2.7.3 to 2.7.4 — a review: sign-in attempts, share links, a faster file list
 
 A jar swap; no migration, no new permission. From a review of the whole application
@@ -755,8 +781,8 @@ A jar swap; no migration, no new permission. From a review of the whole applicat
   password change - now locks its account after five tries and keeps it locked while it retries;
   the log says `sign-in locked ... username=[...]`. And anyone can lock a known username for fifteen
   minutes by failing on purpose; that is the price of a lock by name, and it never lasts longer.
-  **To lift a lock early** there is, for now, only a restart of the service - which lifts every
-  lock at once; a page to unlock one name is planned ([roadmap 12.1](roadmap.md#121-a-page-of-locked-sign-ins--planned)).
+  **To lift a lock early**, 2.7.5's page of locked sign-ins; on 2.7.4 alone, only a restart of
+  the service - which lifts every lock at once.
   API keys are not counted - a key is a random 256-bit value, not a password.
 * **`REVOKE_SHARE_LINK` sees the links to files it may read** (issue 106), not every link in the
   system; revoking someone else's link asks the same. Whoever holds ADMIN, or anyone while folder

@@ -71,6 +71,9 @@ public enum PermissionGroup {
             SAVE_UPDATED_USER_ROLE, REST_CHANGE_USER_ENABLED, REST_CHANGE_USER_LOGIN_TYPE,
             CREATE_USER_HOME, SET_FOLDER_QUOTA),
 
+    /** The sign-ins locked by wrong passwords: seeing them, with where the attempts came from, and unlocking one. */
+    SIGN_IN_LOCKS(LOCKED_SIGN_INS_PAGE, UNLOCK_SIGN_IN),
+
     /** The role pages: list, create, copy, edit. */
     ROLES_ADMIN(GET_ALL_ROLE_PAGE, CREATE_ROLE_PAGE, SAVE_NEW_ROLE, COPY_ROLE, UPDATE_ROLE_PAGE, SAVE_UPDATED_ROLE),
 

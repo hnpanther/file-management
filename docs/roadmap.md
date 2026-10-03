@@ -20,7 +20,7 @@ working, and to depend only on what came before.
 | 9 | API keys, an S3-style API v2, Actuator and OpenAPI | 6 | **done** |
 | 10 | After 1.4.0: sharded storage, download from the explorer, recursive delete, `Profiles` with a quota, share links | 7, 9 | **done** (1.5.0) |
 | 11 | Searching the contents of files: text from documents, OCR of scans and images, drawings and diagrams | 4 (for the backfill) | planned |
-| 12 | Bounded additions after 2.7: a page of locked sign-ins (12.1) | - | planned |
+| 12 | Bounded additions after 2.7: a page of locked sign-ins (12.1) | - | 12.1 **done** (2.7.5) |
 
 **Phase 7 runs before Phase 3**, which is the one place the numbering does not match the order. It
 is worth the inconsistency: Phase 3 writes a fresh PostgreSQL baseline, and writing it after the
@@ -41,6 +41,8 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.7.5 is written: **a page of locked sign-ins** (12.1) - the names 2.7.4's lock holds, with the
+addresses the attempts came from, and an unlock per name, so a lock no longer needs a restart.
 2.7.4 is written: a review of the whole application - a lock on wrong passwords (issue 105),
 share links scoped to the folders their reader may open (106), a file list without a query per row
 (107), `Referrer-Policy` (108), each with its test; and two found and recorded for later, the v2
@@ -123,10 +125,8 @@ What the releases since the cut-over brought, newest first:
    bounded). An S3-compatible
    API for standard tools is planned separately ([9.10](#910-an-s3-compatible-mode--planned)).
 3. ~~**Recording downloads** (9.2)~~ - **done (2.7.0)**.
-   **A page of locked sign-ins** ([12.1](#121-a-page-of-locked-sign-ins--planned)): the usernames
-   2.7.4's lock holds, with the address the attempts came from, and a button to unlock one early.
-   Small, independent of everything else; worth having before the first time someone must wait
-   out a lock that should not have been there.
+   ~~**A page of locked sign-ins**~~ ([12.1](#121-a-page-of-locked-sign-ins--done-275)) - **done
+   (2.7.5)**: deploy it with 2.7.4, so the lock reaches production with its way out.
 4. **Phase 11 - searching the contents of files** ([the plan](#phase-11--searching-the-contents-of-files--planned)):
    the pipeline and text documents first (11.1-11.2), the backfill after Phase 4's copy (11.3),
    then OCR and drawings, each optional (11.4-11.5). It is also what Phase 8's "full-text search of
@@ -2815,15 +2815,29 @@ page.
 * **The ODA converter's licence terms** for this use.
 * **Whether the text of old revisions is worth keeping** once a newer one exists (11.1 keeps it).
 
-## Phase 12 — Bounded additions after 2.7 — **planned**
+## Phase 12 — Bounded additions after 2.7
 
 Small things asked for once 2.7 was in use, each sized to ship on its own, none a redesign.
 
 | Step | What | Schema | Size |
 |---|---|---|---|
-| 12.1 | A page of locked sign-ins, to unlock one early | none | small |
+| 12.1 | A page of locked sign-ins, to unlock one early | none | small - **done (2.7.5)** |
 
-### 12.1 A page of locked sign-ins — **planned**
+### 12.1 A page of locked sign-ins — **done (2.7.5)**
+
+> **Delivered in 2.7.5**, as planned below. `SignInLockController` at `/settings/locked-sign-ins`
+> over `SignInLockService`, which reads `LoginAttempts.current()` and fetches the accounts of a
+> page of names in one statement (`UserRepository.findSignInAccounts`, with whether each holds
+> ADMIN). `LoginAttempts` now keeps per name the latest five distinct addresses - taken from the
+> request's `WebAuthenticationDetails`, so the client's behind the proxy - and counts apart the
+> attempts its lock refused (`refused`), which never lengthen it. Fifty names a page, the latest
+> failure first, never counted. A name no account has is listed and its unlock recorded against
+> entity id 0. The unlock is recorded in `action_history` (`UNLOCK SIGN-IN`, with the failures and
+> the end of the lock) and logged; one on an account holding ADMIN goes through
+> `UserService.requireAdministratorFor`. Tests: `LoginAttemptsTest` (addresses, refusals, what is
+> current, unlock, a very long name) and `SignInLockPageTest` (the page and its addresses through
+> the form and HTTP Basic, both permissions, ADMIN by ADMIN only, the records, expiry, paging, one
+> statement a page) - each guard checked by removing it.
 
 **Why.** Since 2.7.4 five wrong passwords lock a username for fifteen minutes (issue 105). Most
 of the time waiting is the answer. Sometimes it is not: a person who must sign in now, an
