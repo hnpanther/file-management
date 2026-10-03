@@ -13,6 +13,7 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 | What is it becoming? | [docs/target-architecture.md](docs/target-architecture.md) |
 | In what order, and what is next? | [docs/roadmap.md](docs/roadmap.md) — start at "Where things stand, and what comes next" |
 | How is it deployed and backed up? | [docs/deployment.md](docs/deployment.md) |
+| How are the files moved to the object store, and back? | [docs/storage-copy.md](docs/storage-copy.md) |
 | What does an integration (APEX) call, and how does it move to the external ids? | [docs/api-v1.md](docs/api-v1.md) |
 | How do I work in it? | [AGENTS.md](AGENTS.md) |
 
@@ -124,7 +125,8 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   service reads and writes through `BlobStore` only. The copy (`storage.copy`) runs outside the
   application on `--spring.profiles.active=storage-copy`, reads the database and never writes it,
   and makes an object visible only once its bytes hash to the row's checksum; its guarantees are
-  `CopyableStoreContractTest`, which both stores pass.
+  `CopyableStoreContractTest`, which both stores pass. A change to it changes
+  [docs/storage-copy.md](docs/storage-copy.md) with it - the operators' only manual.
 * **Every storage path is resolved by `FilesystemBlobStore.within`** against the absolute,
   normalised `base-dir`, and refused if it lands outside it or on the root itself. Do not build a
   `Path` from `baseDir` anywhere else. The root is resolved, never concatenated, so it means the

@@ -912,8 +912,8 @@ has to catch up. No `TieredBlobStore`, no column saying where each row lives.
    is the tool run the other way for what was written since, and `backend=filesystem`.
 5. After those weeks: the directory is archived and removed from the host.
 
-> **As shipped in 2.8.0** (`storage.copy`, the runbook in
-> [deployment.md](deployment.md#moving-the-files-to-the-object-store)):
+> **As shipped in 2.8.0** (`storage.copy`; the manual and the runbook are
+> [storage-copy.md](storage-copy.md)):
 >
 > * **It is not the application**, as the database copy of 3.5 was not:
 >   `FileManagementApplication.main` hands `--spring.profiles.active=storage-copy` (the argument,

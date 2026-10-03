@@ -18,7 +18,11 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.core.io.ClassPathResource;
+import com.hnp.filemanagement.shared.config.FileManagementProperties;
+import org.springframework.boot.context.logging.LoggingApplicationListener;
+import org.springframework.boot.support.EnvironmentPostProcessorApplicationListener;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.core.env.StandardEnvironment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.mock.web.MockMultipartFile;
@@ -26,11 +30,10 @@ import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Properties;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -73,13 +76,47 @@ class StorageCopyCommandTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("its log is a directory of its own, never the running service's app_log.log")
-    void itsOwnLog() throws IOException {
-        Properties profile = new Properties();
-        try (InputStream in = new ClassPathResource("application-storage-copy.properties").getInputStream()) {
-            profile.load(in);
-        }
-        assertThat(profile.getProperty("filemanagement.log.path")).isEqualTo("${FILEMANAGEMENT_LOG_PATH:./logs}/storage-copy");
+    @DisplayName("its log is a directory of its own, never the running service's app_log.log - even when an external application.properties sets the log path")
+    void itsOwnLog() {
+        // As found on the first run outside the suite: a whole application.properties beside the jar.
+        StandardEnvironment configuredByFile = new StandardEnvironment();
+        configuredByFile.getPropertySources().addFirst(new MapPropertySource("Config resource 'file [application.properties]'",
+                Map.of("filemanagement.log.path", "D:/MyApp/file-management/logs",
+                        "logging.level.com.hnp.filemanagement", "debug")));
+        StorageCopyCommand.OwnLog.apply(configuredByFile);
+        StorageCopyCommand.OwnLog.apply(configuredByFile);
+        assertThat(configuredByFile.getProperty("filemanagement.log.path"))
+                .as("once, however often applied")
+                .isEqualTo(Path.of("D:/MyApp/file-management/logs", "storage-copy").toString());
+        assertThat(configuredByFile.getProperty("logging.level.com.hnp.filemanagement")).isEqualTo("info");
+        assertThat(configuredByFile.getProperty("logging.register-shutdown-hook")).isEqualTo("false");
+
+        StandardEnvironment nothingSet = new StandardEnvironment();
+        StorageCopyCommand.OwnLog.apply(nothingSet);
+        assertThat(nothingSet.getProperty("filemanagement.log.path")).isEqualTo(Path.of("./logs", "storage-copy").toString());
+
+        // Set after the files are read, and before logging starts.
+        assertThat(new StorageCopyCommand.OwnLog().getOrder())
+                .isGreaterThan(EnvironmentPostProcessorApplicationListener.DEFAULT_ORDER)
+                .isLessThan(LoggingApplicationListener.DEFAULT_ORDER);
+    }
+
+    @Test
+    @DisplayName("the report goes beside its log unless report-dir says otherwise")
+    void theReportBesideTheLog() {
+        StandardEnvironment environment = new StandardEnvironment();
+        environment.getPropertySources().addFirst(new MapPropertySource("settings", Map.of(
+                "filemanagement.log.path", "D:/MyApp/file-management/logs",
+                "filemanagement.storage-copy.direction", "to-s3")));
+        StorageCopyCommand.OwnLog.apply(environment);
+        FileManagementProperties properties = FileManagementProperties.defaults("unused");
+
+        assertThat(StorageCopyCommand.settings(environment, properties).reportDir())
+                .isEqualTo(Path.of("D:/MyApp/file-management/logs", "storage-copy").toAbsolutePath().normalize());
+        environment.getPropertySources().addFirst(new MapPropertySource("command line",
+                Map.of("filemanagement.storage-copy.report-dir", "E:/reports")));
+        assertThat(StorageCopyCommand.settings(environment, properties).reportDir())
+                .isEqualTo(Path.of("E:/reports").toAbsolutePath().normalize());
     }
 
     @Test

@@ -21,6 +21,7 @@ Files are stored on the local filesystem; metadata lives in PostgreSQL. A small 
 | [docs/issues.md](docs/issues.md) | Catalogued defects, security risks and technical debt, with file references |
 | [docs/target-architecture.md](docs/target-architecture.md) | The architecture being migrated to |
 | [docs/roadmap.md](docs/roadmap.md) | Sequenced plan: platform upgrade → restructuring → PostgreSQL → S3 |
+| [docs/storage-copy.md](docs/storage-copy.md) | The storage copy: moving the files from the directory to the object store and back - settings, report, runbook |
 | [AGENTS.md](AGENTS.md) | Conventions and guardrails for anyone (human or AI) changing this code |
 
 ## Requirements

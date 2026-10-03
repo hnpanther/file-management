@@ -11,9 +11,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.Banner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
+import org.springframework.boot.context.logging.LoggingApplicationListener;
 import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.core.Ordered;
+import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.Environment;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import software.amazon.awssdk.services.s3.S3Client;
 
@@ -21,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -42,8 +49,8 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>Only the command-line argument selects it, never an environment variable: a service definition
  * that carried {@code SPRING_PROFILES_ACTIVE=storage-copy} must not turn the next restart into a copy.
- * Its log goes to a directory of its own ({@code application-storage-copy.properties}), never into
- * the running service's {@code app_log.log}.
+ * Its log goes to a directory of its own ({@link OwnLog}), never into the running service's
+ * {@code app_log.log}; so does the report, unless {@code report-dir} says otherwise.
  */
 public final class StorageCopyCommand {
 
@@ -75,6 +82,7 @@ public final class StorageCopyCommand {
         configurationOnly.setRegisterShutdownHook(false);
         // Otherwise the first log line reads "Starting FileManagementApplication".
         configurationOnly.setMainApplicationClass(StorageCopyCommand.class);
+        configurationOnly.addListeners(new OwnLog());
 
         try (ConfigurableApplicationContext context = configurationOnly.run(args)) {
             return run(context.getEnvironment());
@@ -254,6 +262,42 @@ public final class StorageCopyCommand {
             throw new StorageCopy.Refused("the database does not have the tables this copy reads (file_details with"
                     + " storage_key and checksum_sha256, file_storage_write) - is it the application's, migrated by this"
                     + " release? " + e.getMessage());
+        }
+    }
+
+    /**
+     * The copy's log goes to {@code {filemanagement.log.path}/storage-copy}, never into the running
+     * service's {@code app_log.log} - two processes rolling one file corrupt it. Set here, after the
+     * configuration files are read and before logging starts, on top of every other source: a
+     * property in a profile file would lose to an external {@code application.properties} that sets
+     * {@code filemanagement.log.path} itself, which is how an installation configured by file has it
+     * (found on the first run outside the suite).
+     */
+    static final class OwnLog implements ApplicationListener<ApplicationEnvironmentPreparedEvent>, Ordered {
+
+        static final String SOURCE = "storage-copy-own-log";
+
+        @Override
+        public void onApplicationEvent(ApplicationEnvironmentPreparedEvent event) {
+            apply(event.getEnvironment());
+        }
+
+        static void apply(ConfigurableEnvironment environment) {
+            if (environment.getPropertySources().contains(SOURCE)) {
+                return;
+            }
+            String logPath = environment.getProperty("filemanagement.log.path", "./logs");
+            environment.getPropertySources().addFirst(new MapPropertySource(SOURCE, Map.of(
+                    "filemanagement.log.path", Path.of(logPath).resolve(PROFILE).toString(),
+                    "logging.level.com.hnp.filemanagement", "info",
+                    // Ctrl+C lets the revisions in hand finish and the summary be logged before logging stops.
+                    "logging.register-shutdown-hook", "false")));
+        }
+
+        /** After the configuration files are read, before logging is initialised. */
+        @Override
+        public int getOrder() {
+            return LoggingApplicationListener.DEFAULT_ORDER - 1;
         }
     }
 
