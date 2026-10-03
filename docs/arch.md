@@ -1,6 +1,6 @@
 # Architecture — Current State
 
-> The codebase as it stands - kept current with each release, 2.7.4 the latest; a section names
+> The codebase as it stands - kept current with each release, 2.7.5 the latest; a section names
 > the release that last changed what it describes. For where it is going, see
 > [target-architecture.md](target-architecture.md); for the order, [roadmap.md](roadmap.md).
 
@@ -673,6 +673,15 @@ for `lock-minutes` (15), the right password included, before any provider is ask
 name typed (no account needed, so a lock reveals no names), only for `BadCredentialsException`, in
 memory; the form redirects a lock to `/login?locked`. API keys are not counted.
 
+**The locked sign-ins** (2.7.5, roadmap 12.1): `LoginAttempts` also keeps, per name, the last five
+distinct addresses of its attempts (from the request's `WebAuthenticationDetails`, so the client's
+behind the proxy) and the attempts its lock refused, which never lengthen it.
+`/settings/locked-sign-ins` (`SignInLockController`, `LOCKED_SIGN_INS_PAGE`) lists what is counted
+now, fifty names a page with their accounts in one statement; `UNLOCK_SIGN_IN` forgets one name's
+count and lock (`SignInLockService.unlock`), recorded in `action_history` as `UNLOCK SIGN-IN` -
+against the account, or entity id 0 for a name nobody has - and refused for an account holding
+ADMIN unless the principal holds it (`UserService.requireAdministratorFor`).
+
 ### Authorization
 
 Authorities are **not** roles — they are `PermissionEnum` constants, one per handler method
@@ -1198,7 +1207,7 @@ word.
 
 ## 12. Tests
 
-`./mvnw verify` runs 856 tests and needs only a working Docker daemon: `DatabaseSupport` points the
+`./mvnw verify` runs 1015 tests and needs only a working Docker daemon: `DatabaseSupport` points the
 application at one PostgreSQL 18 container per JVM (`support/TestDatabases`, created as production's
 database is: UTF-8, ICU's root locale), and `StorageRootSupport` gives each test a clean storage
 root. Test classes sit in the package of what they test; the ones that span features
@@ -1261,6 +1270,8 @@ generates the unique ones, so a test overrides only what it is actually about.
 | `file/web/DownloadRecordingTest`, `DownloadRecordingResilienceTest`, `DownloadRecordingDisabledTest`, `DownloadClientAddressTest`, `DownloadAuditTest`, `file/domain/DownloadRecorderTest`, `FileDownloadServiceTest` | every way out records one row with its person, key, link and address; a `HEAD`, a later range and a repeat do not; a database hanging and then down costs twenty downloads nothing; `X-Forwarded-For` through the real server; the pages, folder access, a fixed number of statements, the retention (2.7.0) |
 | `storage/S3StorageWriterTest`, `S3StorageSweeperTest`, `S3ChecksumBackfillTest` | every case of the filesystem's storage tests, again on the s3 backend |
 | `EndpointGuardTest`, `ForeignKeyIndexTest`, `PageQueryCountTest`, `identity/security/LoginLockoutTest`, `SecurityHeadersTest` | every handler guarded but the seven open on purpose; every foreign key indexed; the busy pages a fixed number of statements; wrong passwords locking a name on the form and HTTP Basic alike; the protective headers (2.7.4, issues 105-108) |
+| `identity/security/LoginAttemptsTest`, `identity/web/SignInLockPageTest` | what the lock keeps per name - addresses, refusals, expiry - and the locked sign-ins page: its permissions, ADMIN unlocked by ADMIN only, each unlock recorded, one statement a page (2.7.5) |
+| `NavbarSectionTest` | a menu section is shown to whoever may open any link in it (2.7.5) |
 | `shared/web/ActuatorTest`, `ReadinessProbeTest` | the probes themselves: readiness `503 DOWN` with the storage root gone, the store hung, the database stopped - each within seconds - and liveness `UP` throughout (2.7.3, issue 104) |
 | `file/web/S3HungStoreTest`, `FilesystemUnavailableTest` | a store paused, not stopped: every call a 503 within its limit, readiness DOWN at once, pages untouched, recovery without a restart; a storage root that cannot be written is the same 503 (2.7.1) |
 | `file/web/S3ScenariosTest`, `S3OutageTest`, `storage/S3ConcurrencyTest` | on the s3 backend, object by object: a duplicate stores nothing (also under a race), a rollback removes its object, versions and formats are objects of their own, each delete removes exactly its objects, a move or rename none, every download reads the bucket; the store going away; 120 downloads at once |

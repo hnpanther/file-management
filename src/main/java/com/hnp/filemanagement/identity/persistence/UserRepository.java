@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -120,4 +121,18 @@ public interface UserRepository extends JpaRepository<User, Integer> {
                    OR UPPER(CONCAT(u.firstName, ' ', u.lastName)) LIKE UPPER(CONCAT('%', (:search), '%')) ESCAPE '\\')
             """)
     Page<User> search(@Param("searchNumber") Integer searchNumber, @Param("search") String search, Pageable pageable);
+
+    /**
+     * The accounts these names belong to, each once, with whether it holds the named role - for the
+     * locked-sign-ins page (roadmap 12.1): one statement for a page of names. {@code upperNames}
+     * are the names upper-cased, compared with {@code UPPER(username)}, which is unique and
+     * indexed. An account holds a role once, so the join adds no row.
+     */
+    @Query("""
+            SELECT new com.hnp.filemanagement.identity.persistence.SignInAccount(u.id, u.username, u.enabled, r.id)
+            FROM User u LEFT JOIN u.roles r ON UPPER(r.roleName) = UPPER(:roleName)
+            WHERE UPPER(u.username) IN :upperNames
+            """)
+    List<SignInAccount> findSignInAccounts(@Param("upperNames") Collection<String> upperNames,
+                                           @Param("roleName") String roleName);
 }

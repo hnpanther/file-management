@@ -392,8 +392,11 @@ public class UserService {
 
     // ------------------------------------------------------------------ internals
 
-    /** Refuses a change to an administrator's account unless an administrator makes it (issue 91). */
-    private void requireAdministratorFor(int userId, int principalId) {
+    /**
+     * Refuses a change to an administrator's account unless an administrator makes it (issue 91).
+     * Package-private for {@link SignInLockService}: unlocking an administrator's sign-in asks the same.
+     */
+    void requireAdministratorFor(int userId, int principalId) {
         if (roleService.isAdministrator(userId) && !roleService.isAdministrator(principalId)) {
             throw adminOnly(userId);
         }

@@ -90,6 +90,14 @@ public enum PermissionEnum {
     //@PostMapping("/{id}/delete") - delete an unused group
     DELETE_TAG_GROUP,
 
+    // ------------------------------------------------------------------ SignInLockController - /settings/locked-sign-ins
+
+    //@GetMapping - the usernames locked by wrong passwords, or with failures counted, and the
+    //addresses the attempts came from (roadmap 12.1)
+    LOCKED_SIGN_INS_PAGE,
+    //@PostMapping("/unlock") - lift one name's lock early; an account holding ADMIN asks ADMIN
+    UNLOCK_SIGN_IN,
+
     // ===================================================================================================
 
     // UserController @RequestMapping("/users")===========================================================
