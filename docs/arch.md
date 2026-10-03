@@ -358,8 +358,8 @@ the application uses: `facts` (size, the store's checksum, the copy's own record
 renamed into place, or a `PutObject` / multipart upload carrying the checksums, completed only
 after the whole has hashed right) and `forEachObject` (a listing). Its promises are
 `CopyableStoreContractTest`, run against both. The copy reads `file_details` and
-`file_storage_write` and never writes the database; its modes and the runbook are in
-[deployment.md](deployment.md#moving-the-files-to-the-object-store).
+`file_storage_write` and never writes the database; its modes, report and runbook are in
+[storage-copy.md](storage-copy.md).
 
 ### Writing bytes inside a transaction
 
@@ -1219,7 +1219,7 @@ word.
 
 ## 12. Tests
 
-`./mvnw verify` runs 1041 tests and needs only a working Docker daemon: `DatabaseSupport` points the
+`./mvnw verify` runs 1042 tests and needs only a working Docker daemon: `DatabaseSupport` points the
 application at one PostgreSQL 18 container per JVM (`support/TestDatabases`, created as production's
 database is: UTF-8, ICU's root locale), and `StorageRootSupport` gives each test a clean storage
 root. Test classes sit in the package of what they test; the ones that span features
