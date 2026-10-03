@@ -1,6 +1,6 @@
 # Architecture — Current State
 
-> The codebase as it stands - kept current with each release, 2.7.5 the latest; a section names
+> The codebase as it stands - kept current with each release, 2.8.0 the latest; a section names
 > the release that last changed what it describes. For where it is going, see
 > [target-architecture.md](target-architecture.md); for the order, [roadmap.md](roadmap.md).
 
@@ -348,6 +348,18 @@ ends with a summary line, and a restart resumes with what is still null
 **The contract** every implementation keeps is written once, in `BlobStoreContractTest`: what
 `put` refuses, what a missing key answers, what a directory delete takes with it, which keys are
 refused. A second store — the S3 adapter of Phase 4 — is finished when it passes that class.
+
+**The storage copy** (2.8.0, roadmap 4.4) moves an installation's bytes between the two stores:
+`storage.copy.StorageCopy`, started by `StorageCopyCommand` when the jar is given
+`--spring.profiles.active=storage-copy` - outside the application, from its configuration alone.
+What it needs beyond the port is `CopyableStore`, which both stores implement and nothing else in
+the application uses: `facts` (size, the store's checksum, the copy's own record, without reading),
+`copyIn` (the bytes made visible only once they hash to the expected SHA-256 - a temporary name
+renamed into place, or a `PutObject` / multipart upload carrying the checksums, completed only
+after the whole has hashed right) and `forEachObject` (a listing). Its promises are
+`CopyableStoreContractTest`, run against both. The copy reads `file_details` and
+`file_storage_write` and never writes the database; its modes and the runbook are in
+[deployment.md](deployment.md#moving-the-files-to-the-object-store).
 
 ### Writing bytes inside a transaction
 
@@ -1207,7 +1219,7 @@ word.
 
 ## 12. Tests
 
-`./mvnw verify` runs 1015 tests and needs only a working Docker daemon: `DatabaseSupport` points the
+`./mvnw verify` runs 1041 tests and needs only a working Docker daemon: `DatabaseSupport` points the
 application at one PostgreSQL 18 container per JVM (`support/TestDatabases`, created as production's
 database is: UTF-8, ICU's root locale), and `StorageRootSupport` gives each test a clean storage
 root. Test classes sit in the package of what they test; the ones that span features
@@ -1270,6 +1282,7 @@ generates the unique ones, so a test overrides only what it is actually about.
 | `file/web/DownloadRecordingTest`, `DownloadRecordingResilienceTest`, `DownloadRecordingDisabledTest`, `DownloadClientAddressTest`, `DownloadAuditTest`, `file/domain/DownloadRecorderTest`, `FileDownloadServiceTest` | every way out records one row with its person, key, link and address; a `HEAD`, a later range and a repeat do not; a database hanging and then down costs twenty downloads nothing; `X-Forwarded-For` through the real server; the pages, folder access, a fixed number of statements, the retention (2.7.0) |
 | `storage/S3StorageWriterTest`, `S3StorageSweeperTest`, `S3ChecksumBackfillTest` | every case of the filesystem's storage tests, again on the s3 backend |
 | `EndpointGuardTest`, `ForeignKeyIndexTest`, `PageQueryCountTest`, `identity/security/LoginLockoutTest`, `SecurityHeadersTest` | every handler guarded but the seven open on purpose; every foreign key indexed; the busy pages a fixed number of statements; wrong passwords locking a name on the form and HTTP Basic alike; the protective headers (2.7.4, issues 105-108) |
+| `storage/CopyableStoreContractTest` (both stores), `storage/copy/StorageCopyTest`, `StorageCopyCommandTest` | a copy that leaves the verified object or nothing; every scenario of the cut-over and the way back on real rows and SeaweedFS - passes, damaged and missing sources, a wrong object, rows deleted meanwhile, the prune's guards, a stop and a resume; the command's refusals (2.8.0) |
 | `identity/security/LoginAttemptsTest`, `identity/web/SignInLockPageTest` | what the lock keeps per name - addresses, refusals, expiry - and the locked sign-ins page: its permissions, ADMIN unlocked by ADMIN only, each unlock recorded, one statement a page (2.7.5) |
 | `NavbarSectionTest` | a menu section is shown to whoever may open any link in it (2.7.5) |
 | `shared/web/ActuatorTest`, `ReadinessProbeTest` | the probes themselves: readiness `503 DOWN` with the storage root gone, the store hung, the database stopped - each within seconds - and liveness `UP` throughout (2.7.3, issue 104) |

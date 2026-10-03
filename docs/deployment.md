@@ -736,6 +736,16 @@ the `seeded 5 new permission(s)` line.
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
 
+### Upgrading from 2.7.5 to 2.8.0 — the storage copy, inside the jar
+
+A jar swap; no migration, and **the service does exactly what 2.7.5 did**. What is new is a command
+the same jar runs when asked - the copy of the files into the object store and back
+([Moving the files to the object store](#moving-the-files-to-the-object-store)). Nothing runs it
+by itself: only the command-line argument `--spring.profiles.active=storage-copy` does, never a
+setting or an environment variable.
+
+**Rollback** is the 2.7.5 jar alone.
+
 ### Upgrading from 2.7.4 to 2.7.5 — a page of locked sign-ins
 
 A jar swap; no migration. **Deploy it with 2.7.4** (or instead of it): 2.7.4 brings the lock on
@@ -2026,6 +2036,114 @@ New-NetFirewallRule -DisplayName "File Management 8122" -Direction Inbound -Loca
 ```
 
 ---
+
+## Moving the files to the object store
+
+Roadmap [4.4](roadmap.md#44-moving-the-bytes-two-passes-and-a-short-window): the files are copied
+into the bucket while the service runs, a short window copies what came since and removes what was
+deleted since, and the service is switched to `s3`. The directory is kept, read-only, for the way
+back. Every step is the same jar (2.8.0 or later) with one argument; it reads the service's own
+configuration, so run it **on the application's host, from the service's directory, with the
+service's environment** - the same `FILEMANAGEMENT_DB_*`, `FILEMANAGEMENT_BASE_DIR` and, for the
+bucket, the five `FILEMANAGEMENT_S3_*` the service will use after the switch:
+
+```bat
+cd /d D:\MyApp\file-management
+set FILEMANAGEMENT_DB_URL=jdbc:postgresql://localhost:5432/file_management
+set FILEMANAGEMENT_DB_PASSWORD=...
+set FILEMANAGEMENT_BASE_DIR=D:\MyApp\file-management\files
+set FILEMANAGEMENT_S3_ENDPOINT=http://storage-host:8333
+set FILEMANAGEMENT_S3_BUCKET=file-management-prod
+set FILEMANAGEMENT_S3_ACCESS_KEY=<the application's key>
+set FILEMANAGEMENT_S3_SECRET_KEY=<its secret>
+java -jar file-management.jar --spring.profiles.active=storage-copy --filemanagement.storage-copy.direction=to-s3
+```
+
+(If the service reads an external `config\application.properties`, starting from its directory
+reads it too.) It **reads the database, never writes it**; it reads one store and writes the other;
+it deletes only in `prune` with `confirm=true`. Its log is `logs\storage-copy\app_log.log`, never
+the service's, and each run writes a CSV beside it - `storage-copy-{direction}-{mode}-{time}.csv` -
+with a summary and one line for every revision that is not as it should be.
+
+| `--filemanagement.storage-copy.` | Default | |
+|---|---|---|
+| `direction` | *(none - required)* | `to-s3`: from the directory to the bucket. `to-filesystem`: back |
+| `mode` | `copy` | `copy`: copies what the target lacks, checks what it has, deletes nothing - safe while the service runs. `verify`: writes nothing; checks every revision in the target, counts the objects no row names. `prune`: deletes the objects no row names |
+| `threads` | `4` | revisions at once, 1-64 |
+| `deep-verify` | `false` | `true` reads every object back and hashes it, instead of trusting the checksum the store keeps (in `verify` on the filesystem, it always reads) |
+| `after-id` | `0` | start after this `file_details` id - to carry on a long run quickly |
+| `confirm` | `false` | `prune` lists what it would delete; with `true`, deletes it |
+| `max-prune` | `100` | `prune` refuses to delete more than this |
+| `quiet-minutes` | `60` | `prune` keeps any object written less than this long ago |
+
+**Exit status**: `0` - every revision is in the target and verified (or, for `prune`, nothing
+failed); `1` - something is not, listed in the report and the log; `2` - refused: a setting is
+missing or wrong, the bucket or the database is not there, or `prune` would delete more than
+`max-prune` - and nothing was written or deleted.
+
+**What it checks.** Every revision's bytes are hashed as they are read and the object is made
+visible only if they hash to the row's `checksum_sha256`; the store must then report the size and
+checksum sent. A revision already in the target is checked against its checksum, never replaced.
+What a report line means:
+
+| Line | Meaning | What to do |
+|---|---|---|
+| `MISSING_AT_SOURCE` | the row's file is not in the directory | it was already a 404 in the service; find it in a backup, or accept and note it |
+| `SOURCE_CORRUPT` | the file's bytes are not the ones uploaded | do not cut over with it unexplained: restore it from a backup and run again |
+| `MISMATCH_AT_TARGET` | the bucket holds something else at that key | look at the object; it is never overwritten by the copy |
+| `MISSING_AT_TARGET` | (`verify`) not copied | run `copy` again |
+| `FAILED` | a store or the database failed | the log has the reason; run again - it carries on |
+| `NO_RECORDED_CHECKSUM` | (warning) the row has no checksum | copied and verified against the source's own bytes |
+| `ORPHAN_IN_TARGET` | (`verify`) an object no row names | removed by `prune` in the window |
+
+### Before the window, with the service running
+
+1. The bucket made as [deploy/seaweedfs](../deploy/seaweedfs/README.md#the-bucket) says - versioning
+   on, the lifecycle rule - and checked with the application's key.
+2. **The first pass**: the command above. It takes as long as the files take to travel (on the
+   rehearsal: 3.45 GB in under 10 minutes with 4 threads); the service is not affected beyond the
+   disk and network it shares. **Settle every report line before the window** - in particular
+   `MISSING_AT_SOURCE` and `SOURCE_CORRUPT`. It may be run again any number of times; each run only
+   copies what is new.
+3. Optionally `--filemanagement.storage-copy.mode=verify` - seconds, by the checksums the store
+   keeps - or with `--filemanagement.storage-copy.deep-verify=true`, reading every object back.
+
+### The window
+
+1. **Backups**: the database dump, as for every release.
+2. **Stop the service.**
+3. **The second pass** - the same command; it copies only the revisions added since the first.
+4. **Prune** - the objects of the revisions deleted since the first pass. Not optional: deleting a
+   file's latest version and uploading it again reuses the key, and the stale object would refuse
+   the upload as a duplicate. With the service stopped nothing is in flight, so:
+
+   ```bat
+   java -jar file-management.jar --spring.profiles.active=storage-copy --filemanagement.storage-copy.direction=to-s3 --filemanagement.storage-copy.mode=prune --filemanagement.storage-copy.quiet-minutes=1
+   ```
+
+   lists them (`WOULD_DELETE`); read the list - every key should be one of a deleted file - then
+   run it again with `--filemanagement.storage-copy.confirm=true`.
+5. **Verify**: `--filemanagement.storage-copy.mode=verify`, exit status `0` - or only the lines
+   already settled in step 2 of the first pass.
+6. **Switch**: in `FileManagement.xml`, `FILEMANAGEMENT_STORAGE_BACKEND=s3` and the five
+   `FILEMANAGEMENT_S3_*` ([2.5.1 → 2.6.0](#upgrading-from-251-to-260--an-object-store-as-the-backend-if-chosen));
+   start. The log says `files are stored in the S3 bucket ... at ...`; `/actuator/health/readiness`
+   is `UP`. Download a few files, old and new; upload one, and delete it.
+7. **The directory read-only**: the service account loses write on `FILEMANAGEMENT_BASE_DIR`. It is
+   the way back for the next weeks.
+
+### The way back, within those weeks
+
+1. **Stop the service.** Give the account write on the directory again.
+2. **Copy back** what was written since the switch: `--filemanagement.storage-copy.direction=to-filesystem`.
+3. **Prune the directory**: `--filemanagement.storage-copy.direction=to-filesystem --filemanagement.storage-copy.mode=prune --filemanagement.storage-copy.quiet-minutes=1`,
+   then with `confirm=true` - the files of the revisions deleted since the switch, for the reason in
+   step 4 of the window.
+4. **Verify**: `--filemanagement.storage-copy.direction=to-filesystem --filemanagement.storage-copy.mode=verify` -
+   on the filesystem this reads every file.
+5. `FILEMANAGEMENT_STORAGE_BACKEND=filesystem`; start; the same checks.
+
+After those weeks the directory is archived and removed from the host.
 
 ## The hosts, and what each needs
 

@@ -41,6 +41,11 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.8.0 is written: **the storage copy** (4.4, step 3 of 4.7) - the same jar with
+`--spring.profiles.active=storage-copy` copies every revision's bytes from the directory to the
+bucket or back, verifying each against its row's SHA-256 before it becomes visible, resumable, with
+a prune for what deleted rows left; rehearsed on the development data (1,368 revisions, 3.45 GB).
+The service itself is unchanged.
 2.7.5 is written: **a page of locked sign-ins** (12.1) - the names 2.7.4's lock holds, with the
 addresses the attempts came from, and an unlock per name, so a lock no longer needs a restart.
 2.7.4 is written: a review of the whole application - a lock on wrong passwords (issue 105),
@@ -117,10 +122,11 @@ What the releases since the cut-over brought, newest first:
    ([2.6.0 → 2.7.0](deployment.md#upgrading-from-260-to-270--who-downloaded-what-and-one-setting-renamed)).
 2. **Phase 4, the rest of it** ([the plan](#phase-4--s3-as-a-storage-backend), steps in
    [4.7](#47-the-steps)): the backend switch is built (2.6.0) and SeaweedFS runs locally with the
-   bucket made. Left, in order: the proof of concept finished - **whether SeaweedFS actually
-   carries out the lifecycle rule** ([4.5.1](#451-the-lifecycle-rule-stored-not-yet-seen-carried-out)),
-   a restore; then the copy tool (4.4); then the backup procedure written and rehearsed; then
-   the window. Done in 2.7.0: the application against a SeaweedFS stack case by case, and a 1 GB
+   bucket made, and the copy tool is written (2.8.0, 4.4). Left, in order: the proof of concept
+   finished - **whether SeaweedFS actually carries out the lifecycle rule**
+   ([4.5.1](#451-the-lifecycle-rule-stored-not-yet-seen-carried-out), under test since 2026-10-03),
+   a restore; then the backup procedure rehearsed and the copy rehearsed on production's own files
+   (a first pass may run against production at any time - it only reads); then the window. Done in 2.7.0: the application against a SeaweedFS stack case by case, and a 1 GB
    file through it; in 2.7.1: issues 100 and 101 (a storage failure is a 503, a hung store is
    bounded). An S3-compatible
    API for standard tools is planned separately ([9.10](#910-an-s3-compatible-mode--planned)).
@@ -906,6 +912,42 @@ has to catch up. No `TieredBlobStore`, no column saying where each row lives.
    is the tool run the other way for what was written since, and `backend=filesystem`.
 5. After those weeks: the directory is archived and removed from the host.
 
+> **As shipped in 2.8.0** (`storage.copy`, the runbook in
+> [deployment.md](deployment.md#moving-the-files-to-the-object-store)):
+>
+> * **It is not the application**, as the database copy of 3.5 was not:
+>   `FileManagementApplication.main` hands `--spring.profiles.active=storage-copy` (the argument,
+>   never an environment variable) to `StorageCopyCommand`, which reads the service's own
+>   configuration through an empty Spring context - no Flyway, no reconciliation, no sweeper, no
+>   web server - and logs to `logs/storage-copy/`, never into the running service's file. The
+>   rows are read through one small read-only pool; nothing writes to the database.
+> * **Three modes, both directions** (`direction=to-s3 | to-filesystem`, no default): `copy` copies
+>   what the target lacks and checks what it has, deleting nothing - safe while the service runs;
+>   `verify` writes nothing and checks every revision, and counts the objects no row names; `prune`
+>   deletes those, only with `confirm=true`, never more than `max-prune` (100), never one a write in
+>   flight names (`file_storage_write`, read after the listing and before the rows), never one
+>   written within `quiet-minutes` (60). Exit status `0`, `1` (a line in the report for each
+>   revision), `2` (refused, nothing touched).
+> * **Verified before visible** (`CopyableStore.copyIn`, both stores, `CopyableStoreContractTest`):
+>   the bytes are hashed as they are read and the object is made visible only if they hash to the
+>   row's `checksum_sha256` - on the filesystem a temporary name renamed into place, in the bucket a
+>   `PutObject` carrying the checksum, or a multipart upload whose parts each carry theirs and which
+>   is completed only after the whole has hashed right, aborted otherwise; the store must then
+>   report the size and the checksum - the object's, or the composite of the parts - that were
+>   sent. The verified SHA-256 is kept with the object (`x-amz-meta-sha256`), so a later run
+>   recognises a multipart object without reading it back (`deep-verify=true` reads everything
+>   anyway). A source whose bytes are not the row's is reported (`SOURCE_CORRUPT`) and not copied.
+> * **Why the prune is part of the window, not a tidy-up**: a version number is `MAX + 1`, so
+>   deleting a file's latest version and uploading again reuses its key. An object the first pass
+>   copied for a revision deleted since would then be in the bucket at the new upload's key, and
+>   the upload refused as a duplicate.
+> * **Rehearsed** on the development data and a local SeaweedFS (versioning on): 1,368 revisions,
+>   3.45 GB - first pass 9 min 20 s with 4 threads, second pass 3 s, verify 6 s, a read-back of
+>   every object 3 min 49 s, the way back into an empty directory 4 min 55 s with 8 threads and its read-back 1 min 23 s - byte-identical to the original (`diff -r`); two rows whose files
+>   were already missing from the directory reported, as they must be. Tests: `StorageCopyTest` (every scenario on real rows, a real root and
+>   SeaweedFS), `StorageCopyCommandTest` (the refusals, end to end), `CopyableStoreContractTest` on
+>   both stores - each guard checked by removing it.
+
 ### 4.5 The bucket, backups and operations
 
 * **Private**: no public access; the application's credentials allowed only `GetObject`,
@@ -1019,7 +1061,7 @@ are the next step, not a rebuild. The code stays store-neutral - AWS SDK, path s
 |---|---|---|
 | 1 | Proof of concept of the store (4.6), with the contract test run against it. **Partly done (2026-09-30):** the compose file and its checks, the bucket, versioning and the lifecycle rule made, the contract test on SeaweedFS. **Left:** the lifecycle rule seen carried out (4.5.1), the application on the real stack, a 1-2 GB file through it, a restore | - |
 | 2 | **Done (2.6.0).** `S3BlobStore`, `filemanagement.storage.backend` and the S3 settings (`BlobStoreConfig`), health indicator, contract test on both backends - the S3 one against a SeaweedFS container, and the whole application on the s3 backend (`S3BackendTest`) | - |
-| 3 | The `storage-copy` tool, both directions, resumable, verifying | - |
+| 3 | **Done (2.8.0).** The `storage-copy` tool, both directions, resumable, verifying - rehearsed on the development data | - |
 | 4 | The bucket set up (4.5), the backup procedure written and rehearsed, a full rehearsal of 4.4 on a copy | - |
 | 5 | The cut-over window; the directory kept read-only for the rollback weeks | - |
 

@@ -71,7 +71,7 @@ public class BlobStoreConfig {
      * among them; so the start stops and says what to rename. On s3 too: base-dir is still where
      * the copy tool reads from and where a rollback returns to.
      */
-    static void refuseRetiredBaseDir(Environment environment) {
+    public static void refuseRetiredBaseDir(Environment environment) {
         if (environment.containsProperty(RETIRED_BASE_DIR)) {
             throw new IllegalStateException(RETIRED_BASE_DIR + " is no longer read (2.7.0): set filemanagement.base-dir,"
                     + " or the environment variable FILEMANAGEMENT_BASE_DIR, to the same directory - and remove "
@@ -88,6 +88,14 @@ public class BlobStoreConfig {
             throw new IllegalStateException("filemanagement.storage.backend is s3, and these are not set: "
                     + String.join(", ", settings.missing()));
         }
+        return newS3Client(settings);
+    }
+
+    /**
+     * The client for these settings - the application's, and the storage copy's (roadmap 4.4),
+     * which must talk to the store exactly as the application will.
+     */
+    public static S3Client newS3Client(FileManagementProperties.S3 settings) {
         return S3Client.builder()
                 .endpointOverride(URI.create(settings.endpoint()))
                 .region(Region.of(settings.region()))
@@ -109,15 +117,20 @@ public class BlobStoreConfig {
     @ConditionalOnProperty(name = BACKEND, havingValue = "s3")
     public BlobStore s3BlobStore(S3Client s3Client, FileManagementProperties properties) {
         FileManagementProperties.S3 settings = properties.storage().s3();
-        FileManagementProperties.Timeouts timeouts = settings.timeouts();
-        S3BlobStore store = new S3BlobStore(s3Client, settings.bucket(), settings.prefix(),
-                settings.partSizeMb() * 1024 * 1024,
-                new S3BlobStore.Timeouts(Duration.ofSeconds(timeouts.attemptSeconds()),
-                        Duration.ofSeconds(timeouts.callSeconds()), Duration.ofSeconds(timeouts.healthSeconds())));
+        S3BlobStore store = newS3BlobStore(s3Client, settings);
         store.requireBucket(settings.endpoint());
         logger.info("files are stored in the S3 bucket {} at {}{}", settings.bucket(), settings.endpoint(),
                 settings.prefix().isBlank() ? "" : ", under " + settings.prefix());
         return store;
+    }
+
+    /** The store over this client, with the bucket, prefix, part size and limits of these settings. */
+    public static S3BlobStore newS3BlobStore(S3Client s3Client, FileManagementProperties.S3 settings) {
+        FileManagementProperties.Timeouts timeouts = settings.timeouts();
+        return new S3BlobStore(s3Client, settings.bucket(), settings.prefix(),
+                settings.partSizeMb() * 1024 * 1024,
+                new S3BlobStore.Timeouts(Duration.ofSeconds(timeouts.attemptSeconds()),
+                        Duration.ofSeconds(timeouts.callSeconds()), Duration.ofSeconds(timeouts.healthSeconds())));
     }
 
     /**
