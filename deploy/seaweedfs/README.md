@@ -324,6 +324,80 @@ Why it is shaped this way:
 * Off-site: copy `$DEST` once a month to the off-site place with the application's monthly dump
   (`rclone copy` again - only what is new goes).
 
+### For now: on this host, with nothing but Docker (`weed backup`)
+
+Until there is a place off this host and `rclone` on it, the store can be backed up **onto this
+host's own backup disk with no package beyond Docker**: `weed backup` is in the image this compose
+file already runs. It reads each volume through the volume server - consistent while SeaweedFS
+runs, which a `tar` of `VOLUME_DIR` is not (a volume is appended to, and rewritten by a vacuum,
+while it is being read) - and it is **incremental**: each night copies only what was appended to
+each volume since, and a whole volume again only after a vacuum has compacted it. Tried on the
+development stack (2026-10-03): a 1.2 GB volume took 61 s the first time and 3 s the second, and
+the copy's `.dat` and `.idx` hashed the same as the volume server's.
+
+What it is, and what it is not:
+
+* The copy is **the store's own volume files** (`.dat`, `.idx`, `.vif`), not files by name: it is
+  restored into a SeaweedFS, **with the filer's dump of the same night** - the two are one pair,
+  as the application's dump and the store are.
+* **One copy of each volume, brought up to date every night.** An object deleted in the
+  application stays in the bucket as a non-current version for 30 days (versioning and the
+  lifecycle rule), and so in this copy as long as it is there: a restore of the application's
+  database **up to about 30 days back** finds every object it names; an older dump may name
+  objects that are gone. `rclone`'s `deleted/` folder (above) is what keeps them longer.
+* **On this host, it protects against** a mistake, a damaged volume or filer database, and the
+  loss of the data disk - **if `/backup` is another physical disk** than `VOLUME_DIR`. **Not
+  against losing the host** (theft, fire, a failed controller or array, ransomware): move to the
+  `rclone` job above once there is a place for it, or at least carry `/backup` off the host every
+  week.
+
+`/opt/seaweedfs/backup-local.sh`, every night at 02:30, after the application's dump of 01:00 has
+finished (the same order as the `rclone` job, for the same reason):
+
+```bash
+#!/usr/bin/env bash
+# Nightly backup of the object store onto this host's backup disk - nothing beyond Docker.
+set -euo pipefail
+cd /opt/seaweedfs                                   # this compose project
+BK=/backup/seaweedfs                                # ANOTHER disk than VOLUME_DIR
+IMAGE=chrislusf/seaweedfs:4.48                      # the image compose.yaml runs
+NET=$(docker inspect "$(docker compose ps -q master)" \
+      --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
+stamp=$(date +%F_%H%M%S)
+mkdir -p "$BK"/{filer-db,volumes,logs}
+exec >>"$BK/logs/$stamp.log" 2>&1
+echo "start $(date -Is)"
+
+# 1) The filer's database first: every chunk it names is then in the volumes copied after it.
+dump="$BK/filer-db/filer-$stamp.dump"
+docker compose exec -T filer-db pg_dump -U seaweedfs -Fc seaweedfs_filer > "$dump"
+[ "$(stat -c %s "$dump")" -gt 10240 ] || { echo "filer dump implausibly small"; exit 1; }
+
+# 2) Every volume - the filer's own (no collection) and the bucket's - incrementally, read through
+#    the volume server.
+echo volume.list | docker compose exec -T master weed shell -master=localhost:9333 \
+  | sed -n 's/.*volume Id:\([0-9]*\),.*Collection:\([^,]*\),.*/\1 \2/p' | sort -un \
+  | while read -r id collection; do
+      docker run --rm --network "$NET" -v "$BK/volumes:/backup" "$IMAGE" \
+        backup -master=master:9333 -dir=/backup -volumeId="$id" ${collection:+-collection="$collection"}
+    done
+
+# 3) Rotation: the filer's dumps for 30 days - as long as the volumes keep a deleted object.
+find "$BK/filer-db" -name 'filer-*.dump' -mtime +30 -delete
+find "$BK/logs" -name '*.log' -mtime +90 -delete
+echo "done $(date -Is)"
+```
+
+```bash
+chmod 700 /opt/seaweedfs/backup-local.sh
+# crontab -e (root): the host's clock in the same zone as the application server's.
+30 2 * * * /opt/seaweedfs/backup-local.sh || logger -t backup "file-management store backup failed"
+```
+
+`IMAGE` is the one `compose.yaml` pins; change both together when SeaweedFS is upgraded. The script
+needs only what the compose project already has: the `master` service for the list of volumes and
+the network, `filer-db` for the dump.
+
 ## Restoring the store
 
 **The whole host is lost**:
@@ -342,6 +416,17 @@ Why it is shaped this way:
    "Every row has its object". Then start the application.
 
 Terabytes take hours to copy in: the monthly drill measures how many.
+
+**From the local copy of `weed backup`** (the store's data disk, or its volumes, lost):
+
+1. `docker compose down`; a new data disk mounted at `VOLUME_DIR` if it was the disk.
+2. The volumes back: `cp -a /backup/seaweedfs/volumes/. "$VOLUME_DIR"/`.
+3. The filer's database from the dump of **the same night**: `docker compose up -d filer-db`, then
+   `docker compose exec -T filer-db pg_restore -U seaweedfs -d seaweedfs_filer --clean --if-exists < /backup/seaweedfs/filer-db/filer-….dump`.
+4. `docker compose up -d`; then the check that every row has its object - deployment.md, "Every
+   row has its object", or the storage copy's
+   `--filemanagement.storage-copy.direction=to-s3 --filemanagement.storage-copy.mode=verify`
+   ([docs/storage-copy.md](../../docs/storage-copy.md)), which also compares every checksum.
 
 **Only the filer's database is lost** (the volumes intact): recreate `filer-db` empty, restore the
 last dump (`docker compose exec -T filer-db pg_restore -U seaweedfs -d seaweedfs_filer --clean
