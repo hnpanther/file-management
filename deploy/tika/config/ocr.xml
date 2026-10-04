@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The OCR lane (tika-ocr): images and scanned PDFs, Persian and English.
+
+  These are the defaults; tika-server lets a request override them with headers, which is how the
+  application will choose per file (roadmap 11: "The OCR settings travel with each request"):
+    X-Tika-OCRLanguage: fas+eng        X-Tika-PDFOcrStrategy: auto | no_ocr | ocr_only | ocr_and_text_extraction
+    X-Tika-OCRskipOcr: true            X-Tika-OCRtimeoutSeconds: 600
+-->
+<properties>
+  <parsers>
+    <parser class="org.apache.tika.parser.DefaultParser">
+      <parser-exclude class="org.apache.tika.parser.ocr.TesseractOCRParser"/>
+      <parser-exclude class="org.apache.tika.parser.pdf.PDFParser"/>
+    </parser>
+    <parser class="org.apache.tika.parser.ocr.TesseractOCRParser">
+      <params>
+        <!-- Persian first: the language model the page is read with, English for what is mixed in. -->
+        <param name="language" type="string">fas+eng</param>
+        <!-- 1 = automatic page segmentation with orientation detection: scans are not always upright. -->
+        <param name="pageSegMode" type="string">1</param>
+        <param name="timeoutSeconds" type="int">600</param>
+      </params>
+    </parser>
+    <parser class="org.apache.tika.parser.pdf.PDFParser">
+      <params>
+        <!-- Page by page: a page with a text layer is read as text, one without is rendered and OCRed. -->
+        <param name="ocrStrategy" type="string">auto</param>
+        <param name="ocrDPI" type="int">300</param>
+      </params>
+    </parser>
+  </parsers>
+  <server>
+    <params>
+      <!-- A request longer than this is cut off and the child restarted: a 300-page scan needs time. -->
+      <taskTimeoutMillis>1800000</taskTimeoutMillis>
+      <forkedJvmArgs>
+        <arg>-Xms512m</arg>
+        <arg>-Xmx3g</arg>
+        <arg>-XX:+ExitOnOutOfMemoryError</arg>
+      </forkedJvmArgs>
+      <returnStackTrace>false</returnStackTrace>
+    </params>
+  </server>
+</properties>

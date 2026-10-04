@@ -134,7 +134,8 @@ What the releases since the cut-over brought, newest first:
    [9.11](#911-api-key-lifecycle-renewal-a-replacement-key-and-the-kind-of-key--planned)): v1 unchanged;
    v2 accepting standard S3 clients - upload (a title already there is a new version), download,
    delete, folders created by an upload when the key may - for the ERP attachments filed by n8n.
-   9.11 first (days), then 9.10's steps (weeks).
+   9.11 first (days), then 9.10's steps (weeks). With them, **metadata of a file as JSON**
+   ([12.2](#122-metadata-of-a-file-as-json--planned)) - sent with the upload, shown, edited, searched.
 3. ~~**Recording downloads** (9.2)~~ - **done (2.7.0)**.
    ~~**A page of locked sign-ins**~~ ([12.1](#121-a-page-of-locked-sign-ins--done-275)) - **done
    (2.7.5)**: deploy it with 2.7.4, so the lock reaches production with its way out.
@@ -3094,7 +3095,7 @@ number of statements whatever the reader's grants (`ListQueryCountTest`).
 
 | Step | What | Schema | Depends on |
 |---|---|---|---|
-| 11.1 | **The pipeline**: `file_content` and its states, the outbox row written with each revision, the workers in two lanes, `deploy/tika` (the two containers, the Persian image, `tika-config.xml`, a README like `deploy/seaweedfs`'s) and Tika in the suite (Testcontainers), the settings, a page of what failed with a retry | `V3.x` | - |
+| 11.1 | (`deploy/tika` written ahead of it, 2026-10-04, to try Tika on real files: the two containers, the image with Persian, the two configurations - not yet run on Docker.) **The pipeline**: `file_content` and its states, the outbox row written with each revision, the workers in two lanes, `deploy/tika` (the two containers, the Persian image, `tika-config.xml`, a README like `deploy/seaweedfs`'s) and Tika in the suite (Testcontainers), the settings, a page of what failed with a retry | `V3.x` | - |
 | 11.2 | **Text documents**: PDF with a text layer, Word, PowerPoint, Excel, OpenDocument, RTF, text, HTML; page boundaries kept; the `tsvector`, its GIN index, "search in contents" on the file list, the explorer and API v1, a highlighted snippet per result with its page | (11.1's) | 11.1 |
 | 11.3 | **The backfill**: every existing revision queued, read at a set rate in the text lane, a report at the end - after Phase 4's copy, so every file is read once, from where it will stay | none | 11.2, 4.4 |
 | 11.4 | **OCR**: images and scanned PDFs, Persian and English, in the OCR lane, the two-pass PDF and the partial mark; **measured first** - pages a minute per core and the quality of Persian on a sample of real scans, on the real host - and switched on only if what it reads is worth the CPU. The Tika host sized from that measure | none | 11.2 |
@@ -3144,6 +3145,7 @@ Small things asked for once 2.7 was in use, each sized to ship on its own, none 
 | Step | What | Schema | Size |
 |---|---|---|---|
 | 12.1 | A page of locked sign-ins, to unlock one early | none | small - **done (2.7.5)** |
+| 12.2 | Metadata of a file, as JSON: sent with the upload, shown, edited, searched | `file_details.metadata jsonb` | 3-5 days |
 
 ### 12.1 A page of locked sign-ins — **done (2.7.5)**
 
@@ -3191,6 +3193,112 @@ people out for good. An administrator who wants an account kept out disables it 
 the right password then signs in at once; the page and the button behind their permissions; an
 account holding ADMIN unlocked only by ADMIN; the unlock recorded; the page a fixed number of
 statements.
+
+### 12.2 Metadata of a file, as JSON — planned
+
+**Why.** An integration knows things about a document that the file does not say and the folder
+does not hold: the ERP's attachment id, the contract's number, the party's code and name, the
+document's date - and not the same things for every document. They should arrive with the upload,
+stay with the file, be visible, and be searchable: "every attachment of contract C-5678", wherever it
+was filed. A fixed column per field cannot serve fields that differ from one sender to the next.
+
+**The decision: a `jsonb` document on each revision.**
+
+```sql
+-- V3.x
+ALTER TABLE file_details ADD COLUMN metadata jsonb;
+CREATE INDEX ix_file_details_metadata ON file_details USING gin (metadata jsonb_path_ops);
+```
+
+* **`jsonb`** - any keys per file, no schema change for a new field, stored parsed (not as text), and
+  queried by containment (`metadata @> '{"contractNo":"C-5678"}'`) through the GIN index, fast over
+  millions of rows. PostgreSQL only, which this application has been since 2.1.0.
+* **On the revision (`file_details`), not the file (`file_info`)** - as S3 keeps user metadata per
+  object version, and because a version's metadata can differ from the one before it ("signed",
+  "amended"). The file's current metadata is its latest revision's; the file page shows it, each
+  revision in the list shows its own.
+* **A new version without metadata** - proposed, to confirm when it is built: through v1 and the
+  pages it **inherits** the latest revision's (what a person filing the next version expects); through
+  the S3 surface it is **empty**, as S3 does (what an S3 client expects). Sent metadata always
+  replaces, never merges.
+
+**What is accepted** - checked before anything is stored, the upload refused whole otherwise (`400`,
+the detail saying which rule; on the S3 surface `InvalidArgument`):
+
+| Rule | Limit | Setting |
+|---|---|---|
+| a JSON **object** at the top - not an array, a string or a number | - | - |
+| size, as UTF-8 | 16 KB | `filemanagement.metadata.max-bytes` |
+| nesting | 5 levels | `filemanagement.metadata.max-depth` |
+| a key | 1-100 characters, no control characters | - |
+| values | any JSON: strings, numbers, booleans, null, arrays, objects | - |
+
+**Sending it.**
+
+* **API v1** - one more, optional, multipart field on the upload; a client that does not send it is
+  unaffected (APEX):
+
+  ```
+  POST /api/v1/files
+  multipartFile = <the file>
+  description   = ...
+  folderId      = 123
+  metadata      = {"entity":"contract","contractNo":"C-5678","party":{"code":"P-1234","name":"..."},"attachmentId":99812}
+  ```
+
+  The upload's answer, the file's and revision's JSON, and the search's results carry `metadata`.
+  Documented in `docs/api-v1.md` as an addition, the contract otherwise unchanged.
+* **The S3 surface (9.10)** - S3's user metadata is flat strings: each `x-amz-meta-{name}` header is
+  one key, `x-amz-meta-contract-no: C-5678` → `{"contract-no": "C-5678"}`; a non-ASCII value is
+  percent-encoded UTF-8, as S3 clients send it; S3 caps the whole at 2 KB. For nested JSON, one
+  header that is not S3's: `x-fm-metadata` with the document base64-encoded. `GET` and `HEAD` answer
+  the flat keys as `x-amz-meta-*`, so S3 tools see them. Built with 9.10's step 4.
+* **The pages** - an optional "metadata (JSON)" field on the upload form, validated as above.
+
+**Seeing and changing it.**
+
+* **The file page** shows the current metadata as a table (nested values indented), and each
+  revision's on its row; values escaped like every value on the page.
+* **Editing** - the whole document of one revision replaced - on the file page and through
+  `PUT /api/v1/files/file-details/{externalId}/metadata`, behind a permission of its own
+  (`EDIT_FILE_METADATA`, in the file-write group, ADMIN holding it by itself) and `WRITE` on the
+  file's folder. The bytes of a revision never change; its metadata may.
+* **Every change is a file-history event**, `METADATA_CHANGED` (2.5.0's `file_history`), with the
+  document before and after in its detail, who, when and with which API key; the upload's own
+  metadata is part of `FILE_UPLOADED` / `VERSION_ADDED`.
+* **Never logged.** Metadata can hold personal data - a national code, a name. A log line says how
+  many keys and how many bytes, never a value; an error says which rule, never the content.
+* **Read like the file**: whoever may open the file sees its metadata, through the same folder
+  access; nothing about metadata widens or narrows that.
+
+**Searching by it** - the reason to have it:
+
+* `GET /api/v1/files/search?metadata={"contractNo":"C-5678"}` - containment (`@>`), so any part of the
+  document can be asked for, nested parts included; through the GIN index; paged as every list is
+  (a slice, never a count); only files in folders the key or person may read. A case in
+  `SearchIndexTest` that it is planned on the index.
+* Later, on the "all files" page: a filter by a key and a value.
+
+**Later, optional: a template per folder.** Where documents must carry certain fields - every
+contract attachment its `contractNo` and `partyCode` - a JSON Schema attached to a folder and
+inherited below it, an upload whose metadata does not satisfy it refused with the schema's message.
+The same `jsonb` and validation are what Phase 8's forms need, so it is built once, there or here,
+whichever comes first.
+
+**The steps**
+
+| # | What | Size |
+|---|---|---|
+| 1 | The migration (the column, the GIN index); the `metadata` field on v1's upload and in its answers; the validation and its limits | 1-2 days |
+| 2 | The file page's table, the edit and its permission, `METADATA_CHANGED` in the history | 1-2 days |
+| 3 | Search by metadata on v1, index-served, scoped by folder access | 1 day |
+| 4 | `x-amz-meta-*` and `x-fm-metadata` on the S3 surface | with 9.10's step 4 |
+| 5 | (optional) A JSON Schema per folder | 2-3 days, with Phase 8 |
+
+**Tests.** Every limit (an array, 16 KB + 1, depth 6, a long key) refused and nothing stored; a
+version inheriting through v1 and not through S3; the history event with both documents; a value never
+in the log; a search found through the index, scoped by folder access, paged; the S3 headers both
+ways, a Persian value included.
 
 ---
 
