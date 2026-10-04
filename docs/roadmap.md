@@ -130,6 +130,11 @@ What the releases since the cut-over brought, newest first:
    file through it; in 2.7.1: issues 100 and 101 (a storage failure is a 503, a hung store is
    bounded). An S3-compatible
    API for standard tools is planned separately ([9.10](#910-an-s3-compatible-mode--planned)).
+   **API v2 S3-compatible, and the API key lifecycle** ([9.10](#910-an-s3-compatible-mode--planned),
+   [9.11](#911-api-key-lifecycle-renewal-a-replacement-key-and-the-kind-of-key--planned)): v1 unchanged;
+   v2 accepting standard S3 clients - upload (a title already there is a new version), download,
+   delete, folders created by an upload when the key may - for the ERP attachments filed by n8n.
+   9.11 first (days), then 9.10's steps (weeks).
 3. ~~**Recording downloads** (9.2)~~ - **done (2.7.0)**.
    ~~**A page of locked sign-ins**~~ ([12.1](#121-a-page-of-locked-sign-ins--done-275)) - **done
    (2.7.5)**: deploy it with 2.7.4, so the lock reaches production with its way out.
@@ -2155,7 +2160,8 @@ The goal is a shape people recognise, not a protocol they can point tooling at. 
 therefore a bearer credential — `Authorization: Bearer fmk_…` — and the documentation must say
 outright that this is S3-*style*, so nobody plans an integration around a CLI that will never
 connect. If real S3 compatibility is ever wanted it is its own phase, and it starts by making
-secrets recoverable - planned in [9.10](#910-an-s3-compatible-mode--planned).
+secrets recoverable - planned in [9.10](#910-an-s3-compatible-mode--planned), which since
+2026-10-04 turns v2 itself into the S3-compatible surface and retires this one.
 
 ### 9.5 Actuator — **done**
 
@@ -2269,66 +2275,340 @@ that can be switched off without a rebuild.
 
 ### 9.10 An S3-compatible mode — planned
 
-§9.4 still stands for v2: it is S3-*style*. This is the plan for the day standard tools - `aws s3`,
-`rclone`, `boto3`, the SDKs - should connect. **v1 and v2 stay as they are**; this is a third
-surface, on a host name of its own.
+> **Rewritten 2026-10-04**, replacing the plan of a third surface beside v2: **API v1 stays exactly
+> as it is; API v2 becomes S3-compatible** - so that standard S3 clients (the S3 node of n8n, `aws`,
+> `rclone`, `boto3`, the SDKs) connect to it as they would to any S3 store. The first scope is the
+> five things an integration needs: **upload a file, download a file, delete a file, create a
+> folder, delete a folder** - and an upload that **creates the folders its key names**, if the key
+> is allowed to. What prompted it: an ERP whose attachments (of contracts, statements, ... of
+> thousands of people and companies) an n8n workflow is to file here every half hour, under
+> `ERP/{person}/{kind}/{document}/`, creating each folder the first time it is needed (the example at
+> the end of this section). The credentials it needs first are [9.11](#911-api-key-lifecycle-renewal-a-replacement-key-and-the-kind-of-key--planned).
 
-**Where it is served.** S3 clients build every path from the root - `/{bucket}/{key}` - and the
-root belongs to the pages. So a host name of its own (`s3.files.example`), which the reverse
-proxy maps onto an internal prefix (`/s3/**`) with its own security chain. Path style only, one
-fixed region (`us-east-1`).
+#### 9.10.1 What stays, what changes
 
-**Credentials: Signature V4, and a secret that can be read back.** SigV4 is an HMAC the server
-recomputes, so it must hold the secret itself - the reason §9.2 could hash secrets. A new kind of
-API key, an "S3 access key": an access key id and a secret encrypted with AES-GCM under a master
-key from the environment, shown once like every key, scoped by the key's folder grants like every
-key. Verified: the `Authorization` header, pre-signed URLs (`X-Amz-*`), `UNSIGNED-PAYLOAD`,
-chunked uploads (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`) and the checksum trailers recent SDKs send
-by default (`STREAMING-UNSIGNED-PAYLOAD-TRAILER`, `x-amz-checksum-crc32`). A migration: the key
-kind and the encrypted secret.
+* **API v1** (`/api/v1/**`, `Authorization: Bearer fmk_…`, multipart, JSON) - **unchanged**: the
+  APEX clients use it, and every test it has today must pass unchanged at every step below.
+* **API v2 today** (`/api/v2/**`, Bearer, JSON, the version as a segment of the key, 9.3) is
+  S3-*style*, not S3: no S3 client can talk to it (9.4). It is **replaced** by the S3-compatible
+  surface - once step 0 below has shown nothing uses it; if something does, it is kept until that
+  client has moved, and the two run side by side.
+* **Folders stay real.** A folder here is a row with grants, tags, a label and a depth limit, not a
+  prefix. The S3 surface is a view of the tree; nothing about the tree, the storage keys or the
+  bytes changes for it.
+* **Every rule the application has applies to the S3 surface too**: the content check against the
+  extension, the upload policy and the server's cap, the folder access of the key, the file
+  history, the download records, deletions only through `FileService`.
 
-**A bucket is a top-level folder with a bucket name.** A column, `folder.bucket_name`, set by an
-administrator on a top-level folder and checked against S3's naming rules (lower case, digits,
-`-`, 3 to 63 characters); only a folder with one is a bucket, so a Persian folder name is never a
-problem. `ListBuckets` answers the buckets the key can read. Keys may be Persian - S3 keys are
-UTF-8 - and the canonical URI of SigV4 must be encoded exactly as S3 does (each segment once, `/`
-kept).
+#### 9.10.2 Signature V4 - what it is, and why it is the bulk of the work
 
-**Versions: the bucket behaves as an S3 bucket with versioning on.** The key carries no version
-segment - `reports/2026/report.pdf` - and:
+Every S3 client authenticates with **AWS Signature Version 4**. The key has two halves: an access
+key id, public, and a secret access key, which **never travels**. For each request the client
+builds a *canonical request* - method, path (URI-encoded exactly as S3 does, segment by segment,
+`/` kept), sorted query string, the headers it signs (`host`, `x-amz-date`, `x-amz-content-sha256`,
+...), and the SHA-256 of the body - and signs it:
 
-| S3 request | Here |
+```
+string to sign = "AWS4-HMAC-SHA256" \n timestamp \n date/region/s3/aws4_request \n SHA-256(canonical request)
+kDate    = HMAC("AWS4" + secret, date)
+kRegion  = HMAC(kDate, region)
+kService = HMAC(kRegion, "s3")
+kSigning = HMAC(kService, "aws4_request")
+signature = hex(HMAC(kSigning, string to sign))
+
+Authorization: AWS4-HMAC-SHA256 Credential=AKID/20261004/us-east-1/s3/aws4_request,
+               SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=fe5f80f7…
+```
+
+The server recomputes the same and compares, in constant time. What it gives: the secret is never
+on the wire; a request cannot be altered in transit (the path, the signed headers and the body's hash
+are in the signature); a captured request is replayable for 15 minutes at most (`x-amz-date` is
+checked); and a URL can carry the signature and an expiry (a *pre-signed* URL: a download link
+valid for an hour, without handing out the key).
+
+What it costs here:
+
+* **The server must hold the secret itself**, since HMAC is symmetric - today's keys keep only a
+  SHA-256 of the secret, from which no signature can be computed. So an S3 key is a kind of its own
+  (9.11): its secret kept **encrypted (AES-GCM) under a master key from the environment**
+  (`FILEMANAGEMENT_S3_SECRET_ENCRYPTION_KEY`), decrypted only to verify a request.
+* **The computation must match the client's bit for bit** - the encoding of a Persian key in the
+  path, the order of parameters, spaces in header values, a path a proxy rewrote. Any difference is
+  `SignatureDoesNotMatch`.
+* **Streamed bodies are signed differently.** `aws` sends an upload in signed chunks
+  (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`), each chunk's signature chained to the previous one; recent
+  SDKs send `STREAMING-UNSIGNED-PAYLOAD-TRAILER` with a checksum after the body; some send
+  `UNSIGNED-PAYLOAD`. All must be read.
+
+The algorithm is a few hundred lines on Java's own HMAC-SHA256; the work is in getting every detail
+exactly right, which is why the tests use AWS's own SDK as the client (9.10.10), never one written
+here.
+
+#### 9.10.3 Where it is served, and what a bucket is
+
+* **A host name of its own** - `s3.files.example` - which the reverse proxy maps onto the
+  application; S3 clients build every path from the root (`/{bucket}/{key}`), and the root here
+  belongs to the pages. Path-style only, one region, `us-east-1`. The signature is verified against
+  the path the client sent, whatever prefix the proxy adds (it is given in `X-Forwarded-Prefix`).
+* **A bucket is a top-level folder with a bucket name**: a column `folder.bucket_name`, set by an
+  administrator on a top-level folder, checked against S3's rules (lower case, digits and `-`, 3 to
+  63 characters) and unique. Only a folder with one is a bucket - so a Persian or `IMS_Document_System`
+  folder name is never a problem (9.7). The folder `ERP` might be the bucket `erp`.
+* **A key is everything below the bucket, flattened with `/`**: the folders' names, then the file's
+  name and extension - `P-1234/contracts/C-5678/A-99812-scan.pdf`. No version segment: versions are
+  `versionId`s (9.10.5). Folder names are compared as the application compares them (without case,
+  and folded: the half-space, Arabic `ي`/`ك`, Persian digits), so two keys that differ only so name
+  one folder.
+
+#### 9.10.4 The operations
+
+| S3 request | What it does here |
 |---|---|
-| `GET key` | the latest version, in the format the extension names |
-| `PUT key` | a new version - an overwrite to the client, an appended immutable revision here |
-| `GET key?versionId=` | that revision; the `versionId` is the revision's external id |
-| `ListObjectVersions` | the file's versions, from `file_details` |
-| `DELETE key?versionId=` | that revision |
-| `DELETE key` | refused by default: in S3 it is a delete marker, here it would remove the whole file |
+| `PUT /{bucket}/{key}` (**PutObject**) | uploads a file - a new file, or **a new version of the file of that title** (9.10.5); creates the folders the key names if they are missing and the key may (9.10.6) |
+| `PUT /{bucket}/{folder path}/` with an empty body | **creates a folder** - what an S3 client's "Create folder" sends; `x-amz-meta-display-name` (UTF-8, percent-encoded) sets its label |
+| `GET /{bucket}/{key}` (**GetObject**) | the latest version, with `Range` (206), `If-None-Match`/`If-Modified-Since` (304); recorded as a download |
+| `GET /{bucket}/{key}?versionId=…` | that version |
+| `HEAD /{bucket}/{key}` (**HeadObject**) | the same headers, no body - "is it there, how large, which version" |
+| `DELETE /{bucket}/{key}` (**DeleteObject**) | deletes the file (9.10.7) |
+| `DELETE /{bucket}/{key}?versionId=…` | deletes that version; the last one takes the file with it |
+| `DELETE /{bucket}/{folder path}/` | deletes the folder - an empty one; a full one only with `x-fm-recursive: true` (9.10.7) |
+| `POST /{bucket}?delete` (**DeleteObjects**) | up to 1,000 of the above in one request, each answered |
+| `GET /` (**ListBuckets**), `HEAD /{bucket}`, `GET /{bucket}?location`, `GET /{bucket}?versioning` | the buckets the key may read; versioning answers `Enabled` |
+| `GET /{bucket}?list-type=2` (**ListObjectsV2**) | `prefix`, `delimiter=/` with `CommonPrefixes`, `max-keys` (1,000), `continuation-token`, `start-after` - **served by an index**, never by gathering a subtree in memory (issue 109). An empty folder is listed as its marker `{path}/`, as S3 shows one |
+| multipart: `POST ?uploads`, `PUT ?partNumber&uploadId`, `POST ?uploadId`, `DELETE ?uploadId`, `GET ?uploadId` | a large upload in parts - `aws` switches to it by itself above 8 MB; the parts wait in the upload temporary directory, an abandoned upload is cleared after a day, and the completed file goes through the same path as any upload |
 
-Formats stay distinct keys: `report.pdf` and `report.docx` are one file's two formats.
+Answers and errors are S3's XML with S3's status codes: `NoSuchBucket`, `NoSuchKey` (404),
+`AccessDenied` (403), `SignatureDoesNotMatch`, `RequestTimeTooSkewed` (403), `InvalidArgument` (400 -
+a name, a type or bytes the application refuses, the detail saying which), `EntityTooLarge` (400),
+`PreconditionFailed` (412). An `ETag` is the MD5 of the file (some clients compare it with what they
+sent; a multipart one is the MD5 of the parts' MD5s and `-N`) - which needs an `md5` column, written
+on upload and backfilled like the checksum was.
 
-**ETags.** Some clients compare the ETag with the MD5 of what they sent, so an `md5` column is
-written on upload and backfilled like the checksum; a multipart ETag is the MD5 of the parts'
-MD5s followed by `-N`.
+#### 9.10.5 A file whose title is already there: a new version
 
-**Listing must be served by an index.** v2 gathers a bucket's subtree in memory (9.3); here
-`ListObjectsV2` pages by folder path and name, with `continuation-token` and `start-after`, from
-an index - not from memory.
+**Decided: a `PUT` of a file whose title the folder already holds stores a new version of that
+file** - never an overwrite, never an error. It is S3's behaviour on a bucket with versioning on,
+and the application's own: versions here are immutable.
 
-**Answers are S3's XML**, errors included (`NoSuchKey`, `NoSuchBucket`, `AccessDenied`,
-`SignatureDoesNotMatch`), with S3's status codes.
+* **The title** is the file name without its extension - `A-99812-scan` - compared within the folder
+  exactly as the application compares names (`uq_file_info_name_per_folder` on `upper(file_name)`,
+  and the folding of 1.8.0: `گزارش‌ها` and `گزارشها` are one title). The lookup must use that same
+  comparison: a lookup that missed a folded match would try to create a second file and be refused
+  as a duplicate.
+* **The extension does not make another file**: `report.docx` after `report.pdf` is version 2 of
+  `report`, in docx. A `GET report.pdf` then answers the newest version that has a pdf, a
+  `GET report.docx` the newest with a docx; a key whose extension no version has is `404 NoSuchKey`.
+  (Adding a second *format* to an existing version - the file page's "new format" - is not an S3
+  operation; it stays on the pages and v1.)
+* **The answer** says which version was made: `x-amz-version-id` - the revision's external id, which
+  `?versionId=` takes back - and `x-fm-version: 3`, the number people see.
+* **The same bytes again is still a new version**, as in S3; nothing compares contents. A client
+  that must not add one sends a condition:
 
-**Tests run a real client**: the AWS SDK for Java v2 pointed at the application in the
-integration tests, and `aws`, `rclone` and `boto3` by hand before each release of it.
-
-| # | Step | What then works |
+| Header on the `PUT` | Meaning | When the title exists |
 |---|---|---|
-| 1 | S3 access keys, SigV4, the host name; `ListBuckets`, `HeadBucket`, `GetBucketLocation`, `ListObjectsV2`, `GetObject` with `Range`, `HeadObject`, XML errors | `aws s3 ls`, `aws s3 cp s3://… .`, `rclone sync` downloading - most of the value |
-| 2 | `PutObject` (chunked, checksum trailers), `DeleteObject(s)`, `versionId`, `ListObjectVersions`, the `md5` column | uploads from any S3 tool |
-| 3 | Multipart upload (create, parts, complete, abort, list parts) | large uploads - the CLI switches to multipart above 8 MB by itself |
+| none | store it | **a new version** |
+| `If-None-Match: *` | "only if nothing is there" - an HTTP condition, `*` meaning any version at all | **`412 PreconditionFailed`**, nothing stored |
+| `If-Match: "<etag>"` | "only if the latest is still the one I saw" | the new version if the ETag is the latest's; `412` otherwise |
 
-If nothing uses v2 by then, this can replace it; until then both are kept.
+`If-None-Match: *` is what makes an integration's retry safe: the ERP workflow sends it with every
+attachment, so an attachment it has already filed answers 412 instead of becoming version 2.
+
+#### 9.10.6 Creating folders: a capability of the key
+
+A key may be allowed to create folders, or not - **a capability set on the key** ("may create
+folders", 9.11), beside its folder grants. For
+
+```
+PUT /erp/P-1234/contracts/C-5678/A-99812-scan.pdf
+```
+
+the server, **before writing anything**:
+
+1. walks the key from the bucket down and finds the deepest folder that exists - say the bucket's
+   own, `ERP`; `P-1234/contracts/C-5678` is missing;
+2. requires a `WRITE` grant of the key on that deepest existing folder (or above it - grants are
+   inherited);
+3. if any folder is missing, requires the capability "may create folders";
+4. checks every missing folder's name (directory-safe, at most 100 characters) and the depth limit
+   (`filemanagement.folders.max-depth`);
+
+and only then creates the missing folders and stores the file.
+
+| The key's folders | "May create folders" | `WRITE` on the deepest existing | Answer |
+|---|---|---|---|
+| all exist | either | yes | the file stored (a new file, or a new version) |
+| all exist | either | no | `403 AccessDenied` |
+| some missing | **yes** | yes | the folders created, then the file stored |
+| some missing | **no** | yes | **`403 AccessDenied`** - *the key may not create folders: P-1234/contracts/C-5678 does not exist* - nothing created |
+| some missing | yes | no | `403 AccessDenied` |
+| a name or the depth not allowed | either | either | `400 InvalidArgument`, nothing created |
+
+* **All or nothing**: the folders and the file are one transaction. A file refused after the
+  folders were made - its bytes not what its extension says, too large, a kind the policy forbids -
+  takes the new folders back with it; no empty folder is left behind.
+* **Two uploads at once to the same new path** create it once: the second meets the unique index on
+  the siblings' names, reads the folder the first made, and carries on.
+* **Creating a folder explicitly** (`PUT …/P-1234/` with an empty body) asks the same: `WRITE` on its
+  parent and the capability.
+* Each folder created is recorded in `action_history` with the key, as one made on the explorer page
+  is; the label is the name unless `x-amz-meta-display-name` gives one.
+
+`FolderService.ensurePath(parent, names, principal)` is the one place this is written - the
+"mkdir -p" the S3 surface needs, which a v1 endpoint could offer too.
+
+#### 9.10.7 Deleting, and who may
+
+The rule the application already follows: **what is in a folder is changed by whoever may write to
+that folder; the folder itself, by whoever may write to its parent** (`FolderService.delete`,
+`move` and `FolderTreeDeleteService` check the parent). A key granted `WRITE` on `ERP/P-1234` can
+add and remove anything below `P-1234`, but not delete `P-1234` itself. (Renaming does not follow
+this rule today - issue 111.)
+
+* **A file**: `DELETE /{bucket}/{key}` deletes **the whole file**, every version, through
+  `FileService` - recorded in the file history as every deletion is. It needs `WRITE` on the file's
+  folder and the key's capability **"may delete files"**. S3 on a versioned bucket would leave a
+  delete marker instead and keep the versions; there are no delete markers here, and that difference
+  is written in the documentation of v2. `?versionId=` deletes one version.
+* **A folder**: `DELETE /{bucket}/{path}/` needs `WRITE` on the folder's **parent** and the capability
+  **"may delete folders"**. An empty folder is deleted. A folder with anything in it is `409` with
+  S3's `BucketNotEmpty`-style error - unless the request says `x-fm-recursive: true` (not an S3
+  header: a deliberate act), which deletes the tree as the explorer's recursive delete does, bounded
+  by `filemanagement.folders.max-delete-files`.
+* `aws s3 rm --recursive` therefore deletes a tree's files and leaves its folders, which an empty-
+  folder delete then removes - folders here outlive their last file, where S3's prefixes vanish
+  with it.
+* **A bucket** is never deleted through the S3 surface.
+
+#### 9.10.8 What a key holds, in one table
+
+| | Grants a key's folder access (9.1) | Capabilities on an S3 key (9.11) |
+|---|---|---|
+| list, download, head | `READ` on the folder | - |
+| upload into existing folders (a new file or a new version) | `WRITE` on the folder | - |
+| upload creating folders, create a folder | `WRITE` on the deepest existing folder | **may create folders** |
+| delete a file or a version | `WRITE` on its folder | **may delete files** |
+| delete a folder | `WRITE` on its parent | **may delete folders** |
+
+A key runs as its creator for the audit trail, and is recorded beside them (2.3.0) - an S3 key no
+differently.
+
+#### 9.10.9 Where it differs from S3, written in its documentation
+
+* folders are real: they outlive their last file, are created and deleted on purpose, and have a
+  depth limit and name rules a key may not break;
+* a `PUT` of an existing title adds a version and never replaces bytes - the bucket answers as
+  versioned;
+* `DELETE` of a file removes it and its versions; there are no delete markers;
+* a title is one per folder whatever its extension; extensions select a version's format;
+* names are compared without case and folded, where S3 keys are byte-exact;
+* the bytes are checked against their extension and the upload policy - a store would take
+  anything.
+
+#### 9.10.10 Foundations - built first, changing no API
+
+1. **A folder found by its name through the index**, not by loading every sibling - the v2 of today
+   reads all of a folder's children at each level of a key (`ObjectStoreService.requireFolder`), which
+   under a folder of thousands of people is thousands of rows per upload. `uq_folder_sibling_name`
+   (`parent_id`, `upper(name)`) already serves the lookup.
+2. **`FolderService.ensurePath`** (9.10.6).
+3. **`folder.key_path`** - the names from the bucket down (`P-1234/contracts/C-5678`), indexed for
+   prefix search, rewritten for the subtree on a rename or a move as `folder.path` is: what lets
+   `ListObjectsV2` page in key order from an index. A migration.
+4. **`file_details.md5`**, written on upload and backfilled - for the `ETag`. A migration.
+
+#### 9.10.11 Tests
+
+* **A real client in the integration tests**: the AWS SDK for Java v2 pointed at the application -
+  every operation of 9.10.4, signed headers and pre-signed URLs, the three streamed body forms,
+  multipart, `Range`, listing across pages, Persian keys, a title uploaded twice (version 2),
+  `If-None-Match: *` (412), a missing path with and without the capability (created / 403, nothing
+  left), a refused file after the folders were made (no folder left), two uploads creating one path
+  at once, the delete rules of 9.10.7.
+* **Security**: a wrong signature, a stale `x-amz-date`, an expired pre-signed URL, a key revoked or
+  expired, a key without a grant or a capability, a key of the other kind, keys with `..`, `//` or a
+  forbidden character.
+* **By hand before each release of it**: `aws`, `rclone`, `boto3` and the S3 node of n8n.
+* **v1 untouched**: its tests, unchanged, green at every step.
+
+#### 9.10.12 The steps
+
+| # | Step | What then works | Migration |
+|---|---|---|---|
+| 0 | Does anything use v2 today - `file_download.channel = 'API_V2'`, the audit trail, the logs | the decision of 9.10.1 | - |
+| 1 | The foundations of 9.10.10 | nothing visible; v2 and v1 as before | `key_path`, `md5` |
+| 2 | 9.11 - the kind of key, renewal, the replacement key | keys managed as below; S3 not yet selectable | 9.11's |
+| 3 | S3 keys (encrypted secret), Signature V4, the host name; `ListBuckets`, `HeadBucket`, `ListObjectsV2`, `GetObject`, `HeadObject`, XML errors | `aws s3 ls`, downloads with any S3 tool | the S3 key's secret, `bucket_name` |
+| 4 | `PutObject` with folder creation and versions, folder create and delete, `DeleteObject(s)`, `versionId`, the capabilities on the key page | **uploads from any S3 tool - the ERP workflow** | - |
+| 5 | Multipart upload | large files from any tool | - |
+| 6 | The old v2 retired, if step 0 found no user; `docs/api-v2.md` the S3 surface's manual | - | - |
+
+About four to six weeks in all; Signature V4 and the streamed bodies are most of it.
+
+#### 9.10.13 The ERP workflow on it
+
+An n8n schedule, every 30 minutes: the attachments the ERP has that are not yet in its sync table;
+for each, the S3 node, with a key that has `WRITE` on the folder `ERP` (the bucket `erp`) and may
+create folders:
+
+```http
+PUT /erp/P-1234/contracts/C-5678/A-99812-scan.pdf
+If-None-Match: *
+x-amz-meta-erp-attachment-id: 99812
+```
+
+* `P-1234` (the person's or company's code), `contracts`, `C-5678` (the document's) are created the
+  first time; the folders are named by **code**, which is unique, stable and directory-safe - the
+  people's names, which repeat and change, are labels (`x-amz-meta-display-name` on the folder's own
+  `PUT`);
+* the file's name carries the attachment's id, so two attachments called `scan.pdf` are two files;
+* `200` - filed, the version id written to the ERP's sync table; `412` - filed before, marked so;
+  `400 InvalidArgument` - refused (no extension, bytes that are not the type, a kind not allowed),
+  logged for a person to look at; `503` - tried again on the next run.
+
+Under a folder of thousands of people the explorer lists every subfolder at once (it pages files, not
+folders); grouping by a code range, or paging subfolders, is a decision to take before the first
+thousand.
+
+### 9.11 API key lifecycle: renewal, a replacement key, and the kind of key — planned
+
+**Where it stands (2.8.0).** A key stops working in three ways:
+
+| State | How | Reversible today |
+|---|---|---|
+| disabled (`enabled = 0`) | the on/off button | yes |
+| expired (`expires_at` passed) | its date | yes - the edit form changes the date, and `authenticate` reads only the date; nothing on the page says "expired" or offers to renew |
+| revoked (`revoked_at`) | revoke | **no, on purpose**: a key that may have leaked must stop being valid, not be parked where it can be switched back on |
+
+**What is added:**
+
+1. **Renew an expired key.** A "renew" action with a new date, and an "expired" state on the keys
+   page. The secret stays, so its client works again unchanged. Recorded (`RENEW API_KEY`). Safe:
+   expiry means time ran out, not that the key leaked.
+2. **A replacement for a revoked key - never the revoked key back.** A key is revoked because its
+   secret may be known to someone else; bringing that secret back would bring them back. So
+   "issue a replacement" makes **a new key with a new secret**, shown once, carrying over the
+   title, the description, the folder grants, the kind and the capabilities. The revoked key stays
+   revoked, for the history; `api_key.replaced_by_id` links the two, and the activity page of either
+   shows both. The client is given the new secret. Recorded (`REISSUE API_KEY`).
+3. **The kind of key, chosen when it is made and never changed**: `V1` - the `fmk_…` bearer of
+   `/api/v1` (its secret hashed, unrecoverable) - or `S3` - an access key id and a secret for the S3
+   surface (its secret encrypted, as Signature V4 needs). One cannot become the other: a v1 key's
+   secret no longer exists to encrypt. **Every existing key becomes `V1`** and keeps working where
+   it does today (v1, and the old v2 while it remains); from then on a `V1` key is accepted only on
+   `/api/v1`, an `S3` key only on the S3 surface. The `S3` choice is shown but not selectable until
+   9.10's step 3; its three capabilities - **may create folders**, **may delete files**, **may delete
+   folders** - appear on the form for an `S3` key only.
+4. **Optional, decided when it is built: rotation with an overlap.** A new secret for a key that has
+   not leaked, the old one still accepted until a chosen date (a week, say), so a client can change
+   it without a moment of failure - for keys changed on a schedule.
+
+Each action a permission of its own in the API keys group (`RENEW_API_KEY`, `REISSUE_API_KEY`),
+`@PreAuthorize`, recorded in `action_history`, logged by id. Migration: `api_key.kind` (`V1` for every
+existing row), `api_key.replaced_by_id`, the capability columns, and for rotation the second secret
+and its end. Tests: renewal brings an expired key back with its secret; a revoked key is never usable
+again and its replacement carries everything but the secret; a `V1` key refused on the S3 surface and
+the reverse; the kind unchangeable; existing keys unaffected. About two to three days.
 
 ---
 

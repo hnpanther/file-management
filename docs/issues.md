@@ -2118,6 +2118,26 @@ Fix, if it is ever seen: a larger pool first; then writing the bytes before the 
 recording the row after, with `file_storage_write` still settling a write the row never followed.
 Not changed: no such load is expected, and the atomicity is worth more.
 
+## Found while planning the S3-compatible v2 (2026-10-04)
+
+### 111. Write access on a folder lets its holder rename the folder itself — **S2**
+
+What is inside a folder is changed by whoever may write to that folder; the folder itself by whoever
+may write to its **parent** - `FolderService.delete` and `move` and `FolderTreeDeleteService.deleteTree`
+check the parent. `FolderService.rename` checks the folder itself
+(`requireWriteAccess(…, folder)`, `FolderService.java`). So someone granted `WRITE` on `/abc` - to
+file documents in it - cannot delete or move `abc`, but can rename it; and on a top-level folder,
+change its tag group, which retags every file beneath. A rename is a change to the parent's list of
+names, as a delete is.
+
+The rename also changes every key below the folder on the S3 surface (roadmap 9.10), so a grantee of
+a bucket's folder could rename what other integrations address.
+
+Fix: `rename` requires `WRITE` on the parent, as `delete` and `move` do (a top-level folder: on the
+root, which only ADMIN and an unrestricted reader hold); a test that a `WRITE` grant on a folder can
+rename what is inside it and not the folder. Not changed when found: it changes what grantees can do
+today, so it is a decision, taken with roadmap 9.10.
+
 ### What the review found nothing wrong in - and the test that now holds each
 
 * **Every endpoint states who may call it**: `@PreAuthorize` on every handler but seven that are
