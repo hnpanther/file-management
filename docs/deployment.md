@@ -2131,6 +2131,8 @@ estimated 2-6 s per A4 page in Persian on one core, a few hundred MB per Tessera
 sizes in the table are estimates until Phase 11's step 11.4 measures real scans on the real host;
 the arithmetic, the two-container layout and the backfill sizing are in
 [roadmap Phase 11, "Where Tika runs, and on what"](roadmap.md#where-tika-runs-and-on-what).
+To try Tika on real files before the application uses it: [deploy/tika](../deploy/tika/README.md) -
+the two containers, Persian OCR included.
 
 ### Why three hosts, not two
 
