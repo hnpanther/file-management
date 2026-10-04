@@ -1,22 +1,23 @@
-# Apache Tika for file-management - reading the text of documents, and OCR of images and scans in
-# Persian and English (roadmap Phase 11). The application does not use it yet: this is here to try
-# Tika on real files before 11.1 wires it in.
+# Apache Tika 4.1 for file-management - reading the text of documents, and OCR of images and scans
+# in Persian and English (roadmap Phase 11). The application does not use it yet: this is here to
+# try Tika on real files before 11.1 wires it in.
 #
 #   cp .env.example .env
-#   docker compose build            # the OCR image: the official one plus Persian
+#   docker compose build            # the official image plus Persian
 #   docker compose up -d
 #   ...then README.md, "Trying it".
 #
-# Two containers, one per lane of roadmap 11 ("Two Tika containers on the Tika host"):
+# Two containers of one image, one per lane of roadmap 11 ("Two Tika containers on the Tika host"):
 #
-#   tika-text   the official image, no Tesseract: Word, Excel, PowerPoint, OpenDocument, text
-#               PDFs. Light on CPU; memory is what an enormous spreadsheet needs.
-#   tika-ocr    the official "-full" image with Persian added (Dockerfile): images and scanned
-#               PDFs, through Tesseract, fas+eng. CPU-bound; one Tesseract thread per request
-#               (OMP_THREAD_LIMIT=1), the parallelism coming from concurrent requests.
+#   tika-text   OCR off (config/text.json): Word, Excel, PowerPoint, OpenDocument, text PDFs.
+#               Light on CPU; memory is what an enormous spreadsheet needs.
+#   tika-ocr    Tesseract, fas+eng (config/ocr.json): images and scanned PDFs, page by page.
+#               CPU-bound; one Tesseract thread per page (OMP_THREAD_LIMIT=1).
 #
 # Kept apart so a flood of OCR never slows the reading of plain documents, and a spreadsheet that
-# exhausts one container's memory does not kill the OCR in progress in the other.
+# exhausts one container's memory does not touch the OCR in progress in the other. Inside each,
+# Tika 4 parses in forked JVMs (Tika Pipes): a parser that crashes or runs out of memory takes its
+# fork down, not the server.
 #
 # tika-server has NO AUTHENTICATION: whoever reaches its port can have it parse anything. The ports
 # are on loopback unless TIKA_BIND says otherwise - and then only the application's host may be
@@ -25,9 +26,16 @@
 name: tika
 
 x-tika: &tika
+  build:
+    context: .
+    args:
+      TIKA_VERSION: ${TIKA_VERSION:-4.1.0-1}
+  image: file-management/tika:${TIKA_VERSION:-4.1.0-1}-fas
   restart: unless-stopped
   networks: [tika]
-  # Tika opens whatever people upload; a parser exploit should find nothing to work with.
+  # Tika opens whatever people upload; a parser exploit should find nothing to work with. Only
+  # /tmp is writable - a disk-backed volume, as Tika's documentation asks ("do not use tmpfs" for
+  # java.io.tmpdir): spooled bodies over 10 MB, rendered pages and unpacked attachments go there.
   read_only: true
   security_opt: ["no-new-privileges:true"]
   cap_drop: [ALL]
@@ -50,12 +58,10 @@ x-tika: &tika
 services:
   tika-text:
     <<: *tika
-    image: apache/tika:${TIKA_VERSION:-3.3.2.0}
-    command: ["-c", "/tika-config/tika-config.xml"]
+    command: ["-c", "/tika-config/tika-config.json"]
     volumes:
-      - ./config/text.xml:/tika-config/tika-config.xml:ro
-    tmpfs:
-      - /tmp:size=${TIKA_TEXT_TMP:-1g},uid=35002,gid=35002
+      - ./config/text.json:/tika-config/tika-config.json:ro
+      - text-tmp:/tmp
     ports:
       - "${TIKA_BIND:-127.0.0.1}:${TIKA_TEXT_PORT:-9998}:9998"
     cpus: ${TIKA_TEXT_CPUS:-2}
@@ -63,28 +69,26 @@ services:
 
   tika-ocr:
     <<: *tika
-    build:
-      context: .
-      args:
-        TIKA_VERSION: ${TIKA_VERSION:-3.3.2.0}
-    image: file-management/tika-ocr:${TIKA_VERSION:-3.3.2.0}-fas
-    command: ["-c", "/tika-config/tika-config.xml"]
+    command: ["-c", "/tika-config/tika-config.json"]
     environment:
       <<: *tika-env
       # One thread per Tesseract process: the cores are shared between concurrent pages, not
       # spread under one.
       OMP_THREAD_LIMIT: "1"
     volumes:
-      - ./config/ocr.xml:/tika-config/tika-config.xml:ro
+      - ./config/ocr.json:/tika-config/tika-config.json:ro
+      - ocr-tmp:/tmp
       # Optional, more accurate Persian (README.md, "A better Persian model"):
       # - ./tessdata/fas.traineddata:/usr/share/tesseract-ocr/5/tessdata/fas.traineddata:ro
-    tmpfs:
-      # A scanned page is rendered to an image here before Tesseract reads it.
-      - /tmp:size=${TIKA_OCR_TMP:-2g},uid=35002,gid=35002
     ports:
       - "${TIKA_BIND:-127.0.0.1}:${TIKA_OCR_PORT:-9999}:9998"
     cpus: ${TIKA_OCR_CPUS:-2}
     mem_limit: ${TIKA_OCR_MEMORY:-6g}
+
+volumes:
+  # Scratch only: emptied by recreating the container's volume, never backed up.
+  text-tmp: {}
+  ocr-tmp: {}
 
 networks:
   # Its own network: nothing here can reach the object store's or the application's containers.

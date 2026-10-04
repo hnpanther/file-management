@@ -1,0 +1,62 @@
+{
+  // The OCR lane (tika-ocr): images and scanned PDFs, Persian and English. Tika 4.1's JSON
+  // configuration - docs/modules/ROOT/pages/configuration/ in apache/tika at tag 4.1.0.
+
+  // Tesseract, configured once and named as the text recognizer: image-parser and pdf-parser
+  // call it on images and on rendered PDF pages; every other default parser stays loaded.
+  "engines": {
+    "tesseract": {
+      "tesseract-ocr-parser": {
+        // Persian first, English for what is mixed in. tesseract --list-langs must name both.
+        "language": "fas+eng",
+        // 1 = automatic page segmentation with orientation and script detection: scans are not
+        // always upright.
+        "pageSegMode": "1",
+        // One page's recognition, at most.
+        "timeoutMillis": 600000
+      }
+    }
+  },
+  "text-recognizers": [
+    { "engine": "tesseract" }
+  ],
+
+  "parse-context": {
+    // Page by page: a page with a usable text layer is read as text, one without (or with
+    // glyphs that map to nothing - a Persian font with no Unicode table) is rendered and OCR'd.
+    "pages": {
+      "text": "AUTO",
+      "render": { "dpi": 300 }
+    },
+    // A long scan takes time; a parse silent for two minutes is hung. An OCR call in progress
+    // counts as progress.
+    "timeout-limits": {
+      "totalTaskTimeoutMillis": 1800000,
+      "progressTimeoutMillis": 120000
+    }
+  },
+
+  // One forked parsing JVM: with the container's 2 CPUs, Tika's own sizing rule
+  // (numClients x 2 + 2 <= cores) allows one. More CPUs: raise both together.
+  "pipes": {
+    "numClients": 1
+  },
+
+  // The server's own section must be present, even with nothing in it ("Couldn't find 'server'
+  // element" otherwise). The port inside the container; the host's comes from compose.yaml.
+  // allowPipes and allowPerRequestConfig stay off: no /pipes, /async or /config endpoints.
+  "server": {
+    "port": 9998
+  },
+
+  // Named variants a request selects by path - /tika/preset/{name}/text - instead of the request
+  // headers 3.x had. Each replaces the "pages" block above for that request.
+  "presets": {
+    // Every page through OCR as well as its text layer: a stamp, a pasted scan on a text page.
+    "every-page": { "pages": { "text": "EXTRACT_AND_OCR", "render": { "dpi": 300 } } },
+    // The text layer only, no OCR: what the text lane does, on this container.
+    "text-layer-only": { "pages": { "text": "EXTRACT" } },
+    // OCR only, the text layer ignored: to measure OCR on a text PDF against its own text.
+    "ocr-only": { "pages": { "text": "OCR", "render": { "dpi": 300 } } }
+  }
+}
