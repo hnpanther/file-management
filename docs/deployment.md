@@ -2132,7 +2132,8 @@ sizes in the table are estimates until Phase 11's step 11.4 measures real scans 
 the arithmetic, the two-container layout and the backfill sizing are in
 [roadmap Phase 11, "Where Tika runs, and on what"](roadmap.md#where-tika-runs-and-on-what).
 To try Tika on real files before the application uses it: [deploy/tika](../deploy/tika/README.md) -
-the two containers, Persian OCR included.
+Tika 4.1, the two containers, Persian OCR included; tried on 2026-10-04 (its README has what it
+found - scans at about 2.5 s a page on 2 CPUs).
 
 ### Why three hosts, not two
 

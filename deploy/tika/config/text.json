@@ -1,0 +1,28 @@
+{
+  // The text lane (tika-text): documents with text in them - Word, Excel, PowerPoint,
+  // OpenDocument, RTF, text PDFs. Never OCR: a scanned page here yields no text and is the OCR
+  // lane's to read.
+
+  // An empty list is authoritative: no text recognizer, whatever is installed in the image.
+  "text-recognizers": [],
+
+  "parse-context": {
+    "pages": { "text": "EXTRACT" },
+    "timeout-limits": {
+      "totalTaskTimeoutMillis": 300000,
+      "progressTimeoutMillis": 120000
+    }
+  },
+
+  // See ocr.json: one forked parsing JVM for 2 CPUs.
+  "pipes": {
+    "numClients": 1
+  },
+
+  // The server's own section must be present, even with nothing in it ("Couldn't find 'server'
+  // element" otherwise). The port inside the container; the host's comes from compose.yaml.
+  // allowPipes and allowPerRequestConfig stay off: no /pipes, /async or /config endpoints.
+  "server": {
+    "port": 9998
+  }
+}

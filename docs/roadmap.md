@@ -2905,17 +2905,27 @@ folder access in the query itself, as every other search is.
   (a zip bomb, a PDF that loops) can take all the memory or never return. `tika-server` in forked
   mode restarts its own child, and the application only waits on an HTTP call with a timeout. The
   application keeps `tika-core` (detection) and gains no parser jar.
+* **Tika 4.x for the server - decided 2026-10-04.** 4.0 (2026-08) is a rewrite: configuration in
+  JSON (`tika-config.json`), Markdown the default output, the metadata keys renamed under `tk:`,
+  parsing always in forked JVMs (Tika Pipes - the isolation above, built in), OCR engines named in
+  `text-recognizers` (4.1), the 3.x per-request headers removed in favour of presets. 3.x is near
+  the end of its support; building 11 on it would mean migrating it soon after. The OCR itself is
+  Tesseract's either way. The application's `tika-core` (detection, `ContentTypes`) stays 3.x until
+  11.1 - the server is reached over HTTP, so the versions are independent - and moving it to 4.x
+  (its `Detector.detect` and `TikaInputStream` changed) is part of 11.1, with the detection tests.
 * **Tesseract lives inside the Tika image**, not on the application's host and not as a service:
-  Tika runs the `tesseract` binary as a local process. The official `apache/tika:<version>-full`
-  image has it, with a few European languages; Persian is added by a small image built on it
-  (`tesseract-ocr-fas`, or `fas.traineddata` from `tessdata_best` - more accurate, slower), at the
-  same Tika version as the application's `tika-core`. `tesseract --list-langs` inside it must name
-  `fas` and `eng`.
-* **The OCR settings travel with each request**, as `tika-server` headers - the text lane sends
-  "skip OCR" and the PDF strategy `no_ocr`; the OCR lane sends `fas+eng`, the strategy `auto` and a
-  timeout from the page count - so one Tika configuration serves both lanes, and a change of
-  language or strategy is an application setting, not a rebuilt image. (The exact header names are
-  checked against the version used, in 11.1.)
+  Tika runs the `tesseract` binary as a local process. The official `apache/tika:4.1.0-1-full`
+  image has it (Tesseract 5.5, Ubuntu 26.04), with a few European languages; Persian is added by a
+  small image built on it (`tesseract-ocr-fas`, or `fas.traineddata` from `tessdata_best` - more
+  accurate, slower). `tesseract --list-langs` inside it must name `fas` and `eng`. Built and checked
+  in `deploy/tika` (2026-10-04).
+* **The OCR settings are the server's, chosen by the request's path.** Tika 4 removed 3.x's
+  per-request headers (`X-Tika-OCRLanguage`, `X-Tika-PDFOcrStrategy`); each lane's container has its
+  own `tika-config.json` (the text lane `text-recognizers: []` and `pages.text: EXTRACT`, the OCR lane
+  Tesseract `fas+eng` and `AUTO`), and the variants a worker may ask for are **presets** named in it
+  (`/tika/preset/every-page/text`) - vetted once, never configured by a request
+  (`allowPerRequestConfig` off). A change of language or strategy is a change of that file and a
+  restart of the container, not a rebuilt image.
 * **Two Tika containers on the Tika host**: `tika-text` (the plain image, no Tesseract, two cores,
   a few GB) and `tika-ocr` (the image with Tesseract and Persian, the rest of the cores). A flood of
   OCR - the backfill - then never slows the reading of new documents, and an enormous spreadsheet
@@ -3095,7 +3105,7 @@ number of statements whatever the reader's grants (`ListQueryCountTest`).
 
 | Step | What | Schema | Depends on |
 |---|---|---|---|
-| 11.1 | (`deploy/tika` written ahead of it, 2026-10-04, to try Tika on real files: the two containers, the image with Persian, the two configurations - not yet run on Docker.) **The pipeline**: `file_content` and its states, the outbox row written with each revision, the workers in two lanes, `deploy/tika` (the two containers, the Persian image, `tika-config.xml`, a README like `deploy/seaweedfs`'s) and Tika in the suite (Testcontainers), the settings, a page of what failed with a retry | `V3.x` | - |
+| 11.1 | (`deploy/tika` written ahead of it and run on 2026-10-04: Tika 4.1, the two containers, the image with Persian, the two JSON configurations and their presets; text PDFs and Word read right, scans OCR'd at 2.3-2.5 s a page on 2 CPUs with most words right; the two Persian models compared - on clean pages equal at ~90% of words, on real scans `tessdata_best` 3-4 points better for ~30% more time, `fas+eng` kept over `fas` alone - the details in its README.) **The pipeline**: `file_content` and its states, the outbox row written with each revision, the workers in two lanes, `deploy/tika` (done ahead: the two containers, the Persian image, `tika-config.json` per lane, a README like `deploy/seaweedfs`'s), `tika-core` moved to 4.x and Tika in the suite (Testcontainers), the settings, a page of what failed with a retry | `V3.x` | - |
 | 11.2 | **Text documents**: PDF with a text layer, Word, PowerPoint, Excel, OpenDocument, RTF, text, HTML; page boundaries kept; the `tsvector`, its GIN index, "search in contents" on the file list, the explorer and API v1, a highlighted snippet per result with its page | (11.1's) | 11.1 |
 | 11.3 | **The backfill**: every existing revision queued, read at a set rate in the text lane, a report at the end - after Phase 4's copy, so every file is read once, from where it will stay | none | 11.2, 4.4 |
 | 11.4 | **OCR**: images and scanned PDFs, Persian and English, in the OCR lane, the two-pass PDF and the partial mark; **measured first** - pages a minute per core and the quality of Persian on a sample of real scans, on the real host - and switched on only if what it reads is worth the CPU. The Tika host sized from that measure | none | 11.2 |
