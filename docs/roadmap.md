@@ -851,7 +851,8 @@ top-level folder:
   caps how many there are;
 * access policy, encryption, versioning, lifecycle and backup are set once, on one bucket.
 
-**Every object's key is its row's `storage_key`, byte for byte** - `files/s000/123/report/v1/report.pdf`,
+**Every object's key is its row's `storage_key`, byte for byte** (still so after 12.5 and 12.6, which
+change what the rows hold, not this rule) - `files/s000/123/report/v1/report.pdf`,
 and the older layouts' keys as they are. So **no migration and no schema change**: the copy
 writes each object where the row already says it is, and switching the backend is a setting.
 An optional `filemanagement.storage.s3.prefix` puts the whole key space under a prefix, for a
@@ -3298,6 +3299,8 @@ Small things asked for once 2.7 was in use, each sized to ship on its own, none 
 | 12.2 | Metadata of a file, as JSON: sent with the upload, shown, edited, searched | `file_details.metadata jsonb` | 3-5 days |
 | 12.3 | Metadata of a folder, as JSON, completed on the web | `folder.metadata jsonb` | 3-4 days |
 | 12.4 | A folder of thousands of folders: every listing of folders paged in SQL | none expected | 4-6 days - **before the ERP workflow goes live** |
+| 12.5 | Storage keys that say nothing: a new revision stored under its id, not its title | none | 1-2 days - **first, before more files arrive** |
+| 12.6 | The existing revisions re-keyed the same way, on the filesystem, by a tool of its own | `legacy_storage_key` | 4-6 days, after 12.5 |
 
 ### 12.1 A page of locked sign-ins — **done (2.7.5)**
 
@@ -3572,6 +3575,113 @@ of the name (A-C, D-F, ...) for browsing without a term - decided after 1-4 are 
 folders only (a grant deep in the tree shows its ancestors, nothing beside them), pages that neither
 repeat nor skip under equal names of different case; the filter through its index; the grant form
 keeping grants it never displayed.
+
+### 12.5 Storage keys that say nothing: new revisions — planned, first
+
+> Decided 2026-10-05 ([issue 113](issues.md#113-a-revisions-storage-key-carries-its-title--s2)): the
+> key a revision's bytes are stored under - on the disk and in a bucket alike - **names nothing a
+> person wrote**. Today the directory is the file's id (`files/s001/1582/`, 1.5.0) but the last two
+> segments are its title, twice: `files/s001/1582/(لیست اشخاص) 1404-1405/v1/(لیست اشخاص) 1404-1405.xlsx`.
+
+**Why** - the title in the key:
+
+* **is read by whoever reads the storage or a backup of it**, without the database - the names of
+  people, companies and contracts the ERP workflow (9.10.13) files here, in every nightly copy;
+* **goes stale by design**: a rename never moves bytes (7.1), so the key keeps a title the file no
+  longer has, and misleads whoever reads it;
+* **brings the filesystem's and the tools' limits into the application's names**: 255 bytes per
+  segment on Linux (a Persian letter is two), Windows' path length, the zero-width non-joiner, two
+  Unicode forms of one letter, spaces and brackets through `tar`, `rclone` and backup scripts.
+
+**Not a hash of the content either.** Content addressing would share one object between equal files,
+and a delete would then need reference counting the whole-file delete, `StorageSweeper` and the
+storage copy do not have; the hash is known only once the upload is whole (a write elsewhere, then a
+move - on S3 a copy); and the gain on documents, rarely byte-identical, is small. The integrity it
+would give is `file_details.checksum_sha256`, which every revision already has.
+
+**The decision**: a new revision's key is
+
+```
+files/{shard}/{file id}/v{n}/{revision external id}.{ext}
+```
+
+`files/s001/1582/v1/6a6d244c-2d97-463a-b7dd-73546b1409ae.xlsx` - the extension kept (it tells an
+operator what the object is, and says nothing of whom), the title nowhere. `StorageLayout` writes it,
+as it writes the directory today; nothing else spells it.
+
+**What a client sees does not change** - a name is the database's, never the key's: a download is
+named from `file_details.file_name`; the S3 surface resolves `bucket/key` through the folder tree and
+the folded title (9.10); v1 through the ids. A storage key was never read to find a file, and is not
+now: an integration uploads `N8N/(لیست اشخاص) 1404-1405.xlsx` and downloads it by that key, whatever
+the bytes are stored under.
+
+**The trap, and the change it forces**: `FileService.directoryOf` finds a file's directory as the
+**third parent of a revision's key** - right for `{dir}/{title}/v{n}/{name.ext}`; for the shorter key
+above it is **the shard** (`files/s001`), and a whole-file delete would remove a thousand files'
+directory. So, with the new key and before it:
+
+1. a file's directory is `StorageLayout`'s to say, from the shape it recognises (each layout the
+   application ever wrote: the folder-named one before 1.4.0, 1.4.0's flat ids, the sharded one with
+   titles, this one) - no counting of parents anywhere;
+2. `deleteDirectory` on an id-based address is refused unless it is exactly `files/{shard}/{id}` of
+   that file - a guard in the one place that deletes a tree of bytes, tested with a key of each shape;
+3. **a new revision of an older file is written under its id directory in the new shape**, whatever
+   its first revision's layout - so one file may hold revisions of two shapes, and the whole-file
+   delete removes the id directory **and** each revision's own key (a no-op where the directory
+   already took it); the version delete removes the key, and its version directory once empty.
+
+`StorageSweeper` and the storage copy read keys from rows and are unchanged; the S3 backend stores
+under the same key (4.1). No migration: every row keeps the key its bytes were written under.
+
+**Tests**: the key of a new file and of a new version holds no part of the title (a Persian one with
+brackets and spaces); a rename changes no key; a whole-file delete of a file of each layout, and of
+one with revisions of two shapes, leaves nothing of it and every neighbour in its shard; the guard
+refuses a shard and another file's directory; both backends.
+
+### 12.6 The existing revisions re-keyed — planned, after 12.5
+
+> Decided 2026-10-05: production stays on the filesystem for a long time (the move to S3 was
+> postponed), so the revisions already stored are re-keyed **on the disk**, not at that move. Until
+> then every revision written before 12.5 keeps its title - or, before 1.4.0, the names of its folders
+> - in its path, in every backup.
+
+**The risk is the point of the design**: moving bytes is the most dangerous thing this application
+does - the row and the file cannot change in one transaction, and a stop between the two leaves a row
+naming bytes that are not there. So it is a **tool**, built and run like the storage copy (2.8.0,
+[storage-copy.md](storage-copy.md)), never a migration or a start-up step:
+
+* the same jar on a profile of its own (`--spring.profiles.active=storage-rekey`), run by an
+  operator, in a maintenance window, after a full backup of the database and the files;
+* **per revision, in this order**: compute the new key (12.5's, from the row - deterministic, so a
+  rerun computes the same); copy the bytes to it (a copy, not a move - the old ones stay); read them
+  back and compare with `checksum_sha256`; then, in one transaction, `storage_key` set to the new key
+  and the old one kept in `file_details.legacy_storage_key` (the one migration); then the old bytes
+  deleted. A stop anywhere leaves either the old key in the row and both copies on disk, or the new
+  key with the old copy still there - **never a row without its bytes**; a rerun finishes what was
+  begun;
+* a revision with no checksum, a size or a hash that does not match, or bytes missing is **not
+  touched** and reported - the checksum backfill is run first;
+* `--dry-run` lists what would move and what would be refused; a CSV of every revision and its
+  outcome, as the copy writes; a `verify` that reads every row's bytes at its key afterwards;
+* a rollback is the same tool reversed from `legacy_storage_key` while the old bytes are kept (an
+  option: delete the old copies only once `verify` has passed, in a second run);
+* the empty directories the old layouts leave (`{category}/{subCategory}/…`) removed at the end, and
+  only when empty.
+
+**What it costs to run**: the files' size once more on the disk while it runs (little, if each old
+copy goes as its revision is done; all of it, if the deletion is deferred to the second run), and
+**the next incremental backup sees every file as new** - a full copy's time and space, planned with
+the backup. The service can stay up if each revision is locked while it moves (a download in that
+moment reads either copy); the first run in production is made with it stopped.
+
+**When**: after 12.5 is in production - so nothing new is written in a shape about to be retired -
+and not before the ERP workflow is live with 12.4. Afterwards `StorageLayout` recognises the old
+shapes only for `legacy_storage_key`, and their code paths can go once a release has run without one.
+
+**Tests**: a tree of revisions of every layout re-keyed and every byte read back; a stop injected
+after each step and a rerun completing it; a damaged file refused and untouched; the dry run writes
+nothing; the reverse run restores every key; downloads, the history and the S3 surface the same
+before and after.
 
 ---
 
