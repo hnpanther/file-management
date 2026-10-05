@@ -2155,6 +2155,25 @@ tree that never drops a grant it did not show. Related: issue 109 (the v2 listin
 subtree). Not fixed when found (2026-10-05): it is a design for several screens, recorded for its
 phase.
 
+### 113. A revision's storage key carries its title — **S2**
+
+`FileService.newFileDetails` writes a revision's bytes under
+`{file directory}/{title}/v{n}/{title}.{ext}` - the directory is the file's id since 1.5.0
+(`StorageLayout`), but the title is in the key twice, and before 1.4.0 the folders' names were too.
+So the storage and every backup of it name the documents - people, companies, contracts - to whoever
+reads them without the database; the title in the key goes stale at the first rename (bytes never
+move); and the filesystem's limits (255 bytes per segment, a Persian letter being two) and its
+character troubles reach the names people type.
+
+Found with a second defect a careless fix would turn it into: `FileService.directoryOf` takes a
+file's directory as the **third parent** of a revision's key, so a shorter key would make the
+whole-file delete remove a whole shard.
+
+Fix: roadmap [12.5](roadmap.md#125-storage-keys-that-say-nothing-new-revisions--planned-first) (new
+revisions under their id, the directory said by `StorageLayout`, a guard on `deleteDirectory`) and
+[12.6](roadmap.md#126-the-existing-revisions-re-keyed--planned-after-125) (the existing ones moved by
+a tool, verified, resumable). Not fixed when found (2026-10-05).
+
 ### What the review found nothing wrong in - and the test that now holds each
 
 * **Every endpoint states who may call it**: `@PreAuthorize` on every handler but seven that are
