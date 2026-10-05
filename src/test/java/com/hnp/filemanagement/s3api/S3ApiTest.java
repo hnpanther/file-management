@@ -112,7 +112,8 @@ class S3ApiTest extends DatabaseSupport {
         // Recorded apart from the old v2, whose retirement this log is to decide (roadmap 9.10.12).
         downloadRecorder.flush();
         assertThat(jdbc.queryForList("SELECT d.channel FROM file_download d JOIN file_info f ON f.id = d.file_info_id"
-                + " WHERE f.folder_id = ?", String.class, chain.tag().getId())).isNotEmpty().containsOnly("S3");
+                + " WHERE f.folder_id = ?", String.class, chain.tag().getId()))
+                .as("the GET recorded, as S3; the HEAD not - it sent no bytes").containsExactly("S3");
 
         s3.deleteObject(r -> r.bucket(bucket).key(keyInChain("report.pdf")));
         assertThat(code(() -> s3.headObject(r -> r.bucket(bucket).key(keyInChain("report.pdf"))))).isEqualTo(404);

@@ -228,6 +228,19 @@ public class S3ObjectService {
      */
     @Transactional(readOnly = true)
     public FileDownloadDTO get(String bucket, String key, String versionId, int principalId) {
+        return fileService.downloadFile(resolve(bucket, key, versionId, principalId).getId(), principalId);
+    }
+
+    /**
+     * {@code HeadObject}: the revision a key names, from its row alone - the bytes are not opened (on
+     * the object store that would be a request for nothing) and nothing is recorded as a download.
+     */
+    @Transactional(readOnly = true)
+    public FileDetails head(String bucket, String key, String versionId, int principalId) {
+        return resolve(bucket, key, versionId, principalId);
+    }
+
+    private FileDetails resolve(String bucket, String key, String versionId, int principalId) {
         S3Key parsed = S3Key.parse(key);
         if (parsed.namesFolder()) {
             throw new NotFound(false, "a folder is not an object: " + key);
@@ -247,7 +260,7 @@ public class S3ObjectService {
                         : versionId.equals(details.getExternalId()))
                 .max(Comparator.comparingInt(FileDetails::getVersion).thenComparing(FileDetails::getId))
                 .orElseThrow(() -> new NotFound(false, "no such key: " + key));
-        return fileService.downloadFile(revision.getId(), principalId);
+        return revision;
     }
 
     /** The revision's own row - for the headers a GET or a HEAD answers with. */

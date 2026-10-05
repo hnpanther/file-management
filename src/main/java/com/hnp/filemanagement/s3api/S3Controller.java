@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.s3api;
 
+import com.hnp.filemanagement.file.domain.ContentTypes;
 import com.hnp.filemanagement.file.domain.DownloadChannel;
 import com.hnp.filemanagement.file.domain.FileDetails;
 import com.hnp.filemanagement.file.domain.FileDownloadDTO;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -36,8 +38,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
 
 /**
- * API v2, S3-compatible (roadmap 9.10): {@code PutObject}, {@code GetObject} (and {@code HeadObject},
- * which Spring serves from the same handler without the body), {@code DeleteObject}, and a folder
+ * API v2, S3-compatible (roadmap 9.10): {@code PutObject}, {@code GetObject}, {@code HeadObject},
+ * {@code DeleteObject}, the bucket requests clients ask first, and a folder
  * created or deleted by its {@code key/} - at {@code /s3/{bucket}/{key}}, path-style, authenticated
  * by {@link S3AuthenticationFilter} with an S3 key's Signature V4. What each does with the tree is
  * {@link S3ObjectService}'s; this reads the request and writes S3's answer.
@@ -129,8 +131,8 @@ public class S3Controller {
     }
 
     /**
-     * {@code GetObject}; {@code HeadObject} is this without the body. {@code Range} is Spring's. A
-     * request naming the bucket alone is a bucket's: {@link #bucket}.
+     * {@code GetObject}; {@code Range} is Spring's. A request naming the bucket alone is a bucket's:
+     * {@link #bucket}. A {@code HEAD} is {@link #head}'s, never this.
      */
     //API_KEY
     @PreAuthorize("hasAuthority('API_KEY') || hasAuthority('ADMIN')")
@@ -155,6 +157,35 @@ public class S3Controller {
                 .header("x-amz-version-id", revision.getExternalId())
                 .header("Accept-Ranges", "bytes")
                 .body(download.getResource());
+    }
+
+    /**
+     * {@code HeadObject} and {@code HeadBucket}, explicit rather than Spring's {@code HEAD} through the
+     * {@code GET}: that would open the bytes to discard them, and record a download that never was.
+     */
+    //API_KEY
+    @PreAuthorize("hasAuthority('API_KEY') || hasAuthority('ADMIN')")
+    @RequestMapping(value = "/{bucket}/{*key}", method = RequestMethod.HEAD)
+    public ResponseEntity<?> head(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                  @PathVariable("bucket") String bucket,
+                                  @PathVariable("key") String rawKey,
+                                  @RequestParam(value = "versionId", required = false) String versionId,
+                                  HttpServletRequest request) {
+        String key = keyOf(rawKey);
+        if (key.isEmpty()) {
+            return bucket(userDetails, bucket, request);
+        }
+        globalGeneralLogging.detail("s3 head bucket=" + bucket + ", key=" + key);
+        FileDetails revision = objectService.head(bucket, key, versionId, userDetails.getId());
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(ContentTypes.servedTypeFor(revision.getFileExtension())
+                        .orElse(MediaType.APPLICATION_OCTET_STREAM_VALUE)))
+                .contentLength(revision.getFileSize())
+                .eTag(eTagOf(revision.getChecksumSha256()))
+                .lastModified(revision.getCreatedAt())
+                .header("x-amz-version-id", revision.getExternalId())
+                .header("Accept-Ranges", "bytes")
+                .build();
     }
 
     /** {@code DeleteObject}: a file with every version, or an empty folder's {@code key/}. */
