@@ -2138,6 +2138,23 @@ root, which only ADMIN and an unrestricted reader hold); a test that a `WRITE` g
 rename what is inside it and not the folder. Not changed when found: it changes what grantees can do
 today, so it is a decision, taken with roadmap 9.10.
 
+### 112. Every listing of folders reads a whole level, or the whole tree — **S2**
+
+Files are paged wherever they are listed; folders are not. A level of folders is loaded whole, filtered
+by folder access in Java and rendered whole - the explorer (`FolderContentService.childFoldersOf`)
+and the tree page (`FileTreeService.folderNodes`) - and the folder-access tree of the role page and
+the API key page loads **every folder there is** (`RoleService.getFolderTree`,
+`FolderRepository.findAllByOrderByPathAsc`) as one `<select>` each. Harmless at today's hundreds;
+the ERP workflow of roadmap 9.10.13 creates a folder per person or company under one parent -
+thousands in one level, tens of thousands in the tree - and each of these pages then grows with
+it, the grant form to tens of thousands of controls.
+
+Fix: roadmap [12.4](roadmap.md#124-a-folder-of-thousands-of-folders--planned-before-the-erp-workflow-goes-live) -
+child folders paged in SQL with folder access in the query, a filter within a level, a lazy grant
+tree that never drops a grant it did not show. Related: issue 109 (the v2 listing reads a whole
+subtree). Not fixed when found (2026-10-05): it is a design for several screens, recorded for its
+phase.
+
 ### What the review found nothing wrong in - and the test that now holds each
 
 * **Every endpoint states who may call it**: `@PreAuthorize` on every handler but seven that are
