@@ -61,6 +61,10 @@ as v1's are.
 
 | Request | Does | Needs |
 |---|---|---|
+| `GET /s3/` | `ListBuckets`: the top-level folders the key can see | - |
+| `HEAD /s3/{bucket}` | `HeadBucket`: `200` with `x-amz-bucket-region`, or `404` | sight of the bucket |
+| `GET /s3/{bucket}?location` | `GetBucketLocation`: `us-east-1` (n8n's S3 node asks it before every operation) | sight of the bucket |
+| `GET /s3/{bucket}?versioning` | `GetBucketVersioning`: always `Enabled` | sight of the bucket |
 | `PUT /s3/{bucket}/{key}` | **upload**: a new file, or - when the folder already holds that title - **a new version of it** | `WRITE` on the folder |
 | … with `If-None-Match: *` | the same, but `412 PreconditionFailed` if the title is there | `WRITE` |
 | … whose folders do not exist | creates them, all or none, with the file | **may create folders** and `WRITE` on the deepest folder that exists |
@@ -110,6 +114,7 @@ S3's XML (`<Error><Code>…</Code><Message>…</Message><Resource>…</Resource>
 * **The `ETag` is not an MD5**: it is the first 32 hex digits of the revision's SHA-256 - stable while
   the object is, the same in an upload's answer and a download's. Clients that compare it with an
   MD5 they computed must not (the AWS SDKs validate with their own checksums instead).
-* **Not yet**: listing (`ListBuckets`, `ListObjectsV2`), `HeadBucket`, `DeleteObjects`, multipart
-  upload, `x-amz-meta-*`. A client that lists before it writes (`aws s3 sync`, `rclone sync`) does not
+* **Not yet**: `ListObjectsV2` (and the older `ListObjects`), `DeleteObjects`, multipart upload,
+  `x-amz-meta-*` - each answered `501 NotImplemented`, as are `CreateBucket` and `DeleteBucket`
+  (a bucket is a top-level folder, made and removed on the web). A client that lists before it writes (`aws s3 sync`, `rclone sync`) does not
   work yet; `cp`, `copyto`, `put`, `get` and `rm` do.
