@@ -262,6 +262,26 @@ class S3ApiTest extends DatabaseSupport {
         }
     }
 
+    @Test
+    @DisplayName("bucket requests: HeadBucket, GetBucketLocation (n8n asks it first), versioning on, ListBuckets by access; listing a 501")
+    void bucketRequests() {
+        S3Client s3 = client(key(false, false, false, "READ"));
+
+        s3.headBucket(r -> r.bucket(bucket));
+        assertThat(s3.getBucketLocation(r -> r.bucket(bucket)).locationConstraintAsString()).isEqualTo("us-east-1");
+        assertThat(s3.getBucketVersioning(r -> r.bucket(bucket)).statusAsString()).isEqualTo("Enabled");
+        assertThat(s3.listBuckets().buckets()).extracting(b -> b.name()).contains(bucket);
+        assertThat(code(() -> s3.listObjectsV2(r -> r.bucket(bucket)))).isEqualTo(501);
+        assertThat(code(() -> s3.createBucket(r -> r.bucket("made-by-a-key")))).isEqualTo(501);
+        assertThat(code(() -> s3.deleteBucket(r -> r.bucket(bucket)))).isEqualTo(501);
+        assertThat(folderRepository.findById(chain.category().getId())).as("the bucket's folder is still there").isPresent();
+
+        S3Client nobody = client(key(true, true, true, null));
+        assertThat(code(() -> nobody.headBucket(r -> r.bucket(bucket)))).isEqualTo(404);
+        assertThat(code(() -> nobody.getBucketLocation(r -> r.bucket(bucket)))).isEqualTo(404);
+        assertThat(nobody.listBuckets().buckets()).extracting(b -> b.name()).doesNotContain(bucket);
+    }
+
     // ---------------------------------------------------------------- helpers
 
     record Key(String accessKeyId, String secret) {

@@ -31,6 +31,8 @@ import java.io.InputStream;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
 
 /**
@@ -46,6 +48,13 @@ public class S3Controller {
 
     /** Where the surface is served; a host of its own maps onto it (roadmap 9.10.3). */
     public static final String MOUNT = "/s3";
+
+    /** The one region the surface answers as; a signature's own region is accepted whatever it is. */
+    static final String REGION = "us-east-1";
+    private static final String NAMESPACE = "http://s3.amazonaws.com/doc/2006-03-01/";
+    private static final String XML_DECLARATION = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
+    private static final DateTimeFormatter ISO_MILLIS =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC);
 
     private final S3ObjectService objectService;
     private final UploadPolicyService uploadPolicyService;
@@ -67,7 +76,7 @@ public class S3Controller {
     //API_KEY
     @PreAuthorize("hasAuthority('API_KEY') || hasAuthority('ADMIN')")
     @PutMapping("/{bucket}/{*key}")
-    public ResponseEntity<Void> put(@AuthenticationPrincipal UserDetailsImpl userDetails,
+    public ResponseEntity<?> put(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                     @PathVariable("bucket") String bucket,
                                     @PathVariable("key") String rawKey,
                                     @RequestHeader(value = HttpHeaders.CONTENT_TYPE, required = false) String contentType,
@@ -75,6 +84,10 @@ public class S3Controller {
                                     HttpServletRequest request) throws IOException {
         S3RequestContext context = context(request);
         String key = keyOf(rawKey);
+        if (key.isEmpty()) {
+            // CreateBucket: a bucket is a top-level folder, made on the web.
+            return notImplemented(request);
+        }
         if (key.endsWith("/")) {
             globalGeneralLogging.detail("s3 create folder bucket=" + bucket + ", key=" + key);
             objectService.createFolder(bucket, key, context.apiKey(), userDetails.getId());
@@ -96,15 +109,41 @@ public class S3Controller {
                 .build();
     }
 
-    /** {@code GetObject}; {@code HeadObject} is this without the body. {@code Range} is Spring's. */
+    /** {@code ListBuckets}: the top-level folders the key can see. */
+    //API_KEY
+    @PreAuthorize("hasAuthority('API_KEY') || hasAuthority('ADMIN')")
+    @GetMapping({"", "/"})
+    public ResponseEntity<String> listBuckets(@AuthenticationPrincipal UserDetailsImpl userDetails) {
+        globalGeneralLogging.detail("s3 list buckets");
+        StringBuilder xml = new StringBuilder(XML_DECLARATION)
+                .append("<ListAllMyBucketsResult xmlns=\"").append(NAMESPACE).append("\">")
+                .append("<Owner><ID>").append(userDetails.getId()).append("</ID><DisplayName>")
+                .append(S3Errors.xml(userDetails.getUsername())).append("</DisplayName></Owner><Buckets>");
+        for (S3ObjectService.Bucket bucket : objectService.buckets(userDetails.getId())) {
+            xml.append("<Bucket><Name>").append(S3Errors.xml(bucket.name())).append("</Name><CreationDate>")
+                    .append(bucket.createdAt() == null ? "" : ISO_MILLIS.format(bucket.createdAt()))
+                    .append("</CreationDate></Bucket>");
+        }
+        xml.append("</Buckets></ListAllMyBucketsResult>");
+        return xmlOk(xml.toString());
+    }
+
+    /**
+     * {@code GetObject}; {@code HeadObject} is this without the body. {@code Range} is Spring's. A
+     * request naming the bucket alone is a bucket's: {@link #bucket}.
+     */
     //API_KEY
     @PreAuthorize("hasAuthority('API_KEY') || hasAuthority('ADMIN')")
     @GetMapping("/{bucket}/{*key}")
-    public ResponseEntity<Resource> get(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                        @PathVariable("bucket") String bucket,
-                                        @PathVariable("key") String rawKey,
-                                        @RequestParam(value = "versionId", required = false) String versionId) {
+    public ResponseEntity<?> get(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                 @PathVariable("bucket") String bucket,
+                                 @PathVariable("key") String rawKey,
+                                 @RequestParam(value = "versionId", required = false) String versionId,
+                                 HttpServletRequest request) {
         String key = keyOf(rawKey);
+        if (key.isEmpty()) {
+            return bucket(userDetails, bucket, request);
+        }
         globalGeneralLogging.detail("s3 get bucket=" + bucket + ", key=" + key);
         FileDownloadDTO download = objectService.get(bucket, key, versionId, userDetails.getId());
         FileDetails revision = objectService.revision(download.getFileDetailsId());
@@ -122,14 +161,56 @@ public class S3Controller {
     //API_KEY
     @PreAuthorize("hasAuthority('API_KEY') || hasAuthority('ADMIN')")
     @DeleteMapping("/{bucket}/{*key}")
-    public ResponseEntity<Void> delete(@AuthenticationPrincipal UserDetailsImpl userDetails,
+    public ResponseEntity<?> delete(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                        @PathVariable("bucket") String bucket,
                                        @PathVariable("key") String rawKey,
                                        HttpServletRequest request) {
         String key = keyOf(rawKey);
+        if (key.isEmpty()) {
+            // DeleteBucket: never through a key.
+            return notImplemented(request);
+        }
         globalGeneralLogging.detail("s3 delete bucket=" + bucket + ", key=" + key);
         objectService.delete(bucket, key, context(request).apiKey(), userDetails.getId());
         return ResponseEntity.noContent().build();
+    }
+
+    // ---------------------------------------------------------------- a bucket
+
+    /**
+     * What a request naming only a bucket may ask: {@code HeadBucket} (a {@code HEAD}),
+     * {@code GetBucketLocation} ({@code ?location} - n8n's S3 node asks it before every operation),
+     * {@code GetBucketVersioning} ({@code ?versioning} - always on: a title written twice is a new
+     * version). The rest - listing first of all - is not served yet, and says so with S3's 501 rather
+     * than a misleading 400. A bucket the key cannot see is a 404, as for an object.
+     */
+    private ResponseEntity<String> bucket(UserDetailsImpl userDetails, String bucket, HttpServletRequest request) {
+        globalGeneralLogging.detail("s3 bucket request bucket=" + bucket + ", query=" + request.getQueryString());
+        objectService.requireBucket(bucket, userDetails.getId());
+        if ("HEAD".equals(request.getMethod())) {
+            return ResponseEntity.ok().header("x-amz-bucket-region", REGION).build();
+        }
+        if (request.getParameter("location") != null) {
+            // The region named rather than left empty (S3's form for us-east-1): n8n reads the
+            // element's text, and an empty one leaves it without a region.
+            return xmlOk(XML_DECLARATION + "<LocationConstraint xmlns=\"" + NAMESPACE + "\">" + REGION
+                    + "</LocationConstraint>");
+        }
+        if (request.getParameter("versioning") != null) {
+            return xmlOk(XML_DECLARATION + "<VersioningConfiguration xmlns=\"" + NAMESPACE
+                    + "\"><Status>Enabled</Status></VersioningConfiguration>");
+        }
+        return notImplemented(request);
+    }
+
+    private static ResponseEntity<String> notImplemented(HttpServletRequest request) {
+        S3Errors.Error error = S3Errors.Error.NOT_IMPLEMENTED;
+        return ResponseEntity.status(error.status()).contentType(MediaType.APPLICATION_XML)
+                .body(S3Errors.body(error, error.message(), request.getRequestURI()));
+    }
+
+    private static ResponseEntity<String> xmlOk(String body) {
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_XML).body(body);
     }
 
     // ---------------------------------------------------------------- the body

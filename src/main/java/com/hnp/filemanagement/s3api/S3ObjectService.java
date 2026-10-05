@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -253,6 +254,34 @@ public class S3ObjectService {
     @Transactional(readOnly = true)
     public FileDetails revision(int fileDetailsId) {
         return fileDetailsRepository.findById(fileDetailsId).orElseThrow();
+    }
+
+    // ---------------------------------------------------------------- buckets
+
+    /** A bucket as {@code ListBuckets} names it: its name, and when its folder was made. */
+    public record Bucket(String name, Instant createdAt) {
+    }
+
+    /**
+     * {@code HeadBucket} and {@code GetBucketLocation}: whether this key can see the bucket - a
+     * {@link NotFound} otherwise, the same for one that does not exist and one it may not see.
+     */
+    @Transactional(readOnly = true)
+    public void requireBucket(String bucket, int principalId) {
+        requireBucket(bucket, folderAccessService.accessFor(principalId));
+    }
+
+    /** {@code ListBuckets}: the top-level folders this key can see, by bucket name. */
+    @Transactional(readOnly = true)
+    public List<Bucket> buckets(int principalId) {
+        FolderAccess access = folderAccessService.accessFor(principalId);
+        return folderRepository.findRoots().stream().findFirst()
+                .map(root -> folderRepository.findByParentIdOrderByNameAsc(root.getId()).stream()
+                        .filter(candidate -> access.visible(candidate.getPath()))
+                        .map(candidate -> new Bucket(bucketName(candidate.getName()), candidate.getCreatedAt()))
+                        .sorted(Comparator.comparing(Bucket::name))
+                        .toList())
+                .orElse(List.of());
     }
 
     // ---------------------------------------------------------------- the tree

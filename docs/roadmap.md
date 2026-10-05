@@ -2310,7 +2310,12 @@ that can be switched off without a rebuild.
 > first 32 hex digits of the revision's SHA-256, not an MD5 (9.10.10 item 4); a folder is found by name
 > level by level through `uq_folder_sibling_name`, not by `key_path`.
 >
-> **Still to come**: `ListBuckets`, `HeadBucket`, `ListObjectsV2` (with `key_path`), `DeleteObjects`,
+> * **Bucket requests** (added after n8n's S3 node, tried by hand, asked `GetBucketLocation` before a
+>   download): `ListBuckets`, `HeadBucket`, `GetBucketLocation` (`us-east-1`, named rather than empty -
+>   n8n reads the element's text), `GetBucketVersioning` (`Enabled`); `CreateBucket`, `DeleteBucket` and
+>   every listing a `501 NotImplemented`.
+>
+> **Still to come**: `ListObjectsV2` (with `key_path`), `DeleteObjects`,
 > multipart upload (step 5), `x-amz-meta-*` (12.2 step 4), `folder.bucket_name`, two uploads creating
 > one path at once answered as one (today the second may fail on the unique name, and is retried by
 > the client), and 9.11's renewal and replacement key. Before a release is used by an integration:
