@@ -3609,6 +3609,20 @@ files/{shard}/{file id}/v{n}/{revision external id}.{ext}
 operator what the object is, and says nothing of whom), the title nowhere. `StorageLayout` writes it,
 as it writes the directory today; nothing else spells it.
 
+* **The extension, in lower case.** Kept because an object restored from a backup then opens by
+  itself, a storage with its database lost still holds documents that can be opened, and backup
+  rules, size reports and object browsers go by it; the application never reads it - the content
+  type and the download's name come from the row. It costs nothing: "this is a PDF" names no one;
+  only a catalogued kind is uploaded (1-16 letters or digits, nothing a browser would run), and its
+  bytes were checked against it. **Lower case** (`.pdf`, never `.PDF`): today the extension is taken
+  as typed (`FileService.getFileExtension`), so one store would hold both spellings; the download's
+  name keeps whatever the person typed - only the key is normalised.
+* **The revision's external id, not its number.** `v1/4821.pdf` would be shorter, but numbers come
+  back: a database restored from an older backup hands out again the ids used after that backup,
+  whose bytes are still in the store, and since a write never overwrites, the new upload would be
+  refused as a duplicate (ids were reused once already, issue 98). An external id is never handed out
+  twice; a file-id directory used again only holds two names that cannot collide.
+
 **What a client sees does not change** - a name is the database's, never the key's: a download is
 named from `file_details.file_name`; the S3 surface resolves `bucket/key` through the folder tree and
 the folded title (9.10); v1 through the ids. A storage key was never read to find a file, and is not
