@@ -3007,10 +3007,87 @@ Two things specific to Persian PDFs:
 * **A text PDF can read badly**: letters in reverse order, or as Arabic Presentation Forms (the
   joined shapes, `U+FE70`-`U+FEFF`), or - when the font has no Unicode map - as nothing readable.
   The first two are repaired by normalisation (NFKC, and the order put right); the third is what
-  `auto` catches as unmapped characters and sends to OCR. To be confirmed on real files in 11.4.
+  `auto` catches as unmapped characters and sends to OCR. **Measured on 2026-10-05: a fourth kind
+  neither catches** - letters moved across words, on a page `auto` takes for a sound one - and the
+  quality gate that does, in "A text layer that cannot be trusted" below.
 * **A page that has text and also an image of text** (a stamp, a pasted scanned table) is not
   recognised under `auto`, since the page has text. Recognising every page catches it, at the full
   cost of OCR on every page; `auto` is the default, the other a setting.
+
+### A text layer that cannot be trusted - measured 2026-10-05
+
+**What was tried.** Six files chosen as "a full-text search should find these easily" - a photo of a
+page, three scanned PDFs (1, 1 and 50 pages), two PDFs made from Word (4 and 39 pages) - through
+`deploy/tika` (Tika 4.1, Tesseract `fas+eng`, standard model, 2 CPUs), each scored by the share of
+its Persian words that are words of a 29,452-word lexicon taken from 150 text PDFs of the
+development data:
+
+| File | Its text | Read by | Time | Real words |
+|---|---|---|---|---|
+| photo (JPEG) | none | OCR | 7.4 s | 89.6% |
+| scan, 1 page | none | OCR | 5.6 s | 87.8% |
+| scan, 1 page | none | OCR | 3.4 s | 89.8% |
+| scan, 50 pages | none | OCR | 129 s - 2.6 s a page | 80.8% |
+| Word to PDF, 4 pages | a sound text layer | the text lane, no OCR | 0.2 s | 88.9% |
+| Word to PDF, 39 pages | **a text layer partly unreadable** | the text lane, no OCR (`AUTO` saw text) | 0.4 s | 90.0% |
+
+The first five behave as this phase planned. The sixth does not, in two ways `AUTO` cannot see:
+
+1. **Words scrambled in the text layer.** A whole paragraph extracted with its letters out of place -
+   `"یتیریمد شنهادیپ"نوشتار حاضر` for `نوشتار حاضر تحت عنوان "پیشنهاد مدیریتی"` - letters moved
+   across word boundaries, not merely a word reversed: neither normalisation (NFKC) nor reordering a
+   word repairs it. The page has plenty of characters, all of them mapped to Unicode, so `AUTO`
+   (`totalCharsPerPage`, `unmappedUnicodeCharsPerPage`) reads it as a good text page. The paragraphs
+   after it are sound - the fault is in how a stretch of the page was laid out by the program that
+   made the PDF.
+2. **Text inside images on text pages.** Most of its pages are dashboards and charts - images with a
+   title in text (120-150 characters a page): the text layer has the title, the image has the rest.
+   `AUTO` OCRs a page only when its text is poor; these pages have enough to pass.
+
+Read both ways, the same file:
+
+| | Distinct Persian words | `مدیریت`, `تصمیم`, `ریسک`, `تاثیر`, `پیشبرد`, `دستاوردهای` |
+|---|---|---|
+| The text layer alone | 748 | none found |
+| OCR of every page (`ocr-only`, 127 s for 39 pages) | 1,333 | all found |
+| **Both** | **1,546** | all found |
+
+**A search on the text layer alone misses about half of this document's words.** The OCR reads the
+scrambled paragraph right - `هدف از تهیه نوشتار حاضر تحت عنوان "پیشنهاد مدیریتی" فراهم نمودن اطلاعات
+جامع مدیریتی` - and the charts' labels; it has its own errors (English words in images come out as
+noise), so neither reading is the better one on its own: their union is what a search should index.
+
+**Decided (to build in 11.4): a quality gate per page, in the application.** OCR of every page of
+every PDF would cover this at 2.5 s a page for the whole archive - most of it spent on sound pages.
+Instead, after the text lane has read a PDF, page by page:
+
+1. **Score each page** of the text layer: its characters, and the share of its Persian words found in
+   the installation's **lexicon** (below).
+2. **A page fails** when its share of known words is under a threshold, or when it has little text
+   but contains images - both thresholds set in 11.4 from a labelled sample (the six files of
+   2026-10-05 among them; on this one the scrambled paragraph and the chart pages must fail, the
+   sound pages of the same file must pass).
+3. **A document with a failed page goes to the OCR lane**, read with `EXTRACT_AND_OCR` (the
+   `every-page` preset). Tika chooses pages by policy, not by number, so the whole document is OCR'd
+   - but only documents that failed somewhere, a small part of the archive. (Sending only the failed
+   pages - splitting the PDF in the application - is the alternative to weigh in 11.4 if failed
+   documents turn out long.)
+4. **What is indexed for a failed page is both readings**; for a sound page, the text layer alone.
+   `file_content` records, per page, which source it holds (`TEXT`, `OCR`, `BOTH`) and its score, so a
+   change of threshold can re-queue exactly the pages it affects, and the search's snippet comes
+   from the reading with the better score.
+
+**The lexicon** is the installation's own: the Persian words of documents whose text is
+trustworthy - Word, Excel, PowerPoint, OpenDocument, and PDF pages that passed - with how many
+documents each appears in, kept in a table (`content_lexicon`), grown as documents are read,
+folded as search keys fold (Arabic `ي`/`ك` to Persian, the half-space removed, digits to ASCII).
+Seeded from the first pass of the backfill (11.3) over those formats, before any PDF page is judged.
+Words in fewer than a few documents do not count as known, so one scrambled document cannot make
+its own nonsense look like words.
+
+What it costs: the score is a set lookup per word, nothing beside the parsing; the OCR is spent on
+documents that need it. What it does not do: correct a wrong word - a search for a word OCR misread
+still misses that page, as with any scan.
 
 ### Where Tika runs, and on what
 
@@ -3108,7 +3185,7 @@ number of statements whatever the reader's grants (`ListQueryCountTest`).
 | 11.1 | (`deploy/tika` written ahead of it and run on 2026-10-04: Tika 4.1, the two containers, the image with Persian, the two JSON configurations and their presets; text PDFs and Word read right, scans OCR'd at 2.3-2.5 s a page on 2 CPUs with most words right; the two Persian models compared - on clean pages equal at ~90% of words, on real scans `tessdata_best` 3-4 points better for ~30% more time, `fas+eng` kept over `fas` alone - the details in its README.) **The pipeline**: `file_content` and its states, the outbox row written with each revision, the workers in two lanes, `deploy/tika` (done ahead: the two containers, the Persian image, `tika-config.json` per lane, a README like `deploy/seaweedfs`'s), `tika-core` moved to 4.x and Tika in the suite (Testcontainers), the settings, a page of what failed with a retry | `V3.x` | - |
 | 11.2 | **Text documents**: PDF with a text layer, Word, PowerPoint, Excel, OpenDocument, RTF, text, HTML; page boundaries kept; the `tsvector`, its GIN index, "search in contents" on the file list, the explorer and API v1, a highlighted snippet per result with its page | (11.1's) | 11.1 |
 | 11.3 | **The backfill**: every existing revision queued, read at a set rate in the text lane, a report at the end - after Phase 4's copy, so every file is read once, from where it will stay | none | 11.2, 4.4 |
-| 11.4 | **OCR**: images and scanned PDFs, Persian and English, in the OCR lane, the two-pass PDF and the partial mark; **measured first** - pages a minute per core and the quality of Persian on a sample of real scans, on the real host - and switched on only if what it reads is worth the CPU. The Tika host sized from that measure | none | 11.2 |
+| 11.4 | **OCR**: images and scanned PDFs, Persian and English, in the OCR lane, the two-pass PDF and the partial mark; **the text layer's quality gate** - each page scored against the installation's lexicon, a document with a failed page read again with `EXTRACT_AND_OCR`, both readings indexed for a failed page ("A text layer that cannot be trusted"); **measured first** - pages a minute per core and the quality of Persian on a sample of real scans, on the real host - and switched on only if what it reads is worth the CPU. The Tika host sized from that measure | none | 11.2 |
 | 11.5 | **Drawings and diagrams**: first a sample of real drawings - which fonts their Persian is in (the SHX question); then DXF read directly, DWG through the converter, a mapping for each Persian SHX font found; Visio (`vsdx`, `vsd`) checked on real files | none | 11.2 |
 | 11.6 | **Only if needed**: OpenSearch behind `ContentSearch` - stems, typo tolerance, better ranking | none | 11.2 |
 

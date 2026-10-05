@@ -111,6 +111,7 @@ Save an answer to read it in an editor that shows Persian right to left: `curl .
 | A rendered page of Persian and English, OCR lane | with `fas+eng`: the English and most Persian right, but two Persian words read as Latin (`مبلغ` → `glo`, `ریال` → `JL)`); with `fas` alone every Persian word right and the English line garbage. Page segmentation `1` (the default here, for scans not always upright) dropped the first line of that synthetic page; `6` kept it |
 | The same scanned PDF, text lane or the `text-layer-only` preset | no text, as intended |
 | `rmeta` of a scanned PDF | `pdf:ocr-page-count = 1`, `pdf:chars-per-page = 0`, 4.x's `tk:` keys |
+| Six sample files (2026-10-05): a photo, three scans, two PDFs from Word | the photo and the scans OCR'd at 80-90% real words (50 pages in 129 s); one Word PDF's text layer **partly scrambled** (letters moved across words) and mostly charts - `AUTO` takes it for a sound text page; its text layer alone has 748 distinct words, with OCR of every page 1,546. The quality gate this calls for: roadmap 11, "A text layer that cannot be trusted" |
 
 What this means for roadmap 11.4:
 
