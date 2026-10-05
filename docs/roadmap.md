@@ -3291,6 +3291,8 @@ Small things asked for once 2.7 was in use, each sized to ship on its own, none 
 |---|---|---|---|
 | 12.1 | A page of locked sign-ins, to unlock one early | none | small - **done (2.7.5)** |
 | 12.2 | Metadata of a file, as JSON: sent with the upload, shown, edited, searched | `file_details.metadata jsonb` | 3-5 days |
+| 12.3 | Metadata of a folder, as JSON, completed on the web | `folder.metadata jsonb` | 3-4 days |
+| 12.4 | A folder of thousands of folders: every listing of folders paged in SQL | none expected | 4-6 days - **before the ERP workflow goes live** |
 
 ### 12.1 A page of locked sign-ins — **done (2.7.5)**
 
@@ -3500,6 +3502,71 @@ search does for its other sources (`SearchIndexTest` gains its cases).
 `WRITE`, on `ROOT`, `PROFILES` and another user's home; the history event with both documents and no
 value in the log; a folder created through the S3 surface listed in the queue until it is completed; a
 search scoped by folder access, through the index.
+
+### 12.4 A folder of thousands of folders — planned, before the ERP workflow goes live
+
+> Raised 2026-10-05: **one folder may hold thousands of folders** - the ERP workflow (9.10.13) makes
+> one under `ERP` per person or company, and there are thousands of them, each with its own
+> sub-folders. How such a level is shown, and how fast, has to be designed, not left to grow.
+> The defect as it stands today is [issue 112](issues.md#112-every-listing-of-folders-reads-a-whole-level-or-the-whole-tree--s2).
+
+**Where it bites today** (2.9.0) - files are paged everywhere (`PageRequests`), **folders nowhere**:
+
+| Where | What it does with a level of N folders |
+|---|---|
+| the explorer (`FolderContentService.childFoldersOf`) | loads all N, filters them by folder access in Java, counts what is under each with an `IN` of N ids, renders N rows |
+| the tree page (`FileTreeService.folderNodes`) | the same, sorted in Java, sent as one JSON array |
+| the folder-access tree of the role page and the API key page (`RoleService.getFolderTree`) | **the whole tree** (`findAllByOrderByPathAsc`), one `<select>` per folder - tens of thousands of controls in one form |
+| folder pickers (upload, move), the S3 surface's `ListObjectsV2` (9.10, issue 109) | to be checked when this is built; the same rule applies |
+
+The queries themselves hold up - `uq_folder_sibling_name` (`parent_id`, `upper(name)`) serves a
+level in name order, and an `IN` of 40,000 ids runs (2.7.4's review). What does not is loading,
+filtering and rendering all of a level on every visit, and a form of the whole tree.
+
+**The decisions:**
+
+1. **A level of folders is paged in SQL, like files**: ordered by `upper(name), id`, a page through
+   `PageRequests` (100 by default), with the level's total shown ("2,431 پوشه"). Folder access moves
+   into the query - a folder is listed if its path is under a granted path or above one - so a page
+   is a page of what the reader may see, not a page filtered afterwards to fewer rows. The counts
+   (folders and files under each) are taken for the page's ids only.
+2. **A filter within the level**: a box above the list that narrows it by name, served by the folded
+   `search_name` and its trigram index restricted to `parent_id` (CLAUDE.md's search rules, a case in
+   `SearchIndexTest`) - at thousands, finding `P-1234` is typed, not scrolled.
+3. **The explorer shows the folders and the files of a level as two paged lists**, folders first; a
+   level with no folders, or with a few, looks as it does now.
+4. **The tree page loads a level a page at a time**: "show more" at the end of a long level, and the
+   filter of 2; never the whole level in one array.
+5. **The folder-access tree becomes lazy**: the top levels, every folder that holds a grant and its
+   ancestors open, the rest expanded on demand (the tree page's endpoint), and a search to find a
+   folder to grant. **Saving must never drop a grant it did not show** - the form posts the grants it
+   changed against the ones it loaded, not "every select on the page"; a test grants under a folder
+   that was never expanded and checks the grant survives a save.
+6. **Pickers search instead of listing**: choosing a target folder (upload, move) is a search by name
+   within folder access, a page of results.
+7. **Measured, not assumed**: a generated tree - 20,000 folders under one parent, 100,000 in all -
+   in the test database; the first page of that level, the tree page's level and the grant form
+   each within a fixed number of statements (`ListQueryCountTest`) and timed against the development
+   database before and after.
+
+**Not decided yet**: whether a level that large is also given a grouping by the first characters
+of the name (A-C, D-F, ...) for browsing without a term - decided after 1-4 are in use; and whether
+`folder.child_count` is kept as a column (not needed while a grouped count over an index is fast).
+
+**The steps**
+
+| # | What | Size |
+|---|---|---|
+| 1 | The generated tree and the measurements; the statement-count tests, failing | 0.5 day |
+| 2 | Child folders paged in SQL with folder access in the query; counts per page; the explorer's two lists and its filter | 2 days |
+| 3 | The tree page paged by level, with "show more" and the filter | 1 day |
+| 4 | The lazy folder-access tree, saving only what changed | 1-2 days |
+| 5 | The pickers as searches; `ListObjectsV2` on the same query (with 9.10's `key_path`) | with 9.10's listing |
+
+**Tests.** Each listing at 20,000 children: constant statements, a page of the reader's visible
+folders only (a grant deep in the tree shows its ancestors, nothing beside them), pages that neither
+repeat nor skip under equal names of different case; the filter through its index; the grant form
+keeping grants it never displayed.
 
 ---
 
