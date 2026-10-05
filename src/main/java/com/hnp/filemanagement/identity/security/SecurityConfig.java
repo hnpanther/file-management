@@ -287,6 +287,31 @@ public class SecurityConfig {
      * <p>Writing the status with {@code setStatus} instead of {@code sendError} skips the error
      * dispatch entirely, so 401 stays 401.
      */
+    /**
+     * The S3-compatible surface (roadmap 9.10): {@code /s3/**}, authenticated by AWS Signature V4
+     * with an S3 key ({@code S3AuthenticationFilter}) and nothing else - no session, no CSRF (a
+     * signed request is its own proof), no Basic, no bearer. Refusals are S3's XML.
+     */
+    @Bean
+    @Order(0)
+    public SecurityFilterChain s3SecurityFilterChain(HttpSecurity httpSecurity, ApiKeyService apiKeyService,
+                                                     java.time.Clock clock) throws Exception {
+        return httpSecurity
+                .securityMatcher(com.hnp.filemanagement.s3api.S3Controller.MOUNT + "/**")
+                .csrf(csrf -> csrf.disable())
+                .cors(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                .addFilterBefore(new com.hnp.filemanagement.s3api.S3AuthenticationFilter(apiKeyService, clock,
+                        com.hnp.filemanagement.s3api.S3Controller.MOUNT), BasicAuthenticationFilter.class)
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint((request, response, e) -> com.hnp.filemanagement.s3api.S3Errors.write(
+                                response, com.hnp.filemanagement.s3api.S3Errors.Error.ACCESS_DENIED, request.getRequestURI()))
+                        .accessDeniedHandler((request, response, e) -> com.hnp.filemanagement.s3api.S3Errors.write(
+                                response, com.hnp.filemanagement.s3api.S3Errors.Error.ACCESS_DENIED, request.getRequestURI())))
+                .build();
+    }
+
     @Bean
     @Order(1)
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity httpSecurity, AuthenticationManager authenticationManager,

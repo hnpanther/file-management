@@ -10,6 +10,8 @@ import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.identity.domain.ApiKeyService;
 import com.hnp.filemanagement.identity.domain.RoleService;
 import com.hnp.filemanagement.shared.web.GlobalGeneralLogging;
+import com.hnp.filemanagement.shared.web.UiMessages;
+import com.hnp.filemanagement.identity.domain.ApiKeyKind;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -43,15 +45,18 @@ public class ApiKeyController {
     private final ApiKeyService apiKeyService;
     private final RoleService roleService;
     private final FileHistoryService fileHistoryService;
+    private final UiMessages messages;
 
     public ApiKeyController(GlobalGeneralLogging globalGeneralLogging,
                             ApiKeyService apiKeyService,
                             RoleService roleService,
-                            FileHistoryService fileHistoryService) {
+                            FileHistoryService fileHistoryService,
+                            UiMessages messages) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.apiKeyService = apiKeyService;
         this.roleService = roleService;
         this.fileHistoryService = fileHistoryService;
+        this.messages = messages;
     }
 
     /** Rows per page of a key's activity, as on the file history page. */
@@ -123,13 +128,15 @@ public class ApiKeyController {
         try {
             created = apiKeyService.create(apiKeyDTO, userDetails.getId());
         } catch (InvalidDataException e) {
-            prepareForm(model, apiKeyDTO, "create", true, false, e.getMessage());
+            prepareForm(model, apiKeyDTO, "create", true, false,
+                    e.getMessageCode().map(code -> messages.get(code, e.getMessageArguments())).orElse(e.getMessage()));
             return "api-key/save-api-key.html";
         }
 
         // The one and only render that carries the secret.
         model.addAttribute("apiKeys", apiKeyService.getAll());
         model.addAttribute("created", created);
+        model.addAttribute("createdS3", apiKeyDTO.getKind() == ApiKeyKind.S3);
         return "api-key/api-keys.html";
     }
 

@@ -274,6 +274,9 @@ FILEMANAGEMENT_PORT=8122
 # Only on the very first boot, to avoid hunting for the generated password in the log.
 FILEMANAGEMENT_BOOTSTRAP_ADMIN_PASSWORD=<a real password>
 
+# Only to make S3 keys (2.9.0) - see "The S3 keys' master key" below.
+# FILEMANAGEMENT_S3_SECRET_ENCRYPTION_KEY=<the output of: openssl rand -base64 32>
+
 # Uploads up to 1 GB, waiting on the data disk while they arrive - set all three.
 # See "Large uploads", and raise the proxy's limit with them.
 FILEMANAGEMENT_UPLOAD_MAX_FILE_SIZE=1GB
@@ -735,6 +738,62 @@ the `seeded 5 new permission(s)` line.
 
 **Rollback:** the 1.1.0 jar starts against the 1.2.0 database, since `V2.5` changed data and not
 structure - but the content types it rewrote stay rewritten, which is harmless.
+
+### The S3 keys' master key (2.9.0)
+
+An S3 key's secret cannot be stored as a hash, as a v1 key's is: Signature V4 needs the secret itself
+to check a request. So it is stored encrypted (AES-256-GCM), under one **master key** per
+installation, which is never in the database. Without it no S3 key can be made or used; v1 keys need
+none.
+
+**Make it once**, on any machine with OpenSSL (every Linux server has it; on Windows, Git Bash):
+
+```bash
+openssl rand -base64 32
+```
+
+The output - 44 characters, ending in `=`, for example `q3Jx…Vb0=` - is 32 random bytes in base64. It
+is the value; make it once per installation, never per key and never per upgrade.
+
+**Set it** - one of these, never in a file that is committed:
+
+* the environment file (section 2): `FILEMANAGEMENT_S3_SECRET_ENCRYPTION_KEY=<the value>`;
+* or the `application.properties` beside the jar:
+  `filemanagement.s3-api.secret-encryption-key=<the value>` (the same file, `chmod 640`, as the
+  database password).
+
+Restart. A wrong value - not base64, or not 32 bytes - stops the start with a message naming the
+setting; it never starts half-working.
+
+**Keep it** with the database's backups, apart from them (a password manager, a sealed note) - a
+database restored without it has S3 keys nobody can use. Lost or changed, every S3 key must be made
+again and its new secret given to its client: there is no re-encryption yet. The same value on a
+restored or a copied installation makes its S3 keys work there too.
+
+### Upgrading from 2.8.0 to 2.9.0 — S3 keys and the S3-compatible API
+
+A jar swap with **one migration, `V3.7`**: `api_key` gains its kind (`V1` for every existing key, which
+keeps working exactly where it did), an S3 key's encrypted secret and its three capabilities. API v1
+and the old v2 are unchanged. What is new is `/s3`, an S3-compatible surface
+([api-s3.md](api-s3.md)) that only an `S3` key reaches.
+
+**Nothing to set to keep the service as it was.** To make S3 keys, one value in the environment file
+(section 2), never in a file that is committed:
+
+```
+FILEMANAGEMENT_S3_SECRET_ENCRYPTION_KEY=<openssl rand -base64 32>
+```
+
+made and kept as [the S3 keys' master key](#the-s3-keys-master-key-290) says.
+
+**The proxy**: `/s3/**` is proxied like the rest; S3 clients are pointed at
+`https://files.example/s3` (path-style, region `us-east-1`). A host of its own
+(`s3.files.example` mapped onto `/s3/`) works too - the signature is checked against the path with or
+without `/s3`. The proxy must pass `Host`, the body and `Content-Encoding: aws-chunked` unchanged, and
+must not buffer a limit below the upload cap.
+
+**Rollback**: the 2.8.0 jar; `V3.7` stays (2.8.0 ignores its columns). S3 keys made under 2.9.0 are
+then unusable until 2.9.0 is back.
 
 ### Upgrading from 2.7.5 to 2.8.0 — the storage copy, inside the jar
 

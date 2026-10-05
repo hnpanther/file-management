@@ -41,6 +41,13 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.9.0 is written: **the first of the S3-compatible API** (9.10 steps 3-4 in part, 9.11's kind of
+key) - an API key is made `V1` or `S3`, an S3 key's secret kept encrypted under
+`FILEMANAGEMENT_S3_SECRET_ENCRYPTION_KEY`; at `/s3` Signature V4 (headers, pre-signed URLs, every
+streamed body form) and `PutObject` (a title already there a new version, `If-None-Match: *` a 412,
+missing folders created only by a key that may), `GetObject` / `HeadObject` (with `versionId`),
+`DeleteObject`, a folder created and deleted by its `key/` - driven in the tests by the AWS SDK
+itself. API v1, and the old v2, unchanged. What is still to come is listed under 9.10.
 2.8.0 is written: **the storage copy** (4.4, step 3 of 4.7) - the same jar with
 `--spring.profiles.active=storage-copy` copies every revision's bytes from the directory to the
 bucket or back, verifying each against its row's SHA-256 before it becomes visible, resumable, with
@@ -2274,7 +2281,40 @@ v2 operations work against a bucket with the version in the key; uploading is re
 grant is read-only; `/actuator/health` reflects the database; and the API documents itself at a URL
 that can be switched off without a rebuild.
 
-### 9.10 An S3-compatible mode — planned
+### 9.10 An S3-compatible mode — in progress (2.9.0: authentication, upload, download, delete)
+
+> **What 2.9.0 has** (2026-10-05), at `/s3` (`com.hnp.filemanagement.s3api`, the manual is
+> [api-s3.md](api-s3.md)):
+>
+> * **S3 keys** (9.11 item 3): the kind chosen on the key form, the three capabilities of 9.10.8 on
+>   it; the access key id (`FM` and 18 characters) and the secret (40) shown once; the secret
+>   AES-256-GCM-encrypted under `filemanagement.s3-api.secret-encryption-key`
+>   (`FILEMANAGEMENT_S3_SECRET_ENCRYPTION_KEY`), the key id its associated data. Migration `V3.7`.
+> * **Signature V4** (`SigV4`, `S3AuthenticationFilter`, a chain of its own): the `Authorization`
+>   header and pre-signed URLs (at most 7 days), 15 minutes of clock skew, `host` and
+>   `x-amz-content-sha256` required among the signed headers; a body whose hash was signed checked
+>   against it; `aws-chunked` bodies (`AwsChunkedInputStream`) in all three streamed forms, every
+>   chunk's signature chained from the seed and a trailer's checked, `crc32`/`crc32c`/`sha1`/`sha256`
+>   trailers compared with the bytes - all of it before anything is stored. The signed path is
+>   accepted with or without the `/s3` prefix, so a host of its own can map onto it. A `V1` key is
+>   refused here; an `S3` key is refused as a bearer.
+> * **The operations**: `PutObject` (9.10.5 and 9.10.6 as written - one transaction, a refused file
+>   takes the folders it made with it), `GetObject` / `HeadObject` (`versionId`, `ETag`,
+>   `Last-Modified`, the download recorded as `S3`, apart from the old v2's `API_V2`), `DeleteObject` (9.10.7), and a folder's
+>   `key/` by `PUT` and `DELETE`. Errors in S3's XML.
+> * **Tested** by the AWS SDK for Java v2 against the application (`S3ApiTest`), the decoder on AWS's
+>   own published example (`AwsChunkedInputStreamTest`), the cipher (`S3SecretCipherTest`).
+>
+> **Interim, until the rest of step 3**: a bucket is a top-level folder found by its name, lower-cased
+> with `_` read as `-` (`S3ObjectService.bucketName`) - not yet `folder.bucket_name`; the `ETag` is the
+> first 32 hex digits of the revision's SHA-256, not an MD5 (9.10.10 item 4); a folder is found by name
+> level by level through `uq_folder_sibling_name`, not by `key_path`.
+>
+> **Still to come**: `ListBuckets`, `HeadBucket`, `ListObjectsV2` (with `key_path`), `DeleteObjects`,
+> multipart upload (step 5), `x-amz-meta-*` (12.2 step 4), `folder.bucket_name`, two uploads creating
+> one path at once answered as one (today the second may fail on the unique name, and is retried by
+> the client), and 9.11's renewal and replacement key. Before a release is used by an integration:
+> `aws`, `rclone`, `boto3` and the S3 node of n8n by hand (9.10.11).
 
 > **Rewritten 2026-10-04**, replacing the plan of a third surface beside v2: **API v1 stays exactly
 > as it is; API v2 becomes S3-compatible** - so that standard S3 clients (the S3 node of n8n, `aws`,
@@ -2294,6 +2334,20 @@ that can be switched off without a rebuild.
   S3-*style*, not S3: no S3 client can talk to it (9.4). It is **replaced** by the S3-compatible
   surface - once step 0 below has shown nothing uses it; if something does, it is kept until that
   client has moved, and the two run side by side.
+* **The old v2 is removed only once the S3 surface is proven, never before** (decided 2026-10-05;
+  2.9.0 serves both, `/api/v2` and `/s3`). All of these, in this order:
+  1. the S3 surface **complete for its clients** - at least multipart upload, `ListObjectsV2`,
+     `HeadBucket`/`ListBuckets` (steps 3-5), so nothing that could use v2 is left without a way;
+  2. **tried by hand** with `aws`, `rclone`, `boto3` and the S3 node of n8n (9.10.11), and the ERP
+     workflow (9.10.13) running on it **in production for at least a month** without a fault
+     traced to the surface;
+  3. **nothing on v2 for that month**: no `file_download` row with `channel = 'API_V2'` (the S3
+     surface records `S3` since 2.9.0, so the two are told apart), no v2 request in the access log
+     or the audit trail, every key that used it moved to an S3 key;
+  4. then, in a release of its own: `ObjectStoreApi` and `ObjectStoreService` deleted with their
+     tests and their OpenAPI group, a request to `/api/v2/**` answered `410 Gone` for one release,
+     `API_V2` kept in `DownloadChannel` for the rows that hold it. If any condition fails, v2 stays
+     beside `/s3`, unchanged - running both costs nothing but the code.
 * **Folders stay real.** A folder here is a row with grants, tags, a label and a depth limit, not a
   prefix. The S3 surface is a view of the tree; nothing about the tree, the storage keys or the
   bytes changes for it.
@@ -2542,7 +2596,7 @@ differently.
 | 3 | S3 keys (encrypted secret), Signature V4, the host name; `ListBuckets`, `HeadBucket`, `ListObjectsV2`, `GetObject`, `HeadObject`, XML errors | `aws s3 ls`, downloads with any S3 tool | the S3 key's secret, `bucket_name` |
 | 4 | `PutObject` with folder creation and versions, folder create and delete, `DeleteObject(s)`, `versionId`, the capabilities on the key page | **uploads from any S3 tool - the ERP workflow** | - |
 | 5 | Multipart upload | large files from any tool | - |
-| 6 | The old v2 retired, if step 0 found no user; `docs/api-v2.md` the S3 surface's manual | - | - |
+| 6 | The old v2 retired - only when every condition of 9.10.1 holds (the S3 surface complete, proven in production a month, no `API_V2` download that month); the S3 surface's manual is `docs/api-s3.md` (2.9.0) | - | - |
 
 About four to six weeks in all; Signature V4 and the streamed bodies are most of it.
 
@@ -2571,7 +2625,11 @@ Under a folder of thousands of people the explorer lists every subfolder at once
 folders); grouping by a code range, or paging subfolders, is a decision to take before the first
 thousand.
 
-### 9.11 API key lifecycle: renewal, a replacement key, and the kind of key — planned
+### 9.11 API key lifecycle: renewal, a replacement key, and the kind of key — in progress (2.9.0: the kind of key)
+
+> **2.9.0 built item 3**: `api_key.kind` (`V1` for every existing row, never changed after), the
+> encrypted secret of an `S3` key, and its three capabilities, edited on the key form like its
+> folders. Items 1 (renew), 2 (replacement) and 4 (rotation) are still to come.
 
 **Where it stands (2.8.0).** A key stops working in three ways:
 
@@ -3386,6 +3444,62 @@ whichever comes first.
 version inheriting through v1 and not through S3; the history event with both documents; a value never
 in the log; a search found through the index, scoped by folder access, paged; the S3 headers both
 ways, a Persian value included.
+
+### 12.3 Metadata of a folder, as JSON, completed on the web — planned
+
+> Asked for on 2026-10-05, with the S3 surface: **a folder may carry a JSON document of its own -
+> what a person knows about it that its name does not say - and it is filled in by a person on the
+> web**. The ERP workflow of 9.10.13 is the case: its upload creates `ERP/P-1234/` the first time a
+> person's document arrives, and someone then records on the folder who P-1234 is (name, national
+> code, the contract's dates, ...). The folder is made by a machine; its description by a person.
+
+**The decision: `folder.metadata jsonb`, the same document as 12.2's** - a JSON object, the same
+limits and the same validator (`filemanagement.metadata.*`), one code path for both. Not a table of
+key/value rows, for 12.2's reasons. Not inherited by what is below the folder, and not copied onto
+the files in it: a search that wants "the files of the folder whose `nationalCode` is X" finds the
+folder, then its files (below).
+
+**Completing it on the web.**
+
+* The folder's page shows the document as a table of keys and values, Persian values as they were
+  typed, and an "edit" that opens the same rows as a form: a key, a value, add a row, remove one; a
+  JSON view for the nested or the typed (a number, a boolean, a list), checked before it is saved.
+* **Who may**: a permission of its own, `EDIT_FOLDER_METADATA`, in the folders group, **and** `WRITE`
+  on the folder (`FolderAccessService.requireWriteAccess`) - the same pair 12.2 asks for a file. A
+  `USER_HOME` folder's by its user and the administrators only; `ROOT` and `PROFILES` take none.
+* **What is still to be completed**: a folder created by an upload (9.10.6) starts with none, and the
+  explorer marks a folder without one where its parent asks for one (below); a page lists them, newest
+  first, scoped by folder access - the queue of what the ERP's uploads left for a person to describe.
+* Every change recorded: `action_history` with the folder's id, `FOLDER_METADATA_CHANGED`, the
+  document before and after in the record - never in the log (12.2's rule: metadata may be personal).
+
+**A template, optional.** A folder may name the fields its child folders are to carry - a JSON Schema
+on `ERP` saying each person's folder has a `fullName` and a `nationalCode` - and the form then offers
+those fields, refuses a document that does not satisfy it, and the queue above lists the children that
+do not yet. The same schema machinery as 12.2's template and Phase 8's forms, built once.
+
+**Through the APIs.** Read on v1's folder answers and as `x-fm-folder-metadata` nowhere yet - S3 has no
+folder objects to carry it; set by a machine only if a later need says so (a `PUT` of `key/` with
+`x-amz-meta-*`, behind the key's **may create folders**). The web is where it is written.
+
+**Searching by it**: containment (`@>`) on a GIN index of `folder.metadata`, within the folders the
+reader may open; "files of the folders matching" a `UNION` of their ids into the file search, as 2.2.0's
+search does for its other sources (`SearchIndexTest` gains its cases).
+
+**The steps**
+
+| # | What | Size |
+|---|---|---|
+| 1 | The migration (`folder.metadata`, its GIN index); 12.2's validator shared | with 12.2's step 1 |
+| 2 | The folder page's table and form, the permission, the history | 1-2 days |
+| 3 | The queue of folders to complete; the marker in the explorer | 1 day |
+| 4 | Search by folder metadata | 1 day |
+| 5 | (optional) A template per folder for its children | with 12.2's step 5 |
+
+**Tests.** The limits refused and nothing stored; editing refused without the permission, without
+`WRITE`, on `ROOT`, `PROFILES` and another user's home; the history event with both documents and no
+value in the log; a folder created through the S3 surface listed in the queue until it is completed; a
+search scoped by folder access, through the index.
 
 ---
 

@@ -58,6 +58,44 @@
                 </div>
 
                 <!--
+                  The kind is chosen once, when the key is made (roadmap 9.11), and only shown after.
+                  The capabilities are an S3 key's alone - a V1 key ignores them - and are changed
+                  like its folders.
+                -->
+                <div class="form-group" th:if="${#strings.equals(pageType, 'create')}">
+                    <label class="control-label" for="kind" th:text="#{apiKey.field.kind}">نوع کلید</label>
+                    <select id="kind" class="form-control" th:field="*{kind}">
+                        <option value="V1" th:text="#{apiKey.kind.V1}">API نسخهٔ ۱</option>
+                        <option value="S3" th:text="#{apiKey.kind.S3}">سازگار با S3</option>
+                    </select>
+                    <p class="form-text" th:text="#{apiKey.field.kindHint}">نوع کلید بعداً تغییر نمی‌کند.</p>
+                </div>
+                <div class="form-group" th:unless="${#strings.equals(pageType, 'create')}">
+                    <span class="control-label" th:text="#{apiKey.field.kind}">نوع کلید</span>
+                    <p th:text="${apiKey.kind != null} ? #{'apiKey.kind.' + ${apiKey.kind}} : ''"></p>
+                </div>
+
+                <fieldset class="mt-6" th:if="${#strings.equals(pageType, 'create') or apiKey.kind?.name() == 'S3'}">
+                    <legend class="mb-1 text-base font-semibold text-ink-900"
+                            th:text="#{apiKey.field.capabilities}">توانایی‌های کلید S3</legend>
+                    <p class="mb-3 text-sm text-ink-500" th:text="#{apiKey.field.capabilitiesHint}">
+                        فقط برای کلید سازگار با S3.
+                    </p>
+                    <label class="flex items-center gap-2 mb-2">
+                        <input type="checkbox" th:field="*{mayCreateFolders}">
+                        <span th:text="#{apiKey.field.mayCreateFolders}">ساخت پوشه</span>
+                    </label>
+                    <label class="flex items-center gap-2 mb-2">
+                        <input type="checkbox" th:field="*{mayDeleteFiles}">
+                        <span th:text="#{apiKey.field.mayDeleteFiles}">حذف فایل</span>
+                    </label>
+                    <label class="flex items-center gap-2 mb-2">
+                        <input type="checkbox" th:field="*{mayDeleteFolders}">
+                        <span th:text="#{apiKey.field.mayDeleteFolders}">حذف پوشهٔ خالی</span>
+                    </label>
+                </fieldset>
+
+                <!--
                   Same control, same encoding and same service method as the role page: a folder is
                   set to no access, read, or read and write, and a grant covers everything beneath
                   the folder it names.

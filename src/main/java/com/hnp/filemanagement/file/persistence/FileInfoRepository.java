@@ -259,6 +259,18 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
      */
     boolean existsByFolderIdAndSearchName(int folderId, String searchName);
 
+    /** Whether a folder holds any file - the S3 surface deletes an empty folder only. */
+    boolean existsByFolderId(int folderId);
+
+    /**
+     * The file a folder holds under a name that folds to this key - the S3 surface's "a title
+     * already there is a new version" (roadmap 9.10.5), compared exactly as the duplicate check
+     * above compares, so a name it would refuse as a duplicate is found here as the same file.
+     */
+    @Query("SELECT f FROM FileInfo f LEFT JOIN FETCH f.fileDetailsList WHERE f.folder.id = :folderId AND f.searchName = :searchName")
+    Optional<FileInfo> findByFolderIdAndSearchNameWithDetails(@Param("folderId") int folderId,
+                                                              @Param("searchName") String searchName);
+
     /** The number of the file a client named by its external id ({@code external_id}, V2.16). */
     @Query("SELECT f.id FROM FileInfo f WHERE f.externalId = :externalId")
     Optional<Integer> findIdByExternalId(@Param("externalId") String externalId);

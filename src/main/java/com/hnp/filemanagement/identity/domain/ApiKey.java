@@ -4,6 +4,8 @@ import com.hnp.filemanagement.folder.domain.ApiKeyFolderGrant;
 import com.hnp.filemanagement.shared.domain.AuditableEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.OneToMany;
@@ -68,6 +70,27 @@ public class ApiKey extends AuditableEntity {
 
     @Column(name = "last_used_at")
     private Instant lastUsedAt;
+
+    /** V1 or S3, fixed at creation (roadmap 9.11). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kind", nullable = false, length = 10, updatable = false)
+    private ApiKeyKind kind = ApiKeyKind.V1;
+
+    /** An S3 key's secret, encrypted ({@code S3SecretCipher}); null for a V1 key. */
+    @Column(name = "secret_encrypted", length = 200, updatable = false)
+    private String secretEncrypted;
+
+    /** May the key create the folders an upload's key names, or a folder on its own (roadmap 9.10.6). */
+    @Column(name = "may_create_folders", nullable = false)
+    private boolean mayCreateFolders;
+
+    /** May the key delete a file - every version of it - or one version (roadmap 9.10.7). */
+    @Column(name = "may_delete_files", nullable = false)
+    private boolean mayDeleteFiles;
+
+    /** May the key delete a folder - an empty one (roadmap 9.10.7). */
+    @Column(name = "may_delete_folders", nullable = false)
+    private boolean mayDeleteFolders;
 
     /**
      * The folders this key reaches and what it may do there — the same inheritance as a role's

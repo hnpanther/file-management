@@ -635,7 +635,14 @@ the folder from environment variables and never holds a credential in the file.
 
 ### Three filter chains
 
-`SecurityConfig` publishes three `SecurityFilterChain` beans:
+`SecurityConfig` publishes three `SecurityFilterChain` beans, and a fourth for the S3 surface:
+
+* **`@Order(0)` `s3SecurityFilterChain`** (2.9.0) — `securityMatcher("/s3/**")`, stateless, CSRF and
+  CORS off, nothing but `S3AuthenticationFilter`: AWS Signature V4 in the `Authorization` header or a
+  pre-signed URL, checked against an `S3` key's secret (`ApiKeyService.s3Credential`, decrypted by
+  `S3SecretCipher`); on success a principal like a bearer key's - its creator, the key's id beside
+  them, the `API_KEY` authority. Refusals, the filter's and the chain's, are S3's XML (`S3Errors`).
+  What it serves, and how, is [api-s3.md](api-s3.md).
 
 * **`@Order(0)` `actuatorSecurityFilterChain`** — `securityMatcher("/actuator/**")`, stateless,
   permits `/actuator/health`, `/actuator/health/**` and `/actuator/info` and refuses everything else
