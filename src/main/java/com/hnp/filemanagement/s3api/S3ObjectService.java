@@ -22,6 +22,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -166,7 +170,9 @@ public class S3ObjectService {
             request.setVersion(file.getLastVersion() + 1);
             request.setType("version");
             request.setFileDetailsDescription(parsed.objectName());
-            request.setMultipartFile(body);
+            // Found by its folded name - case, ي/ی, Persian digits aside - but a version carries the
+            // file's own name exactly (FileService refuses another spelling), so it is given that.
+            request.setMultipartFile(new Renamed(body, file.getFileName() + "." + extensionOf(parsed.objectName())));
             fileService.createNewFileDetails(request, principalId);
         }
 
@@ -267,6 +273,55 @@ public class S3ObjectService {
     @Transactional(readOnly = true)
     public FileDetails revision(int fileDetailsId) {
         return fileDetailsRepository.findById(fileDetailsId).orElseThrow();
+    }
+
+    /** An upload under another name - the stored file's spelling of the key's title. */
+    private record Renamed(MultipartFile body, String originalFilename) implements MultipartFile {
+
+        @Override
+        public String getName() {
+            return body.getName();
+        }
+
+        @Override
+        public String getOriginalFilename() {
+            return originalFilename;
+        }
+
+        @Override
+        public String getContentType() {
+            return body.getContentType();
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return body.isEmpty();
+        }
+
+        @Override
+        public long getSize() {
+            return body.getSize();
+        }
+
+        @Override
+        public byte[] getBytes() throws IOException {
+            return body.getBytes();
+        }
+
+        @Override
+        public InputStream getInputStream() throws IOException {
+            return body.getInputStream();
+        }
+
+        @Override
+        public void transferTo(File destination) throws IOException {
+            body.transferTo(destination);
+        }
+
+        @Override
+        public void transferTo(Path destination) throws IOException {
+            body.transferTo(destination);
+        }
     }
 
     // ---------------------------------------------------------------- buckets
