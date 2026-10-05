@@ -145,6 +145,20 @@ class S3ApiTest extends DatabaseSupport {
     }
 
     @Test
+    @DisplayName("a title spelled otherwise - case, Arabic ي, Persian digits - is the same file's next version, under its own name")
+    void aTitleSpelledOtherwise() {
+        S3Client s3 = client(key(false, false, false, "WRITE"));
+        s3.putObject(r -> r.bucket(bucket).key(keyInChain("(لیست اشخاص) 1404-1405.pdf")), RequestBody.fromBytes(pdf(500, 13)));
+        s3.putObject(r -> r.bucket(bucket).key(keyInChain("(ليست اشخاص) ۱۴۰۴-۱۴۰۵.pdf")), RequestBody.fromBytes(pdf(500, 14)));
+        s3.putObject(r -> r.bucket(bucket).key(keyInChain("(لیست اشخاص) 1404-1405.PDF")), RequestBody.fromBytes(pdf(500, 15)));
+
+        assertThat(jdbc.queryForList("SELECT file_name || ':' || last_version FROM file_info WHERE folder_id = ?",
+                String.class, chain.tag().getId())).containsExactly("(لیست اشخاص) 1404-1405:3");
+        assertThat(s3.getObjectAsBytes(r -> r.bucket(bucket).key(keyInChain("(ليست اشخاص) ۱۴۰۴-۱۴۰۵.pdf"))).asByteArray())
+                .isEqualTo(pdf(500, 15));
+    }
+
+    @Test
     @DisplayName("missing folders are created only for a key that may - and a refused file takes the new folders back")
     void foldersCreatedOnlyIfTheKeyMay() {
         int before = folderCount();
