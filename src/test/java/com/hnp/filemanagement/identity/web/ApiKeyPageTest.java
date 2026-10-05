@@ -1,7 +1,9 @@
 package com.hnp.filemanagement.identity.web;
 
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
+import com.hnp.filemanagement.identity.domain.ApiKey;
 import com.hnp.filemanagement.identity.domain.ApiKeyDTO;
+import com.hnp.filemanagement.identity.domain.ApiKeyKind;
 import com.hnp.filemanagement.identity.domain.PermissionEnum;
 import com.hnp.filemanagement.identity.persistence.ApiKeyRepository;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
@@ -211,6 +213,82 @@ class ApiKeyPageTest extends DatabaseSupport {
 
         mockMvc.perform(get("/api/v1/files/health-test")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + created.credential()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ---------------------------------------------------------------- S3 keys (roadmap 9.10-9.11)
+
+    @Test
+    @DisplayName("an S3 key from the form: its two values shown apart, its capabilities kept, its kind in the list")
+    void anS3KeyFromTheForm() throws Exception {
+        String title = "erp s3 " + TestData.nextSequence();
+        String page = mockMvc.perform(post("/api-keys")
+                        .param("title", title)
+                        .param("kind", "S3")
+                        .param("mayCreateFolders", "true")
+                        .param("folderGrants", rootFolderId + ":WRITE")
+                        .with(user(principal(PermissionEnum.SAVE_NEW_API_KEY)))
+                        .with(csrf())
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString("Secret Access Key")))
+                .andExpect(content().string(Matchers.not(Matchers.containsString("Bearer fmk_"))))
+                .andReturn().getResponse().getContentAsString();
+
+        ApiKey key = apiKeyRepository.findAll().stream().filter(k -> k.getTitle().equals(title)).findFirst().orElseThrow();
+        assertThat(key.getKind()).isEqualTo(ApiKeyKind.S3);
+        assertThat(key.isMayCreateFolders()).isTrue();
+        assertThat(key.isMayDeleteFiles()).isFalse();
+        assertThat(page).contains(key.getKeyId());
+        String secret = apiKeyService.s3Credential(key.getKeyId()).orElseThrow().secret();
+        assertThat(page).contains(secret);
+        assertThat(key.getSecretEncrypted()).doesNotContain(secret);
+
+        mockMvc.perform(get("/api-keys")
+                        .with(user(principal(PermissionEnum.GET_ALL_API_KEY_PAGE)))
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(content().string(Matchers.not(Matchers.containsString(secret))))
+                .andExpect(content().string(Matchers.containsString("سازگار با S3")));
+    }
+
+    @Test
+    @DisplayName("editing an S3 key changes its capabilities, never its kind; a V1 key takes none")
+    void editingCapabilities() throws Exception {
+        ApiKeyDTO s3Request = request("s3 edit");
+        s3Request.setKind(ApiKeyKind.S3);
+        s3Request.setMayDeleteFiles(true);
+        int s3Id = apiKeyService.create(s3Request, principalId).id();
+        int v1Id = apiKeyService.create(request("v1 edit"), principalId).id();
+
+        for (int id : new int[]{s3Id, v1Id}) {
+            mockMvc.perform(post("/api-keys/{id}", id)
+                            .param("title", "edited " + id)
+                            .param("kind", id == s3Id ? "V1" : "S3")
+                            .param("mayCreateFolders", "true")
+                            .with(user(principal(PermissionEnum.SAVE_UPDATED_API_KEY)))
+                            .with(csrf())
+                            .accept(MediaType.TEXT_HTML))
+                    .andExpect(status().isOk());
+        }
+
+        ApiKey s3 = apiKeyRepository.findById(s3Id).orElseThrow();
+        assertThat(s3.getKind()).isEqualTo(ApiKeyKind.S3);
+        assertThat(s3.isMayCreateFolders()).isTrue();
+        assertThat(s3.isMayDeleteFiles()).as("unchecked on the form").isFalse();
+        ApiKey v1 = apiKeyRepository.findById(v1Id).orElseThrow();
+        assertThat(v1.getKind()).isEqualTo(ApiKeyKind.V1);
+        assertThat(v1.isMayCreateFolders()).isFalse();
+    }
+
+    @Test
+    @DisplayName("an S3 key is never a bearer on v1, though its secret is right")
+    void anS3KeyIsNoBearer() throws Exception {
+        ApiKeyDTO s3Request = request("s3 bearer");
+        s3Request.setKind(ApiKeyKind.S3);
+        var created = apiKeyService.create(s3Request, principalId);
+
+        mockMvc.perform(get("/api/v1/files/health-test")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer fmk_" + created.keyId() + "_" + created.credential()))
                 .andExpect(status().isUnauthorized());
     }
 

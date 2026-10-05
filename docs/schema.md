@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.6`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.7`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -155,6 +155,11 @@ _As of migration `V3.6`. Types and defaults are PostgreSQL's own; every table is
 | `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | no |  |  |
 | `updated_by` | `integer` | yes |  |  |
+| `kind` | `varchar(10)` | no | `V1` |  |
+| `secret_encrypted` | `varchar(200)` | yes |  |  |
+| `may_create_folders` | `boolean` | no | `false` |  |
+| `may_delete_files` | `boolean` | no | `false` |  |
+| `may_delete_folders` | `boolean` | no | `false` |  |
 
 * **primary key** `id`
 * **unique** `uq_api_key_key_id` (`key_id`)

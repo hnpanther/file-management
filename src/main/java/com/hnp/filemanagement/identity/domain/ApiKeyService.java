@@ -77,18 +77,32 @@ public class ApiKeyService {
     private final FolderRepository folderRepository;
     private final UserRepository userRepository;
     private final ActionHistoryService actionHistoryService;
+    private final S3SecretCipher s3SecretCipher;
     private final Clock clock;
 
     public ApiKeyService(ApiKeyRepository apiKeyRepository,
                          FolderRepository folderRepository,
                          UserRepository userRepository,
                          ActionHistoryService actionHistoryService,
+                         S3SecretCipher s3SecretCipher,
                          Clock clock) {
         this.apiKeyRepository = apiKeyRepository;
         this.folderRepository = folderRepository;
         this.userRepository = userRepository;
         this.actionHistoryService = actionHistoryService;
+        this.s3SecretCipher = s3SecretCipher;
         this.clock = clock;
+    }
+
+    /**
+     * An S3 key ready to verify a signature with: the key and its secret, decrypted. Empty for an
+     * unknown access key id, a V1 key, or one not usable now - the S3 filter answers each alike.
+     */
+    public record S3Credential(ApiKey apiKey, String secret) {
+        @Override
+        public String toString() {
+            return "S3Credential[keyId=" + apiKey.getKeyId() + ", secret=***]";
+        }
     }
 
     // ------------------------------------------------------------------ creating
@@ -110,12 +124,23 @@ public class ApiKeyService {
             throw new InvalidDataException("expiry must be in the future, was " + expiresOn);
         }
 
-        String keyId = randomKeyId();
-        String secret = randomSecret();
+        boolean s3 = request.getKind() == ApiKeyKind.S3;
+        if (s3 && !s3SecretCipher.configured()) {
+            throw new InvalidDataException("an S3 key needs FILEMANAGEMENT_S3_SECRET_ENCRYPTION_KEY", "apiKey.s3.notConfigured");
+        }
+        String keyId = s3 ? randomS3AccessKeyId() : randomKeyId();
+        String secret = s3 ? randomS3Secret() : randomSecret();
 
         ApiKey apiKey = new ApiKey();
         apiKey.setKeyId(keyId);
         apiKey.setSecretHash(sha256(secret));
+        apiKey.setKind(s3 ? ApiKeyKind.S3 : ApiKeyKind.V1);
+        if (s3) {
+            apiKey.setSecretEncrypted(s3SecretCipher.encrypt(secret, keyId));
+            apiKey.setMayCreateFolders(request.isMayCreateFolders());
+            apiKey.setMayDeleteFiles(request.isMayDeleteFiles());
+            apiKey.setMayDeleteFolders(request.isMayDeleteFolders());
+        }
         apiKey.setTitle(request.getTitle());
         apiKey.setDescription(request.getDescription());
         apiKey.setEnabled(1);
@@ -127,9 +152,10 @@ public class ApiKeyService {
         ApiKey saved = apiKeyRepository.save(apiKey);
 
         actionHistoryService.saveActionHistory(EntityEnum.ApiKey, saved.getId(), ActionEnum.CREATE,
-                principalId, "CREATE API_KEY", "CREATE API_KEY, keyId=" + keyId);
+                principalId, "CREATE API_KEY", "CREATE API_KEY, keyId=" + keyId + ", kind=" + apiKey.getKind() + capabilities(apiKey));
 
-        return new ApiKeyCreatedDTO(saved.getId(), keyId, PREFIX + keyId + "_" + secret);
+        // An S3 key is two values a client is given separately: the access key id and the secret.
+        return new ApiKeyCreatedDTO(saved.getId(), keyId, s3 ? secret : PREFIX + keyId + "_" + secret);
     }
 
     // ------------------------------------------------------------------ managing
@@ -172,9 +198,15 @@ public class ApiKeyService {
         apiKey.setUpdatedAt(Instant.now(clock));
         apiKey.setUpdatedBy(userRepository.findById(principalId).orElse(null));
         apiKey.replaceFolderGrants(grantsFor(apiKey, request.getFolderGrants()));
+        // What an S3 key may do beyond its grants is changed like its grants; its kind never is.
+        if (apiKey.getKind() == ApiKeyKind.S3) {
+            apiKey.setMayCreateFolders(request.isMayCreateFolders());
+            apiKey.setMayDeleteFiles(request.isMayDeleteFiles());
+            apiKey.setMayDeleteFolders(request.isMayDeleteFolders());
+        }
 
         actionHistoryService.saveActionHistory(EntityEnum.ApiKey, id, ActionEnum.UPDATE_VALUES,
-                principalId, "UPDATE API_KEY", "UPDATE API_KEY, keyId=" + apiKey.getKeyId());
+                principalId, "UPDATE API_KEY", "UPDATE API_KEY, keyId=" + apiKey.getKeyId() + capabilities(apiKey));
     }
 
     /**
@@ -236,7 +268,8 @@ public class ApiKeyService {
         }
 
         Optional<ApiKey> found = apiKeyRepository.findByKeyId(parts[0]);
-        if (found.isEmpty()) {
+        // An S3 key is never a bearer: it is accepted on the S3 surface only (roadmap 9.11).
+        if (found.isEmpty() || found.get().getKind() != ApiKeyKind.V1) {
             return Optional.empty();
         }
         ApiKey apiKey = found.get();
@@ -253,6 +286,35 @@ public class ApiKeyService {
 
         stampLastUsed(apiKey, now);
         return Optional.of(apiKey);
+    }
+
+    /**
+     * The S3 key with this access key id, and its secret, if it may be used now. Every failure - no
+     * such id, a V1 key, disabled, revoked, expired, a secret this installation cannot decrypt - is
+     * the same empty answer, as for {@link #authenticate}.
+     */
+    @Transactional
+    public Optional<S3Credential> s3Credential(String accessKeyId) {
+        if (accessKeyId == null || accessKeyId.isBlank() || !s3SecretCipher.configured()) {
+            return Optional.empty();
+        }
+        Optional<ApiKey> found = apiKeyRepository.findByKeyId(accessKeyId);
+        if (found.isEmpty() || found.get().getKind() != ApiKeyKind.S3) {
+            return Optional.empty();
+        }
+        ApiKey apiKey = found.get();
+        Instant now = Instant.now(clock);
+        if (!apiKey.isUsableAt(now)) {
+            return Optional.empty();
+        }
+        String secret;
+        try {
+            secret = s3SecretCipher.decrypt(apiKey.getSecretEncrypted(), apiKey.getKeyId());
+        } catch (IllegalStateException e) {
+            return Optional.empty();
+        }
+        stampLastUsed(apiKey, now);
+        return Optional.of(new S3Credential(apiKey, secret));
     }
 
     /**
@@ -337,7 +399,35 @@ public class ApiKeyService {
         dto.setCreatedAt(apiKey.getCreatedAt());
         dto.setCreatedBy(apiKey.getCreatedBy() == null ? null : apiKey.getCreatedBy().getUsername());
         dto.setUsable(apiKey.isUsableAt(Instant.now(clock)));
+        dto.setKind(apiKey.getKind());
+        dto.setMayCreateFolders(apiKey.isMayCreateFolders());
+        dto.setMayDeleteFiles(apiKey.isMayDeleteFiles());
+        dto.setMayDeleteFolders(apiKey.isMayDeleteFolders());
         return dto;
+    }
+
+    /** What an S3 key may do beyond its grants, for the action history; nothing for a V1 key. */
+    private static String capabilities(ApiKey apiKey) {
+        return apiKey.getKind() != ApiKeyKind.S3 ? "" : ", mayCreateFolders=" + apiKey.isMayCreateFolders()
+                + ", mayDeleteFiles=" + apiKey.isMayDeleteFiles() + ", mayDeleteFolders=" + apiKey.isMayDeleteFolders();
+    }
+
+    /** Twenty upper-case letters and digits, as an AWS access key id looks: {@code FM} and 18 random. */
+    private static String randomS3AccessKeyId() {
+        return "FM" + randomAlphanumeric(18, "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567");
+    }
+
+    /** Forty characters, as an AWS secret looks, from a 62-letter alphabet: about 238 bits. */
+    private static String randomS3Secret() {
+        return randomAlphanumeric(40, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789");
+    }
+
+    private static String randomAlphanumeric(int length, String alphabet) {
+        StringBuilder out = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            out.append(alphabet.charAt(RANDOM.nextInt(alphabet.length())));
+        }
+        return out.toString();
     }
 
     /** Hex, so that it can never contain the underscore the credential is split on. */

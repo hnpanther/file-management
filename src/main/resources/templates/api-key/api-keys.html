@@ -40,6 +40,7 @@
             <p class="mb-3 text-sm text-ink-600" th:text="#{apiKey.created.warning}">
                 این کلید فقط همین یک بار نمایش داده می‌شود.
             </p>
+            <th:block th:unless="${createdS3}">
             <code class="technical block overflow-x-auto rounded-[var(--radius-control)] border
                          border-ink-300 bg-white px-3 py-2 text-sm" dir="ltr"
                   th:text="${created.credential()}">fmk_...</code>
@@ -49,6 +50,21 @@
             <code class="technical block overflow-x-auto rounded-[var(--radius-control)] bg-ink-100
                          px-3 py-2 text-xs text-ink-700" dir="ltr"
                   th:text="'Authorization: Bearer ' + ${created.credential()}">Authorization: Bearer ...</code>
+            </th:block>
+            <!-- An S3 key is two values, given to a client separately, as AWS's are. -->
+            <th:block th:if="${createdS3}">
+            <p class="mb-1 text-xs text-ink-500" th:text="#{apiKey.created.s3AccessKeyId}">Access Key ID</p>
+            <code class="technical block overflow-x-auto rounded-[var(--radius-control)] border
+                         border-ink-300 bg-white px-3 py-2 text-sm" dir="ltr"
+                  th:text="${created.keyId()}">FM...</code>
+            <p class="mt-3 mb-1 text-xs text-ink-500" th:text="#{apiKey.created.s3Secret}">Secret Access Key</p>
+            <code class="technical block overflow-x-auto rounded-[var(--radius-control)] border
+                         border-ink-300 bg-white px-3 py-2 text-sm" dir="ltr"
+                  th:text="${created.credential()}">...</code>
+            <p class="mt-3 text-xs text-ink-500" th:text="#{apiKey.created.s3Usage}">
+                نشانی سرویس: /s3 روی همین سامانه، path-style، منطقه us-east-1.
+            </p>
+            </th:block>
         </div>
     </section>
 
@@ -86,7 +102,11 @@
                             <span class="font-semibold" th:text="${k.title}"></span>
                             <span class="block text-xs text-ink-500" th:text="${k.description}"></span>
                         </td>
-                        <td class="technical text-xs" dir="ltr" th:text="${k.keyId}"></td>
+                        <td class="technical text-xs" dir="ltr">
+                            <span th:text="${k.keyId}"></span>
+                            <span class="badge badge-secondary ms-1" th:if="${k.kind != null}"
+                                  th:text="#{'apiKey.kind.' + ${k.kind}}">V1</span>
+                        </td>
                         <td>
                             <span th:if="${k.revokedAt != null}" class="badge badge-danger"
                                   th:text="#{apiKey.status.revoked}">باطل‌شده</span>

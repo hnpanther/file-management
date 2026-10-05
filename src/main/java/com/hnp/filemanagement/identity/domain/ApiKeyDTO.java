@@ -48,4 +48,12 @@ public class ApiKeyDTO {
 
     /** {@code "{folderId}:{READ|WRITE}"}, the same encoding the role page posts. */
     private List<String> folderGrants = new ArrayList<>();
+
+    /** V1 or S3 - chosen when the key is made, not changed afterwards (roadmap 9.11). */
+    private ApiKeyKind kind = ApiKeyKind.V1;
+
+    /** An S3 key's capabilities (roadmap 9.10.8); meaningless for, and never set on, a V1 key. */
+    private boolean mayCreateFolders;
+    private boolean mayDeleteFiles;
+    private boolean mayDeleteFolders;
 }

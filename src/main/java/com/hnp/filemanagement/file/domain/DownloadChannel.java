@@ -13,5 +13,10 @@ public enum DownloadChannel {
     /** The v1 API: a PL/SQL client, with an account's password or an API key. */
     API_V1,
     /** The v2 object-store API, with an API key. */
-    API_V2
+    API_V2,
+    /**
+     * The S3-compatible API at {@code /s3} (2.9.0), with an S3 key - apart from {@code API_V2}, so
+     * that whether the old v2 is still used can be read from this log (roadmap 9.10.12 step 0).
+     */
+    S3
 }

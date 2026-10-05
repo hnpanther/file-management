@@ -15,6 +15,7 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 | How is it deployed and backed up? | [docs/deployment.md](docs/deployment.md) |
 | How are the files moved to the object store, and back? | [docs/storage-copy.md](docs/storage-copy.md) |
 | What does an integration (APEX) call, and how does it move to the external ids? | [docs/api-v1.md](docs/api-v1.md) |
+| What does an S3 client call, and how is it signed? | [docs/api-s3.md](docs/api-s3.md) |
 | How do I work in it? | [AGENTS.md](AGENTS.md) |
 
 ## Verify, don't infer
