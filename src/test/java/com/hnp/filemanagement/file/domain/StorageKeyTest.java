@@ -18,6 +18,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -72,41 +74,52 @@ class StorageKeyTest extends DatabaseSupport {
     // ---------------------------------------------------------------- what the key holds
 
     @Test
-    @DisplayName("an upload records where its bytes went, in the shape the disk actually uses")
+    @DisplayName("an upload records where its bytes went - files/{shard}/{id}/rev/v1/{revision's external id}.txt - and they are there")
     void theKeyDescribesTheRealLayout() {
         FileDetailsDTO stored = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
 
         FileDetails row = fileDetailsRepository.findById(stored.getId()).orElseThrow();
 
         assertThat(row.getStorageKey())
-                .isEqualTo(StorageLayout.directoryFor(stored.getFileInfoId()) + "/report/v1/report.txt");
+                .isEqualTo(StorageLayout.directoryFor(stored.getFileInfoId()) + "/rev/v1/" + row.getExternalId() + ".txt");
+        assertThat(Paths.get(baseDir).resolve(row.getStorageKey())).exists();
     }
 
     /**
-     * The key is the only address a version has since Phase 7 step 4 dropped {@code relative_path};
-     * it is written once, from the folder chain at upload time, and never rewritten.
+     * Roadmap 12.5: the key is the storage's and every backup's, read without the database - so it
+     * holds nothing a person wrote. The title is the row's, and stays as it was typed; only the
+     * key's extension is put in lower case.
      */
     @Test
-    @DisplayName("the key is written from the folder chain the file is filed under")
-    void theKeyComesFromTheFolderChain() {
-        FileDetailsDTO stored = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
+    @DisplayName("the key names nothing a person wrote: a Persian title with brackets and spaces is nowhere in it, the extension is lower case")
+    void theKeyNamesNothingAPersonWrote() {
+        String title = "(لیست اشخاص) 1404-1405";
+        FileDetailsDTO stored = underTest.createNewFile(uploadRequest(title + ".TXT"), principalId, 1);
 
         FileDetails row = fileDetailsRepository.findById(stored.getId()).orElseThrow();
 
-        assertThat(row.getStorageKey()).isEqualTo(StorageLayout.directoryFor(stored.getFileInfoId()) + "/report/v1/report.txt");
+        assertThat(row.getStorageKey())
+                .isEqualTo(StorageLayout.directoryFor(stored.getFileInfoId()) + "/rev/v1/" + row.getExternalId() + ".txt")
+                .doesNotContain("لیست").doesNotContain("1404").doesNotContain(" ").doesNotContain("(").doesNotContain("TXT")
+                .matches("[a-z0-9/.-]+");
+        assertThat(row.getFileName()).as("the row keeps what was typed").isEqualTo(title + ".TXT");
+        assertThat(row.getFileExtension()).isEqualTo("TXT");
+        assertThat(underTest.downloadFile(stored.getId(), principalId).getFileName()).isEqualTo(title + ".TXT");
+        assertThat(Paths.get(baseDir).resolve(row.getStorageKey())).exists();
     }
+
     @Test
-    @DisplayName("every version and every format gets its own key")
+    @DisplayName("every version and every format gets its own key, named by its own external id")
     void eachStoredObjectHasItsOwnKey() {
         int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
         underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
 
         assertThat(fileDetailsRepository.findAll().stream()
-                .filter(row -> row.getFileInfo().getId().equals(fileInfoId))
-                .map(FileDetails::getStorageKey))
-                .containsExactlyInAnyOrder(
-                        StorageLayout.directoryFor(fileInfoId) + "/report/v1/report.txt",
-                        StorageLayout.directoryFor(fileInfoId) + "/report/v2/report.txt");
+                .filter(row -> row.getFileInfo().getId().equals(fileInfoId)))
+                .hasSize(2)
+                .allSatisfy(row -> assertThat(row.getStorageKey()).isEqualTo(StorageLayout.directoryFor(fileInfoId)
+                        + "/rev/v" + row.getVersion() + "/" + row.getExternalId() + ".txt"))
+                .extracting(FileDetails::getStorageKey).doesNotHaveDuplicates();
     }
 
     // ---------------------------------------------------------------- what it makes possible
@@ -137,27 +150,31 @@ class StorageKeyTest extends DatabaseSupport {
         underTest.createNewFileDetails(versionRequest(stored.getFileInfoId(), "report.txt", 2), principalId);
         assertThat(fileDetailsRepository.findAll().stream()
                 .filter(row -> row.getFileInfo().getId().equals(stored.getFileInfoId()) && row.getVersion() == 2))
-                .as("a later version follows the first one's directory")
+                .as("a later version is under the file's own id directory, as the first one is")
                 .singleElement()
-                .satisfies(row -> assertThat(row.getStorageKey())
-                        .isEqualTo(StorageLayout.directoryFor(stored.getFileInfoId()) + "/report/v2/report.txt"));
+                .satisfies(row -> assertThat(row.getStorageKey()).isEqualTo(
+                        StorageLayout.keyFor(stored.getFileInfoId(), 2, row.getExternalId(), "txt")));
     }
 
     @Test
-    @DisplayName("deleting one format removes that object and leaves the others")
+    @DisplayName("deleting one version removes its directory and leaves the other's bytes")
     void deletingByKeyRemovesTheRightObject() {
         FileDetailsDTO first = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
         int fileInfoId = first.getFileInfoId();
         underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
+        Path fileDirectory = Paths.get(baseDir).resolve(StorageLayout.directoryFor(fileInfoId));
+        String firstKey = fileDetailsRepository.findById(first.getId()).orElseThrow().getStorageKey();
 
         underTest.deleteFileDetails(fileInfoId, first.getId(), principalId);
 
         assertThat(fileDetailsRepository.findById(first.getId())).isEmpty();
+        assertThat(Paths.get(baseDir).resolve(firstKey)).doesNotExist();
+        assertThat(fileDirectory.resolve(Paths.get("rev", "v1"))).as("the emptied version directory").doesNotExist();
         assertThat(fileDetailsRepository.findAll().stream()
                 .filter(row -> row.getFileInfo().getId().equals(fileInfoId)))
                 .singleElement()
-                .satisfies(row -> assertThat(row.getStorageKey())
-                        .endsWith("/report/v2/report.txt"));
+                .satisfies(row -> assertThat(Paths.get(baseDir).resolve(row.getStorageKey()))
+                        .as("version 2, untouched").exists());
     }
 
     // ---------------------------------------------------------------- helpers

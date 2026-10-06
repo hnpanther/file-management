@@ -271,7 +271,12 @@ class S3ApiTest extends DatabaseSupport {
             assertThat(ok.statusCode()).isEqualTo(200);
             assertThat(ok.body()).isEqualTo(pdf(900, 12));
 
-            String tampered = url.toString().replaceAll("X-Amz-Signature=[0-9a-f]", "X-Amz-Signature=0");
+            // The signature's first digit changed - to another digit always, or a signature that
+            // happened to start with the replacement (one in sixteen) would be sent unchanged.
+            String signed = url.toString();
+            int at = signed.indexOf("X-Amz-Signature=") + "X-Amz-Signature=".length();
+            String tampered = signed.substring(0, at) + (signed.charAt(at) == '0' ? '1' : '0') + signed.substring(at + 1);
+            assertThat(tampered).isNotEqualTo(signed);
             HttpResponse<String> refused = http.send(HttpRequest.newBuilder(URI.create(tampered)).build(), HttpResponse.BodyHandlers.ofString());
             assertThat(refused.statusCode()).isEqualTo(403);
         }

@@ -2169,10 +2169,12 @@ Found with a second defect a careless fix would turn it into: `FileService.direc
 file's directory as the **third parent** of a revision's key, so a shorter key would make the
 whole-file delete remove a whole shard.
 
-Fix: roadmap [12.5](roadmap.md#125-storage-keys-that-say-nothing-new-revisions--planned-first) (new
-revisions under their id, the directory said by `StorageLayout`, a guard on `deleteDirectory`) and
-[12.6](roadmap.md#126-the-existing-revisions-re-keyed--planned-after-125) (the existing ones moved by
-a tool, verified, resumable). Not fixed when found (2026-10-05).
+**Fixed for new revisions in 2.10.0** (roadmap
+[12.5](roadmap.md#125-storage-keys-that-say-nothing-new-revisions--done-2100)): the key is
+`files/{shard}/{file id}/rev/v{n}/{revision external id}.{ext}`, and a file's directory is read off a
+key by its shape in `StorageLayout`, which refuses a key it cannot place - `directoryOf` is gone. The
+revisions stored before keep their titles until the move to the object store re-keys them
+([12.6](roadmap.md#126-the-existing-revisions-re-keyed--at-the-move-to-the-object-store)).
 
 ### What the review found nothing wrong in - and the test that now holds each
 

@@ -116,7 +116,7 @@ class FileUploadAddressingTest extends DatabaseSupport {
         FileInfo file = stored(body);
         assertThat(file.getFolder().getId()).isEqualTo(tagFolderId);
         assertThat(file.getFileDetailsList().getFirst().getStorageKey())
-                .isEqualTo(StorageLayout.directoryFor(file.getId()) + "/byfolder/v1/byfolder.txt");
+                .isEqualTo(StorageLayout.keyFor(file.getId(), 1, file.getFileDetailsList().getFirst().getExternalId(), "txt"));
         assertThat(file.getTags()).extracting(Tag::getName)
                 .containsExactlyInAnyOrder(chain.category().getName(), chain.subCategory().getName(), chain.tag().getName());
         assertThat(file.getTags()).extracting(t -> t.getGroup().getId())
