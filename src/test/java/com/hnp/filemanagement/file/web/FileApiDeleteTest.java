@@ -93,7 +93,7 @@ class FileApiDeleteTest extends DatabaseSupport {
         String fileExternalId = externalIdOf("file_info", fileInfoId);
         String detailsExternalId = externalIdOf("file_details", fileDetailsId);
         Path fileDirectory = Paths.get(baseDir).resolve(StorageLayout.directoryFor(fileInfoId));
-        assertThat(fileDirectory.resolve("report")).exists();
+        assertThat(fileDirectory.resolve("rev")).exists();
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM file_tag WHERE file_info_id = ?", Integer.class, fileInfoId))
                 .as("the upload tagged it").isEqualTo(3);
 
@@ -147,8 +147,9 @@ class FileApiDeleteTest extends DatabaseSupport {
         assertThat(fileDetailsRepository.findById(first[1])).isPresent();
         assertThat(fileDetailsRepository.findById(v2DetailsId)).isEmpty();
         Path fileDirectory = Paths.get(baseDir).resolve(StorageLayout.directoryFor(fileInfoId));
-        assertThat(fileDirectory.resolve(Paths.get("manual", "v1", "manual.txt"))).exists();
-        assertThat(fileDirectory.resolve(Paths.get("manual", "v2"))).doesNotExist();
+        assertThat(Paths.get(baseDir).resolve(jdbcTemplate.queryForObject(
+                "SELECT storage_key FROM file_details WHERE id = ?", String.class, first[1]))).exists();
+        assertThat(fileDirectory.resolve(Paths.get("rev", "v2"))).doesNotExist();
         assertThat(fileInfoRepository.findById(fileInfoId).orElseThrow().getLastVersion()).isEqualTo(1);
     }
 

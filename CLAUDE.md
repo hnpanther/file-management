@@ -90,9 +90,12 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   `folder.tag_group_id`. Do not treat a tag group as a place. A chain of any depth cannot be
   fetch-joined: load a page's ancestors with `FolderService.ancestryOf`, off the materialised
   path, never by walking `getParent()` per row.
-* **New files are stored by their own id** (`files/{shard}/{file id}/…`, `StorageLayout` —
-  the one place the shape is written); 1.4.0 stored them flat under `files/{file id}/`, and
-  older ones sit under the names of the folders above them as they stood. None is ever rebuilt
+* **New files are stored by their own id, under a key that names nothing a person wrote**
+  (`files/{shard}/{file id}/rev/v{n}/{revision external id}.{ext}`, 2.10.0, `StorageLayout` — the
+  one place a key is written and the one place a file's directory is read back off a key, by its
+  shape: **never count a key's parents** - a shorter key once put the third parent at the shard).
+  1.5.0 - 2.9.0 put the title where `rev` is, 1.4.0 stored files flat under `files/{file id}/`,
+  and older ones sit under the names of the folders above them as they stood. None is ever rebuilt
   from the tree, and `files` is a reserved top-level name. Do not move bytes on a rename or a
   move — what each operation may touch (tree, keys, bytes, tags) is tabulated in
   [docs/arch.md](docs/arch.md#what-each-operation-touches); keep it true.

@@ -112,7 +112,7 @@ class FileServiceTest extends DatabaseSupport {
         assertThat(fileInfo.getFileName()).isEqualTo("report");
         assertThat(fileInfo.getLastVersion()).isEqualTo(1);
         assertThat(fileInfo.getFileDetailsList()).hasSize(1);
-        assertThat(storedFile(stored.getFileInfoId(), "report", 1, "txt")).exists();
+        assertThat(storedFile(stored.getFileInfoId(), 1)).exists();
     }
 
     @Test
@@ -165,7 +165,7 @@ class FileServiceTest extends DatabaseSupport {
         underSibling.setFolderId(sibling.getId());
         FileDetailsDTO stored = underTest.createNewFile(underSibling, principalId, 1);
         assertThat(fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey())
-                .isEqualTo(StorageLayout.directoryFor(stored.getFileInfoId()) + "/report/v1/report.txt");
+                .isEqualTo(StorageLayout.keyFor(stored.getFileInfoId(), 1, stored.getExternalId(), "txt"));
     }
 
     @Test
@@ -186,7 +186,7 @@ class FileServiceTest extends DatabaseSupport {
         onTopLevel.setFolderId(chain.categoryId());
         FileDetailsDTO stored = underTest.createNewFile(onTopLevel, principalId, 1);
         assertThat(fileDetailsRepository.findById(stored.getId()).orElseThrow().getStorageKey())
-                .isEqualTo(StorageLayout.directoryFor(stored.getFileInfoId()) + "/report/v1/report.txt");
+                .isEqualTo(StorageLayout.keyFor(stored.getFileInfoId(), 1, stored.getExternalId(), "txt"));
         assertThat(fileInfoRepository.findById(stored.getFileInfoId()).orElseThrow().getTags())
                 .extracting(com.hnp.filemanagement.folder.domain.Tag::getName)
                 .containsExactly(chain.category().getName());
@@ -218,7 +218,7 @@ class FileServiceTest extends DatabaseSupport {
         FileInfo moved = fileInfoRepository.findByIdAndFetchFileDetails(stored.getFileInfoId()).orElseThrow();
         assertThat(moved.getFolder().getId()).isEqualTo(target.getId());
         assertThat(moved.getFileDetailsList().getFirst().getStorageKey()).isEqualTo(keyBefore);
-        assertThat(storedFile(stored.getFileInfoId(), "report", 1, "txt")).exists();
+        assertThat(storedFile(stored.getFileInfoId(), 1)).exists();
         assertThat(moved.getTags()).extracting(com.hnp.filemanagement.folder.domain.Tag::getName)
                 .containsExactlyInAnyOrder(chain.category().getName(), otherSub.getName(), target.getName());
         assertThat(fileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders()).isEmpty();
@@ -226,7 +226,7 @@ class FileServiceTest extends DatabaseSupport {
 
         // A later version still lands beside the first, under the directory the key names.
         underTest.createNewFileDetails(versionRequest(stored.getFileInfoId(), "report.txt", 2), principalId);
-        assertThat(storedFile(stored.getFileInfoId(), "report", 2, "txt")).exists();
+        assertThat(storedFile(stored.getFileInfoId(), 2)).exists();
 
         underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
         assertThatThrownBy(() -> underTest.moveFile(stored.getFileInfoId(), tagFolderId, principalId))
@@ -250,7 +250,7 @@ class FileServiceTest extends DatabaseSupport {
         FileInfo fileInfo = fileInfoRepository.findByIdAndFetchFileDetails(fileInfoId).orElseThrow();
         assertThat(fileInfo.getFileDetailsList()).hasSize(2);
         assertThat(fileInfo.getLastVersion()).isEqualTo(2);
-        assertThat(storedFile(fileInfoId, "report", 2, "txt")).exists();
+        assertThat(storedFile(fileInfoId, 2)).exists();
     }
 
     @Test
@@ -315,7 +315,7 @@ class FileServiceTest extends DatabaseSupport {
     @DisplayName("the same format in another case at the same version is a 409, and the first one's bytes are untouched")
     void rejectsADuplicateFormatInAnotherCase() throws Exception {
         FileDetailsDTO first = underTest.createNewFile(uploadRequest("report.pdf"), principalId, 1);
-        Path firstBytes = storedFile(first.getFileInfoId(), "report", 1, "pdf");
+        Path firstBytes = storedFile(first.getFileInfoId(), 1);
         byte[] before = Files.readAllBytes(firstBytes);
 
         FileUploadDTO request = formatRequest(first.getFileInfoId(), first.getId(), "report.PDF", 1);
@@ -424,7 +424,7 @@ class FileServiceTest extends DatabaseSupport {
     void deletesAFileAndItsVersions() {
         int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
         underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
-        assertThat(storedFile(fileInfoId, "report", 2, "txt")).exists();
+        assertThat(storedFile(fileInfoId, 2)).exists();
 
         underTest.deleteCompleteFileById(fileInfoId, principalId);
         entityManager.flush();
@@ -495,6 +495,111 @@ class FileServiceTest extends DatabaseSupport {
         assertThat(fileInfoRepository.findById(fileInfoId)).isEmpty();
         assertThat(own.getParent().getParent()).as("the file's own directory").doesNotExist();
         assertThat(neighbour).as("a neighbour under the shared directory").exists();
+    }
+
+    // ---------------------------------------------------------------- two layouts in one file (roadmap 12.5)
+
+    /**
+     * A file stored before 2.10.0 takes its new versions in the current layout, under its id
+     * directory - so its bytes are in two places, and the whole-file delete reads each revision's
+     * place off its own key rather than off the first one's.
+     */
+    @Test
+    @DisplayName("a 1.4.0 flat file with a version added since: the delete removes both its directories, and nothing beside them")
+    void aFlatFileWithANewVersionLosesBothDirectories() throws IOException {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+        Path flat = plantFirstRevisionAt(fileInfoId, "files/" + fileInfoId + "/report/v1/report.txt");
+        underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
+        String newKey = keyOfVersion(fileInfoId, 2);
+        assertThat(newKey).as("the new version, in the current layout").startsWith(StorageLayout.directoryFor(fileInfoId) + "/rev/v2/");
+        int neighbour = underTest.createNewFile(uploadRequest("neighbour.txt"), principalId, 1).getFileInfoId();
+        entityManager.flush();
+        entityManager.clear();
+
+        underTest.deleteCompleteFileById(fileInfoId, principalId);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(flat.getParent().getParent().getParent()).as("the flat id directory").doesNotExist();
+        assertThat(fileDirectory(fileInfoId)).as("the sharded id directory").doesNotExist();
+        assertThat(fileDirectory(fileInfoId).getParent()).as("the shard").exists();
+        assertThat(storedFile(neighbour, 1)).as("a neighbour in the same shard").exists();
+    }
+
+    @Test
+    @DisplayName("a name-based file with a version added since: the delete removes its own directory and its id directory, never its neighbour")
+    void aNameBasedFileWithANewVersionLosesBothDirectories() throws IOException {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+        String shared = "OldCat" + TestData.nextSequence() + "/OldSub";
+        Path own = plantFirstRevisionAt(fileInfoId, shared + "/report/v1/report.txt");
+        Path neighbour = Paths.get(baseDir, shared, "other", "v1", "other.txt");
+        Files.createDirectories(neighbour.getParent());
+        Files.writeString(neighbour, "neighbour");
+        underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
+        entityManager.flush();
+        entityManager.clear();
+
+        underTest.deleteCompleteFileById(fileInfoId, principalId);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(own.getParent().getParent()).as("the file's own {title} directory").doesNotExist();
+        assertThat(fileDirectory(fileInfoId)).as("its id directory, holding version 2").doesNotExist();
+        assertThat(neighbour).as("a neighbour under the shared directory").exists();
+    }
+
+    /**
+     * The answer to "what does this delete remove" is read off the rows; a row that names another
+     * file's place - corrupted, or written by hand - must stop the delete, not aim it.
+     */
+    @Test
+    @DisplayName("a revision whose key names another file's directory stops the delete: no row goes, no byte of either file")
+    void aKeyNamingAnotherFileStopsTheDelete() throws IOException {
+        int victim = underTest.createNewFile(uploadRequest("victim.txt"), principalId, 1).getFileInfoId();
+        Path victimBytes = storedFile(victim, 1);
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+        Path ownBytes = storedFile(fileInfoId, 1);
+        plantFirstRevisionAt(fileInfoId, keyOfVersion(victim, 1));
+
+        assertThatThrownBy(() -> underTest.deleteCompleteFileById(fileInfoId, principalId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("file id=" + victim);
+        assertThat(fileInfoRepository.findById(fileInfoId)).isPresent();
+        assertThat(victimBytes).exists();
+        assertThat(ownBytes).exists();
+    }
+
+    @Test
+    @DisplayName("a key of no known layout stops a version delete before any row changes")
+    void aKeyOfNoKnownLayoutStopsAVersionDelete() throws IOException {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+        underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
+        FileDetails first = plantedRevision(fileInfoId);
+        first.setStorageKey("files/s000/" + fileInfoId + "/v1/report.txt");
+        fileDetailsRepository.saveAndFlush(first);
+        entityManager.clear();
+
+        assertThatThrownBy(() -> underTest.deleteFileDetails(fileInfoId, first.getId(), principalId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no known layout");
+        assertThat(fileDetailsRepository.findById(first.getId())).isPresent();
+        assertThat(fileInfoRepository.findById(fileInfoId).orElseThrow().getLastVersion()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("deleting a version stored in the current layout removes its version directory, the file's other version stays")
+    void deletingANewLayoutVersion() {
+        int fileInfoId = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1).getFileInfoId();
+        underTest.createNewFileDetails(versionRequest(fileInfoId, "report.txt", 2), principalId);
+        Path second = storedFile(fileInfoId, 2);
+        int secondId = fileDetailsRepository.findAll().stream()
+                .filter(row -> row.getFileInfo().getId().equals(fileInfoId) && row.getVersion() == 2)
+                .findFirst().orElseThrow().getId();
+
+        underTest.deleteFileDetails(fileInfoId, secondId, principalId);
+
+        assertThat(second.getParent()).as("rev/v2").doesNotExist();
+        assertThat(storedFile(fileInfoId, 1)).as("version 1").exists();
     }
 
     @Test
@@ -578,7 +683,7 @@ class FileServiceTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("a stored file carries its folder, its tags from the folder names, and a key under the folder names")
+    @DisplayName("a stored file carries its folder, its tags from the folder names, and a key under its own id")
     void storesFolderTagsAndKey() {
         FileDetailsDTO stored = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
         entityManager.flush();
@@ -587,7 +692,7 @@ class FileServiceTest extends DatabaseSupport {
         FileInfo fileInfo = fileInfoRepository.findByIdAndFetchFileDetails(stored.getFileInfoId()).orElseThrow();
         assertThat(fileInfo.getFolder().getId()).isEqualTo(tagFolderId);
         assertThat(fileInfo.getFileDetailsList().getFirst().getStorageKey())
-                .isEqualTo(StorageLayout.directoryFor(stored.getFileInfoId()) + "/report/v1/report.txt");
+                .isEqualTo(StorageLayout.keyFor(stored.getFileInfoId(), 1, stored.getExternalId(), "txt"));
         assertThat(fileInfo.getTags()).extracting(com.hnp.filemanagement.folder.domain.Tag::getName)
                 .containsExactlyInAnyOrder(categoryName, subCategoryName, chain.tag().getName());
         assertThat(fileInfoRepository.findIdsWhoseTagsDisagreeWithTheFolders()).isEmpty();
@@ -680,14 +785,42 @@ class FileServiceTest extends DatabaseSupport {
         return new MockMultipartFile(fileName, fileName, "text/plain", TestData.bytesFor(fileName));
     }
 
+    /** The key a version's row records. */
+    private String keyOfVersion(int fileInfoId, int version) {
+        return fileDetailsRepository.findAll().stream()
+                .filter(row -> row.getFileInfo().getId().equals(fileInfoId) && row.getVersion() == version)
+                .findFirst().orElseThrow().getStorageKey();
+    }
+
+    /** The file's first revision, as a row to rewrite. */
+    private FileDetails plantedRevision(int fileInfoId) {
+        return fileDetailsRepository.findAll().stream()
+                .filter(row -> row.getFileInfo().getId().equals(fileInfoId) && row.getVersion() == 1)
+                .findFirst().orElseThrow();
+    }
+
     /**
-     * Where the storage layer puts a revision: {@code <base>/<StorageLayout directory>/<name>/v<n>/<name>.<ext>}.
-     *
-     * <p>The version is a directory, not a suffix on the file name — which is why two formats of
-     * one version sit side by side in the same {@code v<n>} directory.
+     * Makes the file's first revision one stored by an older release: its row's key set to this one,
+     * and bytes written there - as a file uploaded before 2.10.0 is found.
      */
-    private Path storedFile(int fileInfoId, String name, int version, String extension) {
-        return fileDirectory(fileInfoId).resolve(Paths.get(name, "v" + version, name + "." + extension));
+    private Path plantFirstRevisionAt(int fileInfoId, String storageKey) throws IOException {
+        Path bytes = Paths.get(baseDir).resolve(storageKey);
+        if (!Files.exists(bytes)) {
+            Files.createDirectories(bytes.getParent());
+            Files.writeString(bytes, "stored by an older release");
+        }
+        FileDetails revision = plantedRevision(fileInfoId);
+        revision.setStorageKey(storageKey);
+        fileDetailsRepository.saveAndFlush(revision);
+        entityManager.clear();
+        return bytes;
+    }
+
+    /** Where a version's bytes are, by the key its row records - the only record there is. */
+    private Path storedFile(int fileInfoId, int version) {
+        return Paths.get(baseDir).resolve(fileDetailsRepository.findAll().stream()
+                .filter(row -> row.getFileInfo().getId().equals(fileInfoId) && row.getVersion() == version)
+                .findFirst().orElseThrow().getStorageKey());
     }
 
     /** The directory that is this file's alone on disk: {@code <base>/files/<shard>/<file id>}. */

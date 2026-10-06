@@ -126,7 +126,7 @@ find it again.
 | Path | Holds | Back up? |
 |---|---|---|
 | `FILEMANAGEMENT_LOG_PATH` | `app_log.log` and `archived/` | No — rotated daily / 10 MB, 10 kept |
-| `FILEMANAGEMENT_BASE_DIR` | every uploaded file, as `files/s{id ÷ 1000}/{file id}/{FileName}/v{n}/{file}.{ext}` since 1.5.0 (older files keep their own layout) - on the `filesystem` backend; on `s3` the same keys are objects in the bucket | **Yes, with the database** |
+| `FILEMANAGEMENT_BASE_DIR` | every uploaded file, as `files/s{id ÷ 1000}/{file id}/rev/v{n}/{revision external id}.{ext}` since 2.10.0 (older files keep their own layout, the title in it) - on the `filesystem` backend; on `s3` the same keys are objects in the bucket | **Yes, with the database** |
 
 > **The file directory and the database must be backed up together.** The rows and the bytes are
 > only meaningful as a pair: `file_info` and `file_details` hold the paths, never the content. A
@@ -769,6 +769,29 @@ setting; it never starts half-working.
 database restored without it has S3 keys nobody can use. Lost or changed, every S3 key must be made
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
+
+### Upgrading from 2.9.0 to 2.10.0 — storage keys that name nothing
+
+A jar swap; **no migration, no setting**. What changes is where a **new** revision's bytes are
+written: `files/s{id ÷ 1000}/{file id}/rev/v{n}/{revision external id}.{ext}`, the extension in lower
+case, where 1.5.0 - 2.9.0 wrote the title twice (`…/{file id}/گزارش ماهانه/v1/گزارش ماهانه.pdf`). So
+the storage, and every backup of it, no longer names the documents to whoever reads it without the
+database (roadmap 12.5, issue 113).
+
+* **Nothing already stored moves.** Each row keeps the key its bytes were written under, and keeps
+  working; a new version of an older file is written in the new layout, under the file's id
+  directory - so for a while one file's revisions may sit in two directories, each on its row. The
+  existing files are re-keyed when the files move to the object store (roadmap 12.6), not before.
+* **Nothing a client sees changes**: a download is named from the row, the S3 surface and v1
+  resolve names through the database as before. Backups are unchanged - new files are new files.
+* **Deletes now read a file's directories off every revision's key, by its shape**, and refuse a key
+  of no known shape or one under another file's id - the delete fails and the file is left whole - rather
+  than remove whatever the key's third parent happens to be.
+
+**Rollback** is the 2.9.0 jar, and it is safe with files uploaded under 2.10.0: the new key keeps the
+depth of the old (`rev` stands where the title stood), so 2.9.0's delete still finds the file's own
+directory, never the shard. A file that, under 2.10.0, gained a version beside an older layout's
+would, deleted under 2.9.0, leave that version's bytes behind - an orphan, never a loss.
 
 ### Upgrading from 2.8.0 to 2.9.0 — S3 keys and the S3-compatible API
 
@@ -2447,8 +2470,9 @@ The MySQL is only read. The files on disk are not touched: `file_details.storage
 The data lives in **two places and neither is complete without the other**: the rows in the
 database - PostgreSQL since the cut-over of 2026-09-26 - and the uploaded files under
 `FILEMANAGEMENT_BASE_DIR`, laid out as
-`files/s{id ÷ 1000}/{file id}/{FileName}/v{n}/{file}.{ext}` since 1.5.0 - and, for older files,
-`files/{file id}/…` (1.4.0) or `{Category}/{SubCategory}/…` before it. `file_details.storage_key`
+`files/s{id ÷ 1000}/{file id}/rev/v{n}/{revision external id}.{ext}` since 2.10.0 - nothing a person
+wrote - and, for older files, `files/s{id ÷ 1000}/{file id}/{FileName}/v{n}/{file}.{ext}` (1.5.0 -
+2.9.0), `files/{file id}/…` (1.4.0) or `{Category}/{SubCategory}/…` before it. `file_details.storage_key`
 holds the *path*, never the content, and it is the only record of where a file's bytes are: the
 directory tree says nothing about where a file is filed. A backup of the database alone restores
 a system in which every download is a broken reference; a backup of the files alone is a pile of

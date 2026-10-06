@@ -123,10 +123,7 @@ public class FolderTreeDeleteService {
         String deletedWith = fileHistoryService.titleOf(folder);
         List<String> addresses = new ArrayList<>();
         for (Integer fileInfoId : fileInfoRepository.findIdsBySubtree(folder.getPath())) {
-            String address = fileService.deleteFileRows(fileInfoId, principalId, deletedWith);
-            if (address != null) {
-                addresses.add(address);
-            }
+            addresses.addAll(fileService.deleteFileRows(fileInfoId, principalId, deletedWith));
         }
 
         // The folders, deepest first: a child before its parent, so no foreign key is ever

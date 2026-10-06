@@ -114,7 +114,7 @@ class FolderTreeDeleteServiceTest extends DatabaseSupport {
         Path subDir = Paths.get(baseDir).resolve(StorageLayout.directoryFor(inSub.getFileInfoId()));
         Path tagDir = Paths.get(baseDir).resolve(StorageLayout.directoryFor(inTag.getFileInfoId()));
         assertThat(subDir).exists();
-        assertThat(tagDir.resolve(Paths.get("tag-report", "v2", "tag-report.txt"))).exists();
+        assertThat(tagDir.resolve(Paths.get("rev", "v2"))).exists();
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM file_tag WHERE file_info_id IN (?, ?)", Integer.class,
                 inSub.getFileInfoId(), inTag.getFileInfoId())).isPositive();
 

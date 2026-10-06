@@ -190,10 +190,10 @@ public final class TestData {
         fileDetails.setFileExtension(extension);
         fileDetails.setContentType("application/octet-stream");
         fileDetails.setDescription(fileName + " description");
-        // The key as FileService writes it: the file's own directory (StorageLayout), the file, the
-        // version. A file with no id yet (unsaved) gets id 0; nothing reads the bytes of a fixture.
-        String storageKey = StorageLayout.directoryFor(fileInfo.getId() == null ? 0 : fileInfo.getId())
-                + "/" + fileInfo.getFileName() + "/v" + version + "/" + fileName;
+        // The key as FileService writes it (StorageLayout.keyFor). A file with no id yet (unsaved)
+        // gets id 0; nothing reads the bytes of a fixture.
+        String storageKey = StorageLayout.keyFor(fileInfo.getId() == null ? 0 : fileInfo.getId(), version,
+                fileDetails.getExternalId(), extension);
         fileDetails.setStorageKey(storageKey);
         fileDetails.setFileSize(1024);
         fileDetails.setVersion(version);

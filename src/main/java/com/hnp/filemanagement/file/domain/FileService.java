@@ -242,8 +242,7 @@ public class FileService {
         // (StorageLayout), and IDENTITY assigns it only at insert. Transient here, so this is a persist.
         fileInfoRepository.save(fileInfo);
 
-        FileDetails fileDetails = newFileDetails(fileInfo, directoryFor(fileInfo), multipartFile, 1, "V1",
-                fileInfoDTO.getDescription(), principalId);
+        FileDetails fileDetails = newFileDetails(fileInfo, multipartFile, 1, "V1", fileInfoDTO.getDescription(), principalId);
         fileInfo.addFileDetails(fileDetails);
         // Saved explicitly rather than left to the cascade, because the audit row below needs
         // the generated id - and never through save(parent), which on a managed parent is a
@@ -316,15 +315,6 @@ public class FileService {
                     + originalFilename, "upload.invalid.name", originalFilename);
         }
         return originalFilename;
-    }
-
-    /**
-     * Where a new file's revisions are stored, relative to {@code base-dir}: {@link StorageLayout}
-     * - by the file's own id, under a top-level name no folder may take. Files stored under an
-     * earlier layout keep the directory their first revision's key names.
-     */
-    static String directoryFor(FileInfo fileInfo) {
-        return StorageLayout.directoryFor(fileInfo.getId());
     }
 
     /**
@@ -424,9 +414,10 @@ public class FileService {
     private FileDetails persistNewVersionRow(FileInfo fileInfo, FileUploadDTO fileUploadDTO, int version,
                                              String versionName, int principalId) {
 
-        // A new revision sits beside the existing ones: same directory as the first revision's
-        // key, whatever the folders have been renamed to since - one file, one place on disk.
-        FileDetails fileDetails = newFileDetails(fileInfo, directoryOf(fileInfo), fileUploadDTO.getMultipartFile(),
+        // Under the file's id directory in the current layout, whatever its first revision's: a file
+        // stored before 2.10.0 then holds revisions of two layouts, and the deletes read each
+        // revision's place off its own key (StorageLayout.fileDirectoryOf).
+        FileDetails fileDetails = newFileDetails(fileInfo, fileUploadDTO.getMultipartFile(),
                 version, versionName, fileUploadDTO.getFileDetailsDescription(), principalId);
 
         fileInfo.addFileDetails(fileDetails);
@@ -444,7 +435,7 @@ public class FileService {
      * Builds one stored revision. Every field that all three upload paths share is set here, which
      * is the point: they used to set them separately and disagree about two of them.
      */
-    private FileDetails newFileDetails(FileInfo fileInfo, String directory, MultipartFile multipartFile, int version,
+    private FileDetails newFileDetails(FileInfo fileInfo, MultipartFile multipartFile, int version,
                                        String versionName, String description, int principalId) {
 
         // The policy first - is this kind allowed for this principal, and is the file small
@@ -452,18 +443,19 @@ public class FileService {
         uploadPolicyService.requireAllowed(principalId, multipartFile);
 
         String originalFilename = multipartFile.getOriginalFilename();
-        String name = FileNames.withoutExtension(originalFilename);
-        // {directory}/{name}/v{n}/{name.ext} - the directory being the file's own (StorageLayout)
-        // since V2.9 and the two folder names before it - recorded beside the bytes and never
-        // rebuilt (roadmap 7.1).
-        String storageKey = directory + "/" + name + "/v" + version + "/" + originalFilename;
+        // The id a client may use in place of the number - and the name of the stored object; the
+        // checksum is set once the bytes are written (store), from what the store actually wrote.
+        String externalId = newExternalId();
+        String extension = getFileExtension(originalFilename);
+        // files/{shard}/{file id}/rev/v{n}/{external id}.{ext}: nothing a person wrote, the
+        // extension in lower case (StorageLayout, roadmap 12.5) - recorded beside the bytes and
+        // never rebuilt (roadmap 7.1). The row keeps the name and the extension as they were typed.
+        String storageKey = StorageLayout.keyFor(fileInfo.getId(), version, externalId, extension);
 
         FileDetails fileDetails = new FileDetails();
         fileDetails.setFileName(originalFilename);
-        // The id a client may use in place of the number; the checksum is set once the bytes are
-        // written (store), from what the store actually wrote.
-        fileDetails.setExternalId(newExternalId());
-        fileDetails.setFileExtension(getFileExtension(originalFilename));
+        fileDetails.setExternalId(externalId);
+        fileDetails.setFileExtension(extension);
         // Judged from the extension and the bytes, never taken from the client (issue 12). This is
         // the enforcement: every route that stores a file - form, v1, v2 - passes through here.
         fileDetails.setContentType(ContentTypes.detect(multipartFile));
@@ -606,13 +598,13 @@ public class FileService {
         // Removing a file is a write into its folder (issue 90). The tree delete reaches the rows
         // through deleteFileRows instead, having judged the folder it removes as a whole.
         folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), getFileInfo(id));
-        String address = deleteFileRows(id, principalId);
+        List<String> addresses = deleteFileRows(id, principalId);
         // The rows go to the database before a byte is touched, so that anything the database
         // would refuse - a foreign key, a deadlock - is refused while the file is still whole.
         // What is left after this is the commit itself; the tree delete flushes for the same
         // reason (roadmap 2.3, issue 3).
         fileInfoRepository.flush();
-        if (address != null) {
+        for (String address : addresses) {
             try {
                 blobStore.deleteDirectory(address);
             } catch (ResourceNotFoundException alreadyGone) {
@@ -628,12 +620,16 @@ public class FileService {
      * ({@link FolderTreeDeleteService}) removes every file's rows and every folder first and the
      * bytes of all of them last, so that a failure in the database leaves the disk untouched.
      *
-     * @return the directory on disk that is this file's alone, relative to {@code base-dir}; null
-     *         for a file with no stored revision, which has nothing on disk (the model does not
-     *         produce one, but a row left half-written must not make its folder undeletable)
+     * @return the directories on disk that are this file's alone, relative to {@code base-dir} -
+     *         one, or two for a file stored before 2.10.0 that has revisions since; empty for a file
+     *         with no stored revision, which has nothing on disk (the model does not produce one,
+     *         but a row left half-written must not make its folder undeletable)
+     * @throws IllegalStateException a revision whose key is of no known layout, or names another
+     *                               file's place ({@link StorageLayout#fileDirectoryOf}) - before any
+     *                               row is removed, so the file stays whole and the refusal is seen
      */
     @Transactional
-    public String deleteFileRows(int id, int principalId) {
+    public List<String> deleteFileRows(int id, int principalId) {
         return deleteFileRows(id, principalId, null);
     }
 
@@ -644,21 +640,18 @@ public class FileService {
      *                    what took it with it; null for a file deleted on its own
      */
     @Transactional
-    public String deleteFileRows(int id, int principalId, String deletedWith) {
+    public List<String> deleteFileRows(int id, int principalId, String deletedWith) {
 
         FileInfo fileInfo = getFileInfoWithFileDetails(id);
-        // The directory on disk that is this file's alone, read from a stored key, not rebuilt
-        // from folder names that may have changed since. Under an id-based layout that is the id
-        // directory itself (files/.../{id}), so nothing of the file stays behind; under the old
-        // one the id-less {category}/{subCategory} directory is shared, and only the file's own
-        // {name} directory beneath it goes.
-        String address = null;
-        if (!fileInfo.getFileDetailsList().isEmpty()) {
-            String directory = directoryOf(fileInfo);
-            address = StorageLayout.isIdBased(fileInfo.getFileDetailsList().getFirst().getStorageKey())
-                    ? directory
-                    : directory + "/" + fileInfo.getFileName();
-        }
+        // The directories on disk that are this file's alone, read off every revision's stored key -
+        // never rebuilt from folder names, nor from the file's name, which may differ from what was
+        // written. Under an id-based layout that is the id directory itself (files/.../{id}), so
+        // nothing of the file stays behind; under the old name-based one, the file's own
+        // {category}/{subCategory}/{title} beneath a directory shared with its neighbours.
+        List<String> addresses = fileInfo.getFileDetailsList().stream()
+                .map(revision -> StorageLayout.fileDirectoryOf(revision.getStorageKey(), fileInfo.getId()))
+                .distinct()
+                .toList();
 
         // Recorded while the file is still whole: its name, its folder and its latest version are
         // what the history keeps of it once the rows are gone.
@@ -673,7 +666,7 @@ public class FileService {
 
         actionHistoryService.saveActionHistory(EntityEnum.FileInfo, id, ActionEnum.DELETE, principalId,
                 "DELETE FILE_INFO", "Delete Complete File_Info");
-        return address;
+        return addresses;
     }
 
     /**
@@ -732,6 +725,8 @@ public class FileService {
         int version = fileDetails.getVersion();
         boolean lastFormatOfItsVersion = fileDetailsRepository.countByFileInfoIdAndVersion(fileInfoId, version) == 1;
         String storageKey = fileDetails.getStorageKey();
+        // Asked before any row changes: a key of no known layout is refused while the file is whole.
+        String versionDirectory = StorageLayout.versionDirectoryOf(storageKey, fileInfoId);
 
         fileHistoryService.record(FileEvent.REVISION_DELETED, fileDetails, null, principalId);
 
@@ -750,11 +745,12 @@ public class FileService {
         fileDetailsRepository.flush();
 
         // The last format of a version leaves an empty version directory behind; anything else is
-        // one file inside a directory that still holds others.
+        // one file inside a directory that still holds others. (A version whose formats were stored
+        // in two layouts - one added after 2.10.0 to a version from before - has two directories;
+        // the first emptied stays, empty, until the whole file goes.)
         if (lastFormatOfItsVersion) {
-            // The version directory is the key's parent, so this needs no second expression for
-            // where the file lives - and it removes the file with it.
-            blobStore.deleteDirectory(parentOf(storageKey));
+            // The version directory holds the key, so this removes the file with it.
+            blobStore.deleteDirectory(versionDirectory);
         } else {
             blobStore.delete(StorageKey.of(storageKey));
         }
@@ -1019,30 +1015,6 @@ public class FileService {
             fileDetails.setFileSize(stored.sizeBytes());
         }
         fileDetails.setChecksumSha256(stored.checksumSha256());
-    }
-
-    /** The directory holding a stored object, as a relative address - the key without its last segment. */
-    private static String parentOf(String storageKey) {
-        int lastSeparator = storageKey.lastIndexOf('/');
-        if (lastSeparator < 1) {
-            throw new InvalidDataException("storage key has no parent directory: " + storageKey);
-        }
-        return storageKey.substring(0, lastSeparator);
-    }
-
-    /**
-     * The directory the file's revisions were stored under - {@code files/{shard}/{file id}} since
-     * 1.5.0, {@code files/{file id}} in 1.4.0, {@code {category}/{subCategory}} before it: the
-     * grandparent directory of any revision's key, whichever layout wrote it ({@link StorageLayout}).
-     * A file always has at least one revision - the whole-file delete is the only reader of a file
-     * whose last revision is gone, and it reads the key first.
-     */
-    private static String directoryOf(FileInfo fileInfo) {
-        if (fileInfo.getFileDetailsList().isEmpty()) {
-            throw new InvalidDataException("file id=" + fileInfo.getId() + " has no stored revision to place it by");
-        }
-        String key = fileInfo.getFileDetailsList().getFirst().getStorageKey();
-        return parentOf(parentOf(parentOf(key)));
     }
 
     private static void requireValidState(int newState) {
