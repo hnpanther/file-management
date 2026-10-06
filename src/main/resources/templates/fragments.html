@@ -71,6 +71,14 @@
             </span>
         </template>
     </nav>
+    <!-- A level of thousands is found by name (roadmap 12.4); shown once there is more than a page. -->
+    <label class="flex items-center gap-1.5 px-2 pt-2" x-show="filter || hasMore()" x-cloak>
+        <i class="bi bi-funnel text-xs text-ink-400" aria-hidden="true"></i>
+        <span class="sr-only" th:text="#{explorer.filter.label}">فیلتر این پوشه</span>
+        <input type="search" class="h-8 w-full rounded-[var(--radius-control)] border border-ink-200 px-2 text-sm"
+               x-model="filter" @input.debounce.350ms="applyFilter()" @keydown.enter.prevent="applyFilter()"
+               th:placeholder="#{explorer.filter.placeholder}" />
+    </label>
     <div class="folder-chooser-list">
         <p class="folder-chooser-note" x-show="loading" x-cloak th:text="#{explorer.tree.loading}">در حال بارگذاری…</p>
         <p class="folder-chooser-note text-red-600" x-show="error" x-cloak x-text="error"></p>
@@ -84,6 +92,11 @@
                       x-text="child.folderCount + child.fileCount"></span>
             </button>
         </template>
+        <button type="button" class="folder-chooser-item text-brand-700" x-show="hasMore()" x-cloak
+                :disabled="loading" @click="more()">
+            <i class="bi bi-three-dots" aria-hidden="true"></i>
+            <span x-text="moreLabel()"></span>
+        </button>
     </div>
     <div class="folder-chooser-actions">
         <span class="folder-chooser-chosen" x-show="chosen" x-cloak>
@@ -94,6 +107,89 @@
         <span class="folder-chooser-note" x-show="!chosen && !loading" x-cloak
               th:text="#{folderChooser.chooseOne}">به پوشهٔ مقصد بروید.</span>
     </div>
+</div>
+
+<!--
+  The folder-access tree of the role page and the API key page (roadmaps 6.5, 9.2, 12.4) - one
+  markup for both, since they ask the same question. Behaviour: window.initFolderGrantTrees in app.js.
+
+  Rendered: the top, every granted folder and the folders above each (FolderGrantTreeService). The
+  rest is opened a level at a time, or found by name, and added as rows of the same form. Every row
+  posts its <select> - the form's contract is "the complete selection" - and a row is never removed,
+  only hidden when its parent is closed: a hidden select is still posted, a removed one would read
+  as a grant taken away.
+
+  disabled: the role is fixed (ADMIN, USER) - shown, never changed.
+-->
+<div th:fragment="folder-grant-tree(folders, disabled)" class="folder-grant-tree" data-folder-grant-tree
+     th:data-children-url="@{/resource/folder-grants/children}"
+     th:data-search-url="@{/resource/folder-grants/search}"
+     th:data-disabled="${disabled}"
+     th:data-copy-more="#{folderGrants.more}"
+     th:data-copy-inherited="#{role.folders.inherited}"
+     th:data-copy-inherited-write="#{role.folders.inheritedWrite}"
+     th:data-copy-load-failed="#{folderGrants.loadFailed}"
+     th:data-copy-search-empty="#{folderGrants.search.empty}"
+     th:data-copy-expand="#{explorer.tree.expand}"
+     th:data-copy-collapse="#{explorer.tree.collapse}">
+
+    <div class="folder-grant-search">
+        <i class="bi bi-search text-xs text-ink-400" aria-hidden="true"></i>
+        <input type="search" class="folder-grant-search-input" data-grant-search
+               th:placeholder="#{folderGrants.search.placeholder}" th:aria-label="#{folderGrants.search.placeholder}" />
+        <ul class="folder-grant-hits" data-grant-hits hidden></ul>
+    </div>
+
+    <div class="folder-grant-rows" role="tree" data-grant-rows>
+        <div th:each="f: ${folders}" class="folder-grant-option" role="treeitem"
+             th:classappend="${!#strings.isEmpty(f.inherited)} ? 'is-covered' : ''"
+             th:style="|--folder-depth:${f.depth}|"
+             th:data-id="${f.id}" th:data-path="${f.path}" th:data-depth="${f.depth}"
+             th:data-children="${f.childCount}" th:data-name="${f.name}">
+            <button type="button" class="folder-grant-toggle" data-grant-toggle
+                    th:classappend="${f.childCount == 0} ? 'is-leaf' : ''" th:disabled="${f.childCount == 0}"
+                    th:aria-label="#{explorer.tree.expand}">
+                <i class="bi bi-chevron-left text-[0.65rem]" aria-hidden="true"></i>
+            </button>
+            <i class="bi shrink-0 text-ink-400"
+               th:classappend="${f.depth == 0 ? 'bi-house-door' : (f.depth == 1 ? 'bi-folder-fill' : (f.depth == 2 ? 'bi-folder' : 'bi-folder2'))}"
+               aria-hidden="true"></i>
+            <label class="folder-grant-copy" th:for="|folder-grant-${f.id}|">
+                <span class="folder-grant-name" th:text="${f.getDisplayName()}"></span>
+                <span class="folder-grant-technical technical" dir="ltr" th:text="${f.getName()}"></span>
+            </label>
+            <span class="folder-grant-badge" data-grant-badge th:hidden="${#strings.isEmpty(f.inherited)}"
+                  th:text="${f.inherited == 'WRITE'} ? #{role.folders.inheritedWrite} : #{role.folders.inherited}">از پوشهٔ بالاتر</span>
+            <select name="folderGrants" class="folder-grant-select" th:id="|folder-grant-${f.id}|" th:disabled="${disabled}">
+                <option value="" th:selected="${#strings.isEmpty(f.permission)}"
+                        th:text="#{role.folders.none}">بدون دسترسی</option>
+                <option th:value="|${f.id}:READ|" th:selected="${f.permission == 'READ'}"
+                        th:text="#{role.folders.read}">خواندن</option>
+                <option th:value="|${f.id}:WRITE|" th:selected="${f.permission == 'WRITE'}"
+                        th:text="#{role.folders.write}">خواندن و نوشتن</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- A row added on the page: the same markup, filled in by app.js. -->
+    <template data-grant-row-template>
+        <div class="folder-grant-option" role="treeitem">
+            <button type="button" class="folder-grant-toggle" data-grant-toggle>
+                <i class="bi bi-chevron-left text-[0.65rem]" aria-hidden="true"></i>
+            </button>
+            <i class="bi shrink-0 text-ink-400" data-grant-icon aria-hidden="true"></i>
+            <label class="folder-grant-copy">
+                <span class="folder-grant-name" data-grant-name></span>
+                <span class="folder-grant-technical technical" dir="ltr" data-grant-technical></span>
+            </label>
+            <span class="folder-grant-badge" data-grant-badge hidden></span>
+            <select name="folderGrants" class="folder-grant-select">
+                <option value="" selected th:text="#{role.folders.none}">بدون دسترسی</option>
+                <option data-grant-read th:text="#{role.folders.read}">خواندن</option>
+                <option data-grant-write th:text="#{role.folders.write}">خواندن و نوشتن</option>
+            </select>
+        </div>
+    </template>
 </div>
 
 <!--

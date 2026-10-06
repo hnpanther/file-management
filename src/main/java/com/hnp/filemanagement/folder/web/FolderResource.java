@@ -82,6 +82,11 @@ public class FolderResource {
      * @param fileId   instead of a folder: open the folder this file is in, at the page that lists
      *                 it ("show in the explorer"). {@code page} is then worked out, not taken;
      *                 naming a folder as well is a 400, since the two could disagree
+     * @param folderPage   zero-based page of the child folders (roadmap 12.4)
+     * @param folderSize   child folders per page, clamped like {@code size}
+     * @param filter       a fragment of a name or a label, narrowing both lists of this folder
+     * @param folderAround a child folder's id: open the page of child folders that holds it, in place
+     *                     of {@code folderPage} - how the tree reaches a folder deep in a wide level
      */
     //REST_GET_FOLDER_CONTENT
     @PreAuthorize("hasAuthority('REST_GET_FOLDER_CONTENT') || hasAuthority('FILE_EXPLORER_PAGE') || hasAuthority('ADMIN')")
@@ -90,7 +95,11 @@ public class FolderResource {
                                              @RequestParam(value = "folderId", required = false) Integer folderId,
                                              @RequestParam(value = "page", defaultValue = "0") int page,
                                              @RequestParam(value = "size", defaultValue = "100") int size,
-                                             @RequestParam(value = "fileId", required = false) Integer fileId) {
+                                             @RequestParam(value = "fileId", required = false) Integer fileId,
+                                             @RequestParam(value = "folderPage", defaultValue = "0") int folderPage,
+                                             @RequestParam(value = "folderSize", defaultValue = "100") int folderSize,
+                                             @RequestParam(value = "filter", defaultValue = "") String filter,
+                                             @RequestParam(value = "folderAround", required = false) Integer folderAround) {
 
         if (fileId != null) {
             if (folderId != null) {
@@ -100,9 +109,12 @@ public class FolderResource {
             return folderContentService.contentAround(fileId, size, userDetails.getId());
         }
 
-        globalGeneralLogging.detail("list folder content of folderId=" + folderId + ", page=" + page);
+        globalGeneralLogging.detail("list folder content of folderId=" + folderId + ", page=" + page
+                + ", folderPage=" + folderPage + (filter.isBlank() ? "" : ", filtered")
+                + (folderAround == null ? "" : ", around folderId=" + folderAround));
 
-        return folderContentService.contentOf(folderId, page, size, userDetails.getId());
+        return folderContentService.contentOf(folderId, page, size,
+                new FolderContentService.LevelRequest(folderPage, folderSize, filter, folderAround), userDetails.getId());
     }
 
     /**

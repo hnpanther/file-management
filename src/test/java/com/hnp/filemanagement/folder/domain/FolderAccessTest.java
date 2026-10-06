@@ -160,6 +160,42 @@ class FolderAccessTest {
         assertThat(access.canWrite("/1/5/26/")).isTrue();
     }
 
+    // ---------------------------------------------------------------- a level, filtered in the query (roadmap 12.4)
+
+    @Test
+    @DisplayName("a readable folder shows every child; one walked through shows only the children on the way to a grant")
+    void theChildrenALevelShows() {
+        FolderAccess access = FolderAccess.of(read("/1/5/26/198/", "/1/5/27/", "/1/9/"));
+
+        assertThat(access.visibleChildIdsUnder("/1/5/27/")).as("inside a grant: every child, no filter").isEmpty();
+        assertThat(access.visibleChildIdsUnder("/1/9/40/")).as("deeper inside one").isEmpty();
+        assertThat(access.visibleChildIdsUnder("/1/5/")).as("the way to two grants")
+                .hasValueSatisfying(ids -> assertThat(ids).containsExactlyInAnyOrder(26, 27));
+        assertThat(access.visibleChildIdsUnder("/1/")).hasValueSatisfying(ids -> assertThat(ids).containsExactlyInAnyOrder(5, 9));
+        assertThat(access.visibleChildIdsUnder("/1/5/26/")).hasValueSatisfying(ids -> assertThat(ids).containsExactly(198));
+        assertThat(access.visibleChildIdsUnder("/1/6/")).as("a branch leading nowhere")
+                .hasValueSatisfying(ids -> assertThat(ids).isEmpty());
+        assertThat(access.visibleChildIdsUnder("/1/5/2/")).as("not fooled by a prefix of digits: /1/5/2/ is not /1/5/26/")
+                .hasValueSatisfying(ids -> assertThat(ids).isEmpty());
+    }
+
+    @Test
+    @DisplayName("what a level shows is exactly what visible() says of each child")
+    void theLevelAgreesWithVisible() {
+        FolderAccess access = FolderAccess.of(read("/1/5/26/198/", "/1/5/27/", "/1/9/"));
+        String[] parents = {"/1/", "/1/5/", "/1/5/26/", "/1/6/", "/1/9/"};
+        int[] children = {5, 6, 9, 26, 27, 28, 198, 199, 40};
+        for (String parent : parents) {
+            for (int child : children) {
+                String path = parent + child + "/";
+                boolean shown = access.visibleChildIdsUnder(parent).map(ids -> ids.contains(child)).orElse(true);
+                assertThat(shown).as("%s under %s", child, parent).isEqualTo(access.visible(path));
+            }
+        }
+        assertThat(FolderAccess.everything().visibleChildIdsUnder("/1/")).isEmpty();
+        assertThat(FolderAccess.nothing().visibleChildIdsUnder("/1/")).hasValueSatisfying(ids -> assertThat(ids).isEmpty());
+    }
+
     // ---------------------------------------------------------------- helpers
 
     /** Read grants, which is what every test above this section is about. */

@@ -171,7 +171,7 @@ class PortableQueriesTest extends DatabaseSupport {
         TestData.fileDetails(creator, file, 1, "pdf");
         file = fileInfoRepository.save(file);
         int id = file.getId();
-        Set<Integer> folder = Set.of(chain.tagId());
+        int reader = readerOf(chain.tag());
         String category = chain.category().getName().toUpperCase();
         flushAndClear();
 
@@ -179,13 +179,13 @@ class PortableQueriesTest extends DatabaseSupport {
         assertThat(fileInfoRepository.search(key("quarterly report " + n), PAGE).getContent()).extracting(FileInfo::getId).contains(id);
         assertThat(fileInfoRepository.search(key("annual summary " + n), PAGE).getContent()).extracting(FileInfo::getId).contains(id);
         assertThat(fileInfoRepository.search(key(category), PAGE).getContent()).extracting(FileInfo::getId).contains(id);
-        assertThat(fileInfoRepository.searchWithinFolders(key("quarterly REPORT " + n), folder, PAGE).getContent()).extracting(FileInfo::getId).containsExactly(id);
-        assertThat(fileInfoRepository.searchWithinFolders(key(category.toLowerCase()), folder, PAGE).getContent()).extracting(FileInfo::getId).containsExactly(id);
+        assertThat(fileInfoRepository.searchReadable(key("quarterly REPORT " + n), reader, 0, PAGE).getContent()).extracting(FileInfo::getId).containsExactly(id);
+        assertThat(fileInfoRepository.searchReadable(key(category.toLowerCase()), reader, 0, PAGE).getContent()).extracting(FileInfo::getId).containsExactly(id);
 
         // The tree's and the explorer's search.
         assertThat(fileInfoRepository.searchForTree(null, key("quarterly report " + n), PAGE)).extracting(FileInfo::getId).contains(id);
-        assertThat(fileInfoRepository.searchFiles(null, key("annual summary " + n), PAGE).getContent()).extracting(FileInfo::getId).contains(id);
-        assertThat(fileInfoRepository.searchFilesWithinFolders(null, key("quarterly"), folder, PAGE).getContent()).extracting(FileInfo::getId).containsExactly(id);
+        assertThat(fileInfoRepository.searchFilesUnder(null, key("annual summary " + n), "/", PAGE).getContent()).extracting(FileInfo::getId).contains(id);
+        assertThat(fileInfoRepository.searchFilesUnderReadable(null, key("quarterly"), "/", reader, 0, PAGE).getContent()).extracting(FileInfo::getId).containsExactly(id);
 
         // The public list, matched on the revision's own name and the folders' labels.
         assertThat(fileDetailsRepository.searchPublicFiles(key("quarterly report " + n), PAGE).getContent())
@@ -222,7 +222,7 @@ class PortableQueriesTest extends DatabaseSupport {
         TestData.fileDetails(creator, file, 1, "pdf");
         file = fileInfoRepository.save(file);
         int id = file.getId();
-        Set<Integer> folder = Set.of(chain.tagId());
+        int reader = readerOf(chain.tag());
         flushAndClear();
 
         List<String> typed = List.of(
@@ -233,19 +233,19 @@ class PortableQueriesTest extends DatabaseSupport {
                 "1403 " + n);
         for (String term : typed) {
             assertThat(fileInfoRepository.search(key(term), PAGE).getContent()).as(term).extracting(FileInfo::getId).contains(id);
-            assertThat(fileInfoRepository.searchWithinFolders(key(term), folder, PAGE).getContent()).as(term).extracting(FileInfo::getId).contains(id);
+            assertThat(fileInfoRepository.searchReadable(key(term), reader, 0, PAGE).getContent()).as(term).extracting(FileInfo::getId).contains(id);
             assertThat(fileInfoRepository.searchForTree(null, key(term), PAGE)).as(term).extracting(FileInfo::getId).contains(id);
-            assertThat(fileInfoRepository.searchFiles(null, key(term), PAGE).getContent()).as(term).extracting(FileInfo::getId).contains(id);
-            assertThat(fileInfoRepository.searchFilesWithinFolders(null, key(term), folder, PAGE).getContent()).as(term).extracting(FileInfo::getId).contains(id);
+            assertThat(fileInfoRepository.searchFilesUnder(null, key(term), "/", PAGE).getContent()).as(term).extracting(FileInfo::getId).contains(id);
+            assertThat(fileInfoRepository.searchFilesUnderReadable(null, key(term), "/", reader, 0, PAGE).getContent()).as(term).extracting(FileInfo::getId).contains(id);
             assertThat(fileDetailsRepository.searchPublicFiles(key(term), PAGE).getContent()).as(term)
                     .extracting(details -> details.getFileInfo().getId()).contains(id);
         }
 
         // The description: بودجه without its hamza, and the year in ASCII.
-        assertThat(fileInfoRepository.searchFiles(null, key("\u0628\u0648\u062f\u062c\u0647 \u0633\u0627\u0644 1403"), PAGE).getContent())
+        assertThat(fileInfoRepository.searchFilesUnder(null, key("\u0628\u0648\u062f\u062c\u0647 \u0633\u0627\u0644 1403"), "/", PAGE).getContent())
                 .extracting(FileInfo::getId).contains(id);
         // And something the name does not say is still not found.
-        assertThat(fileInfoRepository.searchFilesWithinFolders(null, key("1404"), folder, PAGE).getContent()).isEmpty();
+        assertThat(fileInfoRepository.searchFilesUnderReadable(null, key("1404"), "/", reader, 0, PAGE).getContent()).isEmpty();
     }
 
     @Test
@@ -320,7 +320,7 @@ class PortableQueriesTest extends DatabaseSupport {
         flushAndClear();
 
         assertThat(fileInfoRepository.search("", all).getContent()).extracting(FileInfo::getId).contains(id);
-        assertThat(fileInfoRepository.searchWithinFolders("", Set.of(chain.tagId()), all).getContent())
+        assertThat(fileInfoRepository.searchReadable("", readerOf(chain.tag()), 0, all).getContent())
                 .extracting(FileInfo::getId).containsExactly(id);
         assertThat(fileDetailsRepository.searchPublicFiles("", all).getContent())
                 .extracting(details -> details.getFileInfo().getId()).contains(id);
@@ -391,5 +391,18 @@ class PortableQueriesTest extends DatabaseSupport {
     private void flushAndClear() {
         entityManager.flush();
         entityManager.clear();
+    }
+
+    /**
+     * A person granted this folder alone, to read it through - the restriction the "within a
+     * reader's folders" queries apply, asked against the grant itself (roadmap 12.4).
+     */
+    private int readerOf(com.hnp.filemanagement.folder.domain.Folder folder) {
+        User reader = userRepository.save(TestData.user());
+        reader.replaceFolderGrants(List.of(new com.hnp.filemanagement.folder.domain.UserFolderGrant(
+                reader, folder, com.hnp.filemanagement.folder.domain.FolderPermission.READ)));
+        reader = userRepository.save(reader);
+        flushAndClear();
+        return reader.getId();
     }
 }

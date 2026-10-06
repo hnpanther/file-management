@@ -69,19 +69,22 @@ public interface FileShareLinkRepository extends JpaRepository<FileShareLink, In
     Slice<FileShareLink> findPageOfAll(Pageable pageable);
 
     /**
-     * A page of the links to files in these folders, newest first - every link a reader whose
-     * folder access is limited may see (2.7.4): a link names its file, and a file in a folder the
-     * reader cannot open is not theirs to know of.
+     * A page of the links to files one person or one key may read, newest first - every link a
+     * reader whose folder access is limited may see (2.7.4): a link names its file, and a file in a
+     * folder the reader cannot open is not theirs to know of. Asked against the grants
+     * ({@code GrantedFolderPath}, roadmap 12.4), never as a list of folder ids.
      */
     @Query("""
             SELECT l FROM FileShareLink l
             JOIN FETCH l.fileDetails fd
             JOIN FETCH fd.fileInfo fi
             JOIN FETCH l.createdBy
-            WHERE fi.folder.id IN :folderIds
+            JOIN fi.folder t
+            WHERE EXISTS (SELECT 1 FROM GrantedFolderPath gr
+                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%'))
             ORDER BY l.id DESC
             """)
-    Slice<FileShareLink> findPageWithinFolders(@Param("folderIds") Collection<Integer> folderIds, Pageable pageable);
+    Slice<FileShareLink> findPageReadable(@Param("userId") int userId, @Param("apiKeyId") int apiKeyId, Pageable pageable);
 
     long countByFileDetailsId(int fileDetailsId);
 

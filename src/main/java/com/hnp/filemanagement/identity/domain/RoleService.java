@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.identity.domain;
 
+import com.hnp.filemanagement.folder.domain.FolderGrantTreeService;
 import com.hnp.filemanagement.audit.domain.ActionHistoryService;
 import com.hnp.filemanagement.file.domain.UploadPolicyService;
 import com.hnp.filemanagement.folder.domain.FolderGrantDTO;
@@ -12,13 +13,11 @@ import com.hnp.filemanagement.shared.exception.DuplicateResourceException;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
-import com.hnp.filemanagement.folder.persistence.GrantedPath;
 import com.hnp.filemanagement.identity.persistence.PermissionRepository;
 import com.hnp.filemanagement.identity.persistence.RoleRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -64,17 +63,20 @@ public class RoleService {
     private final FolderRepository folderRepository;
     private final ActionHistoryService actionHistoryService;
     private final UploadPolicyService uploadPolicyService;
+    private final FolderGrantTreeService folderGrantTreeService;
 
     public RoleService(RoleRepository roleRepository,
                        PermissionRepository permissionRepository,
                        FolderRepository folderRepository,
                        ActionHistoryService actionHistoryService,
-                       UploadPolicyService uploadPolicyService) {
+                       UploadPolicyService uploadPolicyService,
+                       FolderGrantTreeService folderGrantTreeService) {
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
         this.folderRepository = folderRepository;
         this.actionHistoryService = actionHistoryService;
         this.uploadPolicyService = uploadPolicyService;
+        this.folderGrantTreeService = folderGrantTreeService;
     }
 
     /** Creates a role with these permissions, and answers its id. */
@@ -231,40 +233,10 @@ public class RoleService {
      *               both pages post
      */
     public List<FolderGrantDTO> getFolderTree(List<String> grants) {
-        Map<Integer, FolderPermission> grantedById = parseGrants(grants);
-
-        List<Folder> all = folderRepository.findAllByOrderByPathAsc();
-        List<GrantedPath> grantedPaths = all.stream()
-                .filter(folder -> grantedById.containsKey(folder.getId()))
-                .map(folder -> new GrantedPath(folder.getPath(), grantedById.get(folder.getId())))
-                .toList();
-
-        return all.stream().map(folder -> toGrantDto(folder, grantedById, grantedPaths)).toList();
-    }
-
-    private FolderGrantDTO toGrantDto(Folder folder, Map<Integer, FolderPermission> grantedById,
-                                      List<GrantedPath> grantedPaths) {
-        FolderGrantDTO dto = new FolderGrantDTO();
-        dto.setId(folder.getId());
-        dto.setName(folder.getName());
-        dto.setDisplayName(folder.getDisplayName());
-        dto.setDepth(folder.getDepth());
-        dto.setKind(folder.getKind().name());
-
-        FolderPermission own = grantedById.get(folder.getId());
-        dto.setPermission(own == null ? "" : own.name());
-
-        // Strictly an ancestor: a folder does not cover itself, or every grant would read as
-        // inherited. The strongest covering grant is the one reported, because that is what the
-        // role actually reaches here.
-        dto.setInherited(grantedPaths.stream()
-                .filter(granted -> folder.getPath().startsWith(granted.path())
-                        && !folder.getPath().equals(granted.path()))
-                .map(GrantedPath::permission)
-                .max(Comparator.naturalOrder())
-                .map(FolderPermission::name)
-                .orElse(""));
-        return dto;
+        // Not the whole tree any more (roadmap 12.4): the top, every granted folder and the folders
+        // above it - the rest is opened on the page. A folder left out holds no grant, so posting
+        // the rendered selection removes nothing it did not show.
+        return folderGrantTreeService.initialRows(parseGrants(grants));
     }
 
     /**

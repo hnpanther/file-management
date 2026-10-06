@@ -93,6 +93,13 @@ public class ApiKey extends AuditableEntity {
     private boolean mayDeleteFolders;
 
     /**
+     * The key issued in this one's place once it was revoked (roadmap 9.11) - never this key brought
+     * back, a new one with a new secret. Null until then, and at most one.
+     */
+    @Column(name = "replaced_by_id")
+    private Integer replacedById;
+
+    /**
      * The folders this key reaches and what it may do there — the same inheritance as a role's
      * grants: one grant covers everything beneath the folder it names.
      */

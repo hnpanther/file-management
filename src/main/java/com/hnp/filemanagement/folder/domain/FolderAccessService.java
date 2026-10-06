@@ -12,10 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
-import java.util.Set;
 
 /**
  * The second of the two authorization questions: <em>may this user touch this folder?</em>
@@ -144,25 +141,27 @@ public class FolderAccessService {
     }
 
     /**
-     * The folders this access may read, as ids: every folder beneath a readable path — the
-     * filter the file list and the explorer push into their queries.
+     * How a list query applies this person's - or this request's key's - folder access: the filter
+     * the file list, the explorer's search, the history, the download log and the share links push
+     * into their queries ({@link GrantedFolderPath}).
      *
-     * <p>Empty {@link Optional} means "no restriction"; an empty <em>set</em> means the opposite,
-     * that nothing is readable. Those two must not be confused, which is why this is not just a set.
-     *
-     * <p>One prefix scan per grant, and grants are few and reduced beforehand so none is a prefix of
-     * another. The alternative — a {@code LIKE} per grant stitched into the list query — would mean
-     * building the query text at runtime for a filter that changes only when a grant does.
+     * <p>Not the readable folders as a set of ids, which is what it was until 2.11.0: a grant over
+     * a hundred thousand folders made that a statement with a hundred thousand parameters, which
+     * PostgreSQL refuses past 65,535 - and loaded every one of those folders to build it.
      */
-    public Optional<Set<Integer>> readableFolderIds(FolderAccess access) {
+    public FolderReadScope readScope(int principalId) {
+        return readScope(accessFor(principalId), principalId);
+    }
+
+    /** {@link #readScope(int)} from an access already resolved for this request. */
+    public FolderReadScope readScope(FolderAccess access, int principalId) {
         if (access.unrestricted()) {
-            return Optional.empty();
+            return FolderReadScope.everything();
         }
-        Set<Integer> folderIds = new LinkedHashSet<>();
-        for (String granted : access.readablePaths()) {
-            folderRepository.findSubtree(granted).stream().map(Folder::getId).forEach(folderIds::add);
-        }
-        return Optional.of(folderIds);
+        Integer apiKeyId = currentApiKeyId();
+        return apiKeyId != null
+                ? FolderReadScope.ofApiKey(apiKeyId, access.isEmpty())
+                : FolderReadScope.ofUser(principalId, access.isEmpty());
     }
 
     // ------------------------------------------------------------------ by the file's own folder (roadmap 7.2 step 3)

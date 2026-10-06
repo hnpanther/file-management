@@ -559,7 +559,7 @@ document, so a browser navigation still lands on a page.
 
 | Method | Path |
 |---|---|
-| GET | `/resource/folders/children?folderId=&page=&size=`, or `?fileId=` for the folder a file is in at the page that lists it - "show in the explorer"; a 400 if both are given (each file entry names its latest revision - of the latest version, the format uploaded last - as `latestFileDetailsId`, for the explorer's download), `/resource/folders/{id}` (one folder's details: trail, group, direct and total counts, audit), `/resource/folders/search?query=&folderId=` (folders by id / name / label as `folders`, at most 20; files paged as `hits`) (`REST_GET_FOLDER_CONTENT` / `REST_SEARCH_FOLDER_CONTENT`, or `FILE_EXPLORER_PAGE`) |
+| GET | `/resource/folders/children?folderId=&page=&size=&folderPage=&folderSize=&filter=&folderAround=` - files and child folders each paged (2.11.0, roadmap 12.4: a page of folders with the level's total in `folderPage`; `filter` narrows both by name; `folderAround` opens the folders' page that holds that child), or `?fileId=` for the folder a file is in at the page that lists it - "show in the explorer"; a 400 if both are given (each file entry names its latest revision - of the latest version, the format uploaded last - as `latestFileDetailsId`, for the explorer's download), `/resource/folders/{id}` (one folder's details: trail, group, direct and total counts, audit), `/resource/folders/search?query=&folderId=` (folders by id / name / label as `folders`, at most 20; files paged as `hits`) (`REST_GET_FOLDER_CONTENT` / `REST_SEARCH_FOLDER_CONTENT`, or `FILE_EXPLORER_PAGE`) |
 | GET | `/resource/folders/tag-groups` (`REST_GET_TAG_GROUPS` or `REST_CREATE_FOLDER`) |
 | POST | `/resource/folders` `{parentId, name, displayName, tagGroupId | newTagGroupName}` → 201 (`REST_CREATE_FOLDER`; under the root a group is needed, deeper none is taken; 400 past the depth limit) |
 | PUT | `/resource/folders/{id}` `{name, displayName, tagGroupId?}` (`REST_RENAME_FOLDER`; the group only at the top level) |
@@ -571,7 +571,8 @@ document, so a browser navigation still lands on a page.
 | PUT | `/resource/users/{userId}/change-enabled`, `.../change-login-type/{type}` |
 | POST | `/resource/files/file-details/{id}/share-links` `{minutes?, password?, maxDownloads?}` → 201 `{link, url}`, the token shown this once (`CREATE_SHARE_LINK` and `READ` on the folder; 400 below one minute or download, or without a password under `REQUIRED`) |
 | DELETE | `/resource/share-links/{id}` (`CREATE_SHARE_LINK` for one's own, `REVOKE_SHARE_LINK` for anyone's; 403 otherwise) |
-| GET | `/resource/files/tree/children?type=&id=` |
+| GET | `/resource/files/tree/children?type=&id=&page=&size=&filter=` → `{nodes, page, filter}`, a page of the level, folders then files (2.11.0) |
+| GET | `/resource/folder-grants/children?parentId=&page=&size=&filter=`, `/resource/folder-grants/search?query=` - the access tree of the role and key pages, a level at a time and by name (`REST_GET_FOLDER_GRANT_TREE`, `UPDATE_ROLE_PAGE`, `CREATE_API_KEY_PAGE` or `UPDATE_API_KEY_PAGE`) |
 
 </details>
 

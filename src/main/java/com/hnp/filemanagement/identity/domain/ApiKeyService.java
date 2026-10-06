@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -118,11 +119,7 @@ public class ApiKeyService {
                 () -> new ResourceNotFoundException("user with id=" + principalId + " doesn't exists"));
 
         LocalDate expiresOn = request.getExpiresAt();
-        if (expiresOn != null && !expiresOn.isAfter(LocalDate.now(clock))) {
-            // Refused rather than accepted and immediately useless: a key that expires today is
-            // almost certainly a mistyped year, and it would fail with "expired" on first use.
-            throw new InvalidDataException("expiry must be in the future, was " + expiresOn);
-        }
+        requireFuture(expiresOn);
 
         boolean s3 = request.getKind() == ApiKeyKind.S3;
         if (s3 && !s3SecretCipher.configured()) {
@@ -158,11 +155,101 @@ public class ApiKeyService {
         return new ApiKeyCreatedDTO(saved.getId(), keyId, s3 ? secret : PREFIX + keyId + "_" + secret);
     }
 
+    // ------------------------------------------------------------------ renewing and replacing (roadmap 9.11)
+
+    /**
+     * Gives a key a new date - or none - so that one past its date is accepted again, with the same
+     * secret: its client works again without a change. Expiry means time ran out, not that the key
+     * leaked, so nothing about the credential needs to change. A revoked key is refused: it may have
+     * leaked, and what it gets is a replacement ({@link #reissue}).
+     *
+     * @param expiresOn the new last day, in the future; null for no expiry
+     */
+    @Transactional
+    public void renew(int id, LocalDate expiresOn, int principalId) {
+        ApiKey apiKey = requireKey(id);
+        if (apiKey.getRevokedAt() != null) {
+            throw new InvalidDataException("a revoked key is not renewed but replaced, id=" + id, "apiKey.renew.revoked");
+        }
+        requireFuture(expiresOn);
+        Instant before = apiKey.getExpiresAt();
+        apiKey.setExpiresAt(endOf(expiresOn));
+        apiKey.setUpdatedAt(Instant.now(clock));
+        apiKey.setUpdatedBy(userRepository.findById(principalId).orElse(null));
+
+        actionHistoryService.saveActionHistory(EntityEnum.ApiKey, id, ActionEnum.UPDATE_VALUES, principalId,
+                "RENEW API_KEY", "RENEW API_KEY, keyId=" + apiKey.getKeyId() + ", expiresAt " + before
+                        + " -> " + apiKey.getExpiresAt());
+    }
+
+    /**
+     * Issues a new key in place of a revoked one: a new key id and a new secret - shown once, as at
+     * creation - carrying the revoked key's title, description, folder grants, kind and capabilities,
+     * and its date if that is still ahead. The revoked key stays revoked, and names its replacement.
+     * A revoked key is never brought back, because whoever may hold its secret would come back with
+     * it; a key not revoked has no replacement - revoke it first, so the two are never both valid;
+     * and a key is replaced once.
+     */
+    @Transactional
+    public ApiKeyCreatedDTO reissue(int id, int principalId) {
+        ApiKey revoked = apiKeyRepository.findByIdWithFolders(id).orElseThrow(
+                () -> new ResourceNotFoundException("api key with id=" + id + " doesn't exists"));
+        if (revoked.getRevokedAt() == null) {
+            throw new InvalidDataException("only a revoked key is replaced, id=" + id, "apiKey.reissue.notRevoked");
+        }
+        if (revoked.getReplacedById() != null) {
+            throw new InvalidDataException("key id=" + id + " was already replaced by id=" + revoked.getReplacedById(),
+                    "apiKey.reissue.already");
+        }
+
+        ApiKeyDTO request = new ApiKeyDTO();
+        request.setTitle(revoked.getTitle());
+        request.setDescription(revoked.getDescription());
+        request.setKind(revoked.getKind());
+        request.setMayCreateFolders(revoked.isMayCreateFolders());
+        request.setMayDeleteFiles(revoked.isMayDeleteFiles());
+        request.setMayDeleteFolders(revoked.isMayDeleteFolders());
+        LocalDate lastDay = lastDayOf(revoked.getExpiresAt());
+        request.setExpiresAt(lastDay != null && lastDay.isAfter(LocalDate.now(clock)) ? lastDay : null);
+        request.setFolderGrants(revoked.getFolderGrants().stream()
+                .map(grant -> grant.getFolder().getId() + ":" + grant.getPermission().name())
+                .toList());
+
+        ApiKeyCreatedDTO created = create(request, principalId);
+        revoked.setReplacedById(created.id());
+        revoked.setUpdatedAt(Instant.now(clock));
+
+        actionHistoryService.saveActionHistory(EntityEnum.ApiKey, id, ActionEnum.UPDATE_VALUES, principalId,
+                "REISSUE API_KEY", "REISSUE API_KEY, keyId=" + revoked.getKeyId() + " replaced by id=" + created.id()
+                        + ", keyId=" + created.keyId());
+        return created;
+    }
+
+    /**
+     * Refused rather than accepted and immediately useless: a key that expires today is almost
+     * certainly a mistyped year, and it would fail with "expired" on first use.
+     */
+    private void requireFuture(LocalDate expiresOn) {
+        if (expiresOn != null && !expiresOn.isAfter(LocalDate.now(clock))) {
+            throw new InvalidDataException("expiry must be in the future, was " + expiresOn, "apiKey.expiry.past");
+        }
+    }
+
+    /** The last day a stored expiry allows - the column holds the exclusive end of it ({@link #endOf}). */
+    private LocalDate lastDayOf(Instant expiresAt) {
+        return expiresAt == null ? null : LocalDate.ofInstant(expiresAt, clock.getZone()).minusDays(1);
+    }
+
     // ------------------------------------------------------------------ managing
 
     /** Every key, newest first. Never carries a secret, because none is stored. */
     public List<ApiKeyDTO> getAll() {
-        return apiKeyRepository.findAllByOrderByCreatedAtDesc().stream().map(this::toDto).toList();
+        List<ApiKeyDTO> keys = apiKeyRepository.findAllByOrderByCreatedAtDesc().stream().map(this::toDto).toList();
+        // Which key each one replaced: the other side of replaced_by_id, read off the same list.
+        Map<Integer, Integer> replaces = new HashMap<>();
+        keys.stream().filter(k -> k.getReplacedById() != null).forEach(k -> replaces.put(k.getReplacedById(), k.getId()));
+        keys.forEach(k -> k.setReplacesId(replaces.get(k.getId())));
+        return keys;
     }
 
     public ApiKeyDTO getById(int id) {
@@ -391,14 +478,16 @@ public class ApiKeyService {
         dto.setTitle(apiKey.getTitle());
         dto.setDescription(apiKey.getDescription());
         // Back to a date for the form; the column holds the exclusive end of that day (endOf).
-        dto.setExpiresAt(apiKey.getExpiresAt() == null
-                ? null : LocalDate.ofInstant(apiKey.getExpiresAt(), clock.getZone()).minusDays(1));
+        dto.setExpiresAt(lastDayOf(apiKey.getExpiresAt()));
         dto.setEnabled(apiKey.getEnabled());
         dto.setRevokedAt(apiKey.getRevokedAt());
         dto.setLastUsedAt(apiKey.getLastUsedAt());
         dto.setCreatedAt(apiKey.getCreatedAt());
         dto.setCreatedBy(apiKey.getCreatedBy() == null ? null : apiKey.getCreatedBy().getUsername());
-        dto.setUsable(apiKey.isUsableAt(Instant.now(clock)));
+        Instant now = Instant.now(clock);
+        dto.setUsable(apiKey.isUsableAt(now));
+        dto.setExpired(apiKey.getRevokedAt() == null && apiKey.getExpiresAt() != null && !apiKey.getExpiresAt().isAfter(now));
+        dto.setReplacedById(apiKey.getReplacedById());
         dto.setKind(apiKey.getKind());
         dto.setMayCreateFolders(apiKey.isMayCreateFolders());
         dto.setMayDeleteFiles(apiKey.isMayDeleteFiles());

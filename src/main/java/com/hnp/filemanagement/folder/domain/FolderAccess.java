@@ -4,7 +4,10 @@ import com.hnp.filemanagement.folder.persistence.GrantedPath;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * What one person may reach in the folder tree, resolved once and then asked many times
@@ -114,6 +117,31 @@ public record FolderAccess(boolean unrestricted, List<String> readablePaths, Lis
             return true;
         }
         return readablePaths.stream().anyMatch(granted -> granted.startsWith(path) && !granted.equals(path));
+    }
+
+    /**
+     * Which children of the folder at this path appear, as a filter a query of the level can take
+     * (roadmap 12.4): every one when the folder itself is readable - empty {@link Optional} - and
+     * otherwise only those on the way to a grant, which are named by the grants themselves: the
+     * segment of each granted path right after this one. So a level of thousands, walked through
+     * on the way to one grant, is a query for that one child, not a read of the thousands to keep
+     * one.
+     *
+     * <p>Exactly {@link #visible} applied to each child: a child of a folder that is not readable
+     * is readable only if it is itself a grant, and then it is on that set too.
+     */
+    public Optional<Set<Integer>> visibleChildIdsUnder(String parentPath) {
+        if (canRead(parentPath)) {
+            return Optional.empty();
+        }
+        Set<Integer> ids = new LinkedHashSet<>();
+        for (String granted : readablePaths) {
+            if (granted.startsWith(parentPath) && granted.length() > parentPath.length()) {
+                String rest = granted.substring(parentPath.length());
+                ids.add(Integer.valueOf(rest.substring(0, rest.indexOf('/'))));
+            }
+        }
+        return Optional.of(ids);
     }
 
     /** Whether the folder should appear in the tree at all: readable, or a step towards something readable. */

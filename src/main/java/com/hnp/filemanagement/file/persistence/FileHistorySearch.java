@@ -43,7 +43,7 @@ public class FileHistorySearch {
     }
 
     public Slice<FileHistory> find(FileHistoryQuery query, Pageable pageable) {
-        if (query.folderIds() != null && query.folderIds().isEmpty()) {
+        if (query.readScope() != null && query.readScope().nothing()) {
             return new SliceImpl<>(List.of(), pageable, false);
         }
 
@@ -72,8 +72,8 @@ public class FileHistorySearch {
         if (query.apiKeyId() != null) {
             where.add(cb.equal(history.get("apiKey").get("id"), query.apiKeyId()));
         }
-        if (query.folderIds() != null) {
-            where.add(history.get("folderId").in(query.folderIds()));
+        if (query.readScope() != null && !query.readScope().unrestricted()) {
+            where.add(ReadableFolders.contains(cb, criteria, history.get("folderId"), query.readScope()));
         }
 
         criteria.select(history)

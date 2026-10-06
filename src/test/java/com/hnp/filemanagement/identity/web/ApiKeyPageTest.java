@@ -50,6 +50,8 @@ class ApiKeyPageTest extends DatabaseSupport {
     @Autowired
     private ApiKeyRepository apiKeyRepository;
     @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    @Autowired
     private UserRepository userRepository;
     @Autowired
     private FolderRepository folderRepository;
@@ -290,6 +292,64 @@ class ApiKeyPageTest extends DatabaseSupport {
         mockMvc.perform(get("/api/v1/files/health-test")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer fmk_" + created.keyId() + "_" + created.credential()))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ---------------------------------------------------------------- renewing and replacing (roadmap 9.11)
+
+    @Test
+    @DisplayName("an expired key reads as expired, is renewed from the list behind its permission, and works again with its secret")
+    void renewingFromTheList() throws Exception {
+        ApiKeyDTO expiring = request("expiring");
+        expiring.setExpiresAt(java.time.LocalDate.now().plusDays(5));
+        var created = apiKeyService.create(expiring, principalId);
+        apiKeyRepository.flush();
+        jdbcTemplate.update("UPDATE api_key SET expires_at = now() - interval '1 hour' WHERE id = ?", created.id());
+
+        mockMvc.perform(get("/api-keys").with(user(principal(PermissionEnum.GET_ALL_API_KEY_PAGE))).accept(MediaType.TEXT_HTML))
+                .andExpect(content().string(Matchers.containsString("منقضی‌شده")));
+
+        String newDate = java.time.LocalDate.now().plusDays(40).toString();
+        mockMvc.perform(post("/api-keys/{id}/renew", created.id()).param("expiresAt", newDate)
+                        .with(user(principal(PermissionEnum.GET_ALL_API_KEY_PAGE))).with(csrf()).accept(MediaType.TEXT_HTML))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api-keys/{id}/renew", created.id()).param("expiresAt", newDate)
+                        .with(user(principal(PermissionEnum.RENEW_API_KEY))).with(csrf()).accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString("کلید تمدید شد")));
+
+        mockMvc.perform(get("/api/v1/files/health-test").header(HttpHeaders.AUTHORIZATION, "Bearer " + created.credential()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("a revoked key's replacement is made behind its permission and its secret shown on that render only")
+    void reissuingFromTheList() throws Exception {
+        var old = apiKeyService.create(request("to replace"), principalId);
+        apiKeyService.revoke(old.id(), principalId);
+
+        mockMvc.perform(post("/api-keys/{id}/reissue", old.id()).with(user(principal(PermissionEnum.REVOKE_API_KEY)))
+                        .with(csrf()).accept(MediaType.TEXT_HTML))
+                .andExpect(status().isForbidden());
+
+        String page = mockMvc.perform(post("/api-keys/{id}/reissue", old.id())
+                        .with(user(principal(PermissionEnum.REISSUE_API_KEY))).with(csrf()).accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString("fmk_")))
+                .andReturn().getResponse().getContentAsString();
+        String credential = page.substring(page.indexOf("fmk_"));
+        credential = credential.substring(0, credential.indexOf('<'));
+
+        mockMvc.perform(get("/api/v1/files/health-test").header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api-keys").with(user(principal(PermissionEnum.GET_ALL_API_KEY_PAGE))).accept(MediaType.TEXT_HTML))
+                .andExpect(content().string(Matchers.not(Matchers.containsString(credential))))
+                .andExpect(content().string(Matchers.containsString("جایگزین‌شده با کلید")));
+
+        // A second replacement is refused, and said so on the page.
+        mockMvc.perform(post("/api-keys/{id}/reissue", old.id())
+                        .with(user(principal(PermissionEnum.REISSUE_API_KEY))).with(csrf()).accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString("پیش‌تر کلید جایگزین ساخته شده است")));
     }
 
     private ApiKeyDTO request(String title) {

@@ -1,7 +1,7 @@
 package com.hnp.filemanagement.folder.web;
 
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
-import com.hnp.filemanagement.folder.domain.TreeNodeDTO;
+import com.hnp.filemanagement.folder.domain.FolderLevelService;
 import com.hnp.filemanagement.folder.domain.FileTreeService;
 import com.hnp.filemanagement.shared.web.GlobalGeneralLogging;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -11,7 +11,6 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
-import java.util.List;
 
 /**
  * The read-only file tree. Renders the top level; deeper levels are fetched by the page from
@@ -37,8 +36,9 @@ public class FileTreeController {
         int principalId = userDetails.getId();
         globalGeneralLogging.detail("file tree page");
 
-        List<TreeNodeDTO> roots = fileTreeService.getRoots(principalId);
-        model.addAttribute("roots", roots);
+        // The first page of the top level; the page asks for the rest of it, and every level below.
+        model.addAttribute("rootLevel", fileTreeService.getRootLevel(principalId, "", 0, FolderLevelService.DEFAULT_SIZE));
+        model.addAttribute("rootFolderId", fileTreeService.rootId());
 
         return "file-management/files/file-tree.html";
     }

@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.folder.web;
 
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
+import com.hnp.filemanagement.folder.domain.TreeLevelDTO;
 import com.hnp.filemanagement.folder.domain.TreeNodeDTO;
 import com.hnp.filemanagement.folder.domain.TreeSearchHitDTO;
 import com.hnp.filemanagement.folder.domain.FileTreeService;
@@ -46,13 +47,18 @@ public class FileTreeResource {
     //REST_GET_FILE_TREE
     @PreAuthorize("hasAuthority('REST_GET_FILE_TREE') || hasAuthority('FILE_TREE_PAGE') || hasAuthority('ADMIN')")
     @GetMapping("children")
-    public ResponseEntity<List<TreeNodeDTO>> getChildren(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                                         @RequestParam("type") TreeNodeDTO.NodeType type,
-                                                         @RequestParam("id") int id) {
+    public ResponseEntity<TreeLevelDTO> getChildren(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                    @RequestParam("type") TreeNodeDTO.NodeType type,
+                                                    @RequestParam("id") int id,
+                                                    @RequestParam(value = "page", defaultValue = "0") int page,
+                                                    @RequestParam(value = "size", defaultValue = "100") int size,
+                                                    @RequestParam(value = "filter", defaultValue = "") String filter) {
 
-        globalGeneralLogging.detail("list tree children of type=" + type + ", id=" + id);
+        globalGeneralLogging.detail("list tree children of type=" + type + ", id=" + id + ", page=" + page
+                + (filter.isBlank() ? "" : ", filtered"));
 
-        return ResponseEntity.ok(fileTreeService.getChildren(type, id, userDetails.getId()));
+        // One page of the level, folders then files (roadmap 12.4); "more" asks for the next.
+        return ResponseEntity.ok(fileTreeService.getLevel(type, id, filter, page, size, userDetails.getId()));
     }
 
     //REST_SEARCH_FILE_TREE

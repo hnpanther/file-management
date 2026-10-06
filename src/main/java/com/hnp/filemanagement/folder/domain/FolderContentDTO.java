@@ -36,7 +36,8 @@ import java.util.List;
  *                   ({@code docs/issues.md}, issue 75)
  * @param breadcrumb the ancestors, root first, <em>excluding</em> the folder itself. Every ancestor
  *                   of a visible folder is visible by definition, so nothing is filtered out of it
- * @param folders    child folders this person may at least walk into, by name
+ * @param folders    one page of the child folders this person may at least walk into, in the order
+ *                   of their names without case (roadmap 12.4)
  * @param writable   whether documents may be filed into this folder by the caller: any folder but
  *                   the root, inside a {@code WRITE} grant. What the page's "upload here" button
  *                   is shown on.
@@ -46,7 +47,11 @@ import java.util.List;
  * @param canHoldFolders whether a folder may be created here: the depth limit
  *                   ({@code filemanagement.folders.max-depth}) has not been reached
  * @param files      one page of the files directly in this folder, empty unless {@code readable}
- * @param page       which page of {@link #files} this is. Folders are never paged - see the service
+ * @param page       which page of {@link #files} this is
+ * @param folderPage which page of {@link #folders} this is, with the level's total - folders are
+ *                   paged apart from files since 2.11.0, a folder may hold thousands of them
+ * @param filter     the filter both lists were narrowed by, as it was typed and trimmed; {@code ""}
+ *                   for none
  */
 public record FolderContentDTO(
         FolderRef folder,
@@ -57,7 +62,9 @@ public record FolderContentDTO(
         List<FolderRef> breadcrumb,
         List<FolderEntry> folders,
         List<FileEntry> files,
-        PageInfo page) {
+        PageInfo page,
+        PageInfo folderPage,
+        String filter) {
 
     /**
      * A folder as an address: enough to render it and to ask for it again.

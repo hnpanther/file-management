@@ -46,6 +46,15 @@ public class ApiKeyDTO {
     /** Whether it would be accepted right now — enabled, not revoked, not past its date. */
     private boolean usable;
 
+    /** Past its date, and not revoked - what renewing it brings back (roadmap 9.11). */
+    private boolean expired;
+
+    /** The key issued in place of this revoked one, if any (roadmap 9.11). */
+    private Integer replacedById;
+
+    /** The revoked key this one was issued in place of, if any. */
+    private Integer replacesId;
+
     /** {@code "{folderId}:{READ|WRITE}"}, the same encoding the role page posts. */
     private List<String> folderGrants = new ArrayList<>();
 

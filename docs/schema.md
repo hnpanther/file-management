@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.7`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.8`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -160,12 +160,15 @@ _As of migration `V3.7`. Types and defaults are PostgreSQL's own; every table is
 | `may_create_folders` | `boolean` | no | `false` |  |
 | `may_delete_files` | `boolean` | no | `false` |  |
 | `may_delete_folders` | `boolean` | no | `false` |  |
+| `replaced_by_id` | `integer` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_api_key_key_id` (`key_id`)
 * **foreign key** `fk_api_key_created_by_user` `created_by` → `app_user` (`id`)
+* **foreign key** `fk_api_key_replaced_by` `replaced_by_id` → `api_key` (`id`)
 * **foreign key** `fk_api_key_updated_by_user` `updated_by` → `app_user` (`id`)
 * **index** `fk_api_key_created_by_user` (`created_by`)
+* **index** `fk_api_key_replaced_by` (`replaced_by_id`)
 * **index** `fk_api_key_updated_by_user` (`updated_by`)
 
 ### `api_key_folder`

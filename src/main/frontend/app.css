@@ -536,6 +536,31 @@
     .folder-grant-badge {
         @apply shrink-0 rounded-full border border-ink-200 bg-ink-50 px-1.5 text-[0.7rem] text-ink-500;
     }
+    /* Opening a folder's children (roadmap 12.4: the tree is rendered in part, the rest on demand). */
+    .folder-grant-toggle {
+        @apply grid size-5 shrink-0 place-items-center rounded text-ink-400 hover:bg-ink-100 hover:text-ink-700;
+    }
+    .folder-grant-toggle.is-leaf { @apply invisible; }
+    .folder-grant-more {
+        @apply flex w-full items-center gap-2 rounded-[var(--radius-control)] py-1.5 pe-2 text-start text-xs
+               text-brand-700 hover:bg-brand-50;
+        padding-inline-start: calc(2rem + var(--folder-depth, 0) * 1.25rem);
+    }
+    .folder-grant-option.is-found { @apply ring-2 ring-brand-400; }
+    .folder-grant-search {
+        @apply sticky top-0 z-20 mb-1 flex items-center gap-2 border-b border-ink-100 bg-white px-2 pb-1.5 pt-1;
+    }
+    .folder-grant-search-input {
+        @apply h-8 min-w-0 flex-1 rounded-[var(--radius-control)] border border-ink-200 px-2 text-sm;
+    }
+    .folder-grant-hits {
+        @apply absolute inset-x-1 top-full z-10 m-0 max-h-64 list-none overflow-y-auto rounded-[var(--radius-control)]
+               border border-ink-200 bg-white p-1 shadow-lg;
+    }
+    .folder-grant-hit {
+        @apply block w-full rounded-[var(--radius-control)] px-2 py-1.5 text-start text-sm hover:bg-ink-50;
+    }
+    .folder-grant-hit.is-empty { @apply text-ink-500 hover:bg-transparent; }
 
     /* Forms that have not yet moved to the explicit page/card markup still receive the same
        visual hierarchy and spacing. Keep this selector scoped to direct container children. */

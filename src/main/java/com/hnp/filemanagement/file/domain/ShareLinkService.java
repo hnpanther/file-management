@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.domain;
 
+import com.hnp.filemanagement.folder.domain.FolderReadScope;
 import com.hnp.filemanagement.audit.domain.ActionHistoryService;
 import com.hnp.filemanagement.folder.domain.FolderAccessService;
 import com.hnp.filemanagement.audit.domain.ActionEnum;
@@ -32,7 +33,6 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * Temporary share links ({@code V2.12}, roadmap 10.5): a link to one stored revision, valid for
@@ -298,11 +298,11 @@ public class ShareLinkService {
      */
     @Transactional(readOnly = true)
     public LinkPage listAll(int principalId, int page, int size) {
-        Optional<Set<Integer>> readable = folderAccessService.readableFolderIds(folderAccessService.accessFor(principalId));
+        FolderReadScope scope = folderAccessService.readScope(principalId);
         PageRequest request = PageRequest.of(page, size);
-        Slice<FileShareLink> links = readable.isEmpty() ? shareLinkRepository.findPageOfAll(request)
-                : readable.get().isEmpty() ? new SliceImpl<>(List.of(), request, false)
-                : shareLinkRepository.findPageWithinFolders(readable.get(), request);
+        Slice<FileShareLink> links = scope.unrestricted() ? shareLinkRepository.findPageOfAll(request)
+                : scope.nothing() ? new SliceImpl<>(List.of(), request, false)
+                : shareLinkRepository.findPageReadable(scope.userId(), scope.apiKeyId(), request);
         return pageOf(links, page, size);
     }
 

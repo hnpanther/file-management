@@ -36,4 +36,10 @@ public class FolderGrantDTO {
 
     /** {@code ""}, {@code "READ"} or {@code "WRITE"} — what an ancestor already allows here. */
     private String inherited;
+
+    /** The materialised path ({@code /1/5/26/}): how the page tells which rows are above this one. */
+    private String path;
+
+    /** How many folders are directly under this one - whether the page offers to open it (roadmap 12.4). */
+    private long childCount;
 }

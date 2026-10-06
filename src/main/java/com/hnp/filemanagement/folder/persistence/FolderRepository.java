@@ -2,6 +2,7 @@ package com.hnp.filemanagement.folder.persistence;
 
 import com.hnp.filemanagement.folder.domain.Folder;
 import com.hnp.filemanagement.folder.domain.FolderKind;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -30,19 +31,6 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     List<Folder> findRoots();
 
     Optional<Folder> findByPath(String path);
-
-    /**
-     * The whole tree in an order that always puts a folder after its ancestors.
-     *
-     * <p>Ordering by {@code path} is enough for that: an ancestor's path is a string prefix of every
-     * descendant's, and a prefix always sorts before what extends it. So the screen that renders the
-     * tree can walk this list once, indenting by {@code depth}, without building a graph first.
-     *
-     * <p>Fetching all of it is deliberate. The mirror is one row per category, sub-category and main
-     * tag — a couple of hundred on the installation this was built against — and paging a tree the
-     * admin has to see all of anyway would cost more than it saves.
-     */
-    List<Folder> findAllByOrderByPathAsc();
 
     List<Folder> findByParentIdOrderByNameAsc(Integer parentId);
 
@@ -115,19 +103,73 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     List<Folder> findByTagGroupId(Integer tagGroupId);
 
     /**
-     * One level of the tree with each folder's tag group already attached.
-     *
-     * <p>{@code tagGroup} is {@code LAZY}, so reading it while mapping a listing would be one
-     * extra query per row. The explorer shows it as the note on a category, so it is fetched with
-     * the level rather than after it.
+     * One page of a level of the tree (roadmap 12.4), each folder's tag group attached: the children
+     * of one folder whose name or label holds the term (folded by {@code SearchKey.forSearch} and
+     * escaped, {@code ''} for every child), in the order of {@code uq_folder_sibling_name} -
+     * {@code upper(name)}, which no two siblings share - so the index walks the level in page order
+     * and a page deep into twenty thousand siblings reads no more than it skips.
      */
-    @Query("""
+    @Query(value = """
             SELECT f FROM Folder f
             LEFT JOIN FETCH f.tagGroup
             WHERE f.parent.id = :parentId
-            ORDER BY f.name ASC
+              AND (:term = ''
+                   OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
+                   OR REPLACE(f.searchDisplayName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\')
+            ORDER BY UPPER(f.name) ASC, f.id ASC
+            """,
+            countQuery = """
+            SELECT COUNT(f) FROM Folder f
+            WHERE f.parent.id = :parentId
+              AND (:term = ''
+                   OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
+                   OR REPLACE(f.searchDisplayName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\')
             """)
-    List<Folder> findChildrenWithTagGroup(@Param("parentId") int parentId);
+    Page<Folder> findLevel(@Param("parentId") int parentId, @Param("term") String term, Pageable pageable);
+
+    /**
+     * {@link #findLevel} among these children only - the ones on the way to a grant, for a reader
+     * who may walk through the folder but not read it ({@code FolderAccess.visibleChildIdsUnder}).
+     * Must not be called with an empty set.
+     */
+    @Query(value = """
+            SELECT f FROM Folder f
+            LEFT JOIN FETCH f.tagGroup
+            WHERE f.parent.id = :parentId AND f.id IN :ids
+              AND (:term = ''
+                   OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
+                   OR REPLACE(f.searchDisplayName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\')
+            ORDER BY UPPER(f.name) ASC, f.id ASC
+            """,
+            countQuery = """
+            SELECT COUNT(f) FROM Folder f
+            WHERE f.parent.id = :parentId AND f.id IN :ids
+              AND (:term = ''
+                   OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
+                   OR REPLACE(f.searchDisplayName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\')
+            """)
+    Page<Folder> findLevelAmong(@Param("parentId") int parentId, @Param("ids") Collection<Integer> ids,
+                                @Param("term") String term, Pageable pageable);
+
+    /**
+     * How many siblings sort before this folder in {@link #findLevel}'s order - its position in its
+     * parent's level, so the page that holds it can be opened directly (a deep link, "show in the
+     * tree"). Compared in SQL, as the listing sorts, rather than by an upper case Java computed.
+     */
+    @Query("""
+            SELECT COUNT(f) FROM Folder f, Folder c
+            WHERE c.id = :childId AND f.parent.id = c.parent.id
+              AND (UPPER(f.name) < UPPER(c.name) OR (UPPER(f.name) = UPPER(c.name) AND f.id < c.id))
+            """)
+    long countSiblingsBefore(@Param("childId") int childId);
+
+    /** {@link #countSiblingsBefore} among these siblings only ({@link #findLevelAmong}). */
+    @Query("""
+            SELECT COUNT(f) FROM Folder f, Folder c
+            WHERE c.id = :childId AND f.parent.id = c.parent.id AND f.id IN :ids
+              AND (UPPER(f.name) < UPPER(c.name) OR (UPPER(f.name) = UPPER(c.name) AND f.id < c.id))
+            """)
+    long countSiblingsBeforeAmong(@Param("childId") int childId, @Param("ids") Collection<Integer> ids);
 
     /**
      * How many child folders each of these folders has, in one query.
