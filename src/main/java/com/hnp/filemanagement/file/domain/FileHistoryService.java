@@ -24,7 +24,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -172,8 +171,7 @@ public class FileHistoryService {
      */
     @Transactional(readOnly = true)
     public HistoryPage search(FileHistoryQuery query, int page, int size, int principalId) {
-        Optional<Set<Integer>> readable = folderAccessService.readableFolderIds(folderAccessService.accessFor(principalId));
-        FileHistoryQuery scoped = readable.map(query::onlyFolders).orElse(query);
+        FileHistoryQuery scoped = query.readableBy(folderAccessService.readScope(principalId));
         Slice<FileHistory> slice = fileHistorySearch.find(scoped, PageRequest.of(page, size));
         return new HistoryPage(entriesOf(slice.getContent()), page, size, slice.hasNext());
     }

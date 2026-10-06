@@ -75,7 +75,8 @@ public enum PermissionGroup {
     SIGN_IN_LOCKS(LOCKED_SIGN_INS_PAGE, UNLOCK_SIGN_IN),
 
     /** The role pages: list, create, copy, edit. */
-    ROLES_ADMIN(GET_ALL_ROLE_PAGE, CREATE_ROLE_PAGE, SAVE_NEW_ROLE, COPY_ROLE, UPDATE_ROLE_PAGE, SAVE_UPDATED_ROLE),
+    ROLES_ADMIN(GET_ALL_ROLE_PAGE, CREATE_ROLE_PAGE, SAVE_NEW_ROLE, COPY_ROLE, UPDATE_ROLE_PAGE, SAVE_UPDATED_ROLE,
+            REST_GET_FOLDER_GRANT_TREE),
 
     /** The settings pages: upload policy, content kinds, general settings, tag groups. */
     SETTINGS_ADMIN(UPLOAD_POLICY_PAGE, SAVE_UPLOAD_POLICY, CONTENT_KIND_PAGE, SAVE_CONTENT_KIND,
@@ -84,7 +85,8 @@ public enum PermissionGroup {
 
     /** The API key pages and the API documentation. */
     API_KEYS_ADMIN(GET_ALL_API_KEY_PAGE, CREATE_API_KEY_PAGE, SAVE_NEW_API_KEY, UPDATE_API_KEY_PAGE,
-            SAVE_UPDATED_API_KEY, REVOKE_API_KEY, API_KEY_ACTIVITY_PAGE, VIEW_API_DOCS),
+            SAVE_UPDATED_API_KEY, REVOKE_API_KEY, API_KEY_ACTIVITY_PAGE, VIEW_API_DOCS, RENEW_API_KEY,
+            REISSUE_API_KEY),
 
     /** The v1 API an integration (the PL/SQL clients) signs in to with a password. */
     API_V1(API_HEALTH_TEST, API_SAVE_NEW_FILE, API_DELETE_FILE_DETAILS, API_DOWNLOAD_FILE);

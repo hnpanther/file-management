@@ -53,6 +53,7 @@ class RoleFolderGrantTest extends DatabaseSupport {
     private int principalId;
     private int categoryFolderId;
     private int subCategoryFolderId;
+    private int tagFolderId;
 
     @BeforeEach
     void setUp() {
@@ -63,6 +64,7 @@ class RoleFolderGrantTest extends DatabaseSupport {
         FolderFixture.Chain chain = FolderFixture.chain(folderRepository, tagGroupRepository, creator);
         categoryFolderId = chain.categoryId();
         subCategoryFolderId = chain.subCategoryId();
+        tagFolderId = chain.tagId();
     }
 
     @Test
@@ -108,9 +110,9 @@ class RoleFolderGrantTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("the tree marks a granted folder, and marks its children as reached through it")
+    @DisplayName("the tree marks a granted folder, and marks what is beneath it as reached through it")
     void theTreeSeparatesGrantedFromInherited() {
-        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId + ":READ"), principalId);
+        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId + ":READ", tagFolderId + ":WRITE"), principalId);
 
         List<FolderGrantDTO> tree = underTest.getFolderTreeForRole(roleId);
 
@@ -118,9 +120,13 @@ class RoleFolderGrantTest extends DatabaseSupport {
         assertThat(granted.getPermission()).as("the folder that has a row").isEqualTo("READ");
         assertThat(granted.getInherited()).as("a grant does not cover itself").isEmpty();
 
-        FolderGrantDTO child = row(tree, subCategoryFolderId);
-        assertThat(child.getPermission()).as("no row of its own").isEmpty();
-        assertThat(child.getInherited()).as("but reached through its parent").isEqualTo("READ");
+        FolderGrantDTO between = row(tree, subCategoryFolderId);
+        assertThat(between.getPermission()).as("rendered on the way to a grant, no row of its own").isEmpty();
+        assertThat(between.getInherited()).as("but reached through its parent").isEqualTo("READ");
+
+        FolderGrantDTO deeper = row(tree, tagFolderId);
+        assertThat(deeper.getPermission()).isEqualTo("WRITE");
+        assertThat(deeper.getInherited()).as("what the category above it allows too").isEqualTo("READ");
     }
 
     // ---------------------------------------------------------------- the verb (roadmap 9.1)
@@ -151,10 +157,12 @@ class RoleFolderGrantTest extends DatabaseSupport {
     @Test
     @DisplayName("the tree reports the strongest thing an ancestor already allows")
     void inheritedReportsTheAncestorVerb() {
-        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId + ":WRITE"), principalId);
+        underTest.updateFoldersOfRole(roleId, List.of(categoryFolderId + ":WRITE", tagFolderId + ":READ"), principalId);
 
         assertThat(row(underTest.getFolderTreeForRole(roleId), subCategoryFolderId).getInherited())
                 .isEqualTo("WRITE");
+        assertThat(row(underTest.getFolderTreeForRole(roleId), tagFolderId).getInherited())
+                .as("a weaker grant beneath a stronger one").isEqualTo("WRITE");
     }
 
     @Test
@@ -181,6 +189,8 @@ class RoleFolderGrantTest extends DatabaseSupport {
     @Test
     @DisplayName("the tree comes back with every ancestor before its descendants")
     void theTreeIsOrderedForRendering() {
+        underTest.updateFoldersOfRole(roleId, List.of(tagFolderId + ":READ"), principalId);
+
         List<FolderGrantDTO> tree = underTest.getFolderTreeForRole(roleId);
 
         assertThat(tree).isNotEmpty();
@@ -188,6 +198,43 @@ class RoleFolderGrantTest extends DatabaseSupport {
         assertThat(tree.indexOf(row(tree, categoryFolderId)))
                 .as("a category is listed before its own sub-category")
                 .isLessThan(tree.indexOf(row(tree, subCategoryFolderId)));
+        assertThat(tree.indexOf(row(tree, subCategoryFolderId)))
+                .as("and that before the granted folder beneath it")
+                .isLessThan(tree.indexOf(row(tree, tagFolderId)));
+    }
+
+    /**
+     * Roadmap 12.4: the page renders the top, the granted folders and the folders above them - not
+     * the whole tree. What it leaves out holds no grant, so posting back what it rendered, unchanged,
+     * changes nothing; the rest is opened on demand, in name order.
+     */
+    @Test
+    @DisplayName("the tree renders the top, each grant and the way to it - and posting it back unchanged keeps every grant")
+    void theTreeRendersTheGrantsAndTheWayToThem() {
+        Folder category = folderRepository.findById(categoryFolderId).orElseThrow();
+        User creator = userRepository.findById(principalId).orElseThrow();
+        Folder beside = FolderFixture.tag(folderRepository, folderRepository.findById(subCategoryFolderId).orElseThrow(),
+                creator, "Beside" + TestData.nextSequence());
+        underTest.updateFoldersOfRole(roleId, List.of(tagFolderId + ":WRITE"), principalId);
+
+        List<FolderGrantDTO> tree = underTest.getFolderTreeForRole(roleId);
+
+        assertThat(tree).extracting(FolderGrantDTO::getId)
+                .contains(categoryFolderId, subCategoryFolderId, tagFolderId)
+                .doesNotContain(beside.getId());
+        assertThat(row(tree, subCategoryFolderId).getChildCount()).as("so the page offers to open the rest").isEqualTo(2);
+        assertThat(row(tree, categoryFolderId).getPath()).isEqualTo(category.getPath());
+
+        // What the form posts: every rendered row's select, the none-selected ones blank.
+        List<String> posted = tree.stream()
+                .map(f -> f.getPermission().isEmpty() ? "" : f.getId() + ":" + f.getPermission())
+                .toList();
+        underTest.updateFoldersOfRole(roleId, posted, principalId);
+
+        assertThat(grantsOf(roleId)).singleElement().satisfies(grant -> {
+            assertThat(grant.getFolder().getId()).isEqualTo(tagFolderId);
+            assertThat(grant.getPermission()).isEqualTo(FolderPermission.WRITE);
+        });
     }
 
     private List<RoleFolderGrant> grantsOf(int roleId) {

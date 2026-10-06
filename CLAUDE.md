@@ -68,6 +68,14 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 * **A page size from a URL goes through `PageRequests`** (at most 200 rows, never a 500), and a
   list converts nothing per row that its query did not fetch - `ListQueryCountTest` counts the
   statements.
+* **A level of folders is paged, through `FolderLevelService`** (2.11.0): a folder may hold tens of
+  thousands of folders (one per person, the ERP workflow). Never read a level whole
+  (`findChildrenWithTagGroup`, `findAllByOrderByPathAsc`) to list it, and never filter one by folder
+  access in Java - `FolderAccess.visibleChildIdsUnder` puts it in the query. `LargeTreeTest` pins the
+  statements of every listing at 20,000 children.
+* **Folder access in a list query is `FolderAccessService.readScope` and `GrantedFolderPath`**,
+  never the readable folders' ids in an `IN`: a grant over 65,535 folders made that a statement
+  PostgreSQL refuses (issue 114).
 * **Bytes are written through `StorageWriter`, never through `BlobStore.put` directly.** It is
   what makes a write disappear with a transaction that does not commit, and what records it in
   `file_storage_write` so `StorageSweeper` can settle what a killed process left (roadmap 2.3,

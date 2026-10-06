@@ -16,7 +16,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -50,8 +49,7 @@ public class FileDownloadService {
     /** A page of downloads, filtered, as this person may read it. */
     @Transactional(readOnly = true)
     public DownloadPage search(FileDownloadQuery query, int page, int size, int principalId) {
-        Optional<Set<Integer>> readable = folderAccessService.readableFolderIds(folderAccessService.accessFor(principalId));
-        FileDownloadQuery scoped = readable.map(query::onlyFolders).orElse(query);
+        FileDownloadQuery scoped = query.readableBy(folderAccessService.readScope(principalId));
         Slice<FileDownload> slice = fileDownloadSearch.find(scoped, PageRequest.of(page, size));
         return new DownloadPage(entriesOf(slice.getContent()), page, size, slice.hasNext());
     }

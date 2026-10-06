@@ -88,7 +88,14 @@
                             :aria-expanded="row.expandable ? (row.open ? 'true' : 'false') : null"
                             :aria-level="row.depth + 1">
 
-                            <div class="app-tree-row" :class="[row.open && 'bg-ink-50', row.key === highlightKey && 'app-tree-row-highlight']"
+                            <!-- The rest of a level, a page at a time (roadmap 12.4). -->
+                            <button type="button" class="app-tree-row w-full text-brand-700" x-show="row.more" x-cloak
+                                    :style="'padding-inline-start:' + (0.375 + row.depth * 1.15 + 1.4) + 'rem'"
+                                    :disabled="row.loading" @click="loadMore(row)">
+                                <i class="bi text-[0.7rem]" :class="row.loading ? 'bi-arrow-repeat animate-spin' : 'bi-three-dots'" aria-hidden="true"></i>
+                                <span x-text="TREE.more.replace('{0}', (row.total - row.shown).toLocaleString('fa-IR'))"></span>
+                            </button>
+                            <div class="app-tree-row" x-show="!row.more" :class="[row.open && 'bg-ink-50', row.key === highlightKey && 'app-tree-row-highlight']"
                                  :style="'padding-inline-start:' + (0.375 + row.depth * 1.15) + 'rem'">
 
                                 <button type="button" class="app-tree-twisty"
@@ -142,9 +149,18 @@
         notPermitted:      [[#{tree.notPermitted}]],
         searchPlaceholder: [[#{tree.searchPlaceholder}]],
         searchFailed:      [[#{tree.searchFailed}]],
-        searchEmpty:       [[#{tree.searchEmpty}]]
+        searchEmpty:       [[#{tree.searchEmpty}]],
+        more:              [[#{tree.more}]],
+        expandAllCapped:   [[#{tree.expandAllCapped}]]
     };
-    const TREE_ROOTS = /*[[${roots}]]*/ [];
+    // The first page of the top level (roadmap 12.4); "more" asks for the rest.
+    const TREE_ROOT_LEVEL = /*[[${rootLevel}]]*/ { nodes: [], page: null };
+    const TREE_ROOT_ID = /*[[${rootFolderId}]]*/ 1;
+
+    /** How many rows "expand all" opens before it stops: a tree of a hundred thousand is not drawn whole. */
+    const EXPAND_ALL_LIMIT = 2000;
+    /** The top level is opened on arrival only when it is this small. */
+    const OPEN_ROOTS_UP_TO = 30;
 
     /** Carries the status through, so a refusal can be told apart from a failure. */
     class TreeRequestError extends Error {
@@ -167,8 +183,62 @@
             highlightKey: null,
 
             async init() {
-                this.rows = TREE_ROOTS.map(n => this.decorate(n, 0));
-                await this.expandRoots();
+                this.rows = this.rowsOf(TREE_ROOT_LEVEL, 0, null);
+                if (TREE_ROOT_LEVEL.nodes.length <= OPEN_ROOTS_UP_TO) {
+                    await this.expandRoots();
+                }
+            },
+
+            /** A level's rows, and a "more" row after them when the level has another page. */
+            rowsOf(level, depth, parent) {
+                const rows = level.nodes.map(n => this.decorate(n, depth));
+                const page = level.page;
+                if (page && page.number < page.totalPages - 1) {
+                    rows.push({
+                        more: true, depth: depth, loading: false, parent: parent, nextPage: page.number + 1,
+                        shown: (page.number + 1) * page.size, total: page.totalElements, type: "MORE",
+                        key: "MORE-" + (parent ? parent.key : "root") + "-" + (page.number + 1)
+                    });
+                }
+                return rows;
+            },
+
+            /** The next page of a level, in place of its "more" row. */
+            async loadMore(row) {
+                if (row.loading) {
+                    return;
+                }
+                row.loading = true;
+                try {
+                    const level = await this.fetchLevel(row.parent ? row.parent.type : "FOLDER",
+                        row.parent ? row.parent.id : null, row.nextPage);
+                    const present = new Set(this.rows.filter(r => !r.more).map(r => r.type + "-" + r.id));
+                    const added = this.rowsOf(level, row.depth, row.parent)
+                        .filter(r => r.more || !present.has(r.type + "-" + r.id));
+                    const at = this.indexOf(row);
+                    this.rows = [...this.rows.slice(0, at), ...added, ...this.rows.slice(at + 1)];
+                } catch (e) {
+                    row.loading = false;
+                }
+            },
+
+            /** One page of a level: the children of a node, or of the top when id is null. */
+            async fetchLevel(type, id, page) {
+                const url = id === null
+                    ? "/resource/files/tree/children?type=FOLDER&id=" + encodeURIComponent(TREE_ROOT_ID) + "&page=" + page
+                    : "/resource/files/tree/children?type=" + encodeURIComponent(type) + "&id=" + encodeURIComponent(id) + "&page=" + page;
+                const response = await fetch(url, {
+                    headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                    credentials: "same-origin"
+                });
+                if (response.status === 401) {
+                    window.appSessionExpired();
+                    throw new TreeRequestError(401);
+                }
+                if (!response.ok) {
+                    throw new TreeRequestError(response.status);
+                }
+                return response.json();
             },
 
             decorate(node, depth) {
@@ -228,9 +298,16 @@
              */
             async expandAll() {
                 let index = 0;
+                this.error = "";
                 while (index < this.rows.length) {
+                    if (this.rows.length >= EXPAND_ALL_LIMIT) {
+                        // A tree of a hundred thousand folders is not drawn whole; the rest is
+                        // opened by hand, or found by the search above.
+                        this.error = TREE.expandAllCapped.replace("{0}", EXPAND_ALL_LIMIT.toLocaleString("fa-IR"));
+                        break;
+                    }
                     const row = this.rows[index];
-                    if (row.type !== "FILE") {
+                    if (!row.more && row.type !== "FILE") {
                         await this.open(row);
                     }
                     index++;
@@ -252,21 +329,9 @@
                 row.loading = true;
                 row.error = "";
                 try {
-                    const url = "/resource/files/tree/children?type=" + encodeURIComponent(row.type)
-                        + "&id=" + encodeURIComponent(row.id);
-                    const response = await fetch(url, {
-                        headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
-                        credentials: "same-origin"
-                    });
-                    if (response.status === 401) {
-                        window.appSessionExpired();   // issue 77: the session has ended
-                        return;
-                    }
-                    if (!response.ok) {
-                        throw new TreeRequestError(response.status);
-                    }
-                    const children = await response.json();
-                    const decorated = children.map(c => this.decorate(c, row.depth + 1));
+                    // The first page of the level; a "more" row brings the rest (roadmap 12.4).
+                    const level = await this.fetchLevel(row.type, row.id, 0);
+                    const decorated = this.rowsOf(level, row.depth + 1, row);
                     const insertionIndex = this.indexOf(row) + 1;
                     this.rows = [
                         ...this.rows.slice(0, insertionIndex),
@@ -284,7 +349,9 @@
                     // which sent an administrator looking for a bug in the tree when the account was
                     // simply missing REST_GET_FILE_TREE.
                     row.open = false;
-                    row.error = e.status === 403 ? TREE.notPermitted : TREE.loadFailed;
+                    if (e.status !== 401) {   // issue 77: the session has ended, and that is said
+                        row.error = e.status === 403 ? TREE.notPermitted : TREE.loadFailed;
+                    }
                 } finally {
                     row.loading = false;
                     // Other branches opened by expandRoots/expandAll may still be in flight;
@@ -294,7 +361,7 @@
             },
 
             collapseAll() {
-                this.rows = TREE_ROOTS.map(n => this.decorate(n, 0));
+                this.rows = this.rowsOf(TREE_ROOT_LEVEL, 0, null);
                 this.error = "";
             },
 
@@ -337,20 +404,46 @@
              * and stops at the file itself - its versions are not needed to show where it lives.
              * Scrolls the file row into view and flags it for the highlight in app.css.
              */
+            /**
+             * A node the loaded rows of its level do not hold - it is beyond their first page - put in
+             * at the end of that level, before its "more" row: enough to reach it.
+             */
+            placeRow(node, parent) {
+                const depth = parent ? parent.depth + 1 : 0;
+                let at = parent ? this.indexOf(parent) + 1 : 0;
+                while (at < this.rows.length && this.rows[at].depth >= depth
+                       && !(this.rows[at].more && this.rows[at].depth === depth)) {
+                    at++;
+                }
+                const row = this.decorate(node, depth);
+                this.rows = [...this.rows.slice(0, at), row, ...this.rows.slice(at)];
+                return row;
+            },
+
             async revealHit(hit) {
                 this.searchResults = [];
 
-                for (const folderId of hit.folderIds) {
-                    const folder = this.rows.find(r => r.type === "FOLDER" && r.id === folderId);
+                let parent = null;
+                for (let step = 0; step < hit.folderIds.length; step++) {
+                    const folderId = hit.folderIds[step];
+                    let folder = this.rows.find(r => r.type === "FOLDER" && r.id === folderId);
                     if (!folder) {
-                        return;
+                        // Beyond the first page of a wide level: put in where the level's rows end.
+                        folder = this.placeRow({ type: "FOLDER", id: folderId, name: hit.folderTitles[step],
+                            title: hit.folderTitles[step], icon: "bi-folder-fill", expandable: true, childCount: null }, parent);
                     }
                     if (!folder.open) {
                         await this.open(folder);
                     }
+                    parent = folder;
                 }
 
-                const file = this.rows.find(r => r.type === "FILE" && r.id === hit.fileId);
+                let file = this.rows.find(r => r.type === "FILE" && r.id === hit.fileId);
+                if (!file && parent) {
+                    file = this.placeRow({ type: "FILE", id: hit.fileId, name: hit.fileName, title: hit.fileTitle,
+                        icon: "bi-file-earmark-text", expandable: true, childCount: null,
+                        href: "/files/file-info/" + hit.fileId }, parent);
+                }
                 if (!file) {
                     return;
                 }

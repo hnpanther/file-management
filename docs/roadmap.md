@@ -41,6 +41,10 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.11.0 is written: **a folder of thousands of folders** (12.4) - every level of folders paged in SQL,
+with folder access in the query and a filter by name, the access tree of the role and key pages
+rendered in part and opened on demand; and **folder access in SQL for every filtered list**
+(issue 114: a grant over 65,535 folders made five list pages fail). Measured on 100,000 folders.
 2.10.0 is written: **storage keys that name nothing** (12.5) - a new revision's bytes are written under
 `files/{shard}/{file id}/rev/v{n}/{revision external id}.{ext}`, the extension in lower case, no title;
 a file's directory is read off each key by its shape, and a delete refuses a key it cannot place.
@@ -2635,11 +2639,29 @@ Under a folder of thousands of people the explorer lists every subfolder at once
 folders); grouping by a code range, or paging subfolders, is a decision to take before the first
 thousand.
 
-### 9.11 API key lifecycle: renewal, a replacement key, and the kind of key — in progress (2.9.0: the kind of key)
+### 9.11 API key lifecycle: renewal, a replacement key, and the kind of key — **done (2.11.0)**, rotation left optional
 
 > **2.9.0 built item 3**: `api_key.kind` (`V1` for every existing row, never changed after), the
 > encrypted secret of an `S3` key, and its three capabilities, edited on the key form like its
-> folders. Items 1 (renew), 2 (replacement) and 4 (rotation) are still to come.
+> folders.
+>
+> **2.11.0 built items 1 and 2** (2026-10-06), as written below:
+>
+> * **Renew** (`POST /api-keys/{id}/renew`, `RENEW_API_KEY`): a new last day - or none - for a key
+>   that is not revoked; the same secret, so its client works again unchanged; whether it is
+>   switched on is left as it was. The list says **expired** (a status of its own) and offers the
+>   date beside it. `RENEW API_KEY` in the history, with the date before and after.
+> * **Replace** (`POST /api-keys/{id}/reissue`, `REISSUE_API_KEY`): only for a revoked key, and
+>   once - a new key id and secret, shown on that render only, carrying the title, description,
+>   folder grants, kind and capabilities, and the date if it is still ahead. `api_key.replaced_by_id`
+>   (`V3.8`, a check that only a revoked key has one) links the two; the list names each from the
+>   other. `REISSUE API_KEY` in the revoked key's history, `CREATE API_KEY` in the new one's.
+> * Tested (`ApiKeyLifecycleTest`, `ApiKeyPageTest`): renewal with the same secret, to no expiry,
+>   refused for a revoked key and for a date not ahead; a replacement of a V1 and of an S3 key
+>   (capabilities, encrypted secret, a passed date dropped), the revoked key never usable again, a
+>   key not revoked and a second replacement refused, the schema's check, each endpoint's permission.
+>
+> Item 4 (rotation with an overlap) stays optional, as decided below.
 
 **Where it stands (2.8.0).** A key stops working in three ways:
 
@@ -3302,7 +3324,7 @@ Small things asked for once 2.7 was in use, each sized to ship on its own, none 
 | 12.1 | A page of locked sign-ins, to unlock one early | none | small - **done (2.7.5)** |
 | 12.2 | Metadata of a file, as JSON: sent with the upload, shown, edited, searched | `file_details.metadata jsonb` | 3-5 days |
 | 12.3 | Metadata of a folder, as JSON, completed on the web | `folder.metadata jsonb` | 3-4 days |
-| 12.4 | A folder of thousands of folders: every listing of folders paged in SQL | none expected | 4-6 days - **before the ERP workflow goes live** |
+| 12.4 | A folder of thousands of folders: every listing of folders paged in SQL | none | **done (2.11.0)** |
 | 12.5 | Storage keys that say nothing: a new revision stored under its id, not its title | none | **done (2.10.0)** |
 | 12.6 | The existing revisions re-keyed the same way - at the move to the object store, by the storage copy | `legacy_storage_key` | with 4.7, when that move is decided |
 
@@ -3515,7 +3537,38 @@ search does for its other sources (`SearchIndexTest` gains its cases).
 value in the log; a folder created through the S3 surface listed in the queue until it is completed; a
 search scoped by folder access, through the index.
 
-### 12.4 A folder of thousands of folders — planned, before the ERP workflow goes live
+### 12.4 A folder of thousands of folders — **done (2.11.0)**
+
+> **Built 2026-10-06 (2.11.0)**, as planned below, and measured on 20,000 children of one folder and
+> 100,000 folders in all (`LargeTreeTest`, each listing pinned to its number of statements):
+>
+> | Listing | Before | Now |
+> |---|---|---|
+> | the explorer's level | 20,001 rows, 1,315 ms | a page of 100 and the total, 58 ms, 8 statements |
+> | the tree page's level | 20,001 nodes, 574 ms | a page of 100 nodes, 48 ms, 7 statements |
+> | the access tree of the role and key pages | 100,005 rows, 1,211 ms | the top, the grants and the way to them, 33 ms, 5 statements |
+> | the file list, the searches, history, downloads, share links - for a reader granted the wide folder | **a 500**: more than 65,535 bind parameters ([issue 114](issues.md#114-a-list-filtered-by-folder-access-sent-every-readable-folder-as-a-parameter--s1)) | 22 to 75 ms, 4 to 9 statements |
+>
+> * **`FolderLevelService`** reads a level a page at a time - `uq_folder_sibling_name`'s order, a
+>   filter on the folded name and label, the page that holds a given child ("around") - with folder
+>   access in the query (`FolderAccess.visibleChildIdsUnder`: every child of a readable folder, only
+>   the ones on the way to a grant otherwise). The explorer, the tree page and the folder chooser use
+>   it: `/resource/folders/children` takes `folderPage`, `folderSize`, `filter` and `folderAround` and
+>   answers `folderPage` and `filter`; `/resource/files/tree/children` answers a page of the level,
+>   folders then files (`TreeLevelDTO`), `page`, `size` and `filter` asked.
+> * **The access tree** (`FolderGrantTreeService`, `/resource/folder-grants/children` and `/search`,
+>   `REST_GET_FOLDER_GRANT_TREE` or either page's own permission) renders the root, the top level,
+>   every granted folder and the folders above each; the rest opens a level at a time ("N more
+>   folders") or is found by name. Rows are hidden, never removed, so the form still posts the
+>   complete selection - tested end to end in a browser on 40,000 folders: grants loaded, closed,
+>   searched, saved, exactly what was chosen and nothing else.
+> * **Folder access in SQL for every filtered list** (`GrantedFolderPath`, `FolderReadScope`) -
+>   issue 114, found by this step's measurement.
+> * The explorer's delete buttons are chosen by the folder's totals, and hidden while it is filtered;
+>   "expand all" on the tree page stops at 2,000 rows and says so.
+> * **Not done, as planned**: a grouping by first letters (not needed with the filter), and
+>   `folder.child_count` (a grouped count over a page is 2 statements).
+
 
 > Raised 2026-10-05: **one folder may hold thousands of folders** - the ERP workflow (9.10.13) makes
 > one under `ERP` per person or company, and there are thousands of them, each with its own

@@ -770,6 +770,30 @@ database restored without it has S3 keys nobody can use. Lost or changed, every 
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
 
+### Upgrading from 2.10.0 to 2.11.0 — folders of thousands, and folder access in SQL
+
+A jar swap with **one migration, `V3.8`** (`api_key.replaced_by_id`, roadmap 9.11), and no setting.
+Three new permissions are seeded at the start and held by ADMIN: `REST_GET_FOLDER_GRANT_TREE` (nobody
+else needs it - the role page and the API key page reach the same endpoints with their own
+permissions), and `RENEW_API_KEY` and `REISSUE_API_KEY`, to be granted to whoever manages keys.
+
+* **API keys** (roadmap 9.11): an expired key is shown as such and renewed from the list, with its
+  secret unchanged; a revoked key gets a replacement - a new key and secret carrying its title,
+  folders, kind and capabilities - never itself back.
+
+* **Every level of folders is paged** (roadmap 12.4): the explorer, the tree page and the folder
+  chooser show 100 folders at a time with the level's total, a "more" for the rest and a filter by
+  name; the role page and the API key page render the folders that hold a grant and the way to them,
+  and open the rest on demand. Nothing about a grant changes: what the pages post is what they did.
+* **A reader granted a very large subtree can use the lists again**: the file list, the searches,
+  the history, the download log and the share-link list failed with a 500 for anyone whose grants
+  covered more than 65,535 folders ([issue 114](issues.md#114-a-list-filtered-by-folder-access-sent-every-readable-folder-as-a-parameter--s1));
+  they now ask the grants in SQL. Below that size they are faster and their answers unchanged.
+* `/resource/files/tree/children` now answers `{nodes, page, filter}` instead of an array - the tree
+  page is its only client in this application; a script of its own that called it reads `.nodes`.
+
+**Rollback** is the 2.10.0 jar; nothing it reads changed.
+
 ### Upgrading from 2.9.0 to 2.10.0 — storage keys that name nothing
 
 A jar swap; **no migration, no setting**. What changes is where a **new** revision's bytes are

@@ -197,6 +197,68 @@ public class ApiKeyController {
     }
 
     /**
+     * A new date for a key that is not revoked - the same secret, so its client works again unchanged
+     * (roadmap 9.11). Answers with the list, which says what happened.
+     *
+     * @param expiresAt the new last day; empty for no expiry
+     */
+    //RENEW_API_KEY
+    @PreAuthorize("hasAuthority('RENEW_API_KEY') || hasAuthority('ADMIN')")
+    @PostMapping("{id}/renew")
+    public String renewApiKey(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                              @PathVariable("id") int id,
+                              @RequestParam(value = "expiresAt", required = false)
+                              @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+                              java.time.LocalDate expiresAt,
+                              Model model) {
+
+        globalGeneralLogging.detail("renew api key id=" + id + ", expiresAt=" + expiresAt);
+
+        try {
+            apiKeyService.renew(id, expiresAt, userDetails.getId());
+            model.addAttribute("listMessage", messages.get("apiKey.renew.done"));
+            model.addAttribute("listValid", true);
+        } catch (InvalidDataException e) {
+            model.addAttribute("listMessage", messageOf(e));
+            model.addAttribute("listValid", false);
+        }
+        model.addAttribute("apiKeys", apiKeyService.getAll());
+        model.addAttribute("created", null);
+        return "api-key/api-keys.html";
+    }
+
+    /**
+     * A new key, with a new secret, in place of a revoked one (roadmap 9.11): rendered as a key just
+     * created is - the one render that carries its secret.
+     */
+    //REISSUE_API_KEY
+    @PreAuthorize("hasAuthority('REISSUE_API_KEY') || hasAuthority('ADMIN')")
+    @PostMapping("{id}/reissue")
+    public String reissueApiKey(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                @PathVariable("id") int id,
+                                Model model) {
+
+        globalGeneralLogging.detail("reissue api key id=" + id);
+
+        ApiKeyCreatedDTO created = null;
+        try {
+            created = apiKeyService.reissue(id, userDetails.getId());
+        } catch (InvalidDataException e) {
+            model.addAttribute("listMessage", messageOf(e));
+            model.addAttribute("listValid", false);
+        }
+        model.addAttribute("apiKeys", apiKeyService.getAll());
+        model.addAttribute("created", created);
+        model.addAttribute("createdS3", created != null && apiKeyService.getById(created.id()).getKind() == ApiKeyKind.S3);
+        return "api-key/api-keys.html";
+    }
+
+    /** What a refusal says to a person: its message code's text when it has one. */
+    private String messageOf(InvalidDataException e) {
+        return e.getMessageCode().map(code -> messages.get(code, e.getMessageArguments())).orElse(e.getMessage());
+    }
+
+    /**
      * The form's model. The folder tree comes from {@link RoleService} — the same tree the role page
      * renders, with the same three-state control — because "which folders may this reach" is one
      * question whether the answer belongs to a role or to a key.

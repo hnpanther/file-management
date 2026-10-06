@@ -30,7 +30,7 @@ public class FileDownloadSearch {
     }
 
     public Slice<FileDownload> find(FileDownloadQuery query, Pageable pageable) {
-        if (query.folderIds() != null && query.folderIds().isEmpty()) {
+        if (query.readScope() != null && query.readScope().nothing()) {
             return new SliceImpl<>(List.of(), pageable, false);
         }
 
@@ -60,8 +60,8 @@ public class FileDownloadSearch {
         if (query.until() != null) {
             where.add(cb.lessThan(download.get("occurredAt"), query.until()));
         }
-        if (query.folderIds() != null) {
-            where.add(download.get("folderId").in(query.folderIds()));
+        if (query.readScope() != null && !query.readScope().unrestricted()) {
+            where.add(ReadableFolders.contains(cb, criteria, download.get("folderId"), query.readScope()));
         }
 
         criteria.select(download)

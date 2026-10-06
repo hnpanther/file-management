@@ -84,10 +84,17 @@
                    th:text="#{explorer.tree.loading}">در حال خواندن...</p>
 
                 <ul class="m-0 list-none p-0" role="tree">
-                    <template x-for="row in treeRows" :key="row.id">
+                    <template x-for="row in treeRows" :key="row.key">
                         <li role="treeitem" :aria-level="row.depth + 1"
                             :aria-expanded="row.expandable ? (row.open ? 'true' : 'false') : null">
-                            <div class="flex items-center"
+                            <!-- The rest of a wide level, a page at a time (roadmap 12.4). -->
+                            <button type="button" class="explorer-folder-row text-brand-700" x-show="row.more" x-cloak
+                                    :style="'padding-inline-start:' + (row.depth * 0.9 + 1.4) + 'rem'"
+                                    :disabled="row.loading" @click="loadMoreRows(row)">
+                                <i class="bi text-[0.7rem]" :class="row.loading ? 'bi-arrow-repeat animate-spin' : 'bi-three-dots'" aria-hidden="true"></i>
+                                <span class="min-w-0 flex-1 truncate" x-text="moreLabel(row)"></span>
+                            </button>
+                            <div class="flex items-center" x-show="!row.more"
                                  :style="'padding-inline-start:' + (row.depth * 0.9) + 'rem'">
                                 <button type="button" class="explorer-folder-twisty"
                                         :class="!row.expandable && 'is-leaf'"
@@ -130,6 +137,17 @@
                 </div>
 
                 <div class="flex shrink-0 items-center gap-1.5" x-show="searchResults === null" x-cloak>
+                    <!--
+                      Narrows what this folder lists - its folders and its files - by name (roadmap 12.4):
+                      at thousands of folders, a person is found by typing, not by scrolling.
+                    -->
+                    <label class="relative flex items-center" x-show="folder && (filter || hasMoreThanOnePage())" x-cloak>
+                        <span class="sr-only" th:text="#{explorer.filter.label}">فیلتر این پوشه</span>
+                        <i class="bi bi-funnel pointer-events-none absolute start-2 text-xs text-ink-400" aria-hidden="true"></i>
+                        <input type="search" class="h-8 w-40 rounded-[var(--radius-control)] border border-ink-200 ps-6 pe-2 text-sm"
+                               x-model="filterInput" @input.debounce.350ms="applyFilter()" @keydown.enter.prevent="applyFilter()"
+                               :placeholder="EX.filterPlaceholder" />
+                    </label>
                     <button type="button" class="btn btn-secondary btn-sm" x-show="folder" x-cloak
                             @click="showFolder(folder.id)" th:title="#{explorer.details.folder}">
                         <i class="bi bi-info-circle" aria-hidden="true"></i>
@@ -170,7 +188,7 @@
                         <span th:text="#{explorer.manage.move}">انتقال</span>
                     </button>
                     <button type="button" class="btn btn-secondary btn-sm" x-cloak
-                            x-show="manageable && folder && !isSystemFolder(folder) && folders.length === 0 && files.length === 0"
+                            x-show="manageable && folder && !isSystemFolder(folder) && !filter && totalHeld() === 0"
                             @click="deleteFolder()"
                             sec:authorize="hasAuthority('REST_DELETE_FOLDER') || hasAuthority('ADMIN')">
                         <i class="bi bi-trash" aria-hidden="true"></i>
@@ -182,7 +200,7 @@
                       subtree without being told what is in it.
                     -->
                     <button type="button" class="btn btn-secondary btn-sm" x-cloak
-                            x-show="manageable && folder && !isSystemFolder(folder) && (folders.length > 0 || files.length > 0)"
+                            x-show="manageable && folder && !isSystemFolder(folder) && !filter && totalHeld() > 0"
                             @click="deleteTree()"
                             sec:authorize="hasAuthority('REST_DELETE_FOLDER_TREE') || hasAuthority('ADMIN')">
                         <i class="bi bi-trash" aria-hidden="true"></i>
@@ -268,7 +286,7 @@
                     <div x-data="folderChooser({
                              url: EX.childrenUrl, initialId: null, initialPath: [],
                              rootTitle: EX.rootTitle, selectRoot: move.subject.type === 'folder',
-                             copy: { loadFailed: EX.loadFailed }
+                             copy: { loadFailed: EX.loadFailed, more: EX.moreFolders }
                          })"
                          @folder-chosen="move.target = $event.detail">
                         <div th:replace="~{fragments.html :: folder-chooser}"></div>
@@ -435,6 +453,26 @@
                         </tr>
                     </template>
 
+                    <!-- More folders than one page holds (roadmap 12.4): which are on screen, and the way to the rest. -->
+                    <tr class="explorer-pager-row" x-show="folderPage && folderPage.totalPages > 1" x-cloak>
+                        <td colspan="6">
+                            <span class="flex items-center gap-2 text-xs text-ink-500">
+                                <i class="bi bi-folder2 text-ink-400" aria-hidden="true"></i>
+                                <span x-text="folderPosition()"></span>
+                                <button type="button" class="btn btn-secondary btn-sm ms-auto"
+                                        :disabled="!folderPage || folderPage.number <= 0" @click.stop="goToFolderPage(folderPage.number - 1)"
+                                        th:aria-label="#{explorer.folders.previous}">
+                                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-sm"
+                                        :disabled="!folderPage || folderPage.number >= folderPage.totalPages - 1" @click.stop="goToFolderPage(folderPage.number + 1)"
+                                        th:aria-label="#{explorer.folders.next}">
+                                    <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                                </button>
+                            </span>
+                        </td>
+                    </tr>
+
                     <template x-for="entry in files" :key="'f' + entry.id">
                         <tr :class="selectedFile && selectedFile.id === entry.id && 'is-selected'"
                             :data-file-row="entry.id"
@@ -479,13 +517,18 @@
                   saying "empty" here is what sent people looking for files that were never
                   missing. The two states are told apart by `readable` on the response.
                 -->
-                <div class="explorer-state" x-show="!error && searchResults === null && isEmpty() && !readable" x-cloak>
+                <div class="explorer-state" x-show="!error && searchResults === null && isEmpty() && !readable && !filter" x-cloak>
                     <i class="bi bi-shield-lock" aria-hidden="true"></i>
                     <strong th:text="#{explorer.notReadable}">محتوای این پوشه برای شما قابل نمایش نیست.</strong>
                     <span th:text="#{explorer.notReadableHint}">این پوشه فقط مسیر رسیدن به پوشه‌ای است که به آن دسترسی دارید.</span>
                 </div>
 
-                <div class="explorer-state" x-show="!error && searchResults === null && isEmpty() && readable" x-cloak>
+                <div class="explorer-state" x-show="!error && searchResults === null && isEmpty() && filter" x-cloak>
+                    <i class="bi bi-funnel" aria-hidden="true"></i>
+                    <strong th:text="#{explorer.filter.empty}">چیزی با این فیلتر در این پوشه نیست.</strong>
+                </div>
+
+                <div class="explorer-state" x-show="!error && searchResults === null && isEmpty() && readable && !filter" x-cloak>
                     <i class="bi bi-folder2-open" aria-hidden="true"></i>
                     <strong th:text="#{explorer.empty}">این پوشه خالی است.</strong>
                     <span th:text="#{explorer.emptyHint}">هیچ پوشه یا فایلی در این محل ثبت نشده است.</span>
@@ -657,6 +700,9 @@
         countFolders:      [[#{explorer.count.folders}]],
         countFiles:        [[#{explorer.count.files}]],
         pagePosition:      [[#{explorer.page.position}]],
+        folderPosition:    [[#{explorer.folders.position}]],
+        filterPlaceholder: [[#{explorer.filter.placeholder}]],
+        moreFolders:       [[#{explorer.tree.more}]],
         rootTitle:         [[#{explorer.root}]],
         childrenUrl:       [[@{/resource/folders/children}]],
         searchUrl:         [[@{/resource/folders/search}]],
@@ -763,6 +809,9 @@
             folders: [],
             files: [],
             page: null,
+            folderPage: null,         // which page of the child folders (roadmap 12.4)
+            filter: "",               // what both lists were narrowed by, as the server echoed it
+            filterInput: "",          // the box, ahead of the server while the person types
             readable: true,
             writable: false,
             manageable: false,
@@ -804,8 +853,14 @@
              * into the tree as that node's children. The tree and the table are therefore never
              * two views of two different reads.
              */
-            async navigate(folderId, pageNumber) {
-                return this.open(this.folderParams(folderId, pageNumber), EX.notFound);
+            async navigate(folderId, pageNumber, folderPageNumber, filter) {
+                // Another folder starts unfiltered, at its first page of folders.
+                const sameFolder = folderId === this.currentFolderId;
+                const keep = sameFolder ? (filter !== undefined ? filter : this.filter) : "";
+                if (!sameFolder) {
+                    this.filterInput = "";
+                }
+                return this.open(this.folderParams(folderId, pageNumber, folderPageNumber || 0, keep), EX.notFound);
             },
 
             /**
@@ -858,6 +913,9 @@
                 this.folders = content.folders;
                 this.files = content.files;
                 this.page = content.page;
+                this.folderPage = content.folderPage;
+                this.filter = content.filter || "";
+                this.filterInput = this.filter;
                 this.readable = content.readable;
                 this.writable = content.writable;
                 this.manageable = content.manageable;
@@ -866,25 +924,49 @@
                 this.move.open = false;
             },
 
-            fetchContent(folderId, pageNumber) {
-                return readJson(EX.childrenUrl + "?" + this.folderParams(folderId, pageNumber).toString());
+            /** One level for the tree pane: the folders only (a file page of one), a page of them. */
+            fetchContent(folderId, folderPageNumber, around) {
+                const params = this.folderParams(folderId, 0, folderPageNumber || 0, "");
+                params.set("size", 1);
+                if (around !== undefined && around !== null) {
+                    params.set("folderAround", around);
+                }
+                return readJson(EX.childrenUrl + "?" + params.toString());
             },
 
-            folderParams(folderId, pageNumber) {
+            folderParams(folderId, pageNumber, folderPageNumber, filter) {
                 const params = new URLSearchParams();
                 if (folderId !== null && folderId !== undefined) {
                     params.set("folderId", folderId);
                 }
                 params.set("page", pageNumber || 0);
+                params.set("folderPage", folderPageNumber || 0);
+                if (filter) {
+                    params.set("filter", filter);
+                }
                 return params;
             },
 
             goToPage(pageNumber) {
-                return this.navigate(this.currentFolderId, pageNumber);
+                return this.navigate(this.currentFolderId, pageNumber, this.folderPage ? this.folderPage.number : 0);
+            },
+
+            goToFolderPage(folderPageNumber) {
+                return this.navigate(this.currentFolderId, this.page ? this.page.number : 0, folderPageNumber);
+            },
+
+            /** The filter box applied: both lists of this folder from their first page. */
+            applyFilter() {
+                const wanted = (this.filterInput || "").trim();
+                if (wanted === this.filter) {
+                    return;
+                }
+                return this.navigate(this.currentFolderId, 0, 0, wanted);
             },
 
             reload() {
-                return this.navigate(this.currentFolderId, this.page ? this.page.number : 0);
+                return this.navigate(this.currentFolderId, this.page ? this.page.number : 0,
+                    this.folderPage ? this.folderPage.number : 0);
             },
 
             // ------------------------------------------------------------ the folder tree
@@ -899,16 +981,24 @@
                 this.treeLoading = true;
                 try {
                     if (this.treeRows.length === 0) {
-                        const top = chain.length > 1 ? await this.fetchContent(chain[0], 0) : content;
-                        this.treeRows = top.folders.map(entry => this.toRow(entry, 0));
+                        const top = chain.length > 1 || this.filter || (this.folderPage && this.folderPage.number > 0)
+                            ? await this.fetchContent(chain[0], 0) : content;
+                        this.treeRows = this.rowsOf(top, 0, chain[0]);
                     }
                     for (let level = 1; level < chain.length; level++) {
-                        const row = this.treeRows.find(candidate => candidate.id === chain[level]);
+                        let row = this.treeRows.find(candidate => !candidate.more && candidate.id === chain[level]);
                         if (!row) {
-                            break;
+                            // Not on the first page of a wide level: the folder on the way down is
+                            // put in where that level's rows end, and the way continues below it.
+                            row = this.placeRow(content.breadcrumb.concat([content.folder])[level], chain[level - 1], level - 1);
+                            if (!row) {
+                                break;
+                            }
                         }
                         if (!row.open && row.expandable) {
-                            await this.expandRow(row, level === chain.length - 1 ? content : null);
+                            const known = level === chain.length - 1 && !this.filter
+                                && this.folderPage && this.folderPage.number === 0 ? content : null;
+                            await this.expandRow(row, known);
                         }
                     }
                 } catch (e) {
@@ -923,6 +1013,7 @@
 
             toRow(entry, depth) {
                 return {
+                    key: "d" + entry.id,
                     id: entry.id,
                     name: entry.name,
                     title: entry.title,
@@ -931,8 +1022,71 @@
                     expandable: entry.folderCount > 0,
                     depth: depth,
                     open: false,
-                    loading: false
+                    loading: false,
+                    more: false
                 };
+            },
+
+            /** A level's rows, and a "more" row after them when the level has another page. */
+            rowsOf(content, depth, parentId) {
+                const rows = content.folders.map(entry => this.toRow(entry, depth));
+                const page = content.folderPage;
+                if (page && page.number < page.totalPages - 1) {
+                    rows.push({
+                        key: "m" + parentId + "-" + (page.number + 1), more: true, parentId: parentId,
+                        nextPage: page.number + 1, depth: depth, loading: false,
+                        shown: (page.number + 1) * page.size, total: page.totalElements
+                    });
+                }
+                return rows;
+            },
+
+            /** "1,240 more folders" - what a "more" row stands for. */
+            moreLabel(row) {
+                return EX.moreFolders.replace("{0}", this.number(Math.max(0, row.total - row.shown)));
+            },
+
+            /** The next page of a level, in place of its "more" row. */
+            async loadMoreRows(row) {
+                if (row.loading) {
+                    return;
+                }
+                row.loading = true;
+                try {
+                    const content = await this.fetchContent(row.parentId, row.nextPage);
+                    const present = new Set(this.treeRows.filter(r => !r.more).map(r => r.id));
+                    const added = this.rowsOf(content, row.depth, row.parentId)
+                        .filter(r => r.more || !present.has(r.id));
+                    const at = this.treeRows.indexOf(row);
+                    this.treeRows = [...this.treeRows.slice(0, at), ...added, ...this.treeRows.slice(at + 1)];
+                } catch (e) {
+                    row.loading = false;
+                }
+            },
+
+            /**
+             * A folder on the way to a deep link that the loaded rows of its level do not hold: put
+             * in at the end of that level, before its "more" row - enough to walk on down.
+             */
+            placeRow(crumb, parentId, depth) {
+                if (!crumb) {
+                    return null;
+                }
+                const parentIndex = this.treeRows.findIndex(r => !r.more && r.id === parentId);
+                if (depth > 0 && parentIndex < 0) {
+                    return null;
+                }
+                let at = parentIndex + 1;
+                while (at < this.treeRows.length && this.treeRows[at].depth >= depth
+                       && !(this.treeRows[at].more && this.treeRows[at].depth === depth)) {
+                    at++;
+                }
+                const row = {
+                    key: "d" + crumb.id, id: crumb.id, name: crumb.name, title: crumb.title, kind: crumb.kind,
+                    total: 0, expandable: true, depth: depth, open: false, loading: false, more: false
+                };
+                this.treeRows = [...this.treeRows.slice(0, at), row, ...this.treeRows.slice(at)];
+                return row;
             },
 
             async toggleRow(row) {
@@ -950,14 +1104,18 @@
                 row.loading = true;
                 try {
                     const content = known || await this.fetchContent(row.id, 0);
-                    const children = content.folders.map(entry => this.toRow(entry, row.depth + 1));
+                    const present = new Set(this.treeRows.filter(r => !r.more).map(r => r.id));
+                    const children = this.rowsOf(content, row.depth + 1, row.id)
+                        .filter(r => r.more || !present.has(r.id));
                     const at = this.treeRows.indexOf(row) + 1;
                     this.treeRows = [
                         ...this.treeRows.slice(0, at),
                         ...children,
                         ...this.treeRows.slice(at)
                     ];
-                    row.open = true;
+                    // A row put in on the way to a deep link was assumed to have children; now known.
+                    row.expandable = content.folderPage ? content.folderPage.totalElements > 0 : children.length > 0;
+                    row.open = row.expandable;
                 } finally {
                     row.loading = false;
                 }
@@ -1045,6 +1203,29 @@
 
             isEmpty() {
                 return this.folders.length === 0 && this.files.length === 0;
+            },
+
+            /** Everything the folder holds directly, every page - what the delete buttons are chosen by. */
+            totalHeld() {
+                return (this.folderPage ? this.folderPage.totalElements : this.folders.length)
+                    + (this.page ? this.page.totalElements : this.files.length);
+            },
+
+            hasMoreThanOnePage() {
+                return (this.folderPage && this.folderPage.totalPages > 1) || (this.page && this.page.totalPages > 1);
+            },
+
+            /** "Folders 101 to 200 of 20,000". */
+            folderPosition() {
+                if (!this.folderPage) {
+                    return "";
+                }
+                const first = this.folderPage.number * this.folderPage.size + 1;
+                const last = Math.min(first + this.folders.length - 1, this.folderPage.totalElements);
+                return EX.folderPosition
+                    .replace("{0}", this.number(first))
+                    .replace("{1}", this.number(last))
+                    .replace("{2}", this.number(this.folderPage.totalElements));
             },
 
             currentPath() {

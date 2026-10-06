@@ -145,16 +145,21 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     Page<FileInfo> search(@Param("search") String search, Pageable pageable);
 
     /**
-     * The list page restricted to a set of folders, matched against each file's own
-     * {@code folder_id} - the same search, the same fetch plan, a different filter. Folder access
-     * pushed into the query rather than applied to the rows afterwards (roadmap 6.6): filtering
-     * the fetched page in Java would leave a pager counting rows the person cannot see. Must not
-     * be called with an empty set, which is not valid SQL for {@code IN}.
+     * The list page restricted to what one person or one key may read - the same search, the same
+     * fetch plan, a different filter. Folder access pushed into the query rather than applied to
+     * the rows afterwards (roadmap 6.6): filtering the fetched page in Java would leave a pager
+     * counting rows the person cannot see. Asked against the grants themselves
+     * ({@code GrantedFolderPath}, roadmap 12.4), never as a list of folder ids - a grant over more
+     * than 65,535 folders made that a statement PostgreSQL refuses.
+     *
+     * @param userId   the reader, or 0 for a key ({@code FolderReadScope})
+     * @param apiKeyId the key, or 0 for a person
      */
     @Query(value = """
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
-            WHERE t.id IN (:folderIds)
+            WHERE EXISTS (SELECT 1 FROM GrantedFolderPath gr
+                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%'))
               AND f.id IN (SELECT g.id FROM FileInfo g
                            WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
@@ -169,7 +174,9 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             """,
             countQuery = """
             SELECT COUNT(f) FROM FileInfo f
-            WHERE f.folder.id IN (:folderIds)
+            JOIN f.folder t
+            WHERE EXISTS (SELECT 1 FROM GrantedFolderPath gr
+                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%'))
               AND f.id IN (SELECT g.id FROM FileInfo g
                            WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
@@ -182,18 +189,23 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
                                                    AND (REPLACE(a.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                                                         OR REPLACE(a.searchDisplayName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\')))
             """)
-    Page<FileInfo> searchWithinFolders(@Param("search") String search,
-                                       @Param("folderIds") Collection<Integer> folderIds,
-                                       Pageable pageable);
+    Page<FileInfo> searchReadable(@Param("search") String search, @Param("userId") int userId,
+                                  @Param("apiKeyId") int apiKeyId, Pageable pageable);
 
-    /** {@link #findPageWithFolder} restricted to a set of folders; must not be called with an empty set. */
+    /** {@link #findPageWithFolder} restricted to what one person or one key may read ({@link #searchReadable}). */
     @Query(value = """
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
-            WHERE t.id IN (:folderIds)
+            WHERE EXISTS (SELECT 1 FROM GrantedFolderPath gr
+                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%'))
             """,
-            countQuery = "SELECT COUNT(f) FROM FileInfo f WHERE f.folder.id IN (:folderIds)")
-    Page<FileInfo> findPageWithinFolders(@Param("folderIds") Collection<Integer> folderIds, Pageable pageable);
+            countQuery = """
+            SELECT COUNT(f) FROM FileInfo f
+            JOIN f.folder t
+            WHERE EXISTS (SELECT 1 FROM GrantedFolderPath gr
+                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%'))
+            """)
+    Page<FileInfo> findPageReadable(@Param("userId") int userId, @Param("apiKeyId") int apiKeyId, Pageable pageable);
 
     /**
      * Tree "find a file" search — see issue 73: two nodes at different depths of the same category
@@ -211,8 +223,6 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             ORDER BY f.fileName ASC, f.id ASC
             """)
     List<FileInfo> searchForTree(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
-
-    List<FileInfo> findByFolderIdOrderByFileNameAsc(int folderId);
 
     long countByFolderId(int folderId);
 
@@ -284,6 +294,34 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     Page<FileInfo> findByFolderId(int folderId, Pageable pageable);
 
     /**
+     * {@link #findByFolderId} narrowed to the files whose name or description holds a term - the
+     * explorer's and the tree's filter of one level (roadmap 12.4), folded and escaped as every
+     * search is. Not for an empty term: the caller lists the folder then.
+     */
+    @Query(value = """
+            SELECT f FROM FileInfo f
+            WHERE f.folder.id = :folderId
+              AND (REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
+                   OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\')
+            """,
+            countQuery = """
+            SELECT COUNT(f) FROM FileInfo f
+            WHERE f.folder.id = :folderId
+              AND (REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
+                   OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\')
+            """)
+    Page<FileInfo> findInFolderMatching(@Param("folderId") int folderId, @Param("term") String term, Pageable pageable);
+
+    /** How many files {@link #findInFolderMatching} finds, without reading them. */
+    @Query("""
+            SELECT COUNT(f) FROM FileInfo f
+            WHERE f.folder.id = :folderId
+              AND (REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
+                   OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\')
+            """)
+    long countInFolderMatching(@Param("folderId") int folderId, @Param("term") String term);
+
+    /**
      * How many files in a folder sort before this name: the file's position in the explorer's
      * listing of that folder, which is ordered by {@code fileName} ascending. The comparison and the
      * sort go through the same collation on either database, and a name is unique in its folder,
@@ -301,29 +339,35 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             """)
     List<ChildCount> countFilesByFolder(@Param("folderIds") Collection<Integer> folderIds);
 
-    /** The explorer's search, everywhere: by id or by a fragment of the name or description. */
+    /**
+     * The explorer's search, by id or by a fragment of the name or description, inside one subtree
+     * - the root's own path covers everything.
+     */
     @Query("""
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder d
-            WHERE (:id IS NOT NULL AND f.id = :id)
-               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
-               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
-            """)
-    Page<FileInfo> searchFiles(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
-
-    /** The same search within a set of folders - a scope, or what the person may read. */
-    @Query("""
-            SELECT f FROM FileInfo f
-            JOIN FETCH f.folder d
-            WHERE d.id IN (:folderIds)
+            WHERE d.path LIKE CONCAT(:pathPrefix, '%')
               AND ((:id IS NOT NULL AND f.id = :id)
                OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
                OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\')
             """)
-    Page<FileInfo> searchFilesWithinFolders(@Param("id") Integer id,
-                                            @Param("term") String term,
-                                            @Param("folderIds") Collection<Integer> folderIds,
-                                            Pageable pageable);
+    Page<FileInfo> searchFilesUnder(@Param("id") Integer id, @Param("term") String term,
+                                    @Param("pathPrefix") String pathPrefix, Pageable pageable);
+
+    /** The same search, also restricted to what one person or one key may read ({@link #searchReadable}). */
+    @Query("""
+            SELECT f FROM FileInfo f
+            JOIN FETCH f.folder d
+            WHERE d.path LIKE CONCAT(:pathPrefix, '%')
+              AND EXISTS (SELECT 1 FROM GrantedFolderPath gr
+                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND d.path LIKE CONCAT(gr.path, '%'))
+              AND ((:id IS NOT NULL AND f.id = :id)
+               OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
+               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\')
+            """)
+    Page<FileInfo> searchFilesUnderReadable(@Param("id") Integer id, @Param("term") String term,
+                                            @Param("pathPrefix") String pathPrefix, @Param("userId") int userId,
+                                            @Param("apiKeyId") int apiKeyId, Pageable pageable);
 
     /**
      * The files whose tags are not exactly the ones their folder chain says: a tag missing, a tag

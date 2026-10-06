@@ -93,11 +93,12 @@
                         initialPath: window.UPLOAD_TARGET_PATH || [],
                         rootTitle: $el.dataset.rootTitle,
                         selectRoot: false,
-                        copy: { loadFailed: $el.dataset.loadFailed }
+                        copy: { loadFailed: $el.dataset.loadFailed, more: $el.dataset.more }
                         })"
                         th:data-folders-url="@{/resource/folders/children}"
                         th:data-root-title="#{explorer.root}"
-                        th:data-load-failed="#{explorer.loadFailed}">
+                        th:data-load-failed="#{explorer.loadFailed}"
+                        th:data-more="#{explorer.tree.more}">
                         <label th:text="#{file.upload.target}">مقصد بارگذاری</label>
                         <input type="hidden" name="folderId" id="folderId" :value="chosen ? chosen.id : ''">
                         <div th:replace="~{fragments.html :: folder-chooser}"></div>

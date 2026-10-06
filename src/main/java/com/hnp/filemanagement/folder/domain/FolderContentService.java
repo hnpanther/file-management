@@ -29,7 +29,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -45,11 +44,11 @@ import java.util.stream.Collectors;
  * from {@code file_info.folder_id}. Any folder but the root holds files (since {@code V2.9}), and
  * the response says which from {@code kind}.
  *
- * <p><b>Folders are not paged, files are.</b> One level of folders is bounded by the tree - the
- * widest node on the installation this was measured against holds 29 children - and paging them
- * would produce a tree pane that scrolls into nothing. Files have no such bound and never did
- * ({@code docs/issues.md}, issue 71). If Phase 7 ever produces a folder with hundreds of
- * sub-folders this is where that changes, and the response already carries the shape for it.
+ * <p><b>Folders and files are paged, each on its own.</b> Files always were (issue 71); folders
+ * since 2.11.0 (roadmap 12.4), when a level of twenty thousand - one folder per person the ERP
+ * workflow files under one parent - was read and drawn whole. A level is
+ * {@link FolderLevelService}'s, so the explorer, the tree page and the folder chooser agree on its
+ * order and on what a reader sees; a filter narrows both lists of one folder by name.
  *
  * <p><b>Nothing here decides authorization on its own.</b> {@link FolderAccessService} resolves what
  * the person may reach, once per request, and every decision below is a prefix test against that.
@@ -73,19 +72,22 @@ public class FolderContentService {
     private final FolderAccessService folderAccessService;
     private final FolderService folderService;
     private final FolderQuotaService folderQuotaService;
+    private final FolderLevelService folderLevelService;
 
     public FolderContentService(FolderRepository folderRepository,
                                 FileInfoRepository fileInfoRepository,
                                 FileDetailsRepository fileDetailsRepository,
                                 FolderAccessService folderAccessService,
                                 FolderService folderService,
-                                FolderQuotaService folderQuotaService) {
+                                FolderQuotaService folderQuotaService,
+                                FolderLevelService folderLevelService) {
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.folderAccessService = folderAccessService;
         this.folderService = folderService;
         this.folderQuotaService = folderQuotaService;
+        this.folderLevelService = folderLevelService;
     }
 
     /**
@@ -99,8 +101,30 @@ public class FolderContentService {
      * @throws InvalidDataException  if the id names no folder
      */
     public FolderContentDTO contentOf(Integer folderId, int page, int size, int principalId) {
+        return contentOf(folderId, page, size, LevelRequest.FIRST, principalId);
+    }
+
+    /**
+     * Which page of a folder's child folders, narrowed how.
+     *
+     * @param page   zero-based; ignored when {@code around} names a child
+     * @param size   folders per page, clamped like the files'
+     * @param filter a fragment of a name or a label for both lists; blank for none
+     * @param around a child folder's id: open the page of the level that holds it - where the tree
+     *               lands when it opens the way down to a deep link
+     */
+    public record LevelRequest(int page, int size, String filter, Integer around) {
+
+        public static final LevelRequest FIRST = new LevelRequest(0, FolderLevelService.DEFAULT_SIZE, "", null);
+    }
+
+    /**
+     * {@link #contentOf(Integer, int, int, int)} with the folders paged and both lists filtered
+     * as asked.
+     */
+    public FolderContentDTO contentOf(Integer folderId, int page, int size, LevelRequest level, int principalId) {
         FolderAccess access = folderAccessService.accessFor(principalId);
-        return contentOf(resolve(folderId, access), access, page, size);
+        return contentOf(resolve(folderId, access), access, page, size, level);
     }
 
     /**
@@ -130,16 +154,27 @@ public class FolderContentService {
 
         int pageSize = pageRequest(0, size).getPageSize();
         long before = fileInfoRepository.countInFolderSortedBefore(folder.getId(), file.getFileName());
-        return contentOf(folder, access, (int) (before / pageSize), size);
+        return contentOf(folder, access, (int) (before / pageSize), size, LevelRequest.FIRST);
     }
 
-    private FolderContentDTO contentOf(Folder folder, FolderAccess access, int page, int size) {
+    private FolderContentDTO contentOf(Folder folder, FolderAccess access, int page, int size, LevelRequest level) {
         boolean readable = access.canRead(folder.getPath());
         PageRequest pageRequest = pageRequest(page, size);
+        String filter = level.filter() == null ? "" : level.filter().trim();
+        String term = FolderLevelService.termOf(filter);
 
         // Resolved once: it is a count plus a select, and asking for it again to fill in the page
         // numbers would double both. Null means there is nothing to page - see filePageOf.
-        Page<FileInfo> filePage = readable ? filePageOf(folder, pageRequest) : null;
+        Page<FileInfo> filePage = readable ? filePageOf(folder, term, pageRequest) : null;
+
+        int folderPageNumber = level.page();
+        if (level.around() != null) {
+            Folder child = folderAccessService.requireFolder(level.around());
+            if (child.getParent() != null && child.getParent().getId().equals(folder.getId())) {
+                folderPageNumber = folderLevelService.pageHolding(child, folder, access, level.size());
+            }
+        }
+        Page<Folder> folderPage = folderLevelService.childrenOf(folder, access, filter, folderPageNumber, level.size());
 
         return new FolderContentDTO(
                 refOf(folder),
@@ -148,9 +183,12 @@ public class FolderContentService {
                 access.canWrite(folder.getPath()),
                 folderService.canHoldFolders(folder),
                 breadcrumbOf(folder),
-                childFoldersOf(folder, access),
+                entriesOf(folderPage),
                 filePage == null ? List.of() : entriesOf(filePage.getContent()),
-                pageInfoOf(filePage, pageRequest));
+                pageInfoOf(filePage, pageRequest),
+                new PageInfo(folderPage.getNumber(), folderPage.getSize(), folderPage.getTotalPages(),
+                        folderPage.getTotalElements()),
+                filter);
     }
 
     /**
@@ -195,7 +233,8 @@ public class FolderContentService {
                     pageInfoOf(null, pageRequest));
         }
 
-        Page<FileInfo> found = matches(id, key, folderFilter(access, scope), pageRequest);
+        Page<FileInfo> found = matches(id, key, (scope == null ? rootFolder() : scope).getPath(),
+                folderAccessService.readScope(access, principalId), pageRequest);
 
         return new FolderSearchDTO(term, scope == null ? null : refOf(scope),
                 folderHitsOf(id, key, scope, access), hitsOf(found.getContent()),
@@ -268,30 +307,6 @@ public class FolderContentService {
     }
 
     /**
-     * The folders a search may look in: everything, or a set.
-     *
-     * <p>An empty {@link Optional} means no restriction at all, an empty <em>set</em> means the
-     * opposite — nothing can match. The distinction is {@code FolderAccessService}'s and is kept
-     * here, because collapsing the two is the mistake that turns "you have no access" into "you have
-     * all access".
-     */
-    private Optional<Set<Integer>> folderFilter(FolderAccess access, Folder scope) {
-        Optional<Set<Integer>> readable = folderAccessService.readableFolderIds(access);
-        if (scope == null) {
-            return readable;
-        }
-        Set<Integer> withinScope = folderRepository.findSubtree(scope.getPath()).stream()
-                .map(Folder::getId)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-
-        if (readable.isEmpty()) {
-            return Optional.of(withinScope);
-        }
-        withinScope.retainAll(readable.get());
-        return Optional.of(withinScope);
-    }
-
-    /**
      * The key as the search's {@code LIKE} takes it (issue 96) - or, when only the id can match, a
      * term no stored key contains.
      */
@@ -299,17 +314,23 @@ public class FolderContentService {
         return key.isEmpty() ? SearchKey.MATCHES_NOTHING : SearchTerms.escapeLike(key);
     }
 
-    private Page<FileInfo> matches(Integer id, String key, Optional<Set<Integer>> folderFilter, PageRequest pageRequest) {
+    /**
+     * The search inside a subtree, restricted to what this person may read - both pushed into the
+     * query together, as a path prefix and a condition on their grants (roadmap 12.4), so the total
+     * counts exactly the rows the page can show.
+     */
+    private Page<FileInfo> matches(Integer id, String key, String pathPrefix, FolderReadScope readScope,
+                                   PageRequest pageRequest) {
         String term = nothingIfEmpty(key);
-        if (folderFilter.isEmpty()) {
-            return fileInfoRepository.searchFiles(id, term, pageRequest);
+        if (readScope.unrestricted()) {
+            return fileInfoRepository.searchFilesUnder(id, term, pathPrefix, pageRequest);
         }
-        if (folderFilter.get().isEmpty()) {
-            // Not a query with an empty IN list, which is not valid SQL - and not a query at all,
-            // because the answer is already known.
+        if (readScope.nothing()) {
+            // The answer is already known.
             return Page.empty(pageRequest);
         }
-        return fileInfoRepository.searchFilesWithinFolders(id, term, folderFilter.get(), pageRequest);
+        return fileInfoRepository.searchFilesUnderReadable(id, term, pathPrefix, readScope.userId(),
+                readScope.apiKeyId(), pageRequest);
     }
 
     /**
@@ -439,29 +460,17 @@ public class FolderContentService {
     // ------------------------------------------------------------------ child folders
 
     /**
-     * The child folders this person may at least walk into, each with what is under it.
-     *
-     * <p>Three queries however wide the level is: the children, then one grouped count for the
-     * folders beneath them and one for the files directly in them - both by folder id, so a child
-     * of any kind gets the right numbers without the caller knowing which kinds hold files.
+     * One page of child folders, each with what is under it: the page, then one grouped count for
+     * the folders beneath them and one for the files directly in them - three queries for a page of
+     * any size, and a level of any width.
      */
-    private List<FolderEntry> childFoldersOf(Folder folder, FolderAccess access) {
-        List<Folder> children = folderRepository.findChildrenWithTagGroup(folder.getId()).stream()
-                .filter(child -> access.visible(child.getPath()))
-                .toList();
-
-        if (children.isEmpty()) {
-            return List.of();
-        }
-
-        List<Integer> childIds = children.stream().map(Folder::getId).toList();
-        Map<Integer, Long> folderCounts = countsOf(folderRepository.countChildFoldersByParent(childIds));
-        Map<Integer, Long> fileCounts = countsOf(fileInfoRepository.countFilesByFolder(childIds));
-
-        return children.stream()
-                .map(child -> entryOf(child,
-                        folderCounts.getOrDefault(child.getId(), 0L),
-                        fileCounts.getOrDefault(child.getId(), 0L)))
+    private List<FolderEntry> entriesOf(Page<Folder> children) {
+        Map<Integer, FolderLevelService.Contents> contents = folderLevelService.contentsOf(children.getContent());
+        return children.getContent().stream()
+                .map(child -> {
+                    FolderLevelService.Contents held = contents.get(child.getId());
+                    return entryOf(child, held.folders(), held.files());
+                })
                 .toList();
     }
 
@@ -494,11 +503,13 @@ public class FolderContentService {
      * root, which cannot hold any - the client tells "empty" and "cannot hold files" apart from
      * {@code kind} rather than from an empty list.
      */
-    private Page<FileInfo> filePageOf(Folder folder, PageRequest pageRequest) {
+    private Page<FileInfo> filePageOf(Folder folder, String term, PageRequest pageRequest) {
         if (!FolderService.canHoldFiles(folder)) {
             return null;
         }
-        return fileInfoRepository.findByFolderId(folder.getId(), pageRequest);
+        return term.isEmpty()
+                ? fileInfoRepository.findByFolderId(folder.getId(), pageRequest)
+                : fileInfoRepository.findInFolderMatching(folder.getId(), term, pageRequest);
     }
 
     /**

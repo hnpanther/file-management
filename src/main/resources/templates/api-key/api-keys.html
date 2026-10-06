@@ -68,6 +68,10 @@
         </div>
     </section>
 
+    <!-- What a renewal or a replacement did, or why it was refused (roadmap 9.11). -->
+    <div th:if="${listMessage != null}" class="alert mb-5" th:classappend="${listValid} ? 'alert-success' : 'alert-warning'"
+         th:attr="role=${listValid} ? 'status' : 'alert'" th:text="${listMessage}"></div>
+
     <section class="card">
         <div class="card-body">
             <div class="card-title">
@@ -106,13 +110,20 @@
                             <span th:text="${k.keyId}"></span>
                             <span class="badge badge-secondary ms-1" th:if="${k.kind != null}"
                                   th:text="#{'apiKey.kind.' + ${k.kind}}">V1</span>
+                            <!-- The two sides of a replacement (roadmap 9.11), each naming the other. -->
+                            <span class="block text-ink-500" dir="rtl" th:if="${k.replacedById != null}"
+                                  th:text="#{apiKey.replacedBy(${k.replacedById})}">جایگزین شده با کلید ۱۲</span>
+                            <span class="block text-ink-500" dir="rtl" th:if="${k.replacesId != null}"
+                                  th:text="#{apiKey.replaces(${k.replacesId})}">جایگزین کلید ۱۱</span>
                         </td>
                         <td>
                             <span th:if="${k.revokedAt != null}" class="badge badge-danger"
                                   th:text="#{apiKey.status.revoked}">باطل‌شده</span>
-                            <span th:if="${k.revokedAt == null and k.usable}" class="badge badge-success"
+                            <span th:if="${k.revokedAt == null and k.expired}" class="badge badge-warning"
+                                  th:text="#{apiKey.status.expired}">منقضی‌شده</span>
+                            <span th:if="${k.revokedAt == null and !k.expired and k.usable}" class="badge badge-success"
                                   th:text="#{apiKey.status.active}">فعال</span>
-                            <span th:if="${k.revokedAt == null and !k.usable}" class="badge badge-warning"
+                            <span th:if="${k.revokedAt == null and !k.expired and !k.usable}" class="badge badge-warning"
                                   th:text="#{apiKey.status.inactive}">غیرفعال</span>
                         </td>
                         <td class="text-xs" th:text="${k.expiresAt != null} ? ${#temporals.format(k.expiresAt, 'yyyy-MM-dd')} : ''">
@@ -146,6 +157,31 @@
                                     <button type="submit" class="btn btn-danger btn-sm"
                                             th:attr="onclick=|return confirm('${#messages.msg('apiKey.action.revokeConfirm')}')|"
                                             th:text="#{apiKey.action.revoke}">ابطال</button>
+                                </form>
+
+                                <!--
+                                  Renewing: a new date, the same secret (roadmap 9.11) - offered where a date
+                                  stops the key or soon will; empty means no expiry.
+                                -->
+                                <form sec:authorize="hasAuthority('RENEW_API_KEY') || hasAuthority('ADMIN')"
+                                      th:if="${k.revokedAt == null and k.expiresAt != null}"
+                                      th:action="@{'/api-keys/' + ${k.id} + '/renew'}" method="post"
+                                      class="flex items-center gap-1">
+                                    <input type="date" name="expiresAt" class="h-8 rounded-[var(--radius-control)] border border-ink-300 px-1 text-xs"
+                                           dir="ltr" th:aria-label="#{apiKey.renew.date}">
+                                    <button type="submit" class="btn btn-secondary btn-sm" th:text="#{apiKey.action.renew}">تمدید</button>
+                                </form>
+
+                                <!--
+                                  A replacement, never the revoked key back: a new key and a new secret,
+                                  carrying the revoked one's title, folders, kind and capabilities.
+                                -->
+                                <form sec:authorize="hasAuthority('REISSUE_API_KEY') || hasAuthority('ADMIN')"
+                                      th:if="${k.revokedAt != null and k.replacedById == null}"
+                                      th:action="@{'/api-keys/' + ${k.id} + '/reissue'}" method="post">
+                                    <button type="submit" class="btn btn-secondary btn-sm"
+                                            th:attr="onclick=|return confirm('${#messages.msg('apiKey.action.reissueConfirm')}')|"
+                                            th:text="#{apiKey.action.reissue}">کلید جایگزین</button>
                                 </form>
                             </div>
                         </td>

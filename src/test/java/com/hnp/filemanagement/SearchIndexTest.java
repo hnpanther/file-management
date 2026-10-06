@@ -105,10 +105,10 @@ class SearchIndexTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("the same search inside a reader's folders uses them too")
+    @DisplayName("the same search restricted to a reader's grants uses them too")
     void theFileListSearchWithinFolders() {
-        fileInfoRepository.searchWithinFolders(TERM, Set.of(1, 2), PageRequest.of(0, 20, NEWEST_FIRST));
-        fileInfoRepository.searchWithinFolders(TERM, Set.of(1, 2), PageRequest.of(5, 1, NEWEST_FIRST));
+        fileInfoRepository.searchReadable(TERM, 1, 0, PageRequest.of(0, 20, NEWEST_FIRST));
+        fileInfoRepository.searchReadable(TERM, 1, 0, PageRequest.of(5, 1, NEWEST_FIRST));
 
         assertEveryStatementUses(2, FILE_NAME, FILE_DESCRIPTION, FOLDER_NAME, FOLDER_LABEL);
     }
@@ -125,8 +125,8 @@ class SearchIndexTest extends DatabaseSupport {
     @Test
     @DisplayName("the explorer's and the tree's file searches use the file indexes")
     void theExplorerAndTreeFileSearches() {
-        fileInfoRepository.searchFiles(null, TERM, BY_NAME);
-        fileInfoRepository.searchFiles(null, TERM, PAST_THE_END_BY_NAME);
+        fileInfoRepository.searchFilesUnder(null, TERM, "/", BY_NAME);
+        fileInfoRepository.searchFilesUnder(null, TERM, "/", PAST_THE_END_BY_NAME);
         fileInfoRepository.searchForTree(null, TERM, PageRequest.of(0, 20));
 
         assertEveryStatementUses(3, FILE_NAME, FILE_DESCRIPTION);
@@ -141,8 +141,8 @@ class SearchIndexTest extends DatabaseSupport {
     @Test
     @DisplayName("the explorer's search within a reader's folders never reads the files whole")
     void theExplorerSearchWithinFolders() {
-        fileInfoRepository.searchFilesWithinFolders(null, TERM, Set.of(1, 2), BY_NAME);
-        fileInfoRepository.searchFilesWithinFolders(null, TERM, Set.of(1, 2), PAST_THE_END_BY_NAME);
+        fileInfoRepository.searchFilesUnderReadable(null, TERM, "/", 1, 0, BY_NAME);
+        fileInfoRepository.searchFilesUnderReadable(null, TERM, "/", 1, 0, PAST_THE_END_BY_NAME);
 
         for (String plan : plansOfRecordedSearches(2)) {
             assertThat(plan).doesNotContain("Seq Scan on file_info")

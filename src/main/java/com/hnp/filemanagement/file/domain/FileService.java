@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.domain;
 
+import com.hnp.filemanagement.folder.domain.FolderReadScope;
 import com.hnp.filemanagement.audit.domain.ActionHistoryService;
 import com.hnp.filemanagement.folder.domain.FolderAccessService;
 import com.hnp.filemanagement.folder.domain.FolderQuotaService;
@@ -47,7 +48,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -856,27 +856,26 @@ public class FileService {
     public PageResponse<FileInfoDTO> getPageFileInfo(int pageSize, int pageNumber, String search, int principalId) {
 
         Pageable pageable = PageRequest.of(pageNumber, pageSize, NEWEST_FIRST);
-        // The folders this person may read, applied inside the query against each file's own
-        // folder_id (roadmap 7.2 step 3). A file with no folder is outside every set, so a
-        // restricted reader does not see it; an unrestricted one has no filter and does.
-        Optional<Set<Integer>> readableFolders =
-                folderAccessService.readableFolderIds(folderAccessService.accessFor(principalId));
+        // What this person may read, applied inside the query against each file's own folder
+        // (roadmap 7.2 step 3), as a condition on their grants - never as the readable folders'
+        // ids, which a large grant made a statement PostgreSQL refuses (roadmap 12.4).
+        FolderReadScope scope = folderAccessService.readScope(principalId);
 
         // An empty key - no search, or one of only spaces and marks - lists everything, through a
         // query that does not search at all (issue 21).
         String key = SearchKey.forSearch(search);
         Page<FileInfo> page;
-        if (readableFolders.isEmpty()) {
+        if (scope.unrestricted()) {
             page = key.isEmpty()
                     ? fileInfoRepository.findPageWithFolder(pageable)
                     : fileInfoRepository.search(SearchTerms.escapeLike(key), pageable);
-        } else if (readableFolders.get().isEmpty()) {
-            // Granted nothing: an empty page, without asking the database for `IN ()`.
+        } else if (scope.nothing()) {
+            // Granted nothing: an empty page, without asking the database.
             page = Page.empty(pageable);
         } else {
             page = key.isEmpty()
-                    ? fileInfoRepository.findPageWithinFolders(readableFolders.get(), pageable)
-                    : fileInfoRepository.searchWithinFolders(SearchTerms.escapeLike(key), readableFolders.get(), pageable);
+                    ? fileInfoRepository.findPageReadable(scope.userId(), scope.apiKeyId(), pageable)
+                    : fileInfoRepository.searchReadable(SearchTerms.escapeLike(key), scope.userId(), scope.apiKeyId(), pageable);
         }
 
         // The ancestors of every folder on the page in one query, so the conversion below adds no

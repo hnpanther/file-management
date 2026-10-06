@@ -331,7 +331,9 @@ markup, `window.folderChooser(config)` in `app.js` the Alpine behaviour, and the
 element declares `x-data="folderChooser({url, initialId, initialPath, rootTitle, selectRoot,
 copy})"`. It drills down through `/resource/folders/children` - the same endpoint the explorer
 reads, so it shows exactly the folders the person may walk into - as a crumb row (each crumb
-goes back up) and a list of child folders (each goes down, with the count badge). The folder on
+goes back up) and a list of child folders (each goes down, with the count badge), a page at a time:
+"N more folders" brings the next, and a filter box appears once a level holds more than a page
+(2.11.0, roadmap 12.4). The folder on
 screen **is** the choice, updated on every step: `chosen` (`{id, title, path}`, or null while the
 root is on screen and the caller does not take it) and a `folder-chosen` event on the root
 element, which the upload form binds to its hidden input and the explorer's move panel to its
@@ -420,9 +422,10 @@ deeper. That keeps the template to a single `x-for`, supports any depth without 
 templates, and hands drag-and-drop one ordered list to work against. Indentation comes from
 `padding-inline-start` computed from `depth`, so it flips correctly in RTL.
 
-Children load on demand from `/resource/files/tree/children?type=&id=`. Root categories open one level
-on initial display so the hierarchy and its disclosure controls are immediately discoverable. The
-user can then open a branch or use **Expand all**. Do not build the whole subtree in the controller:
+Children load on demand from `/resource/files/tree/children?type=&id=&page=`, a page of a level at a
+time - folders, then files - with a "N more" row for the rest (2.11.0). The top level opens on arrival
+when it holds 30 folders or fewer. **Expand all** stops at 2,000 rows and says so: a tree of a hundred
+thousand folders is opened by hand or found by the search. Do not build the whole subtree in the controller:
 every `@ManyToOne` in this codebase is `EAGER`, so one node drags in its whole ancestry.
 
 ### The general settings page

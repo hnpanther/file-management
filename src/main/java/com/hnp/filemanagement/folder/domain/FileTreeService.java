@@ -4,12 +4,13 @@ import com.hnp.filemanagement.folder.domain.TreeNodeDTO.NodeType;
 import com.hnp.filemanagement.file.domain.FileDetails;
 import com.hnp.filemanagement.file.domain.FileInfo;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
-import com.hnp.filemanagement.folder.persistence.ChildCount;
 import com.hnp.filemanagement.file.persistence.FileInfoRepository;
-import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import com.hnp.filemanagement.shared.util.SearchKey;
 import com.hnp.filemanagement.shared.util.SearchTerms;
+import com.hnp.filemanagement.shared.web.OffsetPageable;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,37 +32,63 @@ import java.util.stream.Collectors;
  * holds both, to any depth up to the configured limit); a tag group is not a level - it labels a
  * top-level folder, so it is shown as a note on that row.
  *
- * <p>Every level is fetched on demand, and every level is filtered by folder access: an ancestor
- * of a grant is shown so that the branch to the grant can be opened, and a folder's files are
- * shown only to somebody who may read it.
+ * <p>Every level is fetched on demand, a page at a time - its folders, then its files, as one list
+ * (roadmap 12.4: a level may hold thousands) - and every level is filtered by folder access: an
+ * ancestor of a grant is shown so that the branch to the grant can be opened, and a folder's files
+ * are shown only to somebody who may read it.
  */
 @Service
 public class FileTreeService {
 
-    private final FolderRepository folderRepository;
     private final FileInfoRepository fileInfoRepository;
     private final FolderAccessService folderAccessService;
     private final FolderService folderService;
+    private final FolderLevelService folderLevelService;
 
-    public FileTreeService(FolderRepository folderRepository,
-                           FileInfoRepository fileInfoRepository,
+    public FileTreeService(FileInfoRepository fileInfoRepository,
                            FolderAccessService folderAccessService,
-                           FolderService folderService) {
-        this.folderRepository = folderRepository;
+                           FolderService folderService,
+                           FolderLevelService folderLevelService) {
         this.fileInfoRepository = fileInfoRepository;
         this.folderAccessService = folderAccessService;
         this.folderService = folderService;
+        this.folderLevelService = folderLevelService;
     }
 
     /** Top level of the tree for one person: the top-level folders they may either read or walk through. */
     @Transactional(readOnly = true)
     public List<TreeNodeDTO> getRoots(int principalId) {
-        FolderAccess access = folderAccessService.accessFor(principalId);
-        return folderNodes(access, folderService.root());
+        return getRootLevel(principalId, "", 0, FolderLevelService.DEFAULT_SIZE).nodes();
     }
 
+    /** The root's id - what the tree page asks for the top level's further pages by. */
+    @Transactional(readOnly = true)
+    public int rootId() {
+        return folderService.root().getId();
+    }
+
+    /** The first page of the top level, as the tree page opens on it (roadmap 12.4). */
+    @Transactional(readOnly = true)
+    public TreeLevelDTO getRootLevel(int principalId, String filter, int page, int size) {
+        FolderAccess access = folderAccessService.accessFor(principalId);
+        // The root holds no files, and its folders are filtered like every other level's.
+        return folderLevel(access, folderService.root(), filter, page, size);
+    }
+
+    /** Every node one level holds, unpaged - {@link #getLevel} for callers that want the old shape. */
     @Transactional(readOnly = true)
     public List<TreeNodeDTO> getChildren(NodeType type, int id, int principalId) {
+        return getLevel(type, id, "", 0, FolderLevelService.DEFAULT_SIZE, principalId).nodes();
+    }
+
+    /**
+     * One page of the level under a node: a folder's child folders then its files, or a file's
+     * versions (never paged - a file has few).
+     *
+     * @param filter a fragment of a name or a label, narrowing a folder's level; blank for none
+     */
+    @Transactional(readOnly = true)
+    public TreeLevelDTO getLevel(NodeType type, int id, String filter, int page, int size, int principalId) {
         FolderAccess access = folderAccessService.accessFor(principalId);
 
         return switch (type) {
@@ -69,20 +96,13 @@ public class FileTreeService {
             // child folders, which are filtered - an ancestor of a grant must reveal only the
             // branch that leads to it. Files are contents, not a route to anywhere, so they are
             // listed only where the full check passes.
-            case FOLDER -> {
-                Folder folder = requireVisibleFolder(access, id);
-                List<TreeNodeDTO> children = new ArrayList<>(folderNodes(access, folder));
-                if (access.canRead(folder.getPath())) {
-                    children.addAll(filesOf(folder.getId()));
-                }
-                yield children;
-            }
+            case FOLDER -> folderLevel(access, requireVisibleFolder(access, id), filter, page, size);
             // A file is addressed by its own id and authorised through its own folder.
             case FILE -> {
                 FileInfo fileInfo = fileInfoRepository.findById(id)
                         .orElseThrow(() -> new InvalidDataException("file not found, id=" + id));
                 folderAccessService.requireReadAccess(access, fileInfo);
-                yield versionsOf(id);
+                yield TreeLevelDTO.whole(versionsOf(id));
             }
             case VERSION -> throw new InvalidDataException(
                     "versions are expanded together with their file; ask for the file instead");
@@ -99,31 +119,49 @@ public class FileTreeService {
     }
 
     /**
-     * The visible child folders of one folder, each with what is beneath it - sub-folders and
-     * files, as one grouped count each, however wide the level is.
+     * One page of a folder's level: its visible child folders ({@link FolderLevelService}), then -
+     * where the folder may be read and can hold them - its files, the two as one list paged
+     * together. The folders' page is the level's page; the files fill what is left of it, from
+     * wherever the folders ended.
      */
-    private List<TreeNodeDTO> folderNodes(FolderAccess access, Folder parent) {
-        List<Folder> children = folderRepository.findChildrenWithTagGroup(parent.getId()).stream()
-                .filter(child -> access.visible(child.getPath()))
-                .sorted((a, b) -> a.getName().compareToIgnoreCase(b.getName()))
-                .toList();
-        if (children.isEmpty()) {
-            return List.of();
-        }
-        List<Integer> ids = children.stream().map(Folder::getId).toList();
-        Map<Integer, Long> folderCounts = countsOf(folderRepository.countChildFoldersByParent(ids));
-        Map<Integer, Long> fileCounts = countsOf(fileInfoRepository.countFilesByFolder(ids));
+    private TreeLevelDTO folderLevel(FolderAccess access, Folder folder, String filter, int page, int size) {
+        String trimmed = filter == null ? "" : filter.trim();
+        String term = FolderLevelService.termOf(trimmed);
+        Page<Folder> folders = folderLevelService.childrenOf(folder, access, trimmed, page, size);
+        int pageSize = folders.getSize();
+        long offset = (long) folders.getNumber() * pageSize;
 
-        return children.stream()
-                .map(child -> toFolderNode(child,
-                        folderCounts.getOrDefault(child.getId(), 0L).intValue()
-                                + fileCounts.getOrDefault(child.getId(), 0L).intValue()))
-                .toList();
+        List<TreeNodeDTO> nodes = new ArrayList<>(folderNodes(folders.getContent()));
+        long fileTotal = 0;
+        if (access.canRead(folder.getPath()) && FolderService.canHoldFiles(folder)) {
+            int room = pageSize - nodes.size();
+            long fileOffset = Math.max(0, offset - folders.getTotalElements());
+            if (room > 0) {
+                Page<FileInfo> files = term.isEmpty()
+                        ? fileInfoRepository.findByFolderId(folder.getId(), new OffsetPageable(fileOffset, room, BY_NAME))
+                        : fileInfoRepository.findInFolderMatching(folder.getId(), term, new OffsetPageable(fileOffset, room, BY_NAME));
+                files.getContent().stream().map(this::toFileNode).forEach(nodes::add);
+                fileTotal = files.getTotalElements();
+            } else {
+                fileTotal = term.isEmpty()
+                        ? fileInfoRepository.countByFolderId(folder.getId())
+                        : fileInfoRepository.countInFolderMatching(folder.getId(), term);
+            }
+        }
+        long total = folders.getTotalElements() + fileTotal;
+        int totalPages = (int) ((total + pageSize - 1) / pageSize);
+        return new TreeLevelDTO(nodes, new FolderContentDTO.PageInfo(folders.getNumber(), pageSize, totalPages, total), trimmed);
     }
 
-    private static Map<Integer, Long> countsOf(List<ChildCount> counts) {
-        return counts.stream().collect(Collectors.toMap(
-                ChildCount::parentId, ChildCount::total, (a, b) -> a, LinkedHashMap::new));
+    /** Files in a level in name order, then by id - the explorer's order. */
+    private static final Sort BY_NAME = Sort.by(Sort.Direction.ASC, "fileName").and(Sort.by(Sort.Direction.ASC, "id"));
+
+    /** Each folder with what is beneath it - sub-folders and files - as two grouped counts for the page. */
+    private List<TreeNodeDTO> folderNodes(List<Folder> children) {
+        Map<Integer, FolderLevelService.Contents> contents = folderLevelService.contentsOf(children);
+        return children.stream()
+                .map(child -> toFolderNode(child, (int) contents.get(child.getId()).total()))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -165,12 +203,6 @@ public class FileTreeService {
     }
 
     // ------------------------------------------------------------------ levels
-
-    private List<TreeNodeDTO> filesOf(int folderId) {
-        return fileInfoRepository.findByFolderIdOrderByFileNameAsc(folderId).stream()
-                .map(this::toFileNode)
-                .toList();
-    }
 
     private List<TreeNodeDTO> versionsOf(int fileInfoId) {
         FileInfo fileInfo = fileInfoRepository.findByIdAndFetchFileDetails(fileInfoId)

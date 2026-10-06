@@ -2149,11 +2149,30 @@ the ERP workflow of roadmap 9.10.13 creates a folder per person or company under
 thousands in one level, tens of thousands in the tree - and each of these pages then grows with
 it, the grant form to tens of thousands of controls.
 
-Fix: roadmap [12.4](roadmap.md#124-a-folder-of-thousands-of-folders--planned-before-the-erp-workflow-goes-live) -
-child folders paged in SQL with folder access in the query, a filter within a level, a lazy grant
-tree that never drops a grant it did not show. Related: issue 109 (the v2 listing reads a whole
-subtree). Not fixed when found (2026-10-05): it is a design for several screens, recorded for its
-phase.
+**Fixed in 2.11.0** (roadmap [12.4](roadmap.md#124-a-folder-of-thousands-of-folders--done-2110)): a
+level is read a page at a time by `FolderLevelService` - the explorer, the tree page and the folder
+chooser alike - with folder access in the query and a filter within a level; the access tree renders
+the top, the grants and the way to them, and opens the rest on demand without ever dropping a grant
+it did not show. Measured on 20,000 children and 100,000 folders (`LargeTreeTest`): the explorer from
+1.3 s to 58 ms, the access tree from 1.2 s and 100,005 rows to 33 ms and 5 statements. Issue 109 (the
+old v2 listing) stays, with that API.
+
+### 114. A list filtered by folder access sent every readable folder as a parameter — **S1**
+
+Found by roadmap 12.4's measurement (2026-10-06). The file list, its search, the explorer's search,
+the history, the download log and the share-link list restricted a reader to their folders by
+resolving every folder under each grant (`FolderAccessService.readableFolderIds`, entity by entity)
+and binding them into the statement as `IN (?, ?, ...)` - one parameter per folder. A reader granted
+a folder with more than 65,535 folders beneath it - the ERP workflow's, one per person - got a 500 on
+every one of those pages (`PreparedStatement can have at most 65,535 parameters`), and below that
+limit each request loaded every folder of the grant to build the list. The 2.7.4 review's note that
+40,000 ids "bind as one array" was not true of these queries.
+
+**Fixed in 2.11.0**: the lists ask the grants themselves - `GrantedFolderPath`, a read-only view over
+`user_folder`, `role_folder` through `user_role`, and `api_key_folder` - as
+`EXISTS (... folder.path LIKE grant.path || '%')`, through `FolderAccessService.readScope`
+(`FolderReadScope`). `readableFolderIds` is gone. `LargeTreeTest` lists all five for a reader granted
+100,000 folders, in 4 to 9 statements.
 
 ### 113. A revision's storage key carries its title — **S2**
 
@@ -2183,8 +2202,9 @@ revisions stored before keep their titles until the move to the object store re-
   reason - `EndpointGuardTest` fails on a new unguarded one.
 * **Every permission name in a guard exists** - `PermissionNamesTest`, as before.
 * **Every foreign key has an index** (46 of them) - `ForeignKeyIndexTest` fails on a new one without.
-* **The readable-folder filter scales**: 40,000 folder ids in one `IN` run (Hibernate binds them as
-  one array), so a reader with a large grant is not a failed query.
+* ~~**The readable-folder filter scales**: 40,000 folder ids in one `IN` run (Hibernate binds them as
+  one array), so a reader with a large grant is not a failed query.~~ **Wrong, found in 2.11.0**: the
+  ids were bound one parameter each, and past 65,535 the statement failed - [issue 114](#114-a-list-filtered-by-folder-access-sent-every-readable-folder-as-a-parameter--s1).
 * **No SQL is built from input** (every query is JPQL or parameterised); **no template writes
   unescaped text** (`th:utext`, `innerHTML`: none); **no secret reaches the log** (the share token
   is masked in every logged path; no password, key or token is logged); **no dead code, no `TODO`,

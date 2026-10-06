@@ -190,6 +190,12 @@ public enum PermissionEnum {
     //@GetMapping("tag-groups") - the groups a new top-level folder may carry
     REST_GET_TAG_GROUPS,
 
+    // FolderGrantTreeResource @RequestMapping("/resource/folder-grants") ================================
+    //@GetMapping("children"), @GetMapping("search") - the folder-access tree of the role and API key
+    // pages, opened a level at a time and searched by name (roadmap 12.4); those pages' own
+    // permissions reach it too
+    REST_GET_FOLDER_GRANT_TREE,
+
     // ===================================================================================================
 
     // ApiKeyController @RequestMapping("/api-keys") =====================================================
@@ -207,6 +213,10 @@ public enum PermissionEnum {
     REVOKE_API_KEY,
     //@GetMapping("{id}/activity") - what one key has uploaded, added, changed and deleted (2.5.0)
     API_KEY_ACTIVITY_PAGE,
+    //@PostMapping("{id}/renew") - a new date for a key that is not revoked, the same secret (roadmap 9.11)
+    RENEW_API_KEY,
+    //@PostMapping("{id}/reissue") - a new key, a new secret, in place of a revoked one (roadmap 9.11)
+    REISSUE_API_KEY,
 
     /**
      * Held by an API key itself rather than by any person, and by every API key.
