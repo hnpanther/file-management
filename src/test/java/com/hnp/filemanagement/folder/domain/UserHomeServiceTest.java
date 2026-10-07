@@ -172,10 +172,16 @@ class UserHomeServiceTest extends DatabaseSupport {
         assertThatThrownBy(() -> folderService.move(chain.tagId(), underTest.profiles().getId(), adminId))
                 .isInstanceOf(InvalidDataException.class).hasMessageContaining("takes no folders");
 
-        underTest.renameHomeOf(personId, "renamed" + TestData.nextSequence(), adminId);
+        int inside = folderService.create(home.getId(), "Inside", null, null, null, adminId).id();
+        String renamed = "renamed" + TestData.nextSequence();
+        underTest.renameHomeOf(personId, renamed, adminId);
         entityManager.flush();
         entityManager.clear();
         assertThat(folderRepository.findById(home.getId()).orElseThrow().getName()).startsWith("renamed");
+        // The keys of the S3 surface follow the name (V3.9): the home's, and those beneath it.
+        assertThat(folderRepository.findById(home.getId()).orElseThrow().getKeyPath()).isEqualTo(renamed + "/");
+        assertThat(folderRepository.findById(inside).orElseThrow().getKeyPath()).isEqualTo(renamed + "/Inside/");
+        assertThat(folderRepository.findRowsWhoseKeyPathDisagrees()).isEmpty();
         // A username the home cannot follow - a folder of that name already under Profiles - is a
         // 409 said up front, not the sibling index's 500 at flush; renaming to its own name is fine.
         Folder taken = TestData.folder(admin, underTest.profiles(), "taken" + TestData.nextSequence(), null);

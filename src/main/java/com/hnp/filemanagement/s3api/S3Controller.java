@@ -20,6 +20,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,6 +37,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
+import java.util.Set;
 
 /**
  * API v2, S3-compatible (roadmap 9.10): {@code PutObject}, {@code GetObject}, {@code HeadObject},
@@ -88,6 +90,10 @@ public class S3Controller {
         String key = keyOf(rawKey);
         if (key.isEmpty()) {
             // CreateBucket: a bucket is a top-level folder, made on the web.
+            return notImplemented(request);
+        }
+        if (asksWhatIsNotServed(request, Set.of()) || request.getHeader("x-amz-copy-source") != null) {
+            // PutObjectTagging, PutObjectAcl, UploadPart, CopyObject, ...: never an upload of the body.
             return notImplemented(request);
         }
         if (key.endsWith("/")) {
@@ -146,6 +152,10 @@ public class S3Controller {
         if (key.isEmpty()) {
             return bucket(userDetails, bucket, request);
         }
+        if (asksWhatIsNotServed(request, READ_PARAMETERS)) {
+            // GetObjectTagging, GetObjectAcl, a part, ...: never the object's bytes in their place.
+            return notImplemented(request);
+        }
         globalGeneralLogging.detail("s3 get bucket=" + bucket + ", key=" + key);
         FileDownloadDTO download = objectService.get(bucket, key, versionId, userDetails.getId());
         FileDetails revision = objectService.revision(download.getFileDetailsId());
@@ -175,6 +185,9 @@ public class S3Controller {
         if (key.isEmpty()) {
             return bucket(userDetails, bucket, request);
         }
+        if (asksWhatIsNotServed(request, READ_PARAMETERS)) {
+            return notImplemented(request);
+        }
         globalGeneralLogging.detail("s3 head bucket=" + bucket + ", key=" + key);
         FileDetails revision = objectService.head(bucket, key, versionId, userDetails.getId());
         return ResponseEntity.ok()
@@ -188,22 +201,48 @@ public class S3Controller {
                 .build();
     }
 
-    /** {@code DeleteObject}: a file with every version, or an empty folder's {@code key/}. */
+    /**
+     * {@code DeleteObject}: every version of the key's object, or the one {@code versionId} names,
+     * or an empty folder's {@code key/} ({@link S3ObjectService#delete(String, String, String,
+     * com.hnp.filemanagement.identity.domain.ApiKey, int)}).
+     */
     //API_KEY
     @PreAuthorize("hasAuthority('API_KEY') || hasAuthority('ADMIN')")
     @DeleteMapping("/{bucket}/{*key}")
     public ResponseEntity<?> delete(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                                       @PathVariable("bucket") String bucket,
-                                       @PathVariable("key") String rawKey,
-                                       HttpServletRequest request) {
+                                    @PathVariable("bucket") String bucket,
+                                    @PathVariable("key") String rawKey,
+                                    @RequestParam(value = "versionId", required = false) String versionId,
+                                    HttpServletRequest request) {
         String key = keyOf(rawKey);
         if (key.isEmpty()) {
             // DeleteBucket: never through a key.
             return notImplemented(request);
         }
-        globalGeneralLogging.detail("s3 delete bucket=" + bucket + ", key=" + key);
-        objectService.delete(bucket, key, context(request).apiKey(), userDetails.getId());
-        return ResponseEntity.noContent().build();
+        if (asksWhatIsNotServed(request, Set.of("versionId"))) {
+            // DeleteObjectTagging, AbortMultipartUpload, ...: never a deletion of the object itself.
+            return notImplemented(request);
+        }
+        globalGeneralLogging.detail("s3 delete bucket=" + bucket + ", key=" + key
+                + (versionId == null ? "" : ", versionId=" + versionId));
+        objectService.delete(bucket, key, versionId, context(request).apiKey(), userDetails.getId());
+        ResponseEntity.HeadersBuilder<?> answer = ResponseEntity.noContent();
+        if (versionId != null) {
+            answer.header("x-amz-version-id", versionId);
+        }
+        return answer.build();
+    }
+
+    /**
+     * A {@code POST} to an object, or to a bucket without {@code ?delete}: a multipart upload
+     * ({@code ?uploads}, {@code ?uploadId}), a restore, a select, a browser's form upload - none
+     * served here, and said so with S3's 501 rather than a bare 405 the clients do not explain.
+     */
+    //API_KEY
+    @PreAuthorize("hasAuthority('API_KEY') || hasAuthority('ADMIN')")
+    @PostMapping("/{bucket}/{*key}")
+    public ResponseEntity<String> post(HttpServletRequest request) {
+        return notImplemented(request);
     }
 
     // ---------------------------------------------------------------- a bucket
@@ -212,8 +251,9 @@ public class S3Controller {
      * What a request naming only a bucket may ask: {@code HeadBucket} (a {@code HEAD}),
      * {@code GetBucketLocation} ({@code ?location} - n8n's S3 node asks it before every operation),
      * {@code GetBucketVersioning} ({@code ?versioning} - always on: a title written twice is a new
-     * version). The rest - listing first of all - is not served yet, and says so with S3's 501 rather
-     * than a misleading 400. A bucket the key cannot see is a 404, as for an object.
+     * version), and a listing ({@link #list}, 2.12.0). Any other sub-resource - uploads, versions,
+     * acl, policy, tagging, ... - says it is not served with S3's 501, rather than a misleading 400.
+     * A bucket the key cannot see is a 404, as for an object.
      */
     private ResponseEntity<String> bucket(UserDetailsImpl userDetails, String bucket, HttpServletRequest request) {
         globalGeneralLogging.detail("s3 bucket request bucket=" + bucket + ", query=" + request.getQueryString());
@@ -231,7 +271,147 @@ public class S3Controller {
             return xmlOk(XML_DECLARATION + "<VersioningConfiguration xmlns=\"" + NAMESPACE
                     + "\"><Status>Enabled</Status></VersioningConfiguration>");
         }
-        return notImplemented(request);
+        if (asksWhatIsNotServed(request, LISTING_PARAMETERS)) {
+            // A sub-resource - uploads, versions, acl, policy, tagging, ... - not served here.
+            return notImplemented(request);
+        }
+        return list(userDetails, bucket, request);
+    }
+
+    /** What a listing may be asked with; any other parameter names a sub-resource this does not serve. */
+    private static final Set<String> LISTING_PARAMETERS = Set.of("list-type", "prefix", "delimiter",
+            "max-keys", "continuation-token", "start-after", "fetch-owner", "encoding-type", "marker");
+
+    /**
+     * {@code ListObjectsV2} ({@code list-type=2}) and {@code ListObjects}: one page of the keys
+     * under a prefix, in S3's order, with {@code delimiter=/} one folder's children as common
+     * prefixes ({@link S3ObjectService#list}).
+     */
+    private ResponseEntity<String> list(UserDetailsImpl userDetails, String bucket, HttpServletRequest request) {
+        boolean v2 = "2".equals(request.getParameter("list-type"));
+        String encodingType = request.getParameter("encoding-type");
+        if (encodingType != null && !encodingType.equals("url")) {
+            throw new com.hnp.filemanagement.shared.exception.InvalidDataException("encoding-type is url or nothing: " + encodingType);
+        }
+        int maxKeys = S3ObjectService.MAX_KEYS;
+        if (request.getParameter("max-keys") != null) {
+            try {
+                maxKeys = Integer.parseInt(request.getParameter("max-keys"));
+            } catch (NumberFormatException e) {
+                throw new com.hnp.filemanagement.shared.exception.InvalidDataException("max-keys is a number");
+            }
+            if (maxKeys < 0) {
+                throw new com.hnp.filemanagement.shared.exception.InvalidDataException("max-keys is not negative");
+            }
+        }
+        String token = v2 ? request.getParameter("continuation-token") : null;
+        String startAfter = v2 ? request.getParameter("start-after") : null;
+        String marker = v2 ? null : request.getParameter("marker");
+        String after;
+        if (token != null) {
+            try {
+                after = S3Xml.keyOfToken(token);
+            } catch (IllegalArgumentException e) {
+                throw new com.hnp.filemanagement.shared.exception.InvalidDataException("the continuation token is not one this wrote");
+            }
+        } else {
+            after = v2 ? startAfter : marker;
+        }
+        S3Xml.ListRequest asked = new S3Xml.ListRequest(bucket, nullToEmpty(request.getParameter("prefix")),
+                request.getParameter("delimiter"), Math.min(maxKeys, S3ObjectService.MAX_KEYS), encodingType != null,
+                !v2 || "true".equals(request.getParameter("fetch-owner")), token, startAfter, marker);
+        globalGeneralLogging.detail("s3 list bucket=" + bucket + (v2 ? " (v2)" : " (v1)") + ", prefix=" + asked.prefix()
+                + ", delimiter=" + asked.delimiter());
+
+        S3ObjectService.Listing page = objectService.list(bucket, asked.prefix(), asked.delimiter(), after,
+                asked.maxKeys(), userDetails.getId());
+        return xmlOk(v2 ? S3Xml.listV2(asked, page) : S3Xml.listV1(asked, page));
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    /**
+     * {@code DeleteObjects}: up to {@value S3Xml#MAX_DELETE_OBJECTS} keys in one request, each
+     * deleted as {@code DeleteObject} deletes it - in a transaction of its own, so one refused
+     * (no capability, no grant, a folder not empty) does not keep the others; each outcome is
+     * answered, or with {@code Quiet} the failures only. The body's hash is checked against its
+     * signature as an upload's is.
+     */
+    //API_KEY
+    @PreAuthorize("hasAuthority('API_KEY') || hasAuthority('ADMIN')")
+    @PostMapping(value = {"/{bucket}", "/{bucket}/"}, params = "delete")
+    public ResponseEntity<String> deleteObjects(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                @PathVariable("bucket") String bucket,
+                                                HttpServletRequest request) throws IOException {
+        S3RequestContext context = context(request);
+        byte[] body;
+        try (InputStream in = payload(request, context)) {
+            body = in.readNBytes(MAX_DELETE_BODY + 1);
+            // Read to its end, so a signed body's hash is checked (SignedBodyInputStream).
+            if (body.length <= MAX_DELETE_BODY) {
+                in.transferTo(java.io.OutputStream.nullOutputStream());
+            }
+        }
+        if (body.length > MAX_DELETE_BODY) {
+            throw new S3Xml.MalformedXml("a Delete body is at most " + MAX_DELETE_BODY + " bytes");
+        }
+        S3Xml.DeleteRequest asked = S3Xml.readDelete(body);
+        objectService.requireBucket(bucket, userDetails.getId());
+        globalGeneralLogging.detail("s3 delete objects bucket=" + bucket + ", count=" + asked.objects().size());
+
+        java.util.List<S3Xml.DeleteOutcome> outcomes = new java.util.ArrayList<>();
+        for (S3Xml.ToDelete object : asked.objects()) {
+            outcomes.add(deleteOne(bucket, object, context, userDetails.getId()));
+        }
+        return xmlOk(S3Xml.deleteResult(outcomes, asked.quiet()));
+    }
+
+    /** A thousand keys of a thousand bytes, and their markup: what S3 itself takes. */
+    private static final int MAX_DELETE_BODY = 2 * 1024 * 1024;
+
+    private S3Xml.DeleteOutcome deleteOne(String bucket, S3Xml.ToDelete object, S3RequestContext context, int principalId) {
+        try {
+            objectService.delete(bucket, object.key(), object.versionId(), context.apiKey(), principalId);
+            return new S3Xml.DeleteOutcome(object, null, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return new S3Xml.DeleteOutcome(object, S3Errors.Error.ACCESS_DENIED, S3Errors.Error.ACCESS_DENIED.message());
+        } catch (S3ObjectService.FolderNotEmpty e) {
+            return new S3Xml.DeleteOutcome(object, S3Errors.Error.FOLDER_NOT_EMPTY, S3Errors.Error.FOLDER_NOT_EMPTY.message());
+        } catch (com.hnp.filemanagement.shared.exception.InvalidDataException e) {
+            return new S3Xml.DeleteOutcome(object, S3Errors.Error.INVALID_ARGUMENT, e.getMessage());
+        } catch (com.hnp.filemanagement.shared.exception.StorageUnavailableException e) {
+            return new S3Xml.DeleteOutcome(object, S3Errors.Error.SERVICE_UNAVAILABLE, S3Errors.Error.SERVICE_UNAVAILABLE.message());
+        } catch (RuntimeException e) {
+            org.slf4j.LoggerFactory.getLogger(S3Controller.class).error("s3 delete objects: key " + object.key() + " failed", e);
+            return new S3Xml.DeleteOutcome(object, S3Errors.Error.INTERNAL_ERROR, S3Errors.Error.INTERNAL_ERROR.message());
+        }
+    }
+
+    /**
+     * What a read of an object may be asked with. {@code response-*} asks S3 to answer other headers;
+     * here they are ignored, which changes no byte.
+     */
+    private static final Set<String> READ_PARAMETERS = Set.of("versionId", "response-content-type",
+            "response-content-language", "response-expires", "response-cache-control", "response-content-disposition",
+            "response-content-encoding");
+
+    /**
+     * Whether the request names a parameter its handler does not understand - in S3, a sub-resource
+     * ({@code ?tagging}, {@code ?acl}, {@code ?uploadId}, ...), an operation other than the one the
+     * method alone names. Taken for the plain one it would be a deletion of the object for
+     * {@code DeleteObjectTagging}, or a body of XML stored as a version for {@code PutObjectTagging};
+     * so each handler takes only what it knows, and everything else is a 501. A pre-signed URL's own
+     * parameters ({@code X-Amz-*}) and the {@code x-id} some SDKs add are not requests of anything.
+     */
+    static boolean asksWhatIsNotServed(HttpServletRequest request, Set<String> understood) {
+        for (String name : request.getParameterMap().keySet()) {
+            if (!understood.contains(name) && !name.regionMatches(true, 0, "x-amz-", 0, 6) && !name.equals("x-id")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static ResponseEntity<String> notImplemented(HttpServletRequest request) {

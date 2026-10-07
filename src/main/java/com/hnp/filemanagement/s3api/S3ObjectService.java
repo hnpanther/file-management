@@ -17,6 +17,7 @@ import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import com.hnp.filemanagement.identity.domain.ApiKey;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.shared.util.SearchKey;
+import com.hnp.filemanagement.shared.util.SearchTerms;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +33,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The S3-compatible surface's view of the folder tree (roadmap 9.10): a bucket is a top-level
@@ -58,16 +60,19 @@ public class S3ObjectService {
     private final FolderAccessService folderAccessService;
     private final FolderService folderService;
     private final FileService fileService;
+    private final S3ListingRepository listingRepository;
 
     public S3ObjectService(FolderRepository folderRepository, FileInfoRepository fileInfoRepository,
                            FileDetailsRepository fileDetailsRepository, FolderAccessService folderAccessService,
-                           FolderService folderService, FileService fileService) {
+                           FolderService folderService, FileService fileService,
+                           S3ListingRepository listingRepository) {
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.folderAccessService = folderAccessService;
         this.folderService = folderService;
         this.fileService = fileService;
+        this.listingRepository = listingRepository;
     }
 
     /** No such bucket, folder or file: {@code NoSuchBucket} or {@code NoSuchKey}. */
@@ -92,6 +97,13 @@ public class S3ObjectService {
     }
 
     /** A folder asked to be deleted that still holds something. */
+    /** What a client asked for that this surface does not do (yet) - S3's 501. */
+    public static final class NotImplementedHere extends RuntimeException {
+        NotImplementedHere(String message) {
+            super(message);
+        }
+    }
+
     public static final class FolderNotEmpty extends RuntimeException {
         FolderNotEmpty(String message) {
             super(message);
@@ -194,12 +206,31 @@ public class S3ObjectService {
         ensureFolders(requireBucket(bucket, access), parsed.folders(), apiKey, access, principalId);
     }
 
-    /** Deletes a file (every version) or an empty folder; a key that names nothing is not an error. */
+    /** Deletes a key's object - every version of it - or an empty folder; a key that names nothing is not an error. */
     @Transactional
     public void delete(String bucket, String key, ApiKey apiKey, int principalId) {
+        delete(bucket, key, null, apiKey, principalId);
+    }
+
+    /**
+     * {@code DeleteObject}. An object is a file's revisions in one format: the key's extension
+     * names it ({@code report.pdf} and {@code report.docx} are two objects of one file, as a read
+     * finds them). So without a version, every revision in that format goes - and the file with
+     * them only when none of another format is left; with {@code versionId} (a revision's external
+     * id), that revision alone - never the whole file, which is what a client asking for one version
+     * would least expect to lose. A key, or a version, that names nothing is not an error (204), as
+     * in S3. A folder's {@code key/} takes no version.
+     *
+     * @param versionId null for every version of the key
+     */
+    @Transactional
+    public void delete(String bucket, String key, String versionId, ApiKey apiKey, int principalId) {
         S3Key parsed = S3Key.parse(key);
         FolderAccess access = folderAccessService.accessFor(principalId);
         Folder bucketFolder = requireBucket(bucket, access);
+        if (parsed.namesFolder() && versionId != null) {
+            throw new InvalidDataException("a folder has no versions: " + key);
+        }
         Optional<Folder> folder = walk(bucketFolder, parsed.folders());
         if (folder.isEmpty()) {
             return;
@@ -220,10 +251,25 @@ public class S3ObjectService {
         if (file.isEmpty()) {
             return;
         }
+        String extension = extensionOf(parsed.objectName());
+        List<FileDetails> revisions = file.get().getFileDetailsList();
+        List<FileDetails> named = revisions.stream()
+                .filter(details -> extension.equalsIgnoreCase(details.getFileExtension()))
+                .filter(details -> versionId == null || versionId.equals(details.getExternalId()))
+                .toList();
+        if (named.isEmpty()) {
+            return;
+        }
         if (!apiKey.isMayDeleteFiles() || !access.canWrite(folder.get().getPath())) {
             throw new AccessDeniedException("the key may not delete " + key);
         }
-        fileService.deleteCompleteFileById(file.get().getId(), principalId);
+        if (named.size() == revisions.size()) {
+            fileService.deleteCompleteFileById(file.get().getId(), principalId);
+            return;
+        }
+        for (FileDetails revision : named) {
+            fileService.deleteFileDetails(revision.getId(), principalId);
+        }
     }
 
     // ---------------------------------------------------------------- reading
@@ -350,6 +396,71 @@ public class S3ObjectService {
                         .sorted(Comparator.comparing(Bucket::name))
                         .toList())
                 .orElse(List.of());
+    }
+
+    // ---------------------------------------------------------------- listing (ListObjectsV2, ListObjects)
+
+    /** The most keys one page of a listing holds - and S3's default. */
+    public static final int MAX_KEYS = 1000;
+
+    /** One page of a listing, and whether there is more after it. */
+    public record Listing(List<S3ListingRepository.Row> entries, boolean truncated) {
+
+        static final Listing EMPTY = new Listing(List.of(), false);
+    }
+
+    /**
+     * One page of the keys in a bucket that begin with a prefix, in S3's order - the bytes of the
+     * key - after a key already returned.
+     *
+     * <p>With {@code delimiter=/} one folder is listed: the one the prefix names up to its last
+     * {@code /} - its child folders as common prefixes, its files as objects. Without one, every file
+     * at any depth beneath that folder. Only what the key may see: a folder's files where it may read
+     * the folder, its child folders where it may at least walk through (roadmap 6.6); a bucket or a
+     * folder it may not see lists nothing, as one that does not exist.
+     *
+     * @param delimiter null, empty or {@code /} - any other is not done here (a 501)
+     * @param after     the last key already returned (a continuation token's, {@code start-after},
+     *                  {@code marker}); null for the start
+     * @param maxKeys   at most {@value #MAX_KEYS}; 0 asks for nothing
+     */
+    @Transactional(readOnly = true)
+    public Listing list(String bucket, String prefix, String delimiter, String after, int maxKeys, int principalId) {
+        if (delimiter != null && !delimiter.isEmpty() && !delimiter.equals("/")) {
+            throw new NotImplementedHere("a delimiter other than / is not supported: " + delimiter);
+        }
+        FolderAccess access = folderAccessService.accessFor(principalId);
+        Folder bucketFolder = requireBucket(bucket, access);
+        int limit = Math.max(0, Math.min(maxKeys, MAX_KEYS));
+        if (limit == 0) {
+            return Listing.EMPTY;
+        }
+        String wanted = prefix == null ? "" : prefix;
+        int slash = wanted.lastIndexOf('/');
+        List<String> names = slash < 0 ? List.of() : List.of(wanted.substring(0, slash).split("/", -1));
+        if (names.stream().anyMatch(String::isEmpty)) {
+            // "a//b": no folder has an empty name.
+            return Listing.EMPTY;
+        }
+        Optional<Folder> named = walk(bucketFolder, names);
+        if (named.isEmpty() || !access.visible(named.get().getPath())) {
+            return Listing.EMPTY;
+        }
+        Folder folder = named.get();
+        String keyPrefix = SearchTerms.escapeLike(wanted);
+        String afterKey = after == null ? "" : after;
+
+        List<S3ListingRepository.Row> rows;
+        if ("/".equals(delimiter)) {
+            Optional<Set<Integer>> children = access.visibleChildIdsUnder(folder.getPath());
+            rows = listingRepository.level(folder.getId(), children.orElse(null),
+                    access.canRead(folder.getPath()) && FolderService.canHoldFiles(folder), keyPrefix, afterKey, limit + 1);
+        } else {
+            rows = listingRepository.subtree(bucketFolder.getId(), folder.getId(), folder.getPath(), folder.getKeyPath(),
+                    folderAccessService.readScope(access, principalId), keyPrefix, afterKey, limit + 1);
+        }
+        boolean truncated = rows.size() > limit;
+        return new Listing(truncated ? rows.subList(0, limit) : rows, truncated);
     }
 
     // ---------------------------------------------------------------- the tree

@@ -38,7 +38,16 @@ import org.hibernate.annotations.Synchronize;
 @Entity
 @Immutable
 @Getter
-@Subselect("""
+@Subselect(GrantedFolderPath.SQL)
+@Synchronize({"user_folder", "role_folder", "user_role", "api_key_folder", "folder"})
+public class GrantedFolderPath {
+
+    /**
+     * The view, as SQL - shared with the one list that asks it natively (the S3 surface's listing,
+     * {@code S3ListingRepository}), so the two can never disagree about who is granted what. Its
+     * columns: {@code id}, {@code user_id}, {@code api_key_id}, {@code path}.
+     */
+    public static final String SQL = """
         SELECT 'u' || uf.user_id || '-' || uf.folder_id AS id, uf.user_id AS user_id, 0 AS api_key_id, f.path AS path
         FROM user_folder uf JOIN folder f ON f.id = uf.folder_id
         UNION ALL
@@ -47,9 +56,7 @@ import org.hibernate.annotations.Synchronize;
         UNION ALL
         SELECT 'k' || akf.api_key_id || '-' || akf.folder_id, 0, akf.api_key_id, f.path
         FROM api_key_folder akf JOIN folder f ON f.id = akf.folder_id
-        """)
-@Synchronize({"user_folder", "role_folder", "user_role", "api_key_folder", "folder"})
-public class GrantedFolderPath {
+        """;
 
     @Id
     private String id;

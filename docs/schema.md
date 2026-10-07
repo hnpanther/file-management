@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.8`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.9`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -459,6 +459,7 @@ _As of migration `V3.8`. Types and defaults are PostgreSQL's own; every table is
 | `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | yes |  |  |
 | `updated_by` | `integer` | yes |  |  |
+| `key_path` | `varchar(4000)` | no | `` |  |
 
 * **primary key** `id`
 * **unique** `uq_folder_owner_user` (`owner_user_id`)
@@ -471,7 +472,9 @@ _As of migration `V3.8`. Types and defaults are PostgreSQL's own; every table is
 * **index** `fk_folder_created_by_user` (`created_by`)
 * **index** `fk_folder_tag_group` (`tag_group_id`)
 * **index** `fk_folder_updated_by_user` (`updated_by`)
+* **index** `ix_folder_bucket_key_path` (`split_part(path, '/', 3)`, `key_path`, in byte order (`COLLATE "C"`))
 * **index** `ix_folder_parent` (`parent_id`)
+* **index** `ix_folder_parent_key_path` (`parent_id`, `key_path`, in byte order (`COLLATE "C"`))
 * **index** `ix_folder_path` (`path`, for prefix `LIKE` (`varchar_pattern_ops`))
 * **index** `ix_folder_search_display_name_trgm` (`replace(search_display_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 * **index** `ix_folder_search_name_trgm` (`replace(search_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))

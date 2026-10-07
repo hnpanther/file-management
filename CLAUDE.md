@@ -98,6 +98,15 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   `folder.tag_group_id`. Do not treat a tag group as a place. A chain of any depth cannot be
   fetch-joined: load a page's ancestors with `FolderService.ancestryOf`, off the materialised
   path, never by walking `getParent()` per row.
+* **`folder.key_path` is derived, like `path`** (V3.9, 2.12.0): the names below the bucket, each with
+  its `/` - the S3 key's prefix, and what the listing orders by (`COLLATE "C"`, byte order, as S3).
+  Anything that creates, renames or moves a folder keeps it (`Folder.onCreate`,
+  `FolderService.rewriteKeyPath`, `UserHomeService`), and a test asserts
+  `findRowsWhoseKeyPathDisagrees` empty after it; a folder inserted in SQL writes it too. Compare S3
+  keys in Java with `S3Keys.compare`, never `String.compareTo` (UTF-16 is not byte order).
+* **An S3 handler takes only the query parameters it understands** (`S3Controller.asksWhatIsNotServed`,
+  issue 116): a sub-resource it ignored ran as the plain operation - `DELETE …?tagging` deleted the
+  file. A new S3 operation names its parameters there; anything else stays a 501.
 * **New files are stored by their own id, under a key that names nothing a person wrote**
   (`files/{shard}/{file id}/rev/v{n}/{revision external id}.{ext}`, 2.10.0, `StorageLayout` — the
   one place a key is written and the one place a file's directory is read back off a key, by its

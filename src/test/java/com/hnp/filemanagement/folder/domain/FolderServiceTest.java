@@ -58,6 +58,8 @@ class FolderServiceTest extends DatabaseSupport {
     @Autowired
     private FolderRepository folderRepository;
     @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    @Autowired
     private TagGroupRepository tagGroupRepository;
     @Autowired
     private FileInfoRepository fileInfoRepository;
@@ -285,6 +287,104 @@ class FolderServiceTest extends DatabaseSupport {
             grant(restrictedId, chain.subCategoryId(), FolderPermission.WRITE);
             assertThat(underTest.rename(chain.tagId(), "Renamed" + TestData.nextSequence(), null, null, restrictedId).id())
                     .isEqualTo(chain.tagId());
+        }
+    }
+
+    // ================================================================ key paths (V3.9)
+
+    @Nested
+    @DisplayName("key paths - the names below the bucket, for the S3 surface's keys")
+    class KeyPaths {
+
+        private String keyPathOf(int folderId) {
+            entityManager.flush();
+            entityManager.clear();
+            return folderRepository.findById(folderId).orElseThrow().getKeyPath();
+        }
+
+        @Test
+        @DisplayName("a folder is made with its key path - none for the root and a bucket, the names below the bucket for the rest")
+        void madeWithIt() {
+            String sub = chain.subCategory().getName();
+            assertThat(keyPathOf(rootId)).isEmpty();
+            assertThat(keyPathOf(chain.categoryId())).as("a bucket").isEmpty();
+            assertThat(keyPathOf(chain.subCategoryId())).isEqualTo(sub + "/");
+            assertThat(keyPathOf(chain.tagId())).isEqualTo(sub + "/" + chain.tag().getName() + "/");
+
+            FolderDTO made = underTest.create(chain.tagId(), "Contracts", null, null, null, adminId);
+            assertThat(keyPathOf(made.id())).isEqualTo(sub + "/" + chain.tag().getName() + "/Contracts/");
+            assertThat(folderRepository.findRowsWhoseKeyPathDisagrees()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a rename rewrites the key paths beneath, in one statement; a bucket's rename changes none")
+        void aRenameRewritesThem() {
+            FolderDTO deeper = underTest.create(chain.tagId(), "Deeper", null, null, null, adminId);
+            underTest.rename(chain.subCategoryId(), "Renamed" + TestData.nextSequence(), "نام تازه", null, adminId);
+            String sub = folderRepository.findById(chain.subCategoryId()).orElseThrow().getName();
+
+            assertThat(keyPathOf(chain.subCategoryId())).isEqualTo(sub + "/");
+            assertThat(keyPathOf(chain.tagId())).isEqualTo(sub + "/" + chain.tag().getName() + "/");
+            assertThat(keyPathOf(deeper.id())).isEqualTo(sub + "/" + chain.tag().getName() + "/Deeper/");
+
+            underTest.rename(chain.categoryId(), "Bucket" + TestData.nextSequence(), "سطل", null, adminId);
+            assertThat(keyPathOf(chain.tagId())).as("a bucket's name is in no key").isEqualTo(sub + "/" + chain.tag().getName() + "/");
+            assertThat(folderRepository.findRowsWhoseKeyPathDisagrees()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a move rewrites them: into another bucket, up to be a bucket, down below another folder")
+        void aMoveRewritesThem() {
+            String sub = chain.subCategory().getName();
+            String tag = chain.tag().getName();
+            Folder otherTop = FolderFixture.category(folderRepository, admin, "OtherTop" + TestData.nextSequence(),
+                    tagGroupRepository.save(TestData.tagGroup(admin, "kg" + TestData.nextSequence())));
+
+            underTest.move(chain.subCategoryId(), otherTop.getId(), adminId);
+            assertThat(keyPathOf(chain.tagId())).as("the same names below another bucket").isEqualTo(sub + "/" + tag + "/");
+
+            underTest.move(chain.subCategoryId(), rootId, adminId);
+            assertThat(keyPathOf(chain.subCategoryId())).as("now a bucket").isEmpty();
+            assertThat(keyPathOf(chain.tagId())).isEqualTo(tag + "/");
+
+            underTest.move(chain.categoryId(), chain.tagId(), adminId);
+            assertThat(keyPathOf(chain.categoryId())).as("a bucket no more")
+                    .isEqualTo(tag + "/" + chain.category().getName() + "/");
+            assertThat(folderRepository.findRowsWhoseKeyPathDisagrees()).isEmpty();
+            assertThat(folderRepository.findRowsWhoseDerivedColumnsDisagree()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("the check finds a key path that disagrees")
+        void theCheckFindsOne() {
+            entityManager.flush();
+            jdbcTemplate.update("UPDATE folder SET key_path = 'wrong/' WHERE id = ?", chain.tagId());
+            entityManager.clear();
+            assertThat(folderRepository.findRowsWhoseKeyPathDisagrees()).extracting(Folder::getId).containsExactly(chain.tagId());
+        }
+
+        @Test
+        @DisplayName("the start's repair sets every key path that disagrees, after a release that did not keep them - and no other")
+        void theRepairSetsThemRight() {
+            FolderDTO deeper = underTest.create(chain.tagId(), "Deeper", null, null, null, adminId);
+            entityManager.flush();
+            String sub = chain.subCategory().getName();
+            String tag = chain.tag().getName();
+            // As 2.11.0 would leave them: a bucket given a key path, a rename and a move not followed.
+            jdbcTemplate.update("UPDATE folder SET key_path = 'stale/' WHERE id = ?", chain.categoryId());
+            jdbcTemplate.update("UPDATE folder SET key_path = 'Old/' WHERE id = ?", chain.subCategoryId());
+            jdbcTemplate.update("UPDATE folder SET key_path = 'Old/' || ? || '/Deeper/' WHERE id = ?", tag, deeper.id());
+            entityManager.clear();
+            assertThat(folderRepository.findRowsWhoseKeyPathDisagrees()).extracting(Folder::getId)
+                    .contains(chain.categoryId(), chain.subCategoryId(), deeper.id());
+
+            assertThat(folderRepository.repairKeyPaths()).isGreaterThanOrEqualTo(3);
+            entityManager.clear();
+            assertThat(folderRepository.findRowsWhoseKeyPathDisagrees()).isEmpty();
+            assertThat(keyPathOf(chain.categoryId())).isEmpty();
+            assertThat(keyPathOf(chain.subCategoryId())).isEqualTo(sub + "/");
+            assertThat(keyPathOf(deeper.id())).isEqualTo(sub + "/" + tag + "/Deeper/");
+            assertThat(folderRepository.repairKeyPaths()).as("nothing left to set").isZero();
         }
     }
 

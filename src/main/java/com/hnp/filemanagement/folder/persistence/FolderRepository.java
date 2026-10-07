@@ -209,6 +209,62 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     List<Folder> findRowsWhoseDerivedColumnsDisagree();
 
     /**
+     * Folders whose {@code key_path} is not what their parent's and their name make it - {@code ""}
+     * under the root, the parent's and the name and a slash elsewhere (V3.9). Empty is the only
+     * acceptable answer; the reconciliation tests ask after every rename and move.
+     */
+    @Query("""
+            SELECT f FROM Folder f
+            WHERE (f.parent IS NULL AND f.keyPath <> '')
+               OR (f.parent IS NOT NULL AND f.parent.kind = com.hnp.filemanagement.folder.domain.FolderKind.ROOT
+                   AND f.keyPath <> '')
+               OR (f.parent IS NOT NULL AND f.parent.kind <> com.hnp.filemanagement.folder.domain.FolderKind.ROOT
+                   AND f.keyPath <> CONCAT(f.parent.keyPath, f.name, '/'))
+            """)
+    List<Folder> findRowsWhoseKeyPathDisagrees();
+
+    /**
+     * Sets every folder's key path to what the names above it make it, where it is not - as V3.9
+     * first wrote them, in one statement, and touching no row that is right. What a start runs
+     * ({@code KeyPathRepair}): a release before 2.12.0, run on this database after it - a rollback -
+     * renames and moves without keeping them, and V3.9 does not run twice.
+     *
+     * @return the number of folders set
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query(nativeQuery = true, value = """
+            WITH RECURSIVE keyed (id, key_path) AS (
+                SELECT f.id, CAST('' AS VARCHAR(4000))
+                FROM folder f
+                JOIN folder r ON r.id = f.parent_id AND r.parent_id IS NULL
+                UNION ALL
+                SELECT c.id, CAST(k.key_path || c.name || '/' AS VARCHAR(4000))
+                FROM folder c
+                JOIN keyed k ON c.parent_id = k.id
+            )
+            UPDATE folder f SET key_path = keyed.key_path
+            FROM keyed
+            WHERE f.id = keyed.id AND f.key_path <> keyed.key_path
+            """)
+    int repairKeyPaths();
+
+    /**
+     * Rewrites the key path of every folder strictly beneath one ({@code pathPrefix}, its own path),
+     * from the old prefix - its key path before - to the new: a rename or a move of it, in one
+     * statement for any width of subtree. The folder's own row is the caller's to set; a statement
+     * that also wrote it would race the entity the caller holds.
+     */
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE Folder f
+            SET f.keyPath = CONCAT(:newPrefix, SUBSTRING(f.keyPath, :oldLength + 1))
+            WHERE f.path LIKE CONCAT(:pathPrefix, '%') AND f.path <> :pathPrefix
+            """)
+    int rewriteKeyPathsBelow(@Param("pathPrefix") String pathPrefix, @Param("newPrefix") String newPrefix,
+                             @Param("oldLength") int oldLength);
+
+    /**
      * Every folder at or below a path prefix, shallowest first — the prefix scan {@code path} was
      * denormalised for. Pass a full path including its trailing slash ({@code /1/7/}); the trailing
      * slash is what stops it matching {@code /1/70/}.

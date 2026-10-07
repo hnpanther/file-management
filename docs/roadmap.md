@@ -41,6 +41,12 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.12.0 is written: **listing and deleting many on the S3 surface** (9.10) - `ListObjectsV2` and
+`ListObjects` in S3's byte order, by level or whole, paged off a byte-ordered index of the folders'
+new `key_path` (`V3.9`) so a page costs what it returns (measured on 41,000 objects), only what the key
+may read; `DeleteObjects`; a delete with a `versionId` taking that version alone (issue 115, it took
+the file whole); and a sub-resource of an object - `?tagging`, `?acl`, a part, a copy - a 501, where
+`DELETE …?tagging` had deleted the file (issue 116). `aws s3 sync` and `rclone sync` can now run.
 2.11.0 is written: **a folder of thousands of folders** (12.4) - every level of folders paged in SQL,
 with folder access in the query and a filter by name, the access tree of the role and key pages
 rendered in part and opened on demand; and **folder access in SQL for every filtered list**
@@ -144,8 +150,8 @@ What the releases since the cut-over brought, newest first:
    (a first pass may run against production at any time - it only reads); then the window. Done in 2.7.0: the application against a SeaweedFS stack case by case, and a 1 GB
    file through it; in 2.7.1: issues 100 and 101 (a storage failure is a 503, a hung store is
    bounded). An S3-compatible
-   API for standard tools is planned separately ([9.10](#910-an-s3-compatible-mode--planned)).
-   **API v2 S3-compatible, and the API key lifecycle** ([9.10](#910-an-s3-compatible-mode--planned),
+   API for standard tools is planned separately ([9.10](#910-an-s3-compatible-mode--in-progress-290---2120-authentication-objects-listing)).
+   **API v2 S3-compatible, and the API key lifecycle** ([9.10](#910-an-s3-compatible-mode--in-progress-290---2120-authentication-objects-listing),
    [9.11](#911-api-key-lifecycle-renewal-a-replacement-key-and-the-kind-of-key--planned)): v1 unchanged;
    v2 accepting standard S3 clients - upload (a title already there is a new version), download,
    delete, folders created by an upload when the key may - for the ERP attachments filed by n8n.
@@ -825,7 +831,7 @@ need the extra abstraction.
 
 This phase makes the application a **client** of an object store. It has nothing to do with the
 v2 API's buckets, which are a view of the folder tree offered to callers
-([9.0](#90-first-two-different-things-were-both-called-s3-compatible), [9.10](#910-an-s3-compatible-mode--planned)).
+([9.0](#90-first-two-different-things-were-both-called-s3-compatible), [9.10](#910-an-s3-compatible-mode--in-progress-290---2120-authentication-objects-listing)).
 
 ### Where this stands (2.6.0)
 
@@ -2177,7 +2183,7 @@ The goal is a shape people recognise, not a protocol they can point tooling at. 
 therefore a bearer credential — `Authorization: Bearer fmk_…` — and the documentation must say
 outright that this is S3-*style*, so nobody plans an integration around a CLI that will never
 connect. If real S3 compatibility is ever wanted it is its own phase, and it starts by making
-secrets recoverable - planned in [9.10](#910-an-s3-compatible-mode--planned), which since
+secrets recoverable - planned in [9.10](#910-an-s3-compatible-mode--in-progress-290---2120-authentication-objects-listing), which since
 2026-10-04 turns v2 itself into the S3-compatible surface and retires this one.
 
 ### 9.5 Actuator — **done**
@@ -2290,7 +2296,7 @@ v2 operations work against a bucket with the version in the key; uploading is re
 grant is read-only; `/actuator/health` reflects the database; and the API documents itself at a URL
 that can be switched off without a rebuild.
 
-### 9.10 An S3-compatible mode — in progress (2.9.0: authentication, upload, download, delete)
+### 9.10 An S3-compatible mode — in progress (2.9.0 - 2.12.0: authentication, objects, listing)
 
 > **What 2.9.0 has** (2026-10-05), at `/s3` (`com.hnp.filemanagement.s3api`, the manual is
 > [api-s3.md](api-s3.md)):
@@ -2321,14 +2327,32 @@ that can be switched off without a rebuild.
 >
 > * **Bucket requests** (added after n8n's S3 node, tried by hand, asked `GetBucketLocation` before a
 >   download): `ListBuckets`, `HeadBucket`, `GetBucketLocation` (`us-east-1`, named rather than empty -
->   n8n reads the element's text), `GetBucketVersioning` (`Enabled`); `CreateBucket`, `DeleteBucket` and
->   every listing a `501 NotImplemented`.
+>   n8n reads the element's text), `GetBucketVersioning` (`Enabled`); `CreateBucket` and `DeleteBucket`
+>   a `501 NotImplemented`.
 >
-> **Still to come**: `ListObjectsV2` (with `key_path`), `DeleteObjects`,
-> multipart upload (step 5), `x-amz-meta-*` (12.2 step 4), `folder.bucket_name`, two uploads creating
-> one path at once answered as one (today the second may fail on the unique name, and is retried by
-> the client), and 9.11's renewal and replacement key. Before a release is used by an integration:
-> `aws`, `rclone`, `boto3` and the S3 node of n8n by hand (9.10.11).
+> **What 2.12.0 adds** (2026-10-07):
+>
+> * **`ListObjectsV2` and `ListObjects`** (`S3ListingRepository`): S3's byte order (`COLLATE "C"`),
+>   `delimiter=/` (child folders as common prefixes, empty ones too), a prefix matched without case,
+>   continuation tokens, `start-after`, `marker`, `encoding-type=url`, `max-keys` up to 1000; a key is
+>   a title in one format, listed as its newest version there; only what the key may read, a folder's
+>   name where it may pass through. **`key_path`** (`V3.9`, 9.10.10 item 1) on every folder, kept by
+>   create, rename and move, and two byte-ordered indexes, so a page reads about as many folders as it
+>   returns - measured on 20,000 folders and 41,000 objects (`S3ListingScaleTest`), its order proved
+>   against an oracle at page sizes of 1 to 1000 after every key (`S3ListingOrderTest`).
+> * **`DeleteObjects`**: up to 1000 keys, each in a transaction of its own, `Quiet`, a body read with
+>   no DTD (XXE) and checked against its signature.
+> * **`DeleteObject` with `versionId`** deletes that version; without, the key's format's versions -
+>   the whole file, every format, before ([issue 115](issues.md#115-an-s3-delete-of-one-version-deleted-the-whole-file--s1)).
+> * **A sub-resource is never the object**: `?tagging`, `?acl`, `?uploadId`, `x-amz-copy-source`, a
+>   `POST` to an object - a 501, where `DELETE …?tagging` had deleted the file
+>   ([issue 116](issues.md#116-an-s3-request-for-a-sub-resource-of-an-object-was-taken-for-the-object--s1)).
+>
+> **Still to come**: multipart upload (step 5), `ListObjectVersions`, `CopyObject`, `x-amz-meta-*`
+> (12.2 step 4), `folder.bucket_name`, and two uploads creating one path at once answered as one
+> (today the second may fail on the unique name, and is retried by the client). 9.11's renewal and
+> replacement key came in 2.11.0. Before a release is used by an integration: `aws`, `rclone`,
+> `boto3` and the S3 node of n8n by hand (9.10.11) - `aws s3 sync` and `rclone sync` now among them.
 
 > **Rewritten 2026-10-04**, replacing the plan of a third surface beside v2: **API v1 stays exactly
 > as it is; API v2 becomes S3-compatible** - so that standard S3 clients (the S3 node of n8n, `aws`,
@@ -3582,7 +3606,7 @@ search scoped by folder access, through the index.
 | the explorer (`FolderContentService.childFoldersOf`) | loads all N, filters them by folder access in Java, counts what is under each with an `IN` of N ids, renders N rows |
 | the tree page (`FileTreeService.folderNodes`) | the same, sorted in Java, sent as one JSON array |
 | the folder-access tree of the role page and the API key page (`RoleService.getFolderTree`) | **the whole tree** (`findAllByOrderByPathAsc`), one `<select>` per folder - tens of thousands of controls in one form |
-| folder pickers (upload, move), the S3 surface's `ListObjectsV2` (9.10, issue 109) | to be checked when this is built; the same rule applies |
+| folder pickers (upload, move), the S3 surface's `ListObjectsV2` (9.10, issue 109) | to be checked when this is built; the same rule applies - the S3 listing **holds it since 2.12.0**: a level's folders off `ix_folder_parent_key_path`, a page at a time (`S3ListingScaleTest`, 20,000 children) |
 
 The queries themselves hold up - `uq_folder_sibling_name` (`parent_id`, `upper(name)`) serves a
 level in name order, and an `IN` of 40,000 ids runs (2.7.4's review). What does not is loading,
@@ -3626,7 +3650,7 @@ of the name (A-C, D-F, ...) for browsing without a term - decided after 1-4 are 
 | 2 | Child folders paged in SQL with folder access in the query; counts per page; the explorer's two lists and its filter | 2 days |
 | 3 | The tree page paged by level, with "show more" and the filter | 1 day |
 | 4 | The lazy folder-access tree, saving only what changed | 1-2 days |
-| 5 | The pickers as searches; `ListObjectsV2` on the same query (with 9.10's `key_path`) | with 9.10's listing |
+| 5 | The pickers as searches; `ListObjectsV2` on the same query (with 9.10's `key_path`) | with 9.10's listing - the listing **done in 2.12.0**, the pickers not yet |
 
 **Tests.** Each listing at 20,000 children: constant statements, a page of the reader's visible
 folders only (a grant deep in the tree shows its ancestors, nothing beside them), pages that neither

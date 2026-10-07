@@ -1,8 +1,8 @@
-# The S3-compatible API (2.9.0)
+# The S3-compatible API (2.9.0 - 2.12.0)
 
 An S3 surface at **`/s3`**, for the clients that speak S3 - the AWS SDKs and CLI, `rclone`, `boto3`,
 the S3 node of n8n - so an integration files documents here as it would into any object store. It is
-the first part of roadmap [9.10](roadmap.md#910-an-s3-compatible-mode--in-progress-290-authentication-upload-download-delete);
+the first part of roadmap [9.10](roadmap.md#910-an-s3-compatible-mode--in-progress-290---2120-authentication-objects-listing);
 what is still to come is listed there. API v1 ([api-v1.md](api-v1.md)) is unchanged and separate.
 
 ## Connecting
@@ -65,14 +65,18 @@ as v1's are.
 | `HEAD /s3/{bucket}` | `HeadBucket`: `200` with `x-amz-bucket-region`, or `404` | sight of the bucket |
 | `GET /s3/{bucket}?location` | `GetBucketLocation`: `us-east-1` (n8n's S3 node asks it before every operation) | sight of the bucket |
 | `GET /s3/{bucket}?versioning` | `GetBucketVersioning`: always `Enabled` | sight of the bucket |
+| `GET /s3/{bucket}?list-type=2` | `ListObjectsV2` (2.12.0): the keys under a prefix, a page at a time - [Listing](#listing) | `READ` on a folder for its files; sight of it for its name |
+| `GET /s3/{bucket}` | `ListObjects`, the older form of the same, paged by `marker` | as above |
 | `PUT /s3/{bucket}/{key}` | **upload**: a new file, or - when the folder already holds that title - **a new version of it** | `WRITE` on the folder |
 | … with `If-None-Match: *` | the same, but `412 PreconditionFailed` if the title is there | `WRITE` |
 | … whose folders do not exist | creates them, all or none, with the file | **may create folders** and `WRITE` on the deepest folder that exists |
 | `PUT /s3/{bucket}/{key}/` (empty body) | creates the folder (and those above it) | **may create folders** and `WRITE` |
 | `GET /s3/{bucket}/{key}` | **download** the latest version; `?versionId=` an older one; `Range` | `READ` |
 | `HEAD /s3/{bucket}/{key}` | the same, without the body | `READ` |
-| `DELETE /s3/{bucket}/{key}` | **deletes the file with every version** (no delete markers) | **may delete files** and `WRITE` |
+| `DELETE /s3/{bucket}/{key}` | **deletes every version of the key** - the title in that format (no delete markers); the file goes with its last version | **may delete files** and `WRITE` |
+| `DELETE /s3/{bucket}/{key}?versionId=` | deletes **that version only** (2.12.0) | **may delete files** and `WRITE` |
 | `DELETE /s3/{bucket}/{key}/` | deletes the folder if it is empty; `409 FolderNotEmpty` otherwise | **may delete folders** and `WRITE` on its parent |
+| `POST /s3/{bucket}?delete` | `DeleteObjects` (2.12.0): up to 1000 keys - [Deleting many](#deleting-many) | as each `DELETE` |
 
 `READ` and `WRITE` are the key's folder grants (the key form's folder tree); the three capabilities
 are the checkboxes beneath them, an S3 key's only. A deletion of a key that names nothing is a `204`,
@@ -81,6 +85,49 @@ as in S3. A key without a grant on a bucket gets `404 NoSuchBucket`, not a hint 
 What an upload answers: `200`, `ETag`, `x-amz-version-id` (the revision's external id). A download:
 `Content-Type`, `Content-Length`, `ETag`, `Last-Modified`, `x-amz-version-id`; it is recorded in the
 download log with the channel `S3` - apart from the old v2's `API_V2`.
+
+## Listing
+
+`ListObjectsV2` (`?list-type=2`, what every current client sends) and `ListObjects` answer as S3 does,
+so `aws s3 ls`, `aws s3 sync`, `rclone ls` / `sync` and n8n's *Get Many* work as against S3.
+
+* **An object is a key**: a file's title in one format (`report.pdf`), listed once, as its newest
+  version in that format - the size, `ETag`, time and version `GetObject` would answer. A title kept
+  as `pdf` and `txt` is two keys. Older versions are not listed (there is no `ListObjectVersions`;
+  they stay readable by `versionId`).
+* **In S3's order**: by the bytes of the key's UTF-8, as `aws s3 sync` requires - `a/b/x.pdf` before
+  `a/b0.pdf`, `B` before `a`, Persian after Latin.
+* **`delimiter=/`** lists one folder: its child folders as `CommonPrefixes` (`a/b/`) - **empty ones
+  too**, a folder being real here - and its files as `Contents`. Without a delimiter, every file at any
+  depth below the prefix. A folder is never an object: `a/b/` itself is not among `Contents`. A
+  delimiter other than `/` is a `501`.
+* **`prefix`** is matched **without case**, as a key is resolved (`Software/` lists `software/`);
+  the keys come back spelled as stored. A prefix may stop part of the way into a name (`a/b` lists
+  `a/b/…`, `a/b0.pdf` and `a/B-upper.pdf`).
+* **Pages**: `max-keys` up to **1000** (and by default); `IsTruncated` and `NextContinuationToken`
+  (opaque - pass it back unchanged); `start-after`; for version 1, `marker` (and `NextMarker` with a
+  delimiter). `encoding-type=url` percent-encodes the keys and prefixes, `/` kept - the AWS CLI asks
+  for it. A key or prefix holding a character XML 1.0 cannot carry (U+FFFE, U+FFFF, half a surrogate
+  pair) is answered only so: without it, `400 InvalidArgument`, never an answer the client cannot read.
+* **Only what the key may see**: files only in folders it may `READ`; a folder's name where it may at
+  least pass through to a grant below it, as on the web (roadmap 6.6). A key granted
+  `ERP/P-1234/` sees `P-1234/` at the top of `erp`, and nothing beside it.
+* **What a page costs** is what it returns, not what the bucket holds: folders are read in key order
+  off an index, a page's worth at a time (V3.9). Measured on 20,000 folders and 41,000 objects
+  (`S3ListingScaleTest`): a page of 1000 in under 200 ms through the SDK, a key granted one of the
+  twenty thousand folders answered in about 50 ms. The one thing sorted whole is the files directly
+  in one folder, for a listing of that folder.
+
+## Deleting many
+
+`POST /s3/{bucket}?delete` with S3's `<Delete>` body - `aws s3 rm --recursive`, `aws s3 sync --delete`,
+`rclone delete` send it. Up to **1000** `<Object>`s, each a `<Key>` and optionally a `<VersionId>`; each
+deleted as its own `DELETE` would delete it - the same capabilities, grants and records - and **in a
+transaction of its own**, so one refused does not keep the others. The answer lists each as
+`<Deleted>` or as an `<Error>` with its code (`AccessDenied`, `FolderNotEmpty`, `InvalidArgument`,
+`ServiceUnavailable`); with `<Quiet>true</Quiet>`, the errors only. A key that names nothing is
+`Deleted`, as in S3. The body's hash is checked against its signature as an upload's is, and it is
+read with no DTD and no entity (a `<!DOCTYPE` is refused), at most 2 MiB.
 
 ## Errors
 
@@ -100,6 +147,8 @@ S3's XML (`<Error><Code>…</Code><Message>…</Message><Resource>…</Resource>
 | 409 | `FolderNotEmpty` | a folder deleted with something in it |
 | 412 | `PreconditionFailed` | `If-None-Match: *` and the title is there |
 | 400 | `EntityTooLarge` | above the server's upload cap (as S3 answers it) |
+| 400 | `MalformedXML` | a `DeleteObjects` body that is not S3's `<Delete>`, has a DTD, or names no key or more than 1000 |
+| 501 | `NotImplemented` | what this surface does not do - see below |
 | 503 | `ServiceUnavailable` | the storage is failing; try again |
 
 ## Where it differs from S3
@@ -108,13 +157,19 @@ S3's XML (`<Error><Code>…</Code><Message>…</Message><Resource>…</Resource>
   the tree's depth limit and name rules.
 * **A `PUT` of a title already there adds a version** and never replaces bytes; every version stays
   readable by its `versionId`.
-* **`DELETE` of a file removes it and all its versions.**
+* **`DELETE` of a key removes every version of it** - of that title in that format - rather than
+  adding a delete marker; with `versionId`, that version alone. The file goes with its last version.
+  (Before 2.12.0 a `versionId` was ignored and the file went whole, every format with it.)
 * **A title is one per folder whatever its extension**; names are compared without case and folded.
 * **The bytes are checked** against their extension and the upload policy.
 * **The `ETag` is not an MD5**: it is the first 32 hex digits of the revision's SHA-256 - stable while
   the object is, the same in an upload's answer and a download's. Clients that compare it with an
   MD5 they computed must not (the AWS SDKs validate with their own checksums instead).
-* **Not yet**: `ListObjectsV2` (and the older `ListObjects`), `DeleteObjects`, multipart upload,
-  `x-amz-meta-*` - each answered `501 NotImplemented`, as are `CreateBucket` and `DeleteBucket`
-  (a bucket is a top-level folder, made and removed on the web). A client that lists before it writes (`aws s3 sync`, `rclone sync`) does not
-  work yet; `cp`, `copyto`, `put`, `get` and `rm` do.
+* **A listing shows folders as they are**: an empty folder is a `CommonPrefix` with a delimiter, and
+  a folder is never an object without one.
+* **Not yet**: multipart upload, `ListObjectVersions`, `CopyObject`, `x-amz-meta-*`, and every other
+  bucket sub-resource (`?uploads`, `?acl`, `?policy`, `?tagging`, …) - each answered
+  `501 NotImplemented`, as are `CreateBucket` and `DeleteBucket` (a bucket is a top-level folder,
+  made and removed on the web). An upload is one request, up to the server's cap: `aws s3 cp` and
+  `sync` switch to multipart above 8 MiB by default, so raise their `multipart_threshold` (or
+  `rclone`'s `--s3-upload-cutoff`) above the largest file.

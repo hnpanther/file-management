@@ -154,6 +154,11 @@ class SchemaDocumentationTest extends DatabaseSupport {
                 // collation; without it every subtree query is a sequential scan.
                 columns += ", for prefix `LIKE` (`varchar_pattern_ops`)";
             }
+            if (text(index.get("definition")).contains("COLLATE \"C\"")) {
+                // Byte order under a linguistic database collation: S3's order, which the listing
+                // reads off the index a page at a time (V3.9).
+                columns += ", in byte order (`COLLATE \"C\"`)";
+            }
             if (text(index.get("definition")).contains("gin_trgm_ops")) {
                 // A trigram GIN index: what serves a LIKE '%term%', which no B-tree can (issue 21).
                 columns += ", trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`)";

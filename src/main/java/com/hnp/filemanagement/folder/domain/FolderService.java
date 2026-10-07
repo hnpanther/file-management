@@ -258,6 +258,19 @@ public class FolderService {
     }
 
     /**
+     * Gives a folder a new key path, and everything beneath it the same new prefix in one statement
+     * (V3.9) - what a rename does to the keys of the S3 surface; nothing on disk moves.
+     */
+    void rewriteKeyPath(Folder folder, String newKeyPath) {
+        String oldKeyPath = folder.getKeyPath();
+        if (oldKeyPath.equals(newKeyPath)) {
+            return;
+        }
+        folder.setKeyPath(newKeyPath);
+        folderRepository.rewriteKeyPathsBelow(folder.getPath(), newKeyPath, oldKeyPath.length());
+    }
+
+    /**
      * Renames a folder: its directory-safe name, its label, or both - and, for a top-level
      * folder, its tag group. The root and a home folder are not renamed. A changed name or group
      * re-derives the tags of every file beneath; stored keys and bytes are untouched.
@@ -288,6 +301,11 @@ public class FolderService {
         folder.setName(directoryName);
         folder.setDisplayName(label);
         folder.setUpdatedBy(userRepository.getReferenceById(principalId));
+        if (nameChanged) {
+            // Every key beneath names this folder (V3.9); a top-level folder is a bucket, and its
+            // name is in no key.
+            rewriteKeyPath(folder, folder.getParent().childKeyPath(directoryName));
+        }
 
         if (nameChanged || groupChanged) {
             tagMirrorService.retagFilesUnder(folder);
@@ -348,9 +366,14 @@ public class FolderService {
 
         String oldPrefix = folder.getPath();
         String newPrefix = newParent.childPath(folder.getId());
+        // The keys beneath change with the parent too (V3.9) - to a bucket's own "" when the folder
+        // becomes a top-level one, from it when a top-level one goes below another.
+        String oldKeyPrefix = folder.getKeyPath();
+        String newKeyPrefix = newParent.childKeyPath(folder.getName());
         List<Folder> subtree = folderRepository.findSubtree(oldPrefix);
         for (Folder each : subtree) {
             each.setPath(newPrefix + each.getPath().substring(oldPrefix.length()));
+            each.setKeyPath(newKeyPrefix + each.getKeyPath().substring(oldKeyPrefix.length()));
             each.setDepth(each.getDepth() + delta);
             if (each.getId().equals(folder.getId())) {
                 each.setParent(newParent);
