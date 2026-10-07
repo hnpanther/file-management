@@ -770,6 +770,30 @@ database restored without it has S3 keys nobody can use. Lost or changed, every 
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
 
+### Upgrading from 2.11.0 to 2.12.0 — listing on the S3 surface, and its deletes made exact
+
+A jar swap with **one migration, `V3.9`**, and no setting. `V3.9` adds `folder.key_path` - each
+folder's names below its top-level folder, the S3 surface's key prefix - fills it for every folder in
+one statement, and builds two indexes on it; on a database of tens of thousands of folders it takes
+seconds, and holds writes to `folder` while it runs. Nothing else is touched.
+
+* **S3 clients can list** (roadmap 9.10): `aws s3 ls`, `aws s3 sync`, `rclone ls` / `sync`, n8n's
+  *Get Many* - in S3's order, a page costing what it returns, only what the key may read
+  ([api-s3.md](api-s3.md#listing)); and `DeleteObjects` (`aws s3 rm --recursive`).
+* **An S3 delete takes only what it names**: a `DELETE` of `deal.txt` removes the versions in `txt`,
+  no longer `deal.pdf` with them; one with a `versionId`, that version alone
+  ([issue 115](issues.md#115-an-s3-delete-of-one-version-deleted-the-whole-file--s1)). A client that
+  relied on a delete taking every format must delete each.
+* **A sub-resource of an object is a `501`**: `?tagging`, `?acl`, a part of a multipart upload, a
+  `CopyObject`, a `POST` to an object - each had been taken for the object, `DELETE …?tagging`
+  deleting the file ([issue 116](issues.md#116-an-s3-request-for-a-sub-resource-of-an-object-was-taken-for-the-object--s1)).
+* **Every start on the `prod` profile checks `key_path`** and sets any folder's that disagrees with
+  its names, with a warning naming how many - none, normally (`KeyPathRepair`).
+
+**Rollback** is the 2.11.0 jar: it reads nothing of `V3.9` and ignores the column. While it runs it
+does not keep `key_path`, so folders renamed or moved then are left with stale ones - which the first
+start of 2.12.0 again sets right before it serves a request. Nothing else is needed either way.
+
 ### Upgrading from 2.10.0 to 2.11.0 — folders of thousands, and folder access in SQL
 
 A jar swap with **one migration, `V3.8`** (`api_key.replaced_by_id`, roadmap 9.11), and no setting.

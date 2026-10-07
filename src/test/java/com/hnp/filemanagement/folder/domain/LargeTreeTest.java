@@ -258,22 +258,23 @@ class LargeTreeTest extends DatabaseSupport {
      */
     private void generate(Folder parent) {
         jdbc.update("""
-                INSERT INTO folder (id, parent_id, name, search_name, display_name, search_display_name, path, depth, kind,
-                                    enabled, state, created_at)
+                INSERT INTO folder (id, parent_id, name, search_name, display_name, search_display_name, path, key_path,
+                                    depth, kind, enabled, state, created_at)
                 SELECT n.id, ?, 'P-' || lpad(n.g::text, 6, '0'), 'P-' || lpad(n.g::text, 6, '0'), 'شخص ' || n.g, 'شخص' || n.g,
-                       ? || n.id || '/', ?, 'FOLDER', 1, 0, now()
+                       ? || n.id || '/', ? || 'P-' || lpad(n.g::text, 6, '0') || '/', ?, 'FOLDER', 1, 0, now()
                 FROM (SELECT nextval(pg_get_serial_sequence('folder', 'id')) AS id, g FROM generate_series(1, ?) g) n
-                """, parent.getId(), parent.getPath(), parent.getDepth() + 1, WIDE);
+                """, parent.getId(), parent.getPath(), parent.getKeyPath(), parent.getDepth() + 1, WIDE);
         jdbc.update("""
-                INSERT INTO folder (id, parent_id, name, search_name, display_name, search_display_name, path, depth, kind,
-                                    enabled, state, created_at)
+                INSERT INTO folder (id, parent_id, name, search_name, display_name, search_display_name, path, key_path,
+                                    depth, kind, enabled, state, created_at)
                 SELECT n.id, n.parent_id, 'C-' || n.g, 'C-' || n.g, 'قرارداد ' || n.g, 'قرارداد' || n.g,
-                       n.parent_path || n.id || '/', n.depth + 1, 'FOLDER', 1, 0, now()
+                       n.parent_path || n.id || '/', n.parent_key_path || 'C-' || n.g || '/', n.depth + 1, 'FOLDER', 1, 0, now()
                 FROM (SELECT nextval(pg_get_serial_sequence('folder', 'id')) AS id, p.id AS parent_id, p.path AS parent_path,
-                             p.depth, g
-                      FROM (SELECT id, path, depth FROM folder WHERE parent_id = ? ORDER BY id LIMIT ?) p,
+                             p.key_path AS parent_key_path, p.depth, g
+                      FROM (SELECT id, path, key_path, depth FROM folder WHERE parent_id = ? ORDER BY id LIMIT ?) p,
                            generate_series(1, ?) g) n
                 """, parent.getId(), PARENTS_WITH_CHILDREN, UNDER_EACH);
         jdbc.execute("ANALYZE folder");
+        assertThat(folderRepository.findRowsWhoseKeyPathDisagrees()).as("written as the application would").isEmpty();
     }
 }

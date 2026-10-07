@@ -124,6 +124,62 @@ class MigrationTest {
     }
 
     /**
+     * {@code V3.9}: every folder already there gets its key path - none for the root and a top-level
+     * folder (a bucket), the names below the bucket for the rest, at any depth, Persian and spaces
+     * as they are.
+     */
+    @Test
+    @DisplayName("V3.9 gives every existing folder its key path, at any depth")
+    void keyPathsForTheFoldersThere() {
+        String database = "migration_keypath_" + TestData.nextSequence();
+        JdbcTemplate admin = superuser("postgres");
+        admin.execute("CREATE DATABASE " + database);
+        try {
+            DriverManagerDataSource dataSource = dataSource(database, superuserName(), superuserPassword());
+            flyway(dataSource).target("3.8").load().migrate();
+
+            JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+            int root = jdbc.queryForObject("SELECT id FROM folder WHERE parent_id IS NULL", Integer.class);
+            int group = jdbc.queryForObject("""
+                    INSERT INTO tag_group (name, title, enabled, created_at) VALUES ('erp', 'ERP', 1, now()) RETURNING id
+                    """, Integer.class);
+            int bucket = folder(jdbc, root, "ERP", group);
+            int person = folder(jdbc, bucket, "P-1234", null);
+            int contracts = folder(jdbc, person, "قراردادهای جاری 1404", null);
+            int deepest = folder(jdbc, contracts, "C-9", null);
+
+            flyway(dataSource).target("3.9").load().migrate();
+
+            assertThat(keyPath(jdbc, root)).isEmpty();
+            assertThat(keyPath(jdbc, bucket)).as("a bucket").isEmpty();
+            assertThat(keyPath(jdbc, person)).isEqualTo("P-1234/");
+            assertThat(keyPath(jdbc, contracts)).isEqualTo("P-1234/قراردادهای جاری 1404/");
+            assertThat(keyPath(jdbc, deepest)).isEqualTo("P-1234/قراردادهای جاری 1404/C-9/");
+            assertThat(jdbc.queryForObject("""
+                    SELECT count(*) FROM folder f JOIN folder p ON p.id = f.parent_id
+                    WHERE f.key_path <> CASE WHEN p.parent_id IS NULL THEN '' ELSE p.key_path || f.name || '/' END
+                    """, Integer.class)).as("no row disagrees with its parent").isZero();
+        } finally {
+            admin.execute("DROP DATABASE IF EXISTS " + database + " WITH (FORCE)");
+        }
+    }
+
+    private static int folder(JdbcTemplate jdbc, int parentId, String name, Integer tagGroupId) {
+        Integer id = jdbc.queryForObject("""
+                INSERT INTO folder (parent_id, name, search_name, display_name, search_display_name, path, depth, kind,
+                                    tag_group_id, enabled, state, created_at)
+                SELECT p.id, ?, upper(?), ?, ?, 'pending', p.depth + 1, 'FOLDER', ?, 1, 0, now() FROM folder p WHERE p.id = ?
+                RETURNING id
+                """, Integer.class, name, name, name, name, tagGroupId, parentId);
+        jdbc.update("UPDATE folder f SET path = p.path || f.id || '/' FROM folder p WHERE p.id = f.parent_id AND f.id = ?", id);
+        return id;
+    }
+
+    private static String keyPath(JdbcTemplate jdbc, int folderId) {
+        return jdbc.queryForObject("SELECT key_path FROM folder WHERE id = ?", String.class, folderId);
+    }
+
+    /**
      * {@code V3.5}: the file history starts from what the database already knows, and says no
      * more. The files there are get their uploads, versions and formats from their own rows;
      * what action_history recorded about them after they were made follows; a file that is gone

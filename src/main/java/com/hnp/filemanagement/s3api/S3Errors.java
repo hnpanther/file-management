@@ -30,6 +30,7 @@ public final class S3Errors {
                 "The provided 'x-amz-content-sha256' header does not match what was computed."),
         INCOMPLETE_BODY(400, "IncompleteBody", "The request body is incomplete or its chunks are malformed."),
         INVALID_ARGUMENT(400, "InvalidArgument", "Invalid argument."),
+        MALFORMED_XML(400, "MalformedXML", "The XML you provided was not well-formed or did not validate against our published schema."),
         ENTITY_TOO_LARGE(400, "EntityTooLarge", "Your proposed upload exceeds the maximum allowed size."),
         NO_SUCH_BUCKET(404, "NoSuchBucket", "The specified bucket does not exist."),
         NO_SUCH_KEY(404, "NoSuchKey", "The specified key does not exist."),
@@ -84,7 +85,29 @@ public final class S3Errors {
         if (value == null) {
             return "";
         }
+        if (!carriable(value)) {
+            // An error's message echoes what the client sent; a character XML 1.0 cannot carry would
+            // make the whole answer unreadable, so it is marked rather than written.
+            StringBuilder replaced = new StringBuilder();
+            value.codePoints().forEach(c -> replaced.appendCodePoint(carriable(c) ? c : 0xFFFD));
+            value = replaced.toString();
+        }
         return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 .replace("\"", "&quot;").replace("'", "&apos;");
+    }
+
+    /**
+     * Whether XML 1.0 can carry every character of the value: not a control character other than
+     * tab, line feed and carriage return, not U+FFFE or U+FFFF, not half of a surrogate pair. A name
+     * here holds no control character ({@code ValidationUtil}), but may hold the others, and a client
+     * may send anything as a prefix.
+     */
+    static boolean carriable(String value) {
+        return value.codePoints().allMatch(S3Errors::carriable);
+    }
+
+    private static boolean carriable(int c) {
+        return c == 0x9 || c == 0xA || c == 0xD || (c >= 0x20 && c <= 0xD7FF) || (c >= 0xE000 && c <= 0xFFFD)
+                || (c >= 0x10000 && c <= 0x10FFFF);
     }
 }

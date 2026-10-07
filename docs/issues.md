@@ -2106,6 +2106,10 @@ query, `prefix` narrowed to the folders it names before anything is read, a page
 `LIMIT` past the continuation key - as roadmap 9.10 already requires of the S3-compatible mode.
 Not changed in the review: it is a change of the listing's design, and APEX does not list.
 
+**2.12.0**: the S3 surface's listing (`/s3`, `S3ListingRepository`) is built as this asks - folders
+read in key order off `ix_folder_bucket_key_path` a page at a time, measured on 41,000 objects in
+`S3ListingScaleTest`. The v2 listing is left as it is, to go with v2 (roadmap 9.10.12).
+
 ### 110. An upload holds a database connection while its bytes go to the store — **S3**
 
 The bytes are written inside the upload's transaction (`StorageWriter`, issue 3), so that a
@@ -2194,6 +2198,32 @@ whole-file delete remove a whole shard.
 key by its shape in `StorageLayout`, which refuses a key it cannot place - `directoryOf` is gone. The
 revisions stored before keep their titles until the move to the object store re-keys them
 ([12.6](roadmap.md#126-the-existing-revisions-re-keyed--at-the-move-to-the-object-store)).
+
+### 115. An S3 delete of one version deleted the whole file — **S1**
+
+Found while adding `DeleteObjects` (2026-10-07). `DELETE /s3/{bucket}/{key}?versionId=…` ignored the
+`versionId`, and every `DELETE` of a key took the file whole: every version, in every format - a
+title kept as `deal.pdf` and `deal.txt` lost both to a delete of `deal.txt`. A client removing one old
+version (`aws s3api delete-object --version-id`, a lifecycle tool) deleted the document.
+
+**Fixed in 2.12.0**: a key is the title in one format; `DELETE` removes that format's versions and
+the file only with its last revision, and with `versionId` that one revision
+(`S3ObjectService.delete`, `S3ApiTest.aDeleteTakesWhatItNames`, `deleteRefusals`).
+
+### 116. An S3 request for a sub-resource of an object was taken for the object — **S1**
+
+Found while adding the listing (2026-10-07). The object handlers read the method and the key and
+nothing else of the query, so S3's sub-resources ran as the plain operation:
+`DeleteObjectTagging` (`DELETE …?tagging`) **deleted the file**, `PutObjectTagging` and
+`PutObjectAcl` stored their XML body as a new version of a `.xml` or `.txt` key, `UploadPart`
+(`PUT …?partNumber&uploadId`) stored one part as the whole file, `CopyObject` (a `PUT` with
+`x-amz-copy-source` and no body) was an empty upload, and `GetObjectTagging` answered the bytes.
+
+**Fixed in 2.12.0**: each handler takes only the parameters it understands (and a pre-signed URL's
+`X-Amz-*`) and answers anything else, and a `PUT` with `x-amz-copy-source`, with `501 NotImplemented`;
+a `POST` to an object - multipart upload, restore, select - is a 501 too
+(`S3Controller.asksWhatIsNotServed`, `S3ListingTest.subResourcesLeaveTheObjectAlone`, which checks
+every revision is as it was).
 
 ### What the review found nothing wrong in - and the test that now holds each
 

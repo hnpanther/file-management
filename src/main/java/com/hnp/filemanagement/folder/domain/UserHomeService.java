@@ -179,7 +179,11 @@ public class UserHomeService {
             String before = home.getName();
             home.setName(newUsername);
             home.setUpdatedBy(userRepository.getReferenceById(principalId));
+            // The keys beneath it name it (V3.9), as FolderService.rename rewrites them.
+            String oldKeyPath = home.getKeyPath();
+            home.setKeyPath(home.getParent().childKeyPath(newUsername));
             folderRepository.save(home);
+            folderRepository.rewriteKeyPathsBelow(home.getPath(), home.getKeyPath(), oldKeyPath.length());
             actionHistoryService.saveActionHistory(EntityEnum.Folder, home.getId(), ActionEnum.UPDATE_VALUES, principalId,
                     "RENAME USER HOME", "RENAME home folder id=" + home.getId() + " from " + before + " to " + newUsername);
         });

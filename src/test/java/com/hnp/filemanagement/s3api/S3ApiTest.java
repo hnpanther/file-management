@@ -283,7 +283,7 @@ class S3ApiTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("bucket requests: HeadBucket, GetBucketLocation (n8n asks it first), versioning on, ListBuckets by access; listing a 501")
+    @DisplayName("bucket requests: HeadBucket, GetBucketLocation (n8n asks it first), versioning on, ListBuckets by access; making and deleting a bucket a 501")
     void bucketRequests() {
         S3Client s3 = client(key(false, false, false, "READ"));
 
@@ -291,7 +291,7 @@ class S3ApiTest extends DatabaseSupport {
         assertThat(s3.getBucketLocation(r -> r.bucket(bucket)).locationConstraintAsString()).isEqualTo("us-east-1");
         assertThat(s3.getBucketVersioning(r -> r.bucket(bucket)).statusAsString()).isEqualTo("Enabled");
         assertThat(s3.listBuckets().buckets()).extracting(b -> b.name()).contains(bucket);
-        assertThat(code(() -> s3.listObjectsV2(r -> r.bucket(bucket)))).isEqualTo(501);
+        assertThat(s3.listObjectsV2(r -> r.bucket(bucket)).contents()).as("listed since 2.12.0 (S3ListingTest)").isEmpty();
         assertThat(code(() -> s3.createBucket(r -> r.bucket("made-by-a-key")))).isEqualTo(501);
         assertThat(code(() -> s3.deleteBucket(r -> r.bucket(bucket)))).isEqualTo(501);
         assertThat(folderRepository.findById(chain.category().getId())).as("the bucket's folder is still there").isPresent();
@@ -300,6 +300,56 @@ class S3ApiTest extends DatabaseSupport {
         assertThat(code(() -> nobody.headBucket(r -> r.bucket(bucket)))).isEqualTo(404);
         assertThat(code(() -> nobody.getBucketLocation(r -> r.bucket(bucket)))).isEqualTo(404);
         assertThat(nobody.listBuckets().buckets()).extracting(b -> b.name()).doesNotContain(bucket);
+    }
+
+    /**
+     * An object is a key - a title and a format. Deleting one version deletes that version; deleting
+     * a key deletes its versions in that format; the file goes only with its last revision. Before
+     * 2.12.0 a versionId was ignored and either delete took the file whole, every format with it.
+     */
+    @Test
+    @DisplayName("a delete takes what the key and the version name - one version, or one format's - never the whole file unasked")
+    void aDeleteTakesWhatItNames() {
+        S3Client s3 = client(key(false, true, false, "WRITE"));
+        PutObjectResponse v1 = s3.putObject(r -> r.bucket(bucket).key(keyInChain("deal.pdf")), RequestBody.fromBytes(pdf(700, 21)));
+        s3.putObject(r -> r.bucket(bucket).key(keyInChain("deal.pdf")), RequestBody.fromBytes(pdf(700, 22)));
+        s3.putObject(r -> r.bucket(bucket).key(keyInChain("deal.txt")), RequestBody.fromString("the same deal, as text"));
+        assertThat(revisions()).containsExactly("1:pdf", "2:pdf", "3:txt");
+
+        var removed = s3.deleteObject(r -> r.bucket(bucket).key(keyInChain("deal.pdf")).versionId(v1.versionId()));
+        assertThat(removed.versionId()).isEqualTo(v1.versionId());
+        assertThat(revisions()).as("version 1 alone").containsExactly("2:pdf", "3:txt");
+        assertThat(code(() -> s3.getObjectAsBytes(r -> r.bucket(bucket).key(keyInChain("deal.pdf")).versionId(v1.versionId()))))
+                .isEqualTo(404);
+        s3.deleteObject(r -> r.bucket(bucket).key(keyInChain("deal.pdf")).versionId(v1.versionId()));   // gone already: 204
+
+        s3.deleteObject(r -> r.bucket(bucket).key(keyInChain("deal.pdf")));
+        assertThat(revisions()).as("every pdf, the text kept").containsExactly("3:txt");
+        assertThat(s3.getObjectAsBytes(r -> r.bucket(bucket).key(keyInChain("deal.txt"))).asUtf8String()).isEqualTo("the same deal, as text");
+
+        s3.deleteObject(r -> r.bucket(bucket).key(keyInChain("deal.txt")));
+        assertThat(revisions()).as("the last revision, and the file with it").isEmpty();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM file_info WHERE folder_id = ?", Integer.class, chain.tag().getId())).isZero();
+    }
+
+    @Test
+    @DisplayName("a folder's key takes no version; a version to a key without the capability is refused")
+    void deleteRefusals() {
+        S3Client mayNot = client(key(false, false, false, "WRITE"));
+        PutObjectResponse put = mayNot.putObject(r -> r.bucket(bucket).key(keyInChain("kept.pdf")), RequestBody.fromBytes(pdf(500, 23)));
+        assertThat(code(() -> mayNot.deleteObject(r -> r.bucket(bucket).key(keyInChain("kept.pdf")).versionId(put.versionId()))))
+                .isEqualTo(403);
+        assertThat(revisions()).containsExactly("1:pdf");
+        S3Client may = client(key(true, true, true, "WRITE"));
+        assertThat(code(() -> may.deleteObject(r -> r.bucket(bucket).key(chain.subCategory().getName() + "/").versionId(put.versionId()))))
+                .isEqualTo(400);
+    }
+
+    /** The revisions in the chain's last folder, oldest first, as "version:extension". */
+    private List<String> revisions() {
+        return jdbc.queryForList("""
+                SELECT d.version || ':' || d.file_extension FROM file_details d JOIN file_info f ON f.id = d.file_info_id
+                WHERE f.folder_id = ? ORDER BY d.version, d.id""", String.class, chain.tag().getId());
     }
 
     // ---------------------------------------------------------------- helpers

@@ -9,6 +9,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import com.hnp.filemanagement.shared.util.SearchKey;
 import lombok.AccessLevel;
@@ -88,6 +89,16 @@ public class Folder extends AbstractEntity {
     @Column(name = "depth", nullable = false)
     private Integer depth;
 
+    /**
+     * The names from below the bucket - the top-level folder this one is under - down to this one,
+     * each followed by {@code /}: {@code P-1234/contracts/}, and {@code ""} for a top-level folder
+     * and the root (roadmap 9.10, V3.9). An object's key on the S3 surface is this and the file's
+     * name. Derived like {@link #path}: written on creation ({@link #onCreate}), and rewritten for the
+     * subtree by whatever renames or moves a folder.
+     */
+    @Column(name = "key_path", nullable = false, length = 4000)
+    private String keyPath = "";
+
     @Enumerated(EnumType.STRING)
     @Column(name = "kind", nullable = false, length = 30)
     private FolderKind kind;
@@ -138,6 +149,23 @@ public class Folder extends AbstractEntity {
      */
     public String childPath(int childId) {
         return path + childId + "/";
+    }
+
+    /**
+     * The key path a child of this folder named so carries: none under the root - a child of the
+     * root is a bucket - and this one's and the name under any other folder.
+     */
+    public String childKeyPath(String childName) {
+        return kind == FolderKind.ROOT ? "" : keyPath + childName + "/";
+    }
+
+    /**
+     * Whatever makes a folder - the service, a home, a migration's code, a test's fixture - makes it
+     * with its key path, from the parent it is made under; the root has none.
+     */
+    @PrePersist
+    void onCreate() {
+        keyPath = parent == null ? "" : parent.childKeyPath(name);
     }
 
     public void setName(String name) {
