@@ -3266,11 +3266,18 @@ download's, word for word, so the two can never disagree:
 * **The same three questions as a download.** The endpoint's permission (a new
   `SEARCH_FILE_CONTENTS`, in the files group, ADMIN holding it by itself); the reader's **folder
   access** - every result's file in a folder the reader's grants reach for reading
-  (`FolderAccessService.readableFolderIds`, the filter the file list and the explorer already use);
-  and nothing else widens it.
+  (`FolderAccessService.readScope` and `GrantedFolderPath`, the filter every list filtered by folder
+  access uses since 2.11.0); and nothing else widens it.
 * **Filtered inside the query, never after it.** The search joins `file_content` to `file_info`
-  and keeps `file_info.folder_id IN (readable folders)` in the same statement as the text match and
-  the ranking. Filtering a page after the fact leaks through its size, its paging and its timing,
+  and `folder`, and keeps "the file's folder is under a path the reader is granted" -
+  `EXISTS (... folder.path LIKE granted.path || '%')` against `GrantedFolderPath` - in the same
+  statement as the text match and the ranking. **Never the readable folders' ids in an `IN`**: this
+  plan first said `FolderAccessService.readableFolderIds` and `folder_id IN (readable folders)`,
+  which 2.11.0 removed - one bind parameter per folder, so a reader granted a folder of more than
+  65,535 folders (the ERP's, one per person) got a 500 on every list filtered so, and below that each
+  request loaded every folder of the grant ([issue 114](issues.md#114-a-list-filtered-by-folder-access-sent-every-readable-folder-as-a-parameter--s1)).
+  The metadata search (2.13.0, `MetadataSearchRepository`) is the model to follow: the reader's
+  granted paths read once in a `MATERIALIZED` CTE, then tested per row. Filtering a page after the fact leaks through its size, its paging and its timing,
   and drops results the reader should have had; the query never sees what the reader may not.
 * **Where the file is now, not where it was read.** Access is taken from `file_info.folder_id` at
   search time - the text row carries no folder of its own - so a file moved into a restricted
