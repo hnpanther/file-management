@@ -3,6 +3,8 @@ package com.hnp.filemanagement.file.domain;
 import lombok.Data;
 
 import java.time.Instant;
+import lombok.ToString;
+import tools.jackson.databind.JsonNode;
 
 @Data
 public class FileDetailsDTO {
@@ -60,4 +62,8 @@ public class FileDetailsDTO {
     public boolean isPreviewable() {
         return com.hnp.filemanagement.file.domain.ContentTypes.inlineSafe(fileExtension);
     }
+
+    /** The revision's metadata (roadmap 12.2), a JSON object, or null for none; never printed. */
+    @ToString.Exclude
+    private JsonNode metadata;
 }

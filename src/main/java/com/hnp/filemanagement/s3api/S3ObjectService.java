@@ -146,6 +146,18 @@ public class S3ObjectService {
      */
     @Transactional
     public Stored put(String bucket, String key, MultipartFile body, String ifNoneMatch, ApiKey apiKey, int principalId) {
+        return put(bucket, key, body, ifNoneMatch, null, apiKey, principalId);
+    }
+
+    /**
+     * {@link #put(String, String, MultipartFile, String, ApiKey, int)} with the object's metadata -
+     * compact JSON from its {@code x-amz-meta-*} headers ({@code S3Metadata}), or null for none. A
+     * new version carries exactly what its {@code PUT} sent, none included, as in S3: it never
+     * inherits the version before.
+     */
+    @Transactional
+    public Stored put(String bucket, String key, MultipartFile body, String ifNoneMatch, String metadata, ApiKey apiKey,
+                      int principalId) {
         S3Key parsed = S3Key.parse(key);
         if (parsed.namesFolder()) {
             throw new InvalidDataException("a key ending in / names a folder");
@@ -172,6 +184,7 @@ public class S3ObjectService {
             request.setDescription(parsed.objectName());
             request.setFolderId(folder.getId());
             request.setMultipartFile(body);
+            request.setMetadata(metadata);
             fileService.createNewFile(request, principalId, FileService.PRIVATE);
         } else {
             FileInfo file = existing.get();
@@ -185,6 +198,8 @@ public class S3ObjectService {
             // Found by its folded name - case, ي/ی, Persian digits aside - but a version carries the
             // file's own name exactly (FileService refuses another spelling), so it is given that.
             request.setMultipartFile(new Renamed(body, file.getFileName() + "." + extensionOf(parsed.objectName())));
+            request.setMetadata(metadata);
+            request.setInheritMetadata(false);
             fileService.createNewFileDetails(request, principalId);
         }
 

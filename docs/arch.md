@@ -221,6 +221,34 @@ that had just gained a child looked empty, and a delete check passed.
 
 Both paths require the uploaded file's base name to equal `fileInfo.fileName`.
 
+### Metadata (2.13.0)
+
+A **metadata document** - what is known about a document or a folder that its bytes and name do not
+say - is a JSON object in a `jsonb` column: `file_details.metadata` (one per revision; a file's is its
+newest revision's) and `folder.metadata`, `NULL` for none and never `{}` (a check constraint says so),
+V3.10. The pieces:
+
+* **`MetadataRules`** (`shared.metadata`) - the one validator, asked by every route before anything is
+  stored: an object, `filemanagement.metadata.max-bytes` and `max-depth`, keys of 1-100 characters,
+  no duplicate key, nothing `jsonb` cannot hold; numbers kept as written (`BigDecimal`). A refusal is
+  an `InvalidDataException` with a `metadata.invalid.*` code that names the rule, never the content.
+* **The routes in** - `FileService.createNewFile` / `createNewFileDetails` (the form, v1's `metadata`
+  field; a new version without one takes the current, unless `inheritMetadata` is off - the S3
+  surface, `S3Metadata`, where each `PUT` carries its own), and **afterwards** `FileMetadataService`
+  (a file's - every format of its newest version - or a revision's) and `FolderMetadataService` (a
+  folder's; never the root or `Profiles`, a home only its user's or an administrator's).
+* **Conditions** - `MetadataPrecondition`: `If-None-Match: *` and `If-Match` against the document's
+  tag (`MetadataDocument.etag`, of `jsonb`'s own text, read back after each write), `412`
+  (`PreconditionFailedException`) otherwise; the web forms send the tag they were opened on.
+* **Records** - every change is a `METADATA_CHANGED` file-history event or a `folder_metadata_change`
+  row with both documents, and an `action_history` row; an upload's document is on its upload event.
+  **Never logged**: a log line says how many keys and bytes, `MetadataDocument.toString` says only its
+  size, and the DTOs that carry one exclude it from `toString`.
+* **Search** - `MetadataSearchRepository`: containment `@>` through the GIN indexes (`jsonb_path_ops`),
+  a folder's document reaching the files below it through `ix_folder_path`'s range, the reader's
+  grants in the query (`GrantedFolderPath`); the queue of undescribed folders off the partial
+  `ix_folder_undescribed`. `MetadataSearchTest` plans each one.
+
 ### Magic-number columns
 
 Every entity carries `enabled` and `state` as bare `Integer`s. Per the comment on `FileInfoDTO`:

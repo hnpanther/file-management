@@ -37,6 +37,20 @@
 
 <!-- What the event says beyond its kind. -->
 <th:block th:fragment="detail(e)">
+    <!-- A metadata change (2.13.0): the documents before and after, folded - they may be long. -->
+    <details th:if="${e.event().name() == 'METADATA_CHANGED'}" class="history-metadata">
+        <summary th:text="#{metadata.folder.beforeAfter}">پیش و پس از تغییر</summary>
+        <div class="grid gap-2 md:grid-cols-2">
+            <div>
+                <div class="text-xs text-ink-500" th:text="#{metadata.folder.before}">پیش از تغییر</div>
+                <pre class="metadata-structured" dir="ltr" th:text="${@metadataView.jsonOfStored(e.metadataBefore())}"></pre>
+            </div>
+            <div>
+                <div class="text-xs text-ink-500" th:text="#{metadata.folder.after}">پس از تغییر</div>
+                <pre class="metadata-structured" dir="ltr" th:text="${@metadataView.jsonOfStored(e.metadataAfter())}"></pre>
+            </div>
+        </div>
+    </details>
     <span th:if="${e.detail() != null and e.event().name() == 'FILE_MOVED'}"
           th:text="#{fileHistory.detail.movedFrom(${e.detail()})}"></span>
     <span th:if="${e.detail() != null and e.event().name() == 'FILE_DELETED'}"

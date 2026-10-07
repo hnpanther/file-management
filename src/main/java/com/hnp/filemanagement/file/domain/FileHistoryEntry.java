@@ -14,7 +14,14 @@ public record FileHistoryEntry(int id, Instant occurredAt, FileEvent event,
                                Integer fileInfoId, String fileExternalId, Integer liveFileId,
                                String fileName, Integer version, String fileExtension, Long fileSize,
                                String folderTitle, String detail,
-                               String username, Integer apiKeyId, String apiKeyTitle) {
+                               String username, Integer apiKeyId, String apiKeyTitle,
+                               String metadataBefore, String metadataAfter) {
+
+    /** Kept out of the printed form: the documents may be personal (2.13.0). */
+    @Override
+    public String toString() {
+        return "FileHistoryEntry[id=" + id + ", event=" + event + "]";
+    }
 
     /** A deletion - of a revision, or of the whole file - shown so. */
     public boolean isDeletion() {

@@ -2,16 +2,18 @@ package com.hnp.filemanagement.file.domain;
 
 import com.hnp.filemanagement.identity.domain.ApiKey;
 import com.hnp.filemanagement.shared.domain.AuditableEntity;
+import com.hnp.filemanagement.shared.util.SearchKey;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import com.hnp.filemanagement.shared.util.SearchKey;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * One stored revision of a {@link FileInfo}: a version number, a format, and the bytes it points at.
@@ -101,6 +103,15 @@ public class FileDetails extends AuditableEntity {
      */
     @Column(name = "checksum_sha256", length = 64)
     private String checksumSha256;
+
+    /**
+     * The revision's metadata (roadmap 12.2, V3.10): a JSON object as {@code jsonb} wrote it, or null
+     * for none - never {@code {}}. Set through {@code FileMetadataService} only, which checks it
+     * ({@code MetadataRules}) and records every change; never logged.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "metadata")
+    private String metadata;
 
     @Column(name = "version", nullable = false)
     private Integer version;

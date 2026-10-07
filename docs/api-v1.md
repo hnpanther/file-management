@@ -1,15 +1,16 @@
 # API v1 — the guide for a client
 
 The machine-facing API the PL/SQL (Oracle APEX) clients call: upload a file, download a revision,
-delete a revision. This is the contract as a client sees it. **Since 2.4.0 every path takes the
+delete a revision - and since 2.13.0 read, set and search the metadata of files and folders. This is the contract as a client sees it. **Since 2.4.0 every path takes the
 external ids only** - the clients moved over from the numbers, and the numbers are refused. How it is built is in [arch.md](arch.md#6-http-layers); the S3-style
 API for API keys is v2, also there.
 
 ## Signing in
 
 * **HTTP Basic** with the shared machine account, which holds the `API_*` permissions
-  (`API_HEALTH_TEST`, `API_SAVE_NEW_FILE`, `API_DOWNLOAD_FILE`, `API_DELETE_FILE_DETAILS` - the
-  `API_V1` group on the role page); or
+  (`API_HEALTH_TEST`, `API_SAVE_NEW_FILE`, `API_DOWNLOAD_FILE`, `API_DELETE_FILE_DETAILS`, and since
+  2.13.0 `API_GET_METADATA`, `API_SET_METADATA`, `API_SEARCH_METADATA` - the `API_V1` group on the
+  role page); or
 * **`Authorization: Bearer fmk_…`**, an API key, which reaches only the folders it was granted.
 
 A request without credentials is `401` with a `WWW-Authenticate` challenge, never a redirect to
@@ -54,6 +55,13 @@ external ids, a delete answers the revision's number as `id`, and every download
 | GET | `/api/v1/files/file-info/{fileInfoId}/download` (`?version=`, `?format=`) | `API_DOWNLOAD_FILE` | the file's latest version, or the one named (1.9.0) |
 | DELETE | `/api/v1/files/file-details/{fileDetailsId}` | `API_DELETE_FILE_DETAILS` | `200` `{"outcome":"DELETED"}`; the last revision takes the file with it |
 | DELETE | `/api/v1/files/file-info/{fileInfoId}/file-details/{fileDetailsId}` | `API_DELETE_FILE_DETAILS` | the same; the two must name the same file, or `404` |
+| GET | `/api/v1/files/file-info/{fileInfoId}/metadata` | `API_GET_METADATA` | the file's metadata - [Metadata](#metadata-2130) |
+| PUT | `/api/v1/files/file-info/{fileInfoId}/metadata` | `API_SET_METADATA` | set, replace or clear it |
+| GET, PUT | `/api/v1/files/file-details/{fileDetailsId}/metadata` | the same two | one revision's |
+| GET | `/api/v1/files/search?metadata=…&folderMetadata=…` | `API_SEARCH_METADATA` | files by their metadata, or their folders' |
+| GET, PUT | `/api/v1/folders/{folderId}/metadata` | `API_GET_METADATA`, `API_SET_METADATA` | a folder's metadata |
+| GET | `/api/v1/folders/{folderId}/undescribed` | `API_GET_METADATA` | its children without metadata, newest first |
+| GET | `/api/v1/folders/search?metadata=…` | `API_SEARCH_METADATA` | folders by their metadata |
 
 The paths keep their parameter names, and **`{fileInfoId}` is the file's external id
 (`fileExternalId`), `{fileDetailsId}` the revision's (`fileDetailsExternalId`)**. For example,
@@ -69,6 +77,7 @@ The paths keep their parameter names, and **`{fileInfoId}` is the file's externa
 | `description` | required |
 | `folderId` | the folder, by number; required |
 | `public-file` | `1` or `true` to list it on the public files page. **Anything else, absent included, keeps it private** (since 1.7.0; before, it was public unless `0`) |
+| `metadata` | optional (2.13.0): what is known about the document that it does not say, as a JSON object - `{"contractNo":"C-5678","party":{"code":"P-1234"}}`. Checked as [Metadata](#metadata-2130) says; a document the rules refuse refuses the upload, and nothing is stored |
 
 The answer:
 
@@ -82,9 +91,12 @@ The answer:
   "fileName": "report.pdf",
   "fileExtension": "pdf",
   "contentType": "application/pdf",
-  "description": "..."
+  "description": "...",
+  "metadata": {"contractNo": "C-5678", "party": {"code": "P-1234"}}
 }
 ```
+
+`metadata` is in the answer when the upload sent one (2.13.0).
 
 The first two fields are as they always were; the three in the middle arrived in 1.8.0 and are
 only additions, so a client that reads fields by name is unaffected. **Keep
@@ -129,6 +141,98 @@ A person can read a revision's external id off the file page too, with a copy bu
 role holds `VIEW_FILE_EXTERNAL_ID` (the group "دیدن شناسهٔ خارجی نسخه‌ها"; ADMIN holds it) - for
 setting up an integration by hand.
 
+### Metadata (2.13.0)
+
+A **document of metadata** is a JSON object: what an integration knows about a document - the ERP's
+attachment id, a contract's number, a party's code and name - or about a folder, such as who
+`ERP/P-1234/` is. Any keys; values of any JSON type, nested. One per **revision** of a file (a file's
+is its newest revision's, and a new version sent without one through v1 or the pages takes it),
+one per **folder**.
+
+| Rule | |
+|---|---|
+| an object at the top | an array, a string or a number is refused |
+| size | at most 16 KB as compact UTF-8 (`filemanagement.metadata.max-bytes`) |
+| depth | at most 5 levels of objects and arrays, the document itself the first (`max-depth`) |
+| keys | 1-100 characters, no control character; a key given twice is refused |
+| numbers | kept as written (never rounded), at most 1000 characters written out - `1e999999` is refused |
+| none | `{}` - sent, it clears the document |
+
+A refused document is `400`; the `detail` names the rule, never the content. Metadata is read with
+the file or folder: `READ` on its folder; it is written with `WRITE` there. A personal folder's is
+its own user's; the root and `Profiles` take none. **It is never logged**, and every change is in
+the file's history (or the folder's) with the document before and after.
+
+**Reading** answers the document and its tag, also in the `ETag` header:
+
+```http
+GET /api/v1/files/file-info/3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d/metadata
+
+200  ETag: "4c1e…"
+{"fileId": 42, "fileExternalId": "3f2b…", "fileDetailsId": 97,
+ "fileDetailsExternalId": "9a0b…", "version": 3, "fileExtension": "pdf",
+ "metadata": {"contractNo": "C-5678"}, "etag": "\"4c1e…\""}
+```
+
+`metadata` is `null` for none. A folder's: `GET /api/v1/folders/{folderId}/metadata` -
+`{"folderId", "name", "metadata", "etag"}`.
+
+**Writing** is a `PUT` of the document as the body (`Content-Type: application/json`): on a file it
+goes to every format of its newest version; on a revision to that one; on a folder to the folder.
+**Conditioned, so nothing is overwritten unknowingly:**
+
+| Header | The write is done only… | Otherwise |
+|---|---|---|
+| `If-None-Match: *` | where there is no document yet - **filling in what is missing** | `412`, nothing changed |
+| `If-Match: "<etag>"` | if the document is still the one read | `412`, nothing changed - read again |
+| neither | always: a plain replacement, recorded | |
+
+Two writers at once are taken one after the other: the second waits for the first and then answers to
+what it wrote - two integrations both filling in what is missing never both write it. The tag is of
+the document itself (keys sorted, no space), so the one read back is the one to send.
+
+So an integration that adds metadata to files or folders created without it - by their external id,
+or the folder's id - sends `If-None-Match: *`, and never overwrites what a person has written since:
+
+```http
+PUT /api/v1/files/file-info/3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d/metadata
+If-None-Match: *
+Content-Type: application/json
+
+{"source": "erp", "attachmentId": 99812}
+```
+
+```http
+PUT /api/v1/folders/1234/metadata
+If-None-Match: *
+Content-Type: application/json
+
+{"fullName": "علی رضایی", "nationalCode": "0012345678"}
+```
+
+The answer is the document as stored, its new tag, `changed` (false when it was the same document),
+and the revisions written. An empty body is `400`: clearing is `{}`, never an accident.
+
+**Searching** is by containment: a hit holds every key asked for, with that value - a nested part
+or an array member included; values compare exactly (`"1500"` is not `1500`):
+
+```http
+GET /api/v1/files/search?metadata={"contractNo":"C-5678"}
+GET /api/v1/files/search?folderMetadata={"nationalCode":"0012345678"}
+GET /api/v1/folders/search?metadata={"nationalCode":"0012345678"}
+```
+
+(the query parameter URL-encoded; the request log shows it as `metadata=***`.) `metadata` matches a file's current document; `folderMetadata`
+any folder above the file, at any depth - "every document of the person whose national code is X" -
+and only a folder the caller may read itself: a key granted `ERP/P-1234/contracts/` alone cannot find
+the files there by `P-1234`'s document; both may be given. Only what the caller may read, newest first, `page` from 0 and `size` up to 200,
+answered as `{"items": [...], "page", "size", "hasNext"}` - no total. Served by indexes, whatever the
+number of files.
+
+**What is still to be described**: `GET /api/v1/folders/{folderId}/undescribed` lists the folder's
+children without metadata, newest first, paged the same way - the person folders the ERP's uploads
+made under `ERP`, before anyone has written who each is.
+
 ### Errors
 
 Every failure is an RFC 9457 problem document, `application/problem+json`:
@@ -139,7 +243,8 @@ Every failure is an RFC 9457 problem document, `application/problem+json`:
 
 `detail` is English and meant for a log, not for a person. A client should branch on the status
 code - `400`, `401`, `403` (no permission, or no access to that file's folder), `404`, `409`,
-`413` (above the upload cap), `503` - and not on the wording, which may change.
+`412` (a metadata write whose condition failed), `413` (above the upload cap), `503` - and not on
+the wording, which may change.
 
 **`503 Service Unavailable` means "send it again later"** (2.7.1): the request was fine, and the
 file storage behind it did not answer - with a `Retry-After` header in seconds (`30`). An upload
@@ -168,6 +273,7 @@ whatever it is when the request is made.
 
 | Release | |
 |---|---|
+| 2.13.0 | **metadata**: an optional `metadata` field on the upload, `metadata` in its answer; the metadata endpoints, conditioned writes and search above; `412` for a failed condition. Nothing else changes - a client that sends none is unaffected |
 | 1.6.x | the id-only forms (`file-details/{id}/download`, `DELETE file-details/{id}`); `folderId` on the upload |
 | 1.7.0 | a Persian file name arrives intact; **uploads private unless `public-file=1`**; a refused upload says why in `detail` |
 | 1.8.0 | external ids and `checksumSha256` in the upload's answer; every id segment takes the external id |

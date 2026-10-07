@@ -13,6 +13,8 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 
@@ -85,6 +87,16 @@ public class FileHistory extends AbstractEntity {
     /** What the event says beyond its kind - see {@link FileEvent}; may be null. */
     @Column(name = "detail", updatable = false)
     private String detail;
+
+    /** A metadata change's document before it, or null (none, or not a metadata event) - V3.10. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "metadata_before", updatable = false)
+    private String metadataBefore;
+
+    /** The document after a metadata change, or an upload's own; null for none - V3.10. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "metadata_after", updatable = false)
+    private String metadataAfter;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false, updatable = false)

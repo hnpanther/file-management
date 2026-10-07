@@ -1,4 +1,4 @@
-# The S3-compatible API (2.9.0 - 2.12.0)
+# The S3-compatible API (2.9.0 - 2.13.0)
 
 An S3 surface at **`/s3`**, for the clients that speak S3 - the AWS SDKs and CLI, `rclone`, `boto3`,
 the S3 node of n8n - so an integration files documents here as it would into any object store. It is
@@ -129,6 +129,34 @@ transaction of its own**, so one refused does not keep the others. The answer li
 `Deleted`, as in S3. The body's hash is checked against its signature as an upload's is, and it is
 read with no DTD and no entity (a `<!DOCTYPE` is refused), at most 2 MiB.
 
+## Metadata (2.13.0)
+
+S3's **user metadata** is kept as the revision's metadata document - the one v1 and the pages show
+and search ([api-v1.md](api-v1.md#metadata-2130)):
+
+* **Sent** with a `PUT` as `x-amz-meta-{name}: value`, one key each, the name lower-cased as S3
+  keeps it: `x-amz-meta-contract-no: C-5678` is `{"contract-no": "C-5678"}` (`aws s3 cp --metadata
+  contract-no=C-5678`, boto3's `Metadata=`, the SDKs' `metadata(Map)`). At most **2 KB** of names and
+  values together, S3's own limit: above it, `400 MetadataTooLarge` and nothing stored.
+* **A value that is not ASCII** - Persian - is sent as S3 requires, RFC 2047:
+  `=?UTF-8?B?2LnZhNuM?=` (base64 of its UTF-8) or `=?UTF-8?Q?...?=`, and stored decoded. Sent raw,
+  the SDKs put `?` in its place, its signature does not match, and the `PUT` is a `403` with nothing
+  stored - as S3 would answer it.
+* **A document S3's flat strings cannot say** - nested, typed, Persian keys - goes whole in one
+  header of this server's own, `x-fm-metadata`: the JSON, base64-encoded; not beside `x-amz-meta-*`.
+  The same rules as every document (an object, 16 KB, 5 levels).
+* **Answered** on `GET` and `HEAD`: each key whose value is a string, a number or a boolean and whose
+  name a header can carry, as `x-amz-meta-*` (a value not ASCII in RFC 2047), up to 2 KB of header
+  lines and 50 keys - a document set through v1 may hold hundreds, more than an HTTP client takes; how many
+  keys were left out in S3's own `x-amz-missing-meta`; and then the whole document in
+  `x-fm-metadata` too, when it fits in 4 KB - beyond that, read it through v1.
+* **Each version carries its own**: a `PUT` without metadata stores a version without it, as in S3,
+  never the version before's. (Through v1 and the pages, a new version takes the current one.)
+  Metadata changed later through v1 or the pages is what the next `GET` answers; the bytes and the
+  version are the same.
+
+A folder's metadata is not an object here (S3 has no folders): it is the pages' and v1's.
+
 ## Errors
 
 S3's XML (`<Error><Code>…</Code><Message>…</Message><Resource>…</Resource></Error>`):
@@ -147,6 +175,7 @@ S3's XML (`<Error><Code>…</Code><Message>…</Message><Resource>…</Resource>
 | 409 | `FolderNotEmpty` | a folder deleted with something in it |
 | 412 | `PreconditionFailed` | `If-None-Match: *` and the title is there |
 | 400 | `EntityTooLarge` | above the server's upload cap (as S3 answers it) |
+| 400 | `MetadataTooLarge` | more than 2 KB of `x-amz-meta-*` |
 | 400 | `MalformedXML` | a `DeleteObjects` body that is not S3's `<Delete>`, has a DTD, or names no key or more than 1000 |
 | 501 | `NotImplemented` | what this surface does not do - see below |
 | 503 | `ServiceUnavailable` | the storage is failing; try again |
@@ -167,7 +196,7 @@ S3's XML (`<Error><Code>…</Code><Message>…</Message><Resource>…</Resource>
   MD5 they computed must not (the AWS SDKs validate with their own checksums instead).
 * **A listing shows folders as they are**: an empty folder is a `CommonPrefix` with a delimiter, and
   a folder is never an object without one.
-* **Not yet**: multipart upload, `ListObjectVersions`, `CopyObject`, `x-amz-meta-*`, and every other
+* **Not yet**: multipart upload, `ListObjectVersions`, `CopyObject`, and every other
   bucket sub-resource (`?uploads`, `?acl`, `?policy`, `?tagging`, …) - each answered
   `501 NotImplemented`, as are `CreateBucket` and `DeleteBucket` (a bucket is a top-level folder,
   made and removed on the web). An upload is one request, up to the server's cap: `aws s3 cp` and

@@ -2,6 +2,7 @@ package com.hnp.filemanagement.folder.domain;
 
 import com.hnp.filemanagement.identity.domain.User;
 import com.hnp.filemanagement.shared.domain.AbstractEntity;
+import com.hnp.filemanagement.shared.util.SearchKey;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,12 +12,13 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-import com.hnp.filemanagement.shared.util.SearchKey;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 
@@ -98,6 +100,15 @@ public class Folder extends AbstractEntity {
      */
     @Column(name = "key_path", nullable = false, length = 4000)
     private String keyPath = "";
+
+    /**
+     * The folder's metadata (roadmap 12.3, V3.10): a JSON object as {@code jsonb} wrote it, or null
+     * for none - never {@code {}}. Set through {@code FolderMetadataService} only, which checks it
+     * and records every change; not inherited below the folder; never logged.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "metadata")
+    private String metadata;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "kind", nullable = false, length = 30)

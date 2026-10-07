@@ -54,6 +54,11 @@ public class S3ExceptionHandler {
         return answer(S3Errors.Error.NOT_IMPLEMENTED, e.getMessage(), request);
     }
 
+    @ExceptionHandler(S3Metadata.TooLarge.class)
+    ResponseEntity<String> metadataTooLarge(S3Metadata.TooLarge e, HttpServletRequest request) {
+        return answer(S3Errors.Error.METADATA_TOO_LARGE, null, request);
+    }
+
     @ExceptionHandler(S3Xml.MalformedXml.class)
     ResponseEntity<String> malformed(S3Xml.MalformedXml e, HttpServletRequest request) {
         return answer(S3Errors.Error.MALFORMED_XML, null, request);

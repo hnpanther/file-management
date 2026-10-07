@@ -107,6 +107,11 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 * **An S3 handler takes only the query parameters it understands** (`S3Controller.asksWhatIsNotServed`,
   issue 116): a sub-resource it ignored ran as the plain operation - `DELETE …?tagging` deleted the
   file. A new S3 operation names its parameters there; anything else stays a 501.
+* **Metadata is checked by `MetadataRules` and written through `FileMetadataService` /
+  `FolderMetadataService`** (or an upload's own path) - never set on `FileDetails.metadata` or
+  `Folder.metadata` elsewhere: those are what check access, record the change with both documents and
+  read the stored text back for its tag. A document may be personal: **never log one, and never let a
+  DTO that carries one print it** (`@ToString.Exclude`). `{}` is no document - the column is `NULL`.
 * **New files are stored by their own id, under a key that names nothing a person wrote**
   (`files/{shard}/{file id}/rev/v{n}/{revision external id}.{ext}`, 2.10.0, `StorageLayout` — the
   one place a key is written and the one place a file's directory is read back off a key, by its

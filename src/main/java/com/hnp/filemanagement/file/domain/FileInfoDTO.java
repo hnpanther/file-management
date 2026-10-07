@@ -10,6 +10,7 @@ import java.time.Instant;
 import com.hnp.filemanagement.folder.domain.FolderContentDTO;
 import java.util.ArrayList;
 import java.util.List;
+import lombok.ToString;
 
 // file info state ===> 0 -> public, -1 -> private, 1 -> rule base
 @Data
@@ -47,6 +48,14 @@ public class FileInfoDTO {
 
     @NotNull(groups = InsertValidation.class)
     private MultipartFile multipartFile;
+
+    /**
+     * An upload's metadata, as sent - a JSON object, or nothing (roadmap 12.2): the form's field and
+     * v1's {@code metadata} part. Checked by {@code MetadataRules} before anything is stored. Kept out
+     * of {@code toString}: it may be personal, and a DTO's {@code toString} is what reaches a log.
+     */
+    @ToString.Exclude
+    private String metadata;
 
     private Integer state;
     private Integer enabled;

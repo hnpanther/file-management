@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -79,6 +80,10 @@ class FileServiceUnitTest {
     private FolderQuotaService folderQuotaService;
     @Mock
     private com.hnp.filemanagement.file.persistence.FileShareLinkRepository fileShareLinkRepository;
+    /** The real rules: a value with no collaborator, and what an upload's metadata is checked by. */
+    @Spy
+    private com.hnp.filemanagement.shared.metadata.MetadataRules metadataRules =
+            new com.hnp.filemanagement.shared.metadata.MetadataRules(com.hnp.filemanagement.shared.metadata.MetadataProperties.defaults());
 
     @InjectMocks
     private FileService underTest;

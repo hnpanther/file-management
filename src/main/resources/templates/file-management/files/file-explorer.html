@@ -153,6 +153,13 @@
                         <i class="bi bi-info-circle" aria-hidden="true"></i>
                         <span class="hidden md:inline" th:text="#{explorer.details.folder}">جزئیات پوشه</span>
                     </button>
+                    <!-- The folder's metadata (roadmap 12.3): its page shows it, the form where it may be changed. -->
+                    <a class="btn btn-secondary btn-sm" x-cloak id="folder-metadata-link"
+                       x-show="folder && folder.kind !== 'ROOT' && folder.kind !== 'PROFILES'"
+                       th:data-base="@{/files/folders/}" :href="folder ? $el.dataset.base + folder.id + '/metadata' : '#'">
+                        <i class="bi bi-card-list" aria-hidden="true"></i>
+                        <span class="hidden md:inline" th:text="#{metadata.folder.title}">متادیتای پوشه</span>
+                    </a>
                     <!-- Only where a document can actually be filed: any folder but the root, inside a WRITE grant. -->
                     <a class="btn btn-primary btn-sm" x-show="writable" x-cloak
                        :href="uploadHref()" th:data-href="@{/files/create}"

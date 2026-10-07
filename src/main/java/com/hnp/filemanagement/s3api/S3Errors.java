@@ -30,6 +30,7 @@ public final class S3Errors {
                 "The provided 'x-amz-content-sha256' header does not match what was computed."),
         INCOMPLETE_BODY(400, "IncompleteBody", "The request body is incomplete or its chunks are malformed."),
         INVALID_ARGUMENT(400, "InvalidArgument", "Invalid argument."),
+        METADATA_TOO_LARGE(400, "MetadataTooLarge", "Your metadata headers exceed the maximum allowed metadata size."),
         MALFORMED_XML(400, "MalformedXML", "The XML you provided was not well-formed or did not validate against our published schema."),
         ENTITY_TOO_LARGE(400, "EntityTooLarge", "Your proposed upload exceeds the maximum allowed size."),
         NO_SUCH_BUCKET(404, "NoSuchBucket", "The specified bucket does not exist."),

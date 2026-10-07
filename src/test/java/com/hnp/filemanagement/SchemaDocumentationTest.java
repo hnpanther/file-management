@@ -159,6 +159,15 @@ class SchemaDocumentationTest extends DatabaseSupport {
                 // reads off the index a page at a time (V3.9).
                 columns += ", in byte order (`COLLATE \"C\"`)";
             }
+            if (text(index.get("definition")).contains("jsonb_path_ops")) {
+                // A metadata document's: what serves a containment search, metadata @> '{...}' (V3.10).
+                columns += ", GIN for containment `@>` (`jsonb_path_ops`)";
+            }
+            String definition = text(index.get("definition"));
+            if (definition.contains(" WHERE ")) {
+                // A partial index: only the rows its condition holds for (V3.10, the queue of folders).
+                columns += ", only where `" + definition.substring(definition.indexOf(" WHERE ") + 7) + "`";
+            }
             if (text(index.get("definition")).contains("gin_trgm_ops")) {
                 // A trigram GIN index: what serves a LIKE '%term%', which no B-tree can (issue 21).
                 columns += ", trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`)";

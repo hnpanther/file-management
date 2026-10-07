@@ -770,6 +770,27 @@ database restored without it has S3 keys nobody can use. Lost or changed, every 
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
 
+### Upgrading from 2.12.0 to 2.13.0 — metadata of files and folders
+
+A jar swap with **one migration, `V3.10`**: a `metadata` column (`jsonb`, empty) on `file_details`
+and on `folder`, their GIN indexes, a partial index for the folders without one, two columns on
+`file_history` and a new table `folder_metadata_change`. Every column is added empty, so it takes
+seconds whatever the size of the database. Two settings, both optional:
+`filemanagement.metadata.max-bytes` (16384) and `max-depth` (5).
+
+* **Six new permissions**, seeded at the start and held by ADMIN: `EDIT_FILE_METADATA` and
+  `EDIT_FOLDER_METADATA` (with `FOLDER_METADATA_QUEUE_PAGE`) for the people who describe files and
+  folders on the web; `API_GET_METADATA`, `API_SET_METADATA`, `API_SEARCH_METADATA` for the v1
+  account, which must be given them on the role page to use the metadata endpoints. A bearer API key
+  holds them by itself, under its folder grants.
+* **Nothing a client does changes**: an upload without metadata is as before; the file page shows a
+  metadata section, empty until one is written.
+* **S3 clients' `x-amz-meta-*` are kept** from now on (they were ignored); a value beyond ASCII must
+  be RFC 2047, as S3 requires ([api-s3.md](api-s3.md#metadata-2130)).
+
+**Rollback** is the 2.12.0 jar: it ignores the new columns and table. Metadata written meanwhile
+stays in the database, unused, and is there again when 2.13.0 returns.
+
 ### Upgrading from 2.11.0 to 2.12.0 — listing on the S3 surface, and its deletes made exact
 
 A jar swap with **one migration, `V3.9`**, and no setting. `V3.9` adds `folder.key_path` - each
