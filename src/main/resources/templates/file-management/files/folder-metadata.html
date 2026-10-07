@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{metadata.folder.title}">متادیتای پوشه</title>
+</head>
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<!--
+  A folder's metadata (roadmap 12.3): what a person knows about it that its name does not say. The
+  document, the form for whoever may change it - saved conditioned on the document it was opened on
+  - and its recent changes.
+-->
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{metadata.folder.title}">متادیتای پوشه</div>
+        <h1 class="break-words" dir="auto" th:text="${folder.title()}"></h1>
+        <div class="flex flex-wrap gap-2 mt-2">
+            <a th:href="@{/files/explorer(folder=${folder.folderId()})}" class="btn btn-sm btn-outline-secondary"
+               th:text="#{metadata.folder.openInExplorer}">باز کردن در فایل اکسپلورر</a>
+            <a sec:authorize="hasAuthority('FOLDER_METADATA_QUEUE_PAGE') || hasAuthority('ADMIN')"
+               th:href="@{/files/folders/{id}/undescribed(id=${folder.folderId()})}" class="btn btn-sm btn-outline-secondary"
+               id="undescribed-link" th:text="#{metadata.queue.link}">زیرپوشه‌های بدون متادیتا</a>
+        </div>
+    </header>
+
+    <div th:if="${metadataSaved != null}" class="alert alert-success" role="status" id="metadata-saved" th:text="${metadataSaved}"></div>
+
+    <section class="card mx-auto max-w-4xl">
+        <div class="card-body">
+            <!-- Outside the form: a refusal is said even where no form is offered - the root, Profiles. -->
+            <div th:if="${error != null}" class="alert alert-warning mb-3" role="alert" id="metadata-error" th:text="${error}"></div>
+            <div th:unless="${mayEdit}" id="metadata-read-only">
+                <div th:replace="~{fragments.html :: metadata-table(${folder.tree()})}"></div>
+            </div>
+            <form th:if="${mayEdit}" method="post" id="metadataForm"
+                  th:action="@{/files/folders/{id}/metadata(id=${folder.folderId()})}">
+                <input type="hidden" name="etag" th:value="${etag}">
+                <div th:replace="~{fragments.html :: metadata-editor(${metadataText}, #{metadata.editor.clearHint})}"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="card mx-auto max-w-4xl mt-5" aria-labelledby="changes-title">
+        <div class="card-body">
+            <h2 id="changes-title" class="mb-3" th:text="#{metadata.folder.changes}">تغییرات</h2>
+            <p th:if="${#lists.isEmpty(changes)}" class="field-hint" th:text="#{metadata.folder.noChanges}">تغییری ثبت نشده است.</p>
+            <article th:each="change : ${changes}" class="metadata-change mb-4">
+                <div class="text-sm mb-1">
+                    <span class="technical" dir="ltr" th:text="${@jalali.format(change.occurredAt)}"></span>
+                    <span aria-hidden="true">·</span>
+                    <span th:text="${change.username}"></span>
+                </div>
+                <details>
+                    <summary th:text="#{metadata.folder.beforeAfter}">پیش و پس از تغییر</summary>
+                    <div class="grid gap-3 md:grid-cols-2">
+                        <div>
+                            <h3 class="text-sm font-medium" th:text="#{metadata.folder.before}">پیش از تغییر</h3>
+                            <pre class="metadata-structured" dir="ltr" th:text="${@metadataView.jsonOfStored(change.metadataBefore)}"></pre>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-medium" th:text="#{metadata.folder.after}">پس از تغییر</h3>
+                            <pre class="metadata-structured" dir="ltr" th:text="${@metadataView.jsonOfStored(change.metadataAfter)}"></pre>
+                        </div>
+                    </div>
+                </details>
+            </article>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

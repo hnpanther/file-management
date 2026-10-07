@@ -33,5 +33,11 @@ public enum FileEvent {
     /** A temporary share link was made to a revision; the detail is when it expires. */
     SHARE_LINK_CREATED,
     /** A share link to a revision was revoked. */
-    SHARE_LINK_REVOKED
+    SHARE_LINK_REVOKED,
+    /**
+     * A revision's metadata was set, replaced or cleared after its upload (2.13.0); the documents
+     * before and after are on the event ({@code metadata_before}, {@code metadata_after}), the detail
+     * says how many keys - never a value.
+     */
+    METADATA_CHANGED
 }

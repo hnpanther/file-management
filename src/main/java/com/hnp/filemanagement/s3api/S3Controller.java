@@ -9,6 +9,7 @@ import com.hnp.filemanagement.file.web.DownloadAudit;
 import com.hnp.filemanagement.file.web.SpooledRequestBody;
 import com.hnp.filemanagement.file.web.UploadTempDirectory;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
+import com.hnp.filemanagement.shared.metadata.MetadataRules;
 import com.hnp.filemanagement.shared.web.GlobalGeneralLogging;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.io.Resource;
@@ -65,15 +66,17 @@ public class S3Controller {
     private final UploadTempDirectory uploadTempDirectory;
     private final DownloadAudit downloadAudit;
     private final GlobalGeneralLogging globalGeneralLogging;
+    private final MetadataRules metadataRules;
 
     public S3Controller(S3ObjectService objectService, UploadPolicyService uploadPolicyService,
                         UploadTempDirectory uploadTempDirectory, DownloadAudit downloadAudit,
-                        GlobalGeneralLogging globalGeneralLogging) {
+                        GlobalGeneralLogging globalGeneralLogging, MetadataRules metadataRules) {
         this.objectService = objectService;
         this.uploadPolicyService = uploadPolicyService;
         this.uploadTempDirectory = uploadTempDirectory;
         this.downloadAudit = downloadAudit;
         this.globalGeneralLogging = globalGeneralLogging;
+        this.metadataRules = metadataRules;
     }
 
     /** {@code PutObject}, or a folder's {@code key/} with an empty body. */
@@ -102,6 +105,8 @@ public class S3Controller {
             return ResponseEntity.ok().eTag("\"d41d8cd98f00b204e9800998ecf8427e\"").build();
         }
 
+        // Read and checked before the body is: a document the rules refuse costs no upload.
+        String metadata = S3Metadata.ofRequest(request, metadataRules).orElse(null);
         long declared = AwsChunkedInputStream.isChunked(context.payloadHash())
                 ? headerLong(request, "x-amz-decoded-content-length") : request.getContentLengthLong();
         globalGeneralLogging.detail("s3 put bucket=" + bucket + ", key=" + key + ", bytes=" + declared);
@@ -109,7 +114,7 @@ public class S3Controller {
         S3ObjectService.Stored stored;
         try (SpooledRequestBody body = SpooledRequestBody.spool(objectName, contentType, payload(request, context),
                 declared, uploadPolicyService.serverCapBytes(), uploadTempDirectory.path())) {
-            stored = objectService.put(bucket, key, body, ifNoneMatch, context.apiKey(), userDetails.getId());
+            stored = objectService.put(bucket, key, body, ifNoneMatch, metadata, context.apiKey(), userDetails.getId());
         }
         return ResponseEntity.ok()
                 .eTag(eTagOf(stored.checksumSha256()))
@@ -160,13 +165,14 @@ public class S3Controller {
         FileDownloadDTO download = objectService.get(bucket, key, versionId, userDetails.getId());
         FileDetails revision = objectService.revision(download.getFileDetailsId());
         downloadAudit.served(download, DownloadChannel.S3);
-        return ResponseEntity.ok()
+        ResponseEntity.BodyBuilder answer = ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(download.getContentType()))
                 .eTag(eTagOf(revision.getChecksumSha256()))
                 .lastModified(revision.getCreatedAt())
                 .header("x-amz-version-id", revision.getExternalId())
-                .header("Accept-Ranges", "bytes")
-                .body(download.getResource());
+                .header("Accept-Ranges", "bytes");
+        S3Metadata.answer(answer, revision.getMetadata());
+        return answer.body(download.getResource());
     }
 
     /**
@@ -190,15 +196,16 @@ public class S3Controller {
         }
         globalGeneralLogging.detail("s3 head bucket=" + bucket + ", key=" + key);
         FileDetails revision = objectService.head(bucket, key, versionId, userDetails.getId());
-        return ResponseEntity.ok()
+        ResponseEntity.BodyBuilder answer = ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(ContentTypes.servedTypeFor(revision.getFileExtension())
                         .orElse(MediaType.APPLICATION_OCTET_STREAM_VALUE)))
                 .contentLength(revision.getFileSize())
                 .eTag(eTagOf(revision.getChecksumSha256()))
                 .lastModified(revision.getCreatedAt())
                 .header("x-amz-version-id", revision.getExternalId())
-                .header("Accept-Ranges", "bytes")
-                .build();
+                .header("Accept-Ranges", "bytes");
+        S3Metadata.answer(answer, revision.getMetadata());
+        return answer.build();
     }
 
     /**

@@ -77,15 +77,40 @@ public class GlobalGeneralLogging {
         return maskSecrets(query == null ? request.getRequestURI() : request.getRequestURI() + "?" + query);
     }
 
+    /** Query parameters whose value is a metadata document - personal data, never logged (2.13.0). */
+    private static final java.util.Set<String> MASKED_PARAMETERS = java.util.Set.of("metadata", "folderMetadata");
+
     /**
      * A path as it may be written down. A share link's token is the whole access to a file
      * (roadmap 10.5) and travels in the path, so it is never logged or echoed: {@code /share/…}
-     * loses its last segment here, and nothing that logs a request bypasses this.
+     * loses its last segment here, and nothing that logs a request bypasses this. A metadata search's
+     * document travels in the query - {@code ?metadata={"nationalCode":"…"}} - and is masked the same
+     * way (2.13.0): a document may be personal, and the log is not the place for it.
      */
     public static String maskSecrets(String path) {
         if (path == null) {
             return null;
         }
+        return maskShareToken(maskParameters(path));
+    }
+
+    private static String maskParameters(String path) {
+        int question = path.indexOf('?');
+        if (question < 0) {
+            return path;
+        }
+        String[] parameters = path.substring(question + 1).split("&", -1);
+        for (int i = 0; i < parameters.length; i++) {
+            int equals = parameters[i].indexOf('=');
+            String name = equals < 0 ? parameters[i] : parameters[i].substring(0, equals);
+            if (equals >= 0 && MASKED_PARAMETERS.contains(name)) {
+                parameters[i] = name + "=***";
+            }
+        }
+        return path.substring(0, question + 1) + String.join("&", parameters);
+    }
+
+    private static String maskShareToken(String path) {
         int at = path.indexOf("/share/");
         if (at < 0) {
             return path;

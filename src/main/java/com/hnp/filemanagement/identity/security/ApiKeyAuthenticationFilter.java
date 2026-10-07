@@ -76,7 +76,8 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
      * as well so that a newly created key can be proved to work — that endpoint returns a fixed
      * string and its own comment describes it as a probe "that also proves the caller's token and
      * permission still work", which is exactly what somebody setting up an integration needs on day
-     * one. The three v1 file operations are granted too, since 1.2.0 - see the note at the list.
+     * one. The three v1 file operations are granted too, since 1.2.0 - see the note at the list - and
+     * the three metadata ones, since 2.13.0.
      * The rest of the v1 set is not: nothing else there is a file operation.
      */
     private static Authentication authenticationFor(ApiKey apiKey) {
@@ -93,8 +94,11 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
         // exactly what it reaches on v2 - its own grants - and an integration may use whichever
         // shape suits it: v2 keys, or v1 ids (folderId, fileDetailsId) with a key instead of the
         // shared account's password.
+        // And the metadata operations of 2.13.0 - reading, setting and searching metadata are file and
+        // folder operations under the same grants.
         principal.setPermissions(List.of(PermissionEnum.API_KEY, PermissionEnum.API_HEALTH_TEST,
-                PermissionEnum.API_SAVE_NEW_FILE, PermissionEnum.API_DELETE_FILE_DETAILS, PermissionEnum.API_DOWNLOAD_FILE));
+                PermissionEnum.API_SAVE_NEW_FILE, PermissionEnum.API_DELETE_FILE_DETAILS, PermissionEnum.API_DOWNLOAD_FILE,
+                PermissionEnum.API_GET_METADATA, PermissionEnum.API_SET_METADATA, PermissionEnum.API_SEARCH_METADATA));
 
         return UsernamePasswordAuthenticationToken.authenticated(
                 principal, null, principal.getAuthorities());

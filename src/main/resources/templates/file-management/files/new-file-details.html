@@ -72,6 +72,10 @@
                         <input id="version" name="version" dir="ltr" type="text" class="form-control technical"
                                th:value="${#strings.equals(pageType, 'version') ? lastVersion + 1 : lastVersion}" readonly>
                     </div>
+                    <!-- The new revision's metadata (roadmap 12.2); left empty, it takes the file's current. -->
+                    <div class="form-group md:col-span-2">
+                        <div th:replace="~{fragments.html :: metadata-editor(${file.metadata}, #{metadata.editor.versionHint})}"></div>
+                    </div>
                 </div>
 
                 <div th:if="${showMessage && valid}" class="alert alert-success" role="status"

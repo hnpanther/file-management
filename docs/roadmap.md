@@ -41,6 +41,12 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.13.0 is written: **metadata of files and folders** (12.2, 12.3) - a JSON document on each revision
+and each folder (`V3.10`), sent with an upload (the form, v1's `metadata`, S3's `x-amz-meta-*`),
+shown and edited on the file and folder pages, set afterwards through v1 by external id or folder
+id - conditioned, so an integration filling in what is missing never overwrites a person's -
+searched by containment through GIN indexes, every change in the history with both documents; and
+the queue of folders an upload made that nobody has described.
 2.12.0 is written: **listing and deleting many on the S3 surface** (9.10) - `ListObjectsV2` and
 `ListObjects` in S3's byte order, by level or whole, paged off a byte-ordered index of the folders'
 new `key_path` (`V3.9`) so a page costs what it returns (measured on 41,000 objects), only what the key
@@ -156,7 +162,7 @@ What the releases since the cut-over brought, newest first:
    v2 accepting standard S3 clients - upload (a title already there is a new version), download,
    delete, folders created by an upload when the key may - for the ERP attachments filed by n8n.
    9.11 first (days), then 9.10's steps (weeks). With them, **metadata of a file as JSON**
-   ([12.2](#122-metadata-of-a-file-as-json--planned)) - sent with the upload, shown, edited, searched.
+   ([12.2](#122-metadata-of-a-file-as-json--done-2130-the-template-per-folder-left-optional)) - sent with the upload, shown, edited, searched.
 3. ~~**Recording downloads** (9.2)~~ - **done (2.7.0)**.
    ~~**A page of locked sign-ins**~~ ([12.1](#121-a-page-of-locked-sign-ins--done-275)) - **done
    (2.7.5)**: deploy it with 2.7.4, so the lock reaches production with its way out.
@@ -3399,7 +3405,43 @@ the right password then signs in at once; the page and the button behind their p
 account holding ADMIN unlocked only by ADMIN; the unlock recorded; the page a fixed number of
 statements.
 
-### 12.2 Metadata of a file, as JSON — planned
+### 12.2 Metadata of a file, as JSON — **done (2.13.0)**, the template per folder left optional
+
+> **Built in 2.13.0** (2026-10-07), as written below, with these decisions taken:
+>
+> * **A new version without metadata**: through v1 and the pages it takes the file's current
+>   document (its newest revision's); through the S3 surface it has none, as in S3.
+> * **A file's metadata set later** (`PUT file-info/{id}/metadata`, the file page) goes to every
+>   format of its newest version, so they never disagree; one revision's has an endpoint and a page
+>   of its own. Older versions keep what they were filed with.
+> * **Every write may be conditioned** - asked for with the build: `If-None-Match: *` sets a
+>   document only where there is none (an integration filling in what is missing never overwrites a
+>   person's), `If-Match` only over the one read; both a `412` otherwise. The pages' forms carry the
+>   tag they were opened on, so two people do not overwrite each other either.
+> * **The history keeps both documents** in `file_history.metadata_before` / `metadata_after`
+>   (V3.10) - `detail` could not hold 16 KB; a folder's in `folder_metadata_change`.
+> * **S3**: `x-amz-meta-*` with a value beyond ASCII in RFC 2047, as S3 requires (the SDKs cannot send
+>   it raw, and the request firewall refuses UTF-8 in a header); S3's 2 KB as `MetadataTooLarge`;
+>   `x-fm-metadata` for a whole document; `x-amz-missing-meta` on an answer that leaves keys out.
+> * **Search** on v1: `files/search?metadata=&folderMetadata=` (a folder's document holding, any
+>   folder above the file) and `folders/search`, through the GIN indexes and `ix_folder_path`, the
+>   reader's grants in the query. On the "all files" page: still later.
+> * **The queue** (12.3): a folder's children without metadata, newest first, off a partial index -
+>   on the web and as `folders/{id}/undescribed`. Without the template (step 5), the explorer marks
+>   nothing: a folder is not known to need one.
+>
+> * **Found by the review before the release, each with its test**: a search by a folder's document
+>   answered a reader of the files below it who may not read the folder itself (an oracle for its
+>   values - the folder must be readable too); two conditioned writers at once could both pass (the
+>   row is now read under a lock first); a number such as `1e999999999` passed the size limit and
+>   would be a billion digits written out (refused past 1000 characters); hundreds of short keys made
+>   more `x-amz-meta-*` headers than a client takes (50 at most now); a search's document reached the
+>   request log in the query string (masked as `metadata=***`); and a tag taken of the stored text
+>   differed between the text sent and `jsonb`'s (taken of a canonical form now).
+>
+> Tested: `MetadataRulesTest` (every rule at its limit), `MetadataConcurrencyTest`, `FileMetadataServiceTest`,
+> `FolderMetadataServiceTest`, `MetadataSearchTest` (the plans included), `MetadataApiTest`,
+> `S3MetadataTest`, `MetadataPagesTest`.
 
 **Why.** An integration knows things about a document that the file does not say and the folder
 does not hold: the ERP's attachment id, the contract's number, the party's code and name, the
@@ -3505,7 +3547,7 @@ version inheriting through v1 and not through S3; the history event with both do
 in the log; a search found through the index, scoped by folder access, paged; the S3 headers both
 ways, a Persian value included.
 
-### 12.3 Metadata of a folder, as JSON, completed on the web — planned
+### 12.3 Metadata of a folder, as JSON, completed on the web — **done (2.13.0)**, the template left optional
 
 > Asked for on 2026-10-05, with the S3 surface: **a folder may carry a JSON document of its own -
 > what a person knows about it that its name does not say - and it is filled in by a person on the

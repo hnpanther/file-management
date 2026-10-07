@@ -49,6 +49,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import com.hnp.filemanagement.shared.metadata.MetadataDocument;
+import com.hnp.filemanagement.shared.metadata.MetadataRules;
 
 /**
  * Files and their versions — the core of the application.
@@ -141,6 +143,7 @@ public class FileService {
     private final FileShareLinkRepository fileShareLinkRepository;
     private final ApiKeyRepository apiKeyRepository;
     private final FileHistoryService fileHistoryService;
+    private final MetadataRules metadataRules;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileDetailsRepository fileDetailsRepository,
@@ -155,7 +158,8 @@ public class FileService {
                        FolderQuotaService folderQuotaService,
                        FileShareLinkRepository fileShareLinkRepository,
                        ApiKeyRepository apiKeyRepository,
-                       FileHistoryService fileHistoryService) {
+                       FileHistoryService fileHistoryService,
+                       MetadataRules metadataRules) {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
@@ -170,6 +174,7 @@ public class FileService {
         this.fileShareLinkRepository = fileShareLinkRepository;
         this.apiKeyRepository = apiKeyRepository;
         this.fileHistoryService = fileHistoryService;
+        this.metadataRules = metadataRules;
     }
 
     // ------------------------------------------------------------------ upload
@@ -237,12 +242,14 @@ public class FileService {
         uploadPolicyService.requireAllowed(principalId, multipartFile);
         ContentTypes.detect(multipartFile);
         folderQuotaService.requireRoom(folder, multipartFile.getSize());
+        Optional<MetadataDocument> metadata = metadataRules.parse(fileInfoDTO.getMetadata());
 
         // The parent first, on its own: its id names the directory the revisions live under
         // (StorageLayout), and IDENTITY assigns it only at insert. Transient here, so this is a persist.
         fileInfoRepository.save(fileInfo);
 
         FileDetails fileDetails = newFileDetails(fileInfo, multipartFile, 1, "V1", fileInfoDTO.getDescription(), principalId);
+        fileDetails.setMetadata(MetadataDocument.columnOf(metadata));
         fileInfo.addFileDetails(fileDetails);
         // Saved explicitly rather than left to the cascade, because the audit row below needs
         // the generated id - and never through save(parent), which on a managed parent is a
@@ -251,7 +258,8 @@ public class FileService {
 
         actionHistoryService.saveActionHistory(EntityEnum.FileInfo, fileInfo.getId(), ActionEnum.CREATE, principalId,
                 "CREATE NEW FILE_INFO", "CREATE NEW FILE_INFO");
-        fileHistoryService.record(FileEvent.FILE_UPLOADED, fileDetails, null, principalId);
+        fileHistoryService.recordWithMetadata(FileEvent.FILE_UPLOADED, fileDetails, null, null,
+                fileDetails.getMetadata(), principalId);
         actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetails.getId(), ActionEnum.CREATE,
                 principalId, "CREATE NEW FILE_DETAILS", "CREATE NEW FILE_DETAILS");
 
@@ -337,6 +345,12 @@ public class FileService {
         // A new version or format adds its bytes under the file's folder: any quota above must
         // have room, asked before anything is written (roadmap 10.4).
         folderQuotaService.requireRoom(fileInfo.getFolder(), multipartFile.getSize());
+        // Checked before anything is written; none sent, the file's current document carries on -
+        // unless the route says a revision carries its own whole (the S3 surface).
+        Optional<MetadataDocument> sent = metadataRules.parse(fileUploadDTO.getMetadata());
+        String metadata = sent.isPresent() || !fileUploadDTO.isInheritMetadata()
+                ? MetadataDocument.columnOf(sent)
+                : newestRevisionOf(fileInfo).map(FileDetails::getMetadata).orElse(null);
 
         String name = FileNames.withoutExtension(originalFilename);
         String extension = getFileExtension(originalFilename);
@@ -350,8 +364,8 @@ public class FileService {
         }
 
         FileDetails created = switch (fileUploadDTO.getType()) {
-            case "format" -> createNewFormatFileDetails(fileUploadDTO, fileInfo, extension, principalId);
-            case "version" -> createNewVersionFileDetails(fileUploadDTO, fileInfo, principalId);
+            case "format" -> createNewFormatFileDetails(fileUploadDTO, fileInfo, extension, metadata, principalId);
+            case "version" -> createNewVersionFileDetails(fileUploadDTO, fileInfo, metadata, principalId);
             // Silently doing nothing was the old behaviour, which made a typo in the form look
             // like a successful upload that stored nothing.
             default -> throw new InvalidDataException("unknown upload type=" + fileUploadDTO.getType());
@@ -363,7 +377,7 @@ public class FileService {
     }
 
     private FileDetails createNewFormatFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo,
-                                                   String extension, int principalId) {
+                                                   String extension, String metadata, int principalId) {
 
         int version = fileUploadDTO.getVersion();
         if (version > fileInfo.getLastVersion()) {
@@ -389,12 +403,14 @@ public class FileService {
                     "fileDetails with same version and format exists. version=" + version + ", format=" + extension);
         }
 
-        FileDetails created = persistNewVersionRow(fileInfo, fileUploadDTO, version, sample.getVersionName(), principalId);
-        fileHistoryService.record(FileEvent.FORMAT_ADDED, created, null, principalId);
+        FileDetails created = persistNewVersionRow(fileInfo, fileUploadDTO, version, sample.getVersionName(), metadata,
+                principalId);
+        fileHistoryService.recordWithMetadata(FileEvent.FORMAT_ADDED, created, null, null, created.getMetadata(), principalId);
         return created;
     }
 
-    private FileDetails createNewVersionFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo, int principalId) {
+    private FileDetails createNewVersionFileDetails(FileUploadDTO fileUploadDTO, FileInfo fileInfo, String metadata,
+                                                    int principalId) {
 
         int version = fileUploadDTO.getVersion();
         if (version != fileInfo.getLastVersion() + 1) {
@@ -402,23 +418,24 @@ public class FileService {
                     + version + ", last version=" + fileInfo.getLastVersion());
         }
 
-        FileDetails created = persistNewVersionRow(fileInfo, fileUploadDTO, version, "V" + version, principalId);
+        FileDetails created = persistNewVersionRow(fileInfo, fileUploadDTO, version, "V" + version, metadata, principalId);
 
         // The parent is managed, so the dirty check writes this - it needs no save(), and calling
         // one here is what used to merge a copy of the new child into the database.
         fileInfo.setLastVersion(version);
-        fileHistoryService.record(FileEvent.VERSION_ADDED, created, null, principalId);
+        fileHistoryService.recordWithMetadata(FileEvent.VERSION_ADDED, created, null, null, created.getMetadata(), principalId);
         return created;
     }
 
     private FileDetails persistNewVersionRow(FileInfo fileInfo, FileUploadDTO fileUploadDTO, int version,
-                                             String versionName, int principalId) {
+                                             String versionName, String metadata, int principalId) {
 
         // Under the file's id directory in the current layout, whatever its first revision's: a file
         // stored before 2.10.0 then holds revisions of two layouts, and the deletes read each
         // revision's place off its own key (StorageLayout.fileDirectoryOf).
         FileDetails fileDetails = newFileDetails(fileInfo, fileUploadDTO.getMultipartFile(),
                 version, versionName, fileUploadDTO.getFileDetailsDescription(), principalId);
+        fileDetails.setMetadata(metadata);
 
         fileInfo.addFileDetails(fileDetails);
         // Saved explicitly rather than left to the cascade, because the audit row below needs the
@@ -469,6 +486,15 @@ public class FileService {
         fileDetails.setCreatedBy(userRepository.getReferenceById(principalId));
         fileDetails.setCreatedByApiKey(actingApiKey());
         return fileDetails;
+    }
+
+    /**
+     * A file's newest revision - the highest version, the last made of it: the one whose metadata is
+     * the file's current (roadmap 12.2), as on the file page.
+     */
+    static Optional<FileDetails> newestRevisionOf(FileInfo fileInfo) {
+        return fileInfo.getFileDetailsList().stream()
+                .max(java.util.Comparator.comparing(FileDetails::getVersion).thenComparing(FileDetails::getId));
     }
 
     /**

@@ -82,7 +82,25 @@ public class FileHistoryService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void record(FileEvent event, FileInfo file, FileDetails revision, Folder folder, String detail, int principalId) {
+        record(event, file, revision, folder, detail, null, null, principalId);
+    }
+
+    /**
+     * {@link #record} for a revision with its metadata (2.13.0): an upload's own document as
+     * {@code after}, or a change's two. Kept on the event, which a person who may open the file may
+     * read - never in the log.
+     */
+    public void recordWithMetadata(FileEvent event, FileDetails revision, String detail, String metadataBefore,
+                                   String metadataAfter, int principalId) {
+        FileInfo file = revision.getFileInfo();
+        record(event, file, revision, file.getFolder(), detail, metadataBefore, metadataAfter, principalId);
+    }
+
+    private void record(FileEvent event, FileInfo file, FileDetails revision, Folder folder, String detail,
+                        String metadataBefore, String metadataAfter, int principalId) {
         FileHistory history = new FileHistory();
+        history.setMetadataBefore(metadataBefore);
+        history.setMetadataAfter(metadataAfter);
         history.setOccurredAt(Instant.now(clock));
         history.setEvent(event);
         history.setFileInfoId(file.getId());
@@ -196,6 +214,7 @@ public class FileHistoryService {
                 row.getFileName(), row.getVersion(), row.getFileExtension(), row.getFileSize(),
                 row.getFolderTitle(), row.getDetail(), row.getUsername(),
                 row.getApiKey() == null ? null : row.getApiKey().getId(),
-                row.getApiKey() == null ? null : row.getApiKey().getTitle())).toList();
+                row.getApiKey() == null ? null : row.getApiKey().getTitle(),
+                row.getMetadataBefore(), row.getMetadataAfter())).toList();
     }
 }

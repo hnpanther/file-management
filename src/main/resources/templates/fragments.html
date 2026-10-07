@@ -302,5 +302,63 @@
     </tr>
     </tbody>
 </table>
+
+<!--
+  A metadata document as a table (roadmap 12.2, 12.3): a key, and its value - a nested one as
+  indented JSON. `document` is a JsonNode, or null for none. Every value through th:text, escaped.
+-->
+<div th:fragment="metadata-table(document)" class="metadata-document">
+    <th:block th:with="rows=${@metadataView.rows(document)}">
+        <p th:if="${#lists.isEmpty(rows)}" class="field-hint metadata-empty" th:text="#{metadata.none}">متادیتایی ثبت نشده است.</p>
+        <table th:unless="${#lists.isEmpty(rows)}" class="table metadata-rows">
+            <tbody>
+            <tr th:each="row : ${rows}">
+                <th scope="row" class="metadata-key" dir="auto" th:text="${row.key()}"></th>
+                <td dir="auto">
+                    <pre th:if="${row.structured()}" class="metadata-structured" dir="ltr" th:text="${row.value()}"></pre>
+                    <span th:unless="${row.structured()}" class="metadata-value" th:text="${row.value()}"></span>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </th:block>
+</div>
+
+<!--
+  The metadata editor: rows of a key and a text value, or JSON for a nested or typed document
+  (metadataEditor in app.js). It posts the hidden field `metadata`; the enclosing form calls
+  check($event) on submit through the x-data scope this fragment opens. `initial` is the document
+  as JSON text, or empty; `hint` a message for under it, or null.
+-->
+<div th:fragment="metadata-editor(initial, hint)" class="metadata-editor"
+     th:attr="data-initial=${initial},data-invalid=#{metadata.editor.invalid},data-not-flat=#{metadata.editor.notFlat},data-duplicate=#{metadata.editor.duplicate}"
+     x-data="metadataEditor({ initial: $el.dataset.initial, copy: { invalid: $el.dataset.invalid, notFlat: $el.dataset.notFlat, duplicate: $el.dataset.duplicate } })"
+     x-init="$el.closest('form') && $el.closest('form').addEventListener('submit', (event) => check(event))">
+    <input type="hidden" name="metadata" :value="value">
+    <div class="flex flex-wrap items-center gap-2 mb-2">
+        <span class="text-sm font-medium" th:text="#{metadata.editor.title}">متادیتا</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" x-show="mode === 'rows'" @click="toJson()"
+                th:text="#{metadata.editor.asJson}">نمایش به صورت JSON</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" x-show="mode === 'json'" x-cloak @click="toRows()"
+                th:text="#{metadata.editor.asRows}">نمایش به صورت ردیف</button>
+    </div>
+    <div x-show="mode === 'rows'" class="metadata-editor-rows">
+        <template x-for="(row, index) in rows" :key="index">
+            <div class="flex flex-wrap gap-2 mb-2">
+                <input type="text" class="form-control metadata-editor-key" dir="auto" maxlength="100"
+                       th:placeholder="#{metadata.editor.key}" th:attr="aria-label=#{metadata.editor.key}" x-model="row.key">
+                <input type="text" class="form-control metadata-editor-value" dir="auto"
+                       th:placeholder="#{metadata.editor.value}" th:attr="aria-label=#{metadata.editor.value}" x-model="row.value">
+                <button type="button" class="btn btn-sm btn-danger-outline" @click="removeRow(index)"
+                        th:attr="aria-label=#{metadata.editor.remove}" th:text="#{metadata.editor.remove}">حذف</button>
+            </div>
+        </template>
+        <button type="button" class="btn btn-sm btn-outline-secondary" @click="addRow()" th:text="#{metadata.editor.add}">افزودن ردیف</button>
+    </div>
+    <textarea x-show="mode === 'json'" x-cloak class="form-control metadata-editor-json" dir="ltr" rows="8"
+              x-model="text" th:attr="aria-label=#{metadata.editor.title}" spellcheck="false"></textarea>
+    <p class="alert alert-warning mt-2" role="alert" x-show="error" x-cloak x-text="error"></p>
+    <p class="field-hint mt-2" th:if="${hint != null}" th:text="${hint}"></p>
+</div>
 </body>
 </html>

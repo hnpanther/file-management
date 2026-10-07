@@ -152,6 +152,23 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
                                 @Param("term") String term, Pageable pageable);
 
     /**
+     * A folder's children that have no metadata yet, newest first (roadmap 12.3): the queue of what an
+     * upload made and a person is still to describe - read off {@code ix_folder_undescribed}, a page
+     * at a time. {@code all} for a reader who may read the folder; otherwise only {@code ids}, the
+     * children on the way to a grant ({@code FolderAccess.visibleChildIdsUnder}), never empty.
+     */
+    @Query("""
+            SELECT f FROM Folder f
+            WHERE f.parent.id = :parentId AND f.metadata IS NULL
+              AND (:all = TRUE OR f.id IN :ids)
+            ORDER BY f.createdAt DESC, f.id DESC
+            """)
+    org.springframework.data.domain.Slice<Folder> findUndescribedChildren(@Param("parentId") int parentId,
+                                                                          @Param("all") boolean all,
+                                                                          @Param("ids") Collection<Integer> ids,
+                                                                          Pageable pageable);
+
+    /**
      * How many siblings sort before this folder in {@link #findLevel}'s order - its position in its
      * parent's level, so the page that holds it can be opened directly (a deep link, "show in the
      * tree"). Compared in SQL, as the listing sorts, rather than by an upper case Java computed.

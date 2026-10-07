@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.9`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.10`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -277,6 +277,7 @@ _As of migration `V3.9`. Types and defaults are PostgreSQL's own; every table is
 | `created_by` | `integer` | no |  |  |
 | `updated_by` | `integer` | yes |  |  |
 | `created_by_api_key_id` | `integer` | yes |  |  |
+| `metadata` | `jsonb` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_file_details_external_id` (`external_id`)
@@ -289,6 +290,7 @@ _As of migration `V3.9`. Types and defaults are PostgreSQL's own; every table is
 * **index** `fk_file_details_created_by_user` (`created_by`)
 * **index** `fk_file_details_updated_by_user` (`updated_by`)
 * **index** `ix_file_details_file_info_version` (`file_info_id`, `version`)
+* **index** `ix_file_details_metadata` (`metadata`, GIN for containment `@>` (`jsonb_path_ops`))
 * **index** `ix_file_details_search_description_trgm` (`replace(search_description, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 * **index** `ix_file_details_search_name_trgm` (`replace(search_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 * **index** `ix_file_details_state` (`state`)
@@ -312,11 +314,11 @@ _As of migration `V3.9`. Types and defaults are PostgreSQL's own; every table is
 | `client_ip` | `varchar(45)` | yes |  |  |
 
 * **primary key** `id`
-* **index** `ix_file_download_api_key` (`api_key_id`, `occurred_at`, `id`)
-* **index** `ix_file_download_client_ip` (`client_ip`, `occurred_at`, `id`)
+* **index** `ix_file_download_api_key` (`api_key_id`, `occurred_at`, `id`, only where `(api_key_id IS NOT NULL)`)
+* **index** `ix_file_download_client_ip` (`client_ip`, `occurred_at`, `id`, only where `(client_ip IS NOT NULL)`)
 * **index** `ix_file_download_file` (`file_info_id`, `occurred_at`, `id`)
 * **index** `ix_file_download_occurred_at` (`occurred_at`, `id`)
-* **index** `ix_file_download_user` (`user_id`, `occurred_at`, `id`)
+* **index** `ix_file_download_user` (`user_id`, `occurred_at`, `id`, only where `(user_id IS NOT NULL)`)
 
 ### `file_history`
 
@@ -340,6 +342,8 @@ _As of migration `V3.9`. Types and defaults are PostgreSQL's own; every table is
 | `user_id` | `integer` | no |  |  |
 | `username` | `varchar(150)` | no |  |  |
 | `api_key_id` | `integer` | yes |  |  |
+| `metadata_before` | `jsonb` | yes |  |  |
+| `metadata_after` | `jsonb` | yes |  |  |
 
 * **primary key** `id`
 * **foreign key** `fk_file_history_api_key` `api_key_id` → `api_key` (`id`)
@@ -460,6 +464,7 @@ _As of migration `V3.9`. Types and defaults are PostgreSQL's own; every table is
 | `created_by` | `integer` | yes |  |  |
 | `updated_by` | `integer` | yes |  |  |
 | `key_path` | `varchar(4000)` | no | `` |  |
+| `metadata` | `jsonb` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_folder_owner_user` (`owner_user_id`)
@@ -473,11 +478,34 @@ _As of migration `V3.9`. Types and defaults are PostgreSQL's own; every table is
 * **index** `fk_folder_tag_group` (`tag_group_id`)
 * **index** `fk_folder_updated_by_user` (`updated_by`)
 * **index** `ix_folder_bucket_key_path` (`split_part(path, '/', 3)`, `key_path`, in byte order (`COLLATE "C"`))
+* **index** `ix_folder_metadata` (`metadata`, GIN for containment `@>` (`jsonb_path_ops`))
 * **index** `ix_folder_parent` (`parent_id`)
 * **index** `ix_folder_parent_key_path` (`parent_id`, `key_path`, in byte order (`COLLATE "C"`))
 * **index** `ix_folder_path` (`path`, for prefix `LIKE` (`varchar_pattern_ops`))
 * **index** `ix_folder_search_display_name_trgm` (`replace(search_display_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 * **index** `ix_folder_search_name_trgm` (`replace(search_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
+* **index** `ix_folder_undescribed` (`parent_id`, `created_at`, `id`, only where `(metadata IS NULL)`)
+
+### `folder_metadata_change`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `integer` | no |  | identity |
+| `occurred_at` | `timestamptz(0)` | no |  |  |
+| `folder_id` | `integer` | no |  |  |
+| `folder_title` | `varchar(1000)` | yes |  |  |
+| `metadata_before` | `jsonb` | yes |  |  |
+| `metadata_after` | `jsonb` | yes |  |  |
+| `user_id` | `integer` | no |  |  |
+| `username` | `varchar(150)` | no |  |  |
+| `api_key_id` | `integer` | yes |  |  |
+
+* **primary key** `id`
+* **foreign key** `fk_folder_metadata_change_api_key` `api_key_id` → `api_key` (`id`)
+* **foreign key** `fk_folder_metadata_change_user` `user_id` → `app_user` (`id`)
+* **index** `fk_folder_metadata_change_api_key` (`api_key_id`)
+* **index** `fk_folder_metadata_change_user` (`user_id`)
+* **index** `ix_folder_metadata_change_folder` (`folder_id`, `occurred_at`, `id`)
 
 ### `permission`
 

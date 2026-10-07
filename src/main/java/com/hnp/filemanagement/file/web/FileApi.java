@@ -13,6 +13,9 @@ import com.hnp.filemanagement.file.domain.FileService;
 import com.hnp.filemanagement.shared.web.GlobalGeneralLogging;
 import com.hnp.filemanagement.file.domain.FileMapper;
 import com.hnp.filemanagement.shared.validation.InsertValidation;
+import com.hnp.filemanagement.shared.metadata.MetadataPrecondition;
+import com.hnp.filemanagement.file.domain.MetadataSearchService;
+import com.hnp.filemanagement.file.domain.FileMetadataService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
@@ -32,6 +35,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.PutMapping;
 
 import java.io.IOException;
 import java.util.OptionalLong;
@@ -73,11 +79,16 @@ public class FileApi {
     private final GlobalGeneralLogging globalGeneralLogging;
     private final FileService fileService;
     private final DownloadAudit downloadAudit;
+    private final FileMetadataService fileMetadataService;
+    private final MetadataSearchService metadataSearchService;
 
-    public FileApi(GlobalGeneralLogging globalGeneralLogging, FileService fileService, DownloadAudit downloadAudit) {
+    public FileApi(GlobalGeneralLogging globalGeneralLogging, FileService fileService, DownloadAudit downloadAudit,
+                   FileMetadataService fileMetadataService, MetadataSearchService metadataSearchService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.fileService = fileService;
         this.downloadAudit = downloadAudit;
+        this.fileMetadataService = fileMetadataService;
+        this.metadataSearchService = metadataSearchService;
     }
 
     /** A liveness probe that also proves the caller's token and permission still work. */
@@ -228,6 +239,104 @@ public class FileApi {
         FileDownloadDTO download = fileService.downloadFileRevision(fileInfoId, version, format, userDetails.getId());
         downloadAudit.served(download, DownloadChannel.API_V1);
         return serve(download, method);
+    }
+
+    // ------------------------------------------------------------------ metadata (roadmap 12.2 - 2.13.0)
+
+    /**
+     * A file's current metadata - its newest revision's - and its entity tag, in the body and the
+     * {@code ETag} header. {@code metadata} is {@code null} for none. {@code READ} on the file's folder.
+     */
+    // API_GET_METADATA
+    @PreAuthorize("hasAuthority('API_GET_METADATA') || hasAuthority('ADMIN')")
+    @GetMapping("file-info/{fileInfoId}/metadata")
+    public ResponseEntity<MetadataAnswers.FileMetadata> fileMetadata(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                                     @PathVariable("fileInfoId") ExternalId fileInfoReference) {
+        int fileInfoId = fileService.fileInfoIdOf(fileInfoReference);
+        globalGeneralLogging.detail("get metadata of file info id=" + fileInfoId);
+        var answer = MetadataAnswers.FileMetadata.of(fileMetadataService.ofFile(fileInfoId, userDetails.getId()));
+        return MetadataAnswers.tagged(answer, answer.etag());
+    }
+
+    /**
+     * Sets, replaces or clears a file's metadata: every format of its newest version takes the
+     * document in the body - a JSON object; {@code {}} clears it. {@code If-None-Match: *} sets it only
+     * where there is none (a {@code 412} otherwise, nothing changed) - what an integration filling in
+     * what is missing sends; {@code If-Match: "<etag>"} only if it is still the one read. Recorded in
+     * the file's history with both documents. {@code WRITE} on the file's folder.
+     */
+    // API_SET_METADATA
+    @PreAuthorize("hasAuthority('API_SET_METADATA') || hasAuthority('ADMIN')")
+    @PutMapping("file-info/{fileInfoId}/metadata")
+    public ResponseEntity<MetadataAnswers.FileMetadata> setFileMetadata(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                                        @PathVariable("fileInfoId") ExternalId fileInfoReference,
+                                                                        @RequestBody(required = false) String body,
+                                                                        @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+                                                                        @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) {
+        int fileInfoId = fileService.fileInfoIdOf(fileInfoReference);
+        globalGeneralLogging.detail("set metadata of file info id=" + fileInfoId);
+        var written = fileMetadataService.replaceOnFile(fileInfoId, requireBody(body),
+                new MetadataPrecondition(ifMatch, ifNoneMatch), userDetails.getId());
+        var answer = MetadataAnswers.FileMetadata.of(written);
+        return MetadataAnswers.tagged(answer, answer.etag());
+    }
+
+    /** One revision's metadata. {@code READ} on the file's folder. */
+    // API_GET_METADATA (one revision's)
+    @PreAuthorize("hasAuthority('API_GET_METADATA') || hasAuthority('ADMIN')")
+    @GetMapping("file-details/{fileDetailsId}/metadata")
+    public ResponseEntity<MetadataAnswers.FileMetadata> revisionMetadata(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                                         @PathVariable("fileDetailsId") ExternalId fileDetailsReference) {
+        int fileDetailsId = fileService.fileDetailsIdOf(fileDetailsReference);
+        globalGeneralLogging.detail("get metadata of file details id=" + fileDetailsId);
+        var answer = MetadataAnswers.FileMetadata.of(fileMetadataService.ofRevision(fileDetailsId, userDetails.getId()));
+        return MetadataAnswers.tagged(answer, answer.etag());
+    }
+
+    /** Sets, replaces or clears one revision's metadata - as the file's, for that revision alone. */
+    // API_SET_METADATA (one revision's)
+    @PreAuthorize("hasAuthority('API_SET_METADATA') || hasAuthority('ADMIN')")
+    @PutMapping("file-details/{fileDetailsId}/metadata")
+    public ResponseEntity<MetadataAnswers.FileMetadata> setRevisionMetadata(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                                            @PathVariable("fileDetailsId") ExternalId fileDetailsReference,
+                                                                            @RequestBody(required = false) String body,
+                                                                            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+                                                                            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) {
+        int fileDetailsId = fileService.fileDetailsIdOf(fileDetailsReference);
+        globalGeneralLogging.detail("set metadata of file details id=" + fileDetailsId);
+        var written = fileMetadataService.replaceOnRevision(fileDetailsId, requireBody(body),
+                new MetadataPrecondition(ifMatch, ifNoneMatch), userDetails.getId());
+        var answer = MetadataAnswers.FileMetadata.of(written);
+        return MetadataAnswers.tagged(answer, answer.etag());
+    }
+
+    /**
+     * Files by metadata: {@code metadata} - a JSON object the file's current document must hold
+     * ({@code @>}: every key it names with that value, nested parts and array members included) -
+     * and/or {@code folderMetadata}, one a folder above the file must hold, at any depth. Only files
+     * the caller may read; newest first, {@code size} at most 200, a page with {@code hasNext} and no
+     * count.
+     */
+    // API_SEARCH_METADATA
+    @PreAuthorize("hasAuthority('API_SEARCH_METADATA') || hasAuthority('ADMIN')")
+    @GetMapping("search")
+    public MetadataAnswers.Page<MetadataAnswers.FileHit> search(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                                               @RequestParam(value = "metadata", required = false) String metadata,
+                                                               @RequestParam(value = "folderMetadata", required = false) String folderMetadata,
+                                                               @RequestParam(value = "page", required = false) Integer page,
+                                                               @RequestParam(value = "size", required = false) Integer size) {
+        globalGeneralLogging.detail("search files by metadata" + (metadata == null ? "" : " (file's)")
+                + (folderMetadata == null ? "" : " (folder's)") + " page=" + page);
+        return MetadataAnswers.Page.of(metadataSearchService.files(metadata, folderMetadata, page, size, userDetails.getId()),
+                MetadataAnswers.FileHit::of);
+    }
+
+    /** A body is the document: {@code {}} clears it; nothing at all is a mistake, not a clearing. */
+    static String requireBody(String body) {
+        if (body == null || body.isBlank()) {
+            throw new InvalidDataException("the body is the metadata, a JSON object - {} to clear it", "metadata.invalid.notObject");
+        }
+        return body;
     }
 
     /**

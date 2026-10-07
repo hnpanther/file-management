@@ -78,6 +78,10 @@
                         <input id="description" dir="rtl" type="text" class="form-control"
                             th:field="*{description}" required>
                     </div>
+                    <!-- The document's metadata (roadmap 12.2): optional, kept as the first revision's. -->
+                    <div th:if="${#strings.equals(pageType, 'create')}" class="form-group md:col-span-2">
+                        <div th:replace="~{fragments.html :: metadata-editor(${file.metadata}, #{metadata.editor.uploadHint})}"></div>
+                    </div>
                     <!--
                         Where the file goes: a folder, chosen by drilling down from the root (or
                         from the folder the explorer's "upload here" opened this form on), and

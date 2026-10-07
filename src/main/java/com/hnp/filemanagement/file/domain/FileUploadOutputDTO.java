@@ -1,6 +1,8 @@
 package com.hnp.filemanagement.file.domain;
 
 import lombok.Data;
+import lombok.ToString;
+import tools.jackson.databind.JsonNode;
 
 /**
  * What the v1 upload answers. Since 1.8.0 each id comes twice - the number and the external id
@@ -29,4 +31,7 @@ public class FileUploadOutputDTO {
 
     private String description;
 
+    /** The revision's metadata (roadmap 12.2), a JSON object, or null for none; never printed. */
+    @ToString.Exclude
+    private JsonNode metadata;
 }

@@ -73,4 +73,16 @@ class GlobalGeneralLoggingTest {
         assertThat(GlobalGeneralLogging.maskSecrets("/resource/share-links/5")).isEqualTo("/resource/share-links/5");
         assertThat(GlobalGeneralLogging.maskSecrets(null)).isNull();
     }
+
+    @Test
+    void masksMetadataSearches() {
+        assertThat(GlobalGeneralLogging.maskSecrets(
+                "/api/v1/files/search?metadata=%7B%22nationalCode%22%3A%220012345678%22%7D&page=2"))
+                .isEqualTo("/api/v1/files/search?metadata=***&page=2");
+        assertThat(GlobalGeneralLogging.maskSecrets("/api/v1/files/search?size=5&folderMetadata={\"a\":1}&metadata="))
+                .isEqualTo("/api/v1/files/search?size=5&folderMetadata=***&metadata=***");
+        assertThat(GlobalGeneralLogging.maskSecrets("/files/explorer?folder=5&q=metadata"))
+                .as("a value that is the word is not a parameter of the name").isEqualTo("/files/explorer?folder=5&q=metadata");
+        assertThat(GlobalGeneralLogging.maskSecrets("/share/abc?metadata=x")).isEqualTo("/share/***?metadata=***");
+    }
 }

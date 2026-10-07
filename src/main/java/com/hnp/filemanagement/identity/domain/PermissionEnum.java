@@ -37,6 +37,24 @@ public enum PermissionEnum {
 
     // ===================================================================================================
 
+    // MetadataController @RequestMapping("/files") (roadmap 12.2, 12.3 - 2.13.0) ==========================
+    //@GetMapping("file-info/{fileInfoId}/metadata"), @PostMapping("file-info/{fileInfoId}/metadata") - a file's
+    //metadata, every format of its newest version; @GetMapping("file-details/{fileDetailsId}/metadata"),
+    //@PostMapping("file-details/{fileDetailsId}/metadata") - one revision's; edited on the web, WRITE on the
+    //file's folder as well. Reading it needs nothing more than the file page does.
+    EDIT_FILE_METADATA,
+
+    //@GetMapping("folders/{folderId}/metadata"), @PostMapping("folders/{folderId}/metadata") - a folder's
+    //metadata, and its changes, edited on the web; WRITE on the folder as well. The page is shown to
+    //FILE_EXPLORER_PAGE too, without the form, where the folder may be read.
+    EDIT_FOLDER_METADATA,
+
+    //@GetMapping("folders/{folderId}/undescribed") - a folder's children that have no metadata yet,
+    //newest first: what the ERP's uploads made and a person is still to describe
+    FOLDER_METADATA_QUEUE_PAGE,
+
+    // ===================================================================================================
+
     // RoleController ===================================================================================
     //@GetMapping("/roles/create")
     CREATE_ROLE_PAGE,
@@ -264,7 +282,22 @@ public enum PermissionEnum {
 //    @GetMapping("file-info/{fileInfoId}/file-details/{fileDetailsId}/download")
 //    @GetMapping("file-details/{fileDetailsId}/download")  - the same download, by the version's id alone
 //    @GetMapping("file-info/{fileInfoId}/download")  - a revision chosen by the file's own id: the latest, or ?version=, ?format=
-    API_DOWNLOAD_FILE
+    API_DOWNLOAD_FILE,
+
+//    @GetMapping("file-info/{fileInfoId}/metadata")  - a file's current metadata, its newest revision's (2.13.0)
+//    @GetMapping("file-details/{fileDetailsId}/metadata")  - one revision's
+//    FolderApi @GetMapping("{folderId}/metadata")  - a folder's
+//    FolderApi @GetMapping("{folderId}/undescribed")  - its children without metadata, newest first
+    API_GET_METADATA,
+
+//    @PutMapping("file-info/{fileInfoId}/metadata")  - set, replace or clear a file's, every format of its newest version
+//    @PutMapping("file-details/{fileDetailsId}/metadata")  - one revision's
+//    FolderApi @PutMapping("{folderId}/metadata")  - a folder's
+    API_SET_METADATA,
+
+//    @GetMapping("search")  - files by their metadata, or their folders'
+//    FolderApi @GetMapping("search")  - folders by their metadata
+    API_SEARCH_METADATA
 
     // ===================================================================================================
 

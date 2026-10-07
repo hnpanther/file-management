@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{metadata.edit}">ویرایش متادیتا</title>
+</head>
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<!--
+  A file's metadata - every format of its newest version - or one revision's (roadmap 12.2).
+  The form saves conditioned on the document it was opened on (etag): a change made meanwhile is
+  said, never overwritten.
+-->
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{metadata.title}">متادیتا</div>
+        <h1 class="break-words" dir="auto" th:text="${revision.fileName()}"></h1>
+        <p class="page-description" th:if="${target == 'file'}" th:text="#{metadata.edit.fileDescription(${revision.version()})}"></p>
+        <p class="page-description" th:if="${target == 'revision'}"
+           th:text="#{metadata.edit.revisionDescription(${revision.version()}, ${revision.fileExtension()})}"></p>
+    </header>
+
+    <section class="card mx-auto max-w-4xl">
+        <div class="card-body">
+            <form method="post" id="metadataForm"
+                  th:action="${target == 'file'} ? @{/files/file-info/{id}/metadata(id=${revision.fileInfoId()})} : @{/files/file-details/{id}/metadata(id=${revision.fileDetailsId()})}">
+                <input type="hidden" name="etag" th:value="${etag}">
+                <div th:replace="~{fragments.html :: metadata-editor(${metadataText}, #{metadata.editor.clearHint})}"></div>
+
+                <div th:if="${error != null}" class="alert alert-warning mt-3" role="alert" id="metadata-error" th:text="${error}"></div>
+
+                <div class="form-actions">
+                    <a th:href="@{/files/file-info/{id}(id=${revision.fileInfoId()})}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        <span th:text="#{action.backToFile}">بازگشت به اطلاعات فایل</span>
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

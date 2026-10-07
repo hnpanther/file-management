@@ -318,6 +318,10 @@ public class FileController {
 
         FileInfoDTO fileInfoDTO = fileService.getFileInfoDtoWithFileDetails(fileInfoId, principalId);
         model.addAttribute("file", fileInfoDTO);
+        // The file's metadata is its newest revision's (roadmap 12.2) - the highest version, the last made.
+        model.addAttribute("currentMetadata", fileInfoDTO.getFileDetailsDTOS().stream()
+                .max(java.util.Comparator.comparing(FileDetailsDTO::getVersion).thenComparing(FileDetailsDTO::getId))
+                .map(FileDetailsDTO::getMetadata).orElse(null));
         // The file's own history, for whoever may read the history at all - asked only then.
         if (holds(userDetails, "FILE_HISTORY_PAGE")) {
             model.addAttribute("history", fileHistoryService.ofFile(fileInfoDTO.getExternalId()));

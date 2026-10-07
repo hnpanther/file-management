@@ -8,6 +8,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.hnp.filemanagement.shared.metadata.MetadataDocument;
+import com.hnp.filemanagement.shared.metadata.MetadataRules;
 
 /**
  * Files and their revisions as the pages and the v1 API show them (issue 29).
@@ -55,6 +57,7 @@ public final class FileMapper {
         dto.setCreatedBy(revision.getCreatedBy().getUsername());
         dto.setFileInfoId(revision.getFileInfo().getId());
         dto.setCreatedAt(revision.getCreatedAt());
+        dto.setMetadata(MetadataDocument.ofStored(revision.getMetadata()).map(MetadataRules::treeOf).orElse(null));
         return dto;
     }
 
@@ -153,6 +156,7 @@ public final class FileMapper {
         dto.setFileExtension(revision.getFileExtension());
         dto.setContentType(revision.getContentType());
         dto.setDescription(revision.getDescription());
+        dto.setMetadata(revision.getMetadata());
         return dto;
     }
 

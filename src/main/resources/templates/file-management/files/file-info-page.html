@@ -26,6 +26,7 @@
             </a>
         </div>
     </header>
+    <div th:if="${metadataSaved != null}" class="alert alert-success" role="status" id="metadata-saved" th:text="${metadataSaved}"></div>
     <div class="detail-layout">
         <section class="card min-w-0" aria-labelledby="file-metadata-title">
             <div class="card-body">
@@ -65,6 +66,16 @@
                         </dd>
                     </div>
                 </dl>
+                <!-- The file's metadata - its newest revision's (roadmap 12.2) - and where to change it. -->
+                <div class="form-section" id="file-metadata">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <h3 class="text-sm font-medium" th:text="#{metadata.title}">متادیتا</h3>
+                        <a sec:authorize="hasAuthority('EDIT_FILE_METADATA') || hasAuthority('ADMIN')"
+                           th:href="@{/files/file-info/{id}/metadata(id=${file.getId()})}" id="edit-file-metadata"
+                           class="btn btn-sm btn-outline-secondary" th:text="#{metadata.edit}">ویرایش متادیتا</a>
+                    </div>
+                    <div th:replace="~{fragments.html :: metadata-table(${currentMetadata})}"></div>
+                </div>
                 <div class="form-section">
                     <label class="block mb-2 text-sm font-medium" for="description" th:text="#{file.titleDescription}"></label>
                     <input th:value="${file.getDescription()}" class="form-control description" type="text" name="description" id="description">
@@ -159,6 +170,11 @@
                             <dd th:text="${fd.createdByApiKey != null} ? #{field.createdByApiKey(${fd.createdByApiKey})} : ${fd.getCreatedBy()}"></dd>
                         </div>
                     </dl>
+                    <!-- Each revision's own metadata: older versions keep what they were filed with. -->
+                    <details class="revision-metadata-details" th:if="${fd.getMetadata() != null}">
+                        <summary th:text="#{metadata.ofRevision}">متادیتای این نسخه</summary>
+                        <div th:replace="~{fragments.html :: metadata-table(${fd.getMetadata()})}"></div>
+                    </details>
                     <div class="revision-external-id" x-data="{ copied: false }"
                          sec:authorize="hasAuthority('VIEW_FILE_EXTERNAL_ID') || hasAuthority('ADMIN')">
                         <i class="bi bi-fingerprint" aria-hidden="true"></i>
@@ -186,6 +202,9 @@
                                 class="btn btn-sm btn-outline-secondary" type="button" th:text="#{file.newVersion}">نسخهٔ جدید</a>
                             <button sec:authorize="hasAuthority('REST_CHANGE_STATE_FILE_DETAILS') || hasAuthority('ADMIN')"
                                 class="btn btn-sm btn-outline-secondary" th:onclick="changeFileDetailsState(/*[[${fd.getId()}]]*/, /*[[${fd.getState}]]*/)" type="button" th:text="${fd.getState() == 0} ? #{state.public} : #{state.private}"></button>
+                            <a sec:authorize="hasAuthority('EDIT_FILE_METADATA') || hasAuthority('ADMIN')"
+                               th:href="@{/files/file-details/{id}/metadata(id=${fd.getId()})}"
+                               class="btn btn-sm btn-outline-secondary" th:text="#{metadata.editShort}">متادیتا</a>
                             <button sec:authorize="hasAuthority('CREATE_SHARE_LINK') || hasAuthority('ADMIN')"
                                 class="btn btn-sm btn-outline-secondary" type="button"
                                 th:attr="data-file-details-id=${fd.getId()},data-label=${fd.getFileName() + ' v' + fd.getVersion()}"

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{metadata.queue.title}">پوشه‌های بدون متادیتا</title>
+</head>
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<!--
+  The queue (roadmap 12.3): a folder's children nobody has described yet, newest first - under ERP,
+  the person folders the ERP's uploads made. Fifty a page, a page at a time however many there are.
+-->
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{metadata.queue.title}">پوشه‌های بدون متادیتا</div>
+        <h1 class="break-words" dir="auto" th:text="${folder.title()}"></h1>
+        <p class="page-description" th:text="#{metadata.queue.description}"></p>
+    </header>
+
+    <section class="card">
+        <div class="card-body">
+            <p th:if="${queue.content.isEmpty()}" class="field-hint" id="queue-empty" th:text="#{metadata.queue.empty}">همهٔ زیرپوشه‌ها متادیتا دارند.</p>
+            <table th:unless="${queue.content.isEmpty()}" class="table" id="queue">
+                <thead>
+                <tr>
+                    <th scope="col" th:text="#{field.folder}">پوشه</th>
+                    <th scope="col" th:text="#{field.createdAt}">زمان ایجاد</th>
+                    <th scope="col"></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="each : ${queue.content}">
+                    <td dir="auto">
+                        <span class="technical" th:text="${each.name()}"></span>
+                        <span th:if="${each.displayName() != null && each.displayName() != each.name()}" class="text-ink-500"
+                              th:text="${each.displayName()}"></span>
+                    </td>
+                    <td class="technical" dir="ltr" th:text="${@jalali.format(each.createdAt())}"></td>
+                    <td><a class="btn btn-sm btn-primary" th:href="@{/files/folders/{id}/metadata(id=${each.id()})}"
+                           th:text="#{metadata.queue.describe}">ثبت متادیتا</a></td>
+                </tr>
+                </tbody>
+            </table>
+            <nav class="flex gap-2 mt-3" th:if="${page > 0 || queue.hasNext()}">
+                <a th:if="${page > 0}" class="btn btn-sm btn-outline-secondary"
+                   th:href="@{/files/folders/{id}/undescribed(id=${folder.folderId()},page=${page - 1})}"
+                   th:text="#{metadata.queue.previous}">قبلی</a>
+                <a th:if="${queue.hasNext()}" class="btn btn-sm btn-outline-secondary" id="queue-next"
+                   th:href="@{/files/folders/{id}/undescribed(id=${folder.folderId()},page=${page + 1})}"
+                   th:text="#{metadata.queue.next}">بعدی</a>
+            </nav>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

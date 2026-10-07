@@ -739,6 +739,126 @@
         refreshVisibility();
     }
 
+    /**
+     * The metadata editor (roadmap 12.2, 12.3): a document as rows of a key and a text value, or as
+     * JSON for what rows cannot say - a nested value, a number, a list. Whichever is on screen is
+     * what the hidden `metadata` field posts: rows as a JSON object, nothing for no row. The server
+     * checks it (MetadataRules) and says which rule it breaks; what is checked here only saves a
+     * round trip.
+     *
+     * config: { initial: "<the document as JSON, or empty>", copy: { invalid, notFlat, duplicate } }
+     */
+    window.metadataEditor = function (config) {
+        function isFlat(doc) {
+            return doc !== null && typeof doc === "object" && !Array.isArray(doc)
+                && Object.keys(doc).every(function (key) { return typeof doc[key] === "string"; });
+        }
+        return {
+            mode: "rows",
+            rows: [],
+            text: "",
+            error: "",
+
+            init: function () {
+                var initial = (config.initial || "").trim();
+                this.text = initial;
+                if (!initial) {
+                    this.rows = [{ key: "", value: "" }];
+                    return;
+                }
+                try {
+                    var doc = JSON.parse(initial);
+                    if (isFlat(doc)) {
+                        this.rows = Object.keys(doc).map(function (key) { return { key: key, value: doc[key] }; });
+                    } else {
+                        this.mode = "json";
+                    }
+                } catch (e) {
+                    this.mode = "json";
+                }
+                if (!this.rows.length) {
+                    this.rows = [{ key: "", value: "" }];
+                }
+            },
+            addRow: function () {
+                this.rows.push({ key: "", value: "" });
+            },
+            removeRow: function (index) {
+                this.rows.splice(index, 1);
+                if (!this.rows.length) {
+                    this.addRow();
+                }
+            },
+            rowsDocument: function () {
+                var doc = {};
+                var duplicate = false;
+                this.rows.forEach(function (row) {
+                    var key = (row.key || "").trim();
+                    if (!key) {
+                        return;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(doc, key)) {
+                        duplicate = true;
+                    }
+                    doc[key] = row.value || "";
+                });
+                return { doc: doc, duplicate: duplicate };
+            },
+            toJson: function () {
+                var built = this.rowsDocument();
+                this.text = Object.keys(built.doc).length ? JSON.stringify(built.doc, null, 2) : "";
+                this.error = "";
+                this.mode = "json";
+            },
+            toRows: function () {
+                var doc;
+                try {
+                    doc = this.text.trim() ? JSON.parse(this.text) : {};
+                } catch (e) {
+                    this.error = config.copy.invalid;
+                    return;
+                }
+                if (!isFlat(doc)) {
+                    this.error = config.copy.notFlat;
+                    return;
+                }
+                this.rows = Object.keys(doc).map(function (key) { return { key: key, value: doc[key] }; });
+                if (!this.rows.length) {
+                    this.addRow();
+                }
+                this.error = "";
+                this.mode = "rows";
+            },
+            /** What the hidden field posts. */
+            get value() {
+                if (this.mode === "json") {
+                    return this.text.trim();
+                }
+                var built = this.rowsDocument();
+                return Object.keys(built.doc).length ? JSON.stringify(built.doc) : "";
+            },
+            /** Checked as the form is sent: a refusal here keeps what was typed on screen. */
+            check: function (event) {
+                this.error = "";
+                if (this.mode === "rows" && this.rowsDocument().duplicate) {
+                    this.error = config.copy.duplicate;
+                } else if (this.mode === "json" && this.text.trim()) {
+                    try {
+                        var doc = JSON.parse(this.text);
+                        if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
+                            this.error = config.copy.invalid;
+                        }
+                    } catch (e) {
+                        this.error = config.copy.invalid;
+                    }
+                }
+                if (this.error) {
+                    event.preventDefault();
+                }
+            }
+        };
+    };
+
     window.initFolderGrantTrees = function () {
         document.querySelectorAll("[data-folder-grant-tree]").forEach(initFolderGrantTree);
     };

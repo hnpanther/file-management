@@ -4,6 +4,7 @@ import com.hnp.filemanagement.shared.exception.BusinessException;
 import com.hnp.filemanagement.shared.exception.DependencyResourceException;
 import com.hnp.filemanagement.shared.exception.DuplicateResourceException;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
+import com.hnp.filemanagement.shared.exception.PreconditionFailedException;
 import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.shared.exception.StorageUnavailableException;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
@@ -80,7 +81,8 @@ public class GlobalExceptionHandler {
     // ------------------------------------------------------------------ domain failures
 
     @ExceptionHandler({ResourceNotFoundException.class, DuplicateResourceException.class,
-            DependencyResourceException.class, BusinessException.class, InvalidDataException.class})
+            DependencyResourceException.class, BusinessException.class, InvalidDataException.class,
+            PreconditionFailedException.class})
     public Object domainException(RuntimeException e, @AuthenticationPrincipal UserDetailsImpl principal,
                                   HttpServletRequest request) {
 
