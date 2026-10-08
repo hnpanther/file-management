@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.10`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.11`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -555,6 +555,43 @@ _As of migration `V3.10`. Types and defaults are PostgreSQL's own; every table i
 * **foreign key** `fk_role_folder_role` `role_id` → `role` (`id`), on delete cascade
 * **index** `fk_role_folder_folder` (`folder_id`)
 * **index** `ix_role_folder_role` (`role_id`)
+
+### `s3_multipart_part`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `upload_id` | `bigint` | no |  |  |
+| `part_number` | `integer` | no |  |  |
+| `file_name` | `varchar(100)` | no |  |  |
+| `size` | `bigint` | no |  |  |
+| `md5` | `varchar(32)` | no |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+
+* **primary key** `upload_id`, `part_number`
+* **foreign key** `fk_s3_multipart_part_upload` `upload_id` → `s3_multipart_upload` (`id`), on delete cascade
+
+### `s3_multipart_upload`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `bigint` | no |  | identity |
+| `upload_id` | `varchar(64)` | no |  |  |
+| `api_key_id` | `integer` | no |  |  |
+| `user_id` | `integer` | no |  |  |
+| `bucket` | `varchar(255)` | no |  |  |
+| `object_key` | `varchar(1024)` | no |  |  |
+| `content_type` | `varchar(255)` | yes |  |  |
+| `metadata` | `jsonb` | yes |  |  |
+| `max_bytes` | `bigint` | no |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+
+* **primary key** `id`
+* **unique** `uq_s3_multipart_upload_upload_id` (`upload_id`)
+* **foreign key** `fk_s3_multipart_upload_api_key` `api_key_id` → `api_key` (`id`), on delete cascade
+* **foreign key** `fk_s3_multipart_upload_user` `user_id` → `app_user` (`id`), on delete cascade
+* **index** `fk_s3_multipart_upload_api_key` (`api_key_id`, `bucket`, `object_key`, `id`)
+* **index** `fk_s3_multipart_upload_user` (`user_id`)
+* **index** `ix_s3_multipart_upload_created_at` (`created_at`)
 
 ### `tag`
 

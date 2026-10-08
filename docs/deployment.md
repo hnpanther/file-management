@@ -746,6 +746,24 @@ to check a request. So it is stored encrypted (AES-256-GCM), under one **master 
 installation, which is never in the database. Without it no S3 key can be made or used; v1 keys need
 none.
 
+> **The value in the committed `application.properties` is a test key, not a production one.** The
+> line `filemanagement.s3-api.secret-encryption-key=${FILEMANAGEMENT_S3_SECRET_ENCRYPTION_KEY:…}`
+> carries a default so that a development machine and the first trials work without setting
+> anything - and it is in the git history, so anyone who can read the repository has it. **Every
+> production installation sets its own** (below) and must not run on that default: with it, whoever
+> has the repository and a copy of the database can read every S3 key's secret. An installation that
+> has been running on the default makes its own now - and then, because the secrets were encrypted
+> under the old one, its S3 keys are made again (or their secrets re-encrypted by a tool that reads
+> with the old key and writes with the new; there is none yet) and the new secrets given to their
+> clients. Check before the next upgrade:
+>
+> ```bash
+> grep -c FILEMANAGEMENT_S3_SECRET_ENCRYPTION_KEY /etc/file-management.env
+> ```
+>
+> `0` means the installation runs on the test key (on Windows: the service's environment, or the
+> `application.properties` beside the jar, has no such line).
+
 **Make it once**, on any machine with OpenSSL (every Linux server has it; on Windows, Git Bash):
 
 ```bash
@@ -769,6 +787,26 @@ setting; it never starts half-working.
 database restored without it has S3 keys nobody can use. Lost or changed, every S3 key must be made
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
+
+### Upgrading from 2.13.0 to 2.14.0 — multipart upload on the S3 surface
+
+A jar swap with **one migration, `V3.11`**: two new, empty tables for the uploads in progress
+(`s3_multipart_upload`, `s3_multipart_part`). Two optional settings,
+`filemanagement.s3-api.multipart.expire-hours` (24) and `max-open-uploads` (20).
+
+* **`aws s3 cp`, `sync` and `rclone` send a file above 8 MB in parts now** - and it works: a client
+  configured with a raised `multipart_threshold` (or `--s3-upload-cutoff`) to avoid the `501` it got
+  before may drop it.
+* **The parts wait in the upload temporary directory** while an upload is in progress. **Set
+  `FILEMANAGEMENT_UPLOAD_TEMP_DIR`** (section 1) if it is not set yet: Tomcat's own directory is new at
+  every start, so a restart in the middle of a large upload would lose its parts (the client then
+  sends the file again). Room for it: each upload in progress may hold up to the upload cap, a key up to
+  20 of them at once; an abandoned one is removed after a day.
+* **Nothing else changes** for v1, the pages or a single `PUT`.
+
+**Rollback** is the 2.13.0 jar: it reads neither table. Uploads in progress at the time are lost -
+their clients send the files again - and their parts stay in `s3-multipart/` until removed by hand
+or by 2.14.0's next start.
 
 ### Upgrading from 2.12.0 to 2.13.0 — metadata of files and folders
 

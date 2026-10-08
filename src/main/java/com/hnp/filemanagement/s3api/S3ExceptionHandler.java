@@ -54,6 +54,26 @@ public class S3ExceptionHandler {
         return answer(S3Errors.Error.NOT_IMPLEMENTED, e.getMessage(), request);
     }
 
+    @ExceptionHandler(S3MultipartService.NoSuchUpload.class)
+    ResponseEntity<String> noSuchUpload(S3MultipartService.NoSuchUpload e, HttpServletRequest request) {
+        return answer(S3Errors.Error.NO_SUCH_UPLOAD, null, request);
+    }
+
+    @ExceptionHandler(S3MultipartService.InvalidPart.class)
+    ResponseEntity<String> invalidPart(S3MultipartService.InvalidPart e, HttpServletRequest request) {
+        return answer(S3Errors.Error.INVALID_PART, e.getMessage(), request);
+    }
+
+    @ExceptionHandler(S3MultipartService.InvalidPartOrder.class)
+    ResponseEntity<String> invalidPartOrder(S3MultipartService.InvalidPartOrder e, HttpServletRequest request) {
+        return answer(S3Errors.Error.INVALID_PART_ORDER, e.getMessage(), request);
+    }
+
+    @ExceptionHandler(S3MultipartService.BadDigest.class)
+    ResponseEntity<String> badDigest(S3MultipartService.BadDigest e, HttpServletRequest request) {
+        return answer(S3Errors.Error.BAD_DIGEST, null, request);
+    }
+
     @ExceptionHandler(S3Metadata.TooLarge.class)
     ResponseEntity<String> metadataTooLarge(S3Metadata.TooLarge e, HttpServletRequest request) {
         return answer(S3Errors.Error.METADATA_TOO_LARGE, null, request);

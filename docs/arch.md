@@ -678,7 +678,10 @@ the folder from environment variables and never holds a credential in the file.
   pre-signed URL, checked against an `S3` key's secret (`ApiKeyService.s3Credential`, decrypted by
   `S3SecretCipher`); on success a principal like a bearer key's - its creator, the key's id beside
   them, the `API_KEY` authority. Refusals, the filter's and the chain's, are S3's XML (`S3Errors`).
-  What it serves, and how, is [api-s3.md](api-s3.md).
+  What it serves, and how, is [api-s3.md](api-s3.md). A multipart upload (2.14.0,
+  `S3MultipartService`) keeps its parts as files in the upload temporary directory and its state in
+  `s3_multipart_upload` / `s3_multipart_part`; completed, it is one `S3ObjectService.put` of the
+  parts read as one body (`S3PartsBody`) - no second path for a file to be stored by.
 
 * **`@Order(0)` `actuatorSecurityFilterChain`** — `securityMatcher("/actuator/**")`, stateless,
   permits `/actuator/health`, `/actuator/health/**` and `/actuator/info` and refuses everything else

@@ -107,6 +107,10 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 * **An S3 handler takes only the query parameters it understands** (`S3Controller.asksWhatIsNotServed`,
   issue 116): a sub-resource it ignored ran as the plain operation - `DELETE …?tagging` deleted the
   file. A new S3 operation names its parameters there; anything else stays a 501.
+* **A multipart upload is completed by `S3ObjectService.put`** (2.14.0) - its parts read as one body
+  (`S3PartsBody`), never stored by a path of their own, so the checks, the versions and the records
+  are a `PUT`'s. A part is a file named in its row, written before the row under the upload's lock;
+  an upload is one key's (`NoSuchUpload` to any other).
 * **Metadata is checked by `MetadataRules` and written through `FileMetadataService` /
   `FolderMetadataService`** (or an upload's own path) - never set on `FileDetails.metadata` or
   `Folder.metadata` elsewhere: those are what check access, record the change with both documents and

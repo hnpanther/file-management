@@ -169,7 +169,15 @@ final class S3Xml {
     }
 
     static DeleteRequest readDelete(byte[] body) {
-        Document document;
+        Element root = parse(body).getDocumentElement();
+        if (!"Delete".equals(root.getLocalName())) {
+            throw new MalformedXml("the root element is not Delete");
+        }
+        return delete(root);
+    }
+
+    /** A request body as XML - no DTD, no external entity, no XInclude - or {@link MalformedXml}. */
+    private static Document parse(byte[] body) {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
@@ -184,14 +192,13 @@ final class S3Xml {
             factory.setNamespaceAware(true);
             DocumentBuilder builder = factory.newDocumentBuilder();
             builder.setErrorHandler(null);
-            document = builder.parse(new ByteArrayInputStream(body));
+            return builder.parse(new ByteArrayInputStream(body));
         } catch (Exception e) {
             throw new MalformedXml("the body is not XML S3 would take: " + e.getMessage());
         }
-        Element root = document.getDocumentElement();
-        if (!"Delete".equals(root.getLocalName())) {
-            throw new MalformedXml("the root element is not Delete");
-        }
+    }
+
+    private static DeleteRequest delete(Element root) {
         boolean quiet = false;
         List<ToDelete> objects = new ArrayList<>();
         NodeList children = root.getChildNodes();
@@ -219,6 +226,123 @@ final class S3Xml {
     private static String text(Element parent, String name) {
         NodeList found = parent.getElementsByTagNameNS("*", name);
         return found.getLength() == 0 ? null : found.item(0).getTextContent();
+    }
+
+    // ---------------------------------------------------------------- multipart upload (roadmap 9.10 step 5)
+
+    /** The most parts one upload has, and one completion names - S3's. */
+    static final int MAX_PARTS = 10_000;
+
+    /** A part as a {@code CompleteMultipartUpload} names it: its number and the entity tag it was answered. */
+    record CompletedPart(int partNumber, String etag) {
+    }
+
+    /**
+     * A {@code CompleteMultipartUpload} body: the parts, each a {@code PartNumber} and an
+     * {@code ETag}, as many as 10,000 and at least one. Their order and their tags are the upload's
+     * to judge ({@code InvalidPartOrder}, {@code InvalidPart}); a body that is not this is
+     * {@code MalformedXML}. A part's checksums, if the client sends them, are not read: each part's
+     * bytes were checked against their signature when they arrived.
+     */
+    static List<CompletedPart> readComplete(byte[] body) {
+        Element root = parse(body).getDocumentElement();
+        if (!"CompleteMultipartUpload".equals(root.getLocalName())) {
+            throw new MalformedXml("the root element is not CompleteMultipartUpload");
+        }
+        List<CompletedPart> parts = new ArrayList<>();
+        NodeList children = root.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            if (!(children.item(i) instanceof Element part) || !"Part".equals(part.getLocalName())) {
+                continue;
+            }
+            String number = text(part, "PartNumber");
+            String etag = text(part, "ETag");
+            if (number == null || etag == null || etag.isBlank()) {
+                throw new MalformedXml("a Part without its PartNumber or its ETag");
+            }
+            try {
+                parts.add(new CompletedPart(Integer.parseInt(number.trim()), etag.trim()));
+            } catch (NumberFormatException e) {
+                throw new MalformedXml("a PartNumber that is not a number");
+            }
+            if (parts.size() > MAX_PARTS) {
+                throw new MalformedXml("more than " + MAX_PARTS + " parts");
+            }
+        }
+        if (parts.isEmpty()) {
+            throw new MalformedXml("a completion names no part");
+        }
+        return parts;
+    }
+
+    static String initiated(String bucket, String key, String uploadId) {
+        StringBuilder xml = new StringBuilder(DECLARATION).append("<InitiateMultipartUploadResult xmlns=\"")
+                .append(NAMESPACE).append("\">");
+        element(xml, "Bucket", bucket);
+        element(xml, "Key", key);
+        element(xml, "UploadId", uploadId);
+        return xml.append("</InitiateMultipartUploadResult>").toString();
+    }
+
+    static String completed(String location, String bucket, String key, String etag) {
+        StringBuilder xml = new StringBuilder(DECLARATION).append("<CompleteMultipartUploadResult xmlns=\"")
+                .append(NAMESPACE).append("\">");
+        element(xml, "Location", location);
+        element(xml, "Bucket", bucket);
+        element(xml, "Key", key);
+        element(xml, "ETag", etag);
+        return xml.append("</CompleteMultipartUploadResult>").toString();
+    }
+
+    /** {@code ListParts}: a page of an upload's parts, after a part number. */
+    static String listParts(String bucket, String key, String uploadId, int marker, int maxParts,
+                            List<S3MultipartRepository.Part> parts, boolean truncated) {
+        StringBuilder xml = new StringBuilder(DECLARATION).append("<ListPartsResult xmlns=\"").append(NAMESPACE).append("\">");
+        element(xml, "Bucket", bucket);
+        element(xml, "Key", key);
+        element(xml, "UploadId", uploadId);
+        element(xml, "PartNumberMarker", String.valueOf(marker));
+        if (truncated) {
+            element(xml, "NextPartNumberMarker", String.valueOf(parts.getLast().partNumber()));
+        }
+        element(xml, "MaxParts", String.valueOf(maxParts));
+        element(xml, "IsTruncated", String.valueOf(truncated));
+        element(xml, "StorageClass", "STANDARD");
+        for (S3MultipartRepository.Part part : parts) {
+            xml.append("<Part>");
+            element(xml, "PartNumber", String.valueOf(part.partNumber()));
+            element(xml, "LastModified", ISO_MILLIS.format(part.createdAt()));
+            element(xml, "ETag", "\"" + part.md5() + "\"");
+            element(xml, "Size", String.valueOf(part.size()));
+            xml.append("</Part>");
+        }
+        return xml.append("</ListPartsResult>").toString();
+    }
+
+    /** {@code ListMultipartUploads}: a page of the key's uploads in progress in a bucket. */
+    static String listUploads(String bucket, String prefix, String keyMarker, String uploadIdMarker, int maxUploads,
+                              List<S3MultipartRepository.Upload> uploads, boolean truncated) {
+        StringBuilder xml = new StringBuilder(DECLARATION).append("<ListMultipartUploadsResult xmlns=\"")
+                .append(NAMESPACE).append("\">");
+        element(xml, "Bucket", bucket);
+        element(xml, "KeyMarker", keyMarker);
+        element(xml, "UploadIdMarker", uploadIdMarker);
+        if (truncated) {
+            element(xml, "NextKeyMarker", uploads.getLast().objectKey());
+            element(xml, "NextUploadIdMarker", uploads.getLast().uploadId());
+        }
+        element(xml, "Prefix", prefix);
+        element(xml, "MaxUploads", String.valueOf(maxUploads));
+        element(xml, "IsTruncated", String.valueOf(truncated));
+        for (S3MultipartRepository.Upload upload : uploads) {
+            xml.append("<Upload>");
+            element(xml, "Key", upload.objectKey());
+            element(xml, "UploadId", upload.uploadId());
+            element(xml, "StorageClass", "STANDARD");
+            element(xml, "Initiated", ISO_MILLIS.format(upload.createdAt()));
+            xml.append("</Upload>");
+        }
+        return xml.append("</ListMultipartUploadsResult>").toString();
     }
 
     /** One outcome of a {@code DeleteObjects}: deleted, or why not. */

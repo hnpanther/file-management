@@ -38,6 +38,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -67,16 +68,19 @@ public class S3Controller {
     private final DownloadAudit downloadAudit;
     private final GlobalGeneralLogging globalGeneralLogging;
     private final MetadataRules metadataRules;
+    private final S3MultipartService multipartService;
 
     public S3Controller(S3ObjectService objectService, UploadPolicyService uploadPolicyService,
                         UploadTempDirectory uploadTempDirectory, DownloadAudit downloadAudit,
-                        GlobalGeneralLogging globalGeneralLogging, MetadataRules metadataRules) {
+                        GlobalGeneralLogging globalGeneralLogging, MetadataRules metadataRules,
+                        S3MultipartService multipartService) {
         this.objectService = objectService;
         this.uploadPolicyService = uploadPolicyService;
         this.uploadTempDirectory = uploadTempDirectory;
         this.downloadAudit = downloadAudit;
         this.globalGeneralLogging = globalGeneralLogging;
         this.metadataRules = metadataRules;
+        this.multipartService = multipartService;
     }
 
     /** {@code PutObject}, or a folder's {@code key/} with an empty body. */
@@ -95,8 +99,16 @@ public class S3Controller {
             // CreateBucket: a bucket is a top-level folder, made on the web.
             return notImplemented(request);
         }
+        if (request.getParameter("uploadId") != null) {
+            if (asksWhatIsNotServed(request, Set.of("uploadId", "partNumber")) || request.getParameter("partNumber") == null
+                    || request.getHeader("x-amz-copy-source") != null) {
+                // UploadPartCopy, or a part without its number: not served.
+                return notImplemented(request);
+            }
+            return uploadPart(bucket, key, request, context);
+        }
         if (asksWhatIsNotServed(request, Set.of()) || request.getHeader("x-amz-copy-source") != null) {
-            // PutObjectTagging, PutObjectAcl, UploadPart, CopyObject, ...: never an upload of the body.
+            // PutObjectTagging, PutObjectAcl, a part without its upload, CopyObject, ...: never an upload of the body.
             return notImplemented(request);
         }
         if (key.endsWith("/")) {
@@ -156,6 +168,12 @@ public class S3Controller {
         String key = keyOf(rawKey);
         if (key.isEmpty()) {
             return bucket(userDetails, bucket, request);
+        }
+        if (request.getParameter("uploadId") != null) {
+            if (asksWhatIsNotServed(request, Set.of("uploadId", "max-parts", "part-number-marker"))) {
+                return notImplemented(request);
+            }
+            return listParts(bucket, key, request);
         }
         if (asksWhatIsNotServed(request, READ_PARAMETERS)) {
             // GetObjectTagging, GetObjectAcl, a part, ...: never the object's bytes in their place.
@@ -226,6 +244,14 @@ public class S3Controller {
             // DeleteBucket: never through a key.
             return notImplemented(request);
         }
+        if (request.getParameter("uploadId") != null) {
+            if (asksWhatIsNotServed(request, Set.of("uploadId"))) {
+                return notImplemented(request);
+            }
+            globalGeneralLogging.detail("s3 abort multipart upload bucket=" + bucket + ", key=" + key);
+            multipartService.abort(bucket, key, request.getParameter("uploadId"), context(request).apiKey());
+            return ResponseEntity.noContent().build();
+        }
         if (asksWhatIsNotServed(request, Set.of("versionId"))) {
             // DeleteObjectTagging, AbortMultipartUpload, ...: never a deletion of the object itself.
             return notImplemented(request);
@@ -241,15 +267,102 @@ public class S3Controller {
     }
 
     /**
-     * A {@code POST} to an object, or to a bucket without {@code ?delete}: a multipart upload
-     * ({@code ?uploads}, {@code ?uploadId}), a restore, a select, a browser's form upload - none
-     * served here, and said so with S3's 501 rather than a bare 405 the clients do not explain.
+     * A {@code POST} to an object: {@code CreateMultipartUpload} ({@code ?uploads}) and
+     * {@code CompleteMultipartUpload} ({@code ?uploadId}) - {@link S3MultipartService}. Anything else -
+     * a restore, a select, a browser's form upload, a {@code POST} to a bucket without {@code ?delete}
+     * - is not served, and said so with S3's 501 rather than a bare 405 the clients do not explain.
      */
     //API_KEY
     @PreAuthorize("hasAuthority('API_KEY') || hasAuthority('ADMIN')")
     @PostMapping("/{bucket}/{*key}")
-    public ResponseEntity<String> post(HttpServletRequest request) {
+    public ResponseEntity<String> post(@AuthenticationPrincipal UserDetailsImpl userDetails,
+                                       @PathVariable("bucket") String bucket,
+                                       @PathVariable("key") String rawKey,
+                                       @RequestHeader(value = HttpHeaders.CONTENT_TYPE, required = false) String contentType,
+                                       @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch,
+                                       HttpServletRequest request) throws IOException {
+        String key = keyOf(rawKey);
+        if (key.isEmpty() || key.endsWith("/")) {
+            return notImplemented(request);
+        }
+        S3RequestContext context = context(request);
+        if (request.getParameter("uploads") != null && !asksWhatIsNotServed(request, Set.of("uploads"))) {
+            // Read and checked now, as S3 takes an object's metadata: with the upload's beginning.
+            String metadata = S3Metadata.ofRequest(request, metadataRules).orElse(null);
+            globalGeneralLogging.detail("s3 create multipart upload bucket=" + bucket + ", key=" + key);
+            String uploadId = multipartService.create(bucket, key, contentType, metadata, context.apiKey(), userDetails.getId());
+            return xmlOk(S3Xml.initiated(bucket, key, uploadId));
+        }
+        if (request.getParameter("uploadId") != null && !asksWhatIsNotServed(request, Set.of("uploadId"))) {
+            byte[] body = readBounded(request, context, MAX_COMPLETE_BODY);
+            List<S3Xml.CompletedPart> parts = S3Xml.readComplete(body);
+            globalGeneralLogging.detail("s3 complete multipart upload bucket=" + bucket + ", key=" + key + ", parts=" + parts.size());
+            S3ObjectService.Stored stored = multipartService.complete(bucket, key, request.getParameter("uploadId"), parts,
+                    ifNoneMatch, context.apiKey(), userDetails.getId());
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_XML)
+                    .header("x-amz-version-id", stored.versionId())
+                    .body(S3Xml.completed(request.getRequestURL().toString(), bucket, key, eTagOf(stored.checksumSha256())));
+        }
         return notImplemented(request);
+    }
+
+    /** Ten thousand parts and their tags, and the markup: what S3 itself takes. */
+    private static final int MAX_COMPLETE_BODY = 2 * 1024 * 1024;
+
+    /** {@code UploadPart}: the part's bytes as they were signed, to its own file - its MD5 is its entity tag. */
+    private ResponseEntity<String> uploadPart(String bucket, String key, HttpServletRequest request, S3RequestContext context)
+            throws IOException {
+        int partNumber;
+        try {
+            partNumber = Integer.parseInt(request.getParameter("partNumber"));
+        } catch (NumberFormatException e) {
+            throw new com.hnp.filemanagement.shared.exception.InvalidDataException("partNumber is a number");
+        }
+        long declared = AwsChunkedInputStream.isChunked(context.payloadHash())
+                ? headerLong(request, "x-amz-decoded-content-length") : request.getContentLengthLong();
+        globalGeneralLogging.detail("s3 upload part bucket=" + bucket + ", key=" + key + ", part=" + partNumber
+                + ", bytes=" + declared);
+        String etag;
+        try (InputStream in = payload(request, context)) {
+            etag = multipartService.uploadPart(bucket, key, request.getParameter("uploadId"), partNumber, in, declared,
+                    request.getHeader("Content-MD5"), context.apiKey());
+        }
+        return ResponseEntity.ok().eTag(etag).build();
+    }
+
+    /** {@code ListParts}: a page of an upload's parts, up to 1,000 - S3's default and most. */
+    private ResponseEntity<String> listParts(String bucket, String key, HttpServletRequest request) {
+        int maxParts = Math.max(1, Math.min(1000, intParameter(request, "max-parts", 1000)));
+        int marker = Math.max(0, intParameter(request, "part-number-marker", 0));
+        globalGeneralLogging.detail("s3 list parts bucket=" + bucket + ", key=" + key);
+        S3MultipartService.PartsPage page = multipartService.listParts(bucket, key, request.getParameter("uploadId"),
+                marker, maxParts, context(request).apiKey());
+        return xmlOk(S3Xml.listParts(bucket, key, page.upload().uploadId(), marker, maxParts, page.parts(), page.truncated()));
+    }
+
+    private static int intParameter(HttpServletRequest request, String name, int fallback) {
+        String value = request.getParameter(name);
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            throw new com.hnp.filemanagement.shared.exception.InvalidDataException(name + " is a number");
+        }
+    }
+
+    /** A request body read whole, at most {@code max} bytes, and to its end - so a signed body's hash is checked. */
+    private static byte[] readBounded(HttpServletRequest request, S3RequestContext context, int max) throws IOException {
+        try (InputStream in = payload(request, context)) {
+            byte[] body = in.readNBytes(max + 1);
+            if (body.length > max) {
+                throw new S3Xml.MalformedXml("a body of more than " + max + " bytes");
+            }
+            in.transferTo(java.io.OutputStream.nullOutputStream());
+            return body;
+        }
     }
 
     // ---------------------------------------------------------------- a bucket
@@ -278,11 +391,29 @@ public class S3Controller {
             return xmlOk(XML_DECLARATION + "<VersioningConfiguration xmlns=\"" + NAMESPACE
                     + "\"><Status>Enabled</Status></VersioningConfiguration>");
         }
+        if (request.getParameter("uploads") != null) {
+            if (asksWhatIsNotServed(request, Set.of("uploads", "prefix", "key-marker", "upload-id-marker", "max-uploads",
+                    "encoding-type")) || request.getParameter("delimiter") != null) {
+                return notImplemented(request);
+            }
+            return listUploads(userDetails, bucket, request);
+        }
         if (asksWhatIsNotServed(request, LISTING_PARAMETERS)) {
             // A sub-resource - uploads, versions, acl, policy, tagging, ... - not served here.
             return notImplemented(request);
         }
         return list(userDetails, bucket, request);
+    }
+
+    /** {@code ListMultipartUploads}: this key's uploads in progress in the bucket, up to 1,000 a page. */
+    private ResponseEntity<String> listUploads(UserDetailsImpl userDetails, String bucket, HttpServletRequest request) {
+        int maxUploads = Math.max(1, Math.min(1000, intParameter(request, "max-uploads", 1000)));
+        String prefix = nullToEmpty(request.getParameter("prefix"));
+        String keyMarker = nullToEmpty(request.getParameter("key-marker"));
+        String uploadIdMarker = nullToEmpty(request.getParameter("upload-id-marker"));
+        S3MultipartService.UploadsPage page = multipartService.listUploads(bucket, prefix, keyMarker, uploadIdMarker,
+                maxUploads, context(request).apiKey(), userDetails.getId());
+        return xmlOk(S3Xml.listUploads(bucket, prefix, keyMarker, uploadIdMarker, maxUploads, page.uploads(), page.truncated()));
     }
 
     /** What a listing may be asked with; any other parameter names a sub-resource this does not serve. */
