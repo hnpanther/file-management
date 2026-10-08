@@ -55,6 +55,21 @@ public enum PermissionEnum {
 
     // ===================================================================================================
 
+    // ContentSearchController @RequestMapping("/files") (roadmap 11.2 - 2.15.0) ==========================
+    //@GetMapping("content-search") - search the text of files, read by Tika: each result with the pages it
+    //matched on; only files in folders the person may read. Given on its own, not with USER.
+    SEARCH_FILE_CONTENTS,
+
+    // ContentExtractionController @RequestMapping("/settings/content-extraction") (roadmap 11.2 - 2.15.0) ===
+    //@GetMapping - how many revisions are read, waiting, failed; whether the worker runs and Tika answers;
+    //the failures with their reason (of files the person may open)
+    CONTENT_EXTRACTION_PAGE,
+
+    //@PostMapping("{fileDetailsId}/retry"), @PostMapping("retry-failed") - a failed reading queued again
+    RETRY_CONTENT_EXTRACTION,
+
+    // ===================================================================================================
+
     // RoleController ===================================================================================
     //@GetMapping("/roles/create")
     CREATE_ROLE_PAGE,
@@ -297,7 +312,10 @@ public enum PermissionEnum {
 
 //    @GetMapping("search")  - files by their metadata, or their folders'
 //    FolderApi @GetMapping("search")  - folders by their metadata
-    API_SEARCH_METADATA
+    API_SEARCH_METADATA,
+
+//    ContentSearchApi @GetMapping("content-search")  - files by the text in them, each with the pages it matched on (2.15.0)
+    API_SEARCH_FILE_CONTENTS
 
     // ===================================================================================================
 

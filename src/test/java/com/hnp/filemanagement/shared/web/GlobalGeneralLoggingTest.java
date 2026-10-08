@@ -81,8 +81,10 @@ class GlobalGeneralLoggingTest {
                 .isEqualTo("/api/v1/files/search?metadata=***&page=2");
         assertThat(GlobalGeneralLogging.maskSecrets("/api/v1/files/search?size=5&folderMetadata={\"a\":1}&metadata="))
                 .isEqualTo("/api/v1/files/search?size=5&folderMetadata=***&metadata=***");
-        assertThat(GlobalGeneralLogging.maskSecrets("/files/explorer?folder=5&q=metadata"))
-                .as("a value that is the word is not a parameter of the name").isEqualTo("/files/explorer?folder=5&q=metadata");
+        assertThat(GlobalGeneralLogging.maskSecrets("/files/explorer?folder=5&sort=metadata"))
+                .as("a value that is the word is not a parameter of the name").isEqualTo("/files/explorer?folder=5&sort=metadata");
+        assertThat(GlobalGeneralLogging.maskSecrets("/files/explorer?folder=5&q=0012345678"))
+                .as("a search term may be personal, wherever it is typed (2.15.0)").isEqualTo("/files/explorer?folder=5&q=***");
         assertThat(GlobalGeneralLogging.maskSecrets("/share/abc?metadata=x")).isEqualTo("/share/***?metadata=***");
     }
 }

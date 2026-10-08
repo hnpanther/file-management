@@ -38,6 +38,8 @@ programmatic upload, download and delete, and an S3-style one (`/api/v2`) after 
 ```
 com.hnp.filemanagement
 ├── audit/      action history: who did what to which record
+├── content/    searching the contents of files (2.15.0): the queue, the worker, the Tika client,
+│               the reading of pages, the ContentSearch port and its PostgreSQL engine, the pages
 ├── file/       files and revisions, upload and download, content kinds, the upload policy,
 │               share links, the v1 and v2 APIs
 ├── folder/     the tree, folder access (grants), tags and tag groups, quotas, personal folders
@@ -248,6 +250,48 @@ V3.10. The pieces:
   a folder's document reaching the files below it through `ix_folder_path`'s range, the reader's
   grants in the query (`GrantedFolderPath`); the queue of undescribed folders off the partial
   `ix_folder_undescribed`. `MetadataSearchTest` plans each one.
+
+### Searching the contents of files (2.15.0)
+
+The text inside the files - a PDF's pages, a scan's words, a spreadsheet's sheets - read by Apache
+Tika (deploy/tika, a host of its own) and searched page by page (roadmap Phase 11). Package `content`:
+
+* **The queue** (`file_content`, V3.12) - one row per revision, written `PENDING` by `ContentQueue` in
+  `FileService.store`, in the transaction that stores the bytes (every route - the form, v1, v2, S3,
+  multipart - stores there): a rolled-back upload has none, a committed one always has one. Removed
+  with its revision (`ON DELETE CASCADE`).
+* **The worker** (`ContentWorker`, built by `ContentConfig`) - threads of its own (`concurrency`, 1),
+  started when the application is ready and only if `extraction.enabled` and the Tika URLs are sound
+  (`ContentSearchProperties.whyReadingCannotRun`); nothing calls Tika otherwise, and **no setting of
+  it stops the start** - only `engine` other than `postgres` does. A revision is claimed with
+  `FOR UPDATE SKIP LOCKED` and a lease, read with no connection held, and its outcome and pages written
+  in one short transaction. Tika unreachable or busy (`TikaClient.Unavailable`) puts it back with no
+  attempt spent and pauses the worker (30 s doubling to `retry-max-wait-minutes`); `422`
+  (`TikaClient.Refused`) is `FAILED` at once; anything else is an attempt, retried after 5 min, 30 min,
+  3 h, `FAILED` after `max-attempts`. Nothing escapes the loop. A new upload wakes an idle worker once
+  it commits.
+* **Reading** (`ContentReader`, `HttpTikaClient`, `TikaReading`) - a PDF or an image to the OCR
+  container once (`auto`: a text page read as text, a scanned one recognised), an Office document to
+  the text container; the XHTML streamed and split into pages (`div.page`), slides (`div.slide-content`)
+  and sheets (`div.sheet`), the OCR of a page (`div.ocr`) apart; capped at `max-text-mb` (*partial*).
+  Each PDF text page judged by its function words (`TextQuality`): stored reversed - put right
+  (`TEXT_REVERSED`); garbage - the document read again with `every-page`, the page kept with both
+  readings (`BOTH`). A PDF OCR'd to no text is `FAILED`, never `EMPTY` (the JPEG 2000 case).
+* **The pages** (`file_content_page`) - a row per page, slide or sheet (0 for what has none), long ones
+  in parts of 100,000 characters; `search_text` folded by `ContentFolding` exactly as `SearchKey` folds
+  a name and reduced to letters and digits, so matching depends on no locale; `search_vector` its
+  generated `tsvector` (`simple`), GIN-indexed.
+* **Searching** (`ContentSearchService` over the `ContentSearch` port, `PostgresContentSearch`) - the
+  query made of folded words only (`ContentQuery`: each a prefix, all required, a quoted part a
+  phrase, every word on one page); the reader's grants in the query (`GrantedFolderPath`), the latest
+  version unless every one is asked for, both **before** any bound. A query on more than 20,000 pages
+  (a probe, stopped at the bound) is answered from the newest 20,000 and says so (`limited`); any
+  other goes through the GIN index behind a planning fence. Snippets cut in Java from the text as read
+  (`Snippets`), the words found marked through the folded text's map, written with `th:text`.
+* **Never logged**: no text, no snippet; the term is the query parameter `q`, masked by
+  `GlobalGeneralLogging`. The status page (`/settings/content-extraction`) shows reasons, never text,
+  and failures only of files the reader may open. `/actuator/health` has `contentExtraction`, always
+  `UP`, a `warning` when reading cannot run, Tika is lost or an upload has waited a day.
 
 ### Magic-number columns
 
@@ -586,6 +630,9 @@ document, so a browser navigation still lands on a page.
 | POST | `/roles/{id}/copy` (`newRoleName`) - a new role with the source's permissions, folder grants and own upload policy | `COPY_ROLE` |
 | GET / POST | `/share/{token}` | permitAll — the landing page, and the download (a `POST`, with the password when the link has one); unknown, expired, revoked and used-up tokens are one 404 |
 | GET | `/files/share-links` | `SHARE_LINKS_PAGE` (one's own links; every link with `REVOKE_SHARE_LINK`) |
+| GET | `/files/content-search` (`q`, `all=1` for every version) - search in contents; a 404 while `filemanagement.content-search.enabled` is off | `SEARCH_FILE_CONTENTS` |
+| GET | `/settings/content-extraction` - the status of reading contents | `CONTENT_EXTRACTION_PAGE` |
+| POST | `/settings/content-extraction/{fileDetailsId}/retry`, `/settings/content-extraction/retry-failed` | `RETRY_CONTENT_EXTRACTION` |
 
 </details>
 
@@ -623,6 +670,7 @@ document, so a browser navigation still lands on a page.
 | GET | `/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` |
 | GET | `/file-details/{fileDetailsId}/download` (the same download by the version's id alone) | `API_DOWNLOAD_FILE` |
 | GET | `/file-info/{fileInfoId}/download` (`?version=`, `?format=`) - a file by its own id: the latest version, or the one named; a version with several formats and no `format` is a 400 listing them (1.9.0) | `API_DOWNLOAD_FILE` |
+| GET | `/content-search` (`q`, `allVersions`, `page`, `size`) - files by the text in them, each with the pages it matched on (2.15.0); a 404 while the search is off | `API_SEARCH_FILE_CONTENTS` |
 
 The id-only forms with `folderId` on the upload are the contract an integration keeps since Phase 7
 step 4: nothing in them names anything but a folder and a version. **Since 2.4.0 every id in these

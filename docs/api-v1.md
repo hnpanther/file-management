@@ -233,6 +233,40 @@ number of files.
 children without metadata, newest first, paged the same way - the person folders the ERP's uploads
 made under `ERP`, before anyone has written who each is.
 
+### Searching the text of files (2.15.0)
+
+`GET /api/v1/files/content-search?q=...` - files by the text inside them, read by Apache Tika: a PDF's
+pages (a scanned page's words too, by OCR, Persian and English), a Word document, the slides of a
+presentation, the sheets of a spreadsheet. Needs `API_SEARCH_FILE_CONTENTS`; a `404` while the
+installation has the search switched off. Only files the caller may read are found - a key, only in
+its own folders.
+
+| Parameter | |
+|---|---|
+| `q` | the words: every one required, each matched as the beginning of a word (`کتاب` finds `کتاب‌ها`), all on one page; a part in double quotes is a phrase, its words in that order. Arabic `ي`/`ك`, Persian or Arabic digits and the half-space make no difference. At most 200 characters, 12 words |
+| `allVersions` | `true` to search every version of a file; otherwise its latest version (every format of it) |
+| `page`, `size` | a page at a time, `size` at most 200 (20 by default) |
+
+```json
+{"items": [{"fileId": "0b6f...", "fileNumber": 41, "fileName": "report", "fileDetailsId": "7c1e...",
+            "fileDetailsNumber": 97, "version": 2, "latestVersion": true, "extension": "pdf",
+            "folderId": 12, "folderName": "P-1234", "matchedPages": 5,
+            "pages": [{"page": 3, "unit": "PAGE", "label": null, "source": "TEXT",
+                       "snippet": "... بر اساس قرارداد اجاره شماره ...", "matches": [[12, 7]]}]}],
+ "page": 0, "size": 20, "hasNext": false, "limited": false}
+```
+
+* `pages` - the first three pages the file matched on, in page order; `matchedPages` counts them all.
+  `unit` is `PAGE` (a PDF's page, from 1), `SLIDE`, `SHEET` (its name in `label`) or `WHOLE` (a document
+  without pages, `page` 0). `source` says where the text came from: `TEXT`, `TEXT_REVERSED` (a text layer
+  stored backwards, put right), `OCR` (recognised from the page's image - a word or two may be off), or
+  `BOTH`.
+* `snippet` is a few lines of the page; `matches` the `[offset, length]` of each word found in it.
+* `limited: true` - the words are on more than 20,000 pages, and the results come from the newest of
+  them: add a word to narrow the search.
+* A file is found only once its text has been read - minutes after an upload, longer for a long scan.
+  `q` empty, or nothing in it a word: `400`.
+
 ### Errors
 
 Every failure is an RFC 9457 problem document, `application/problem+json`:
@@ -273,6 +307,7 @@ whatever it is when the request is made.
 
 | Release | |
 |---|---|
+| 2.15.0 | **search in contents**: `GET content-search` above - new, needs `API_SEARCH_FILE_CONTENTS`. Nothing else changes |
 | 2.13.0 | **metadata**: an optional `metadata` field on the upload, `metadata` in its answer; the metadata endpoints, conditioned writes and search above; `412` for a failed condition. Nothing else changes - a client that sends none is unaffected |
 | 1.6.x | the id-only forms (`file-details/{id}/download`, `DELETE file-details/{id}`); `folderId` on the upload |
 | 1.7.0 | a Persian file name arrives intact; **uploads private unless `public-file=1`**; a refused upload says why in `detail` |

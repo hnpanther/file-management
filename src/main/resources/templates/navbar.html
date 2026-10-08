@@ -142,13 +142,19 @@
                 </li>
             </ul>
 
-            <section sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('CREATE_FILE_PAGE') || hasAuthority('FILE_TREE_PAGE') || hasAuthority('SHARE_LINKS_PAGE') || hasAuthority('FILE_HISTORY_PAGE') || hasAuthority('FILE_DOWNLOADS_PAGE') || hasAuthority('ADMIN')"
+            <section sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('CREATE_FILE_PAGE') || hasAuthority('FILE_TREE_PAGE') || hasAuthority('SHARE_LINKS_PAGE') || hasAuthority('FILE_HISTORY_PAGE') || hasAuthority('FILE_DOWNLOADS_PAGE') || hasAuthority('SEARCH_FILE_CONTENTS') || hasAuthority('ADMIN')"
                      class="flex flex-col gap-0.5">
                 <h3 class="app-nav-heading" th:text="#{nav.section.files}">مدیریت فایل‌ها</h3>
                 <a sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('ADMIN')"
                    th:href="@{/files/file-info}" class="app-nav-link">
                     <i class="bi bi-files app-nav-icon" aria-hidden="true"></i>
                     <span th:text="#{nav.files.list}">فهرست فایل‌ها</span>
+                </a>
+                <a sec:authorize="hasAuthority('SEARCH_FILE_CONTENTS') || hasAuthority('ADMIN')"
+                   th:if="${@contentSearchService.enabled()}"
+                   th:href="@{/files/content-search}" class="app-nav-link">
+                    <i class="bi bi-search app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.files.contentSearch}">جستجو در محتوا</span>
                 </a>
                 <a sec:authorize="hasAuthority('FILE_TREE_PAGE') || hasAuthority('ADMIN')"
                    th:href="@{/files/tree}" class="app-nav-link">
@@ -177,7 +183,7 @@
                 </a>
             </section>
 
-            <section sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('GET_ALL_API_KEY_PAGE') || hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('CONTENT_KIND_PAGE') || hasAuthority('TAG_GROUP_PAGE') || hasAuthority('GENERAL_SETTINGS_PAGE') || hasAuthority('LOCKED_SIGN_INS_PAGE') || hasAuthority('ADMIN')"
+            <section sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('GET_ALL_API_KEY_PAGE') || hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('CONTENT_KIND_PAGE') || hasAuthority('TAG_GROUP_PAGE') || hasAuthority('GENERAL_SETTINGS_PAGE') || hasAuthority('LOCKED_SIGN_INS_PAGE') || hasAuthority('CONTENT_EXTRACTION_PAGE') || hasAuthority('ADMIN')"
                      class="flex flex-col gap-0.5">
                 <h3 class="app-nav-heading" th:text="#{nav.section.access}">کاربران و دسترسی‌ها</h3>
                 <a sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('ADMIN')"
@@ -219,6 +225,11 @@
                    th:href="@{/settings/general}" class="app-nav-link">
                     <i class="bi bi-gear app-nav-icon" aria-hidden="true"></i>
                     <span th:text="#{nav.access.generalSettings}">تنظیمات عمومی</span>
+                </a>
+                <a sec:authorize="hasAuthority('CONTENT_EXTRACTION_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/settings/content-extraction}" class="app-nav-link">
+                    <i class="bi bi-file-earmark-text app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.access.contentExtraction}">خواندن محتوای فایل‌ها</span>
                 </a>
             </section>
 

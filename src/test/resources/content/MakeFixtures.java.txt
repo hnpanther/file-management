@@ -1,0 +1,221 @@
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
+import org.apache.poi.xslf.usermodel.XMLSlideShow;
+import org.apache.poi.xslf.usermodel.XSLFSlide;
+import org.apache.poi.xslf.usermodel.XSLFTextBox;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+/**
+ * The content-search test corpus (roadmap 11): made, never taken from the archive. Each Persian word
+ * is on one page only, so a test can say which page a match must be answered on. Words chosen without
+ * س and ش at a join, which Java2D draws with a stretch Tesseract does not read.
+ */
+public class MakeFixtures {
+
+    static final File TAHOMA = new File("C:/Windows/Fonts/tahoma.ttf");
+
+    public static void main(String[] args) throws Exception {
+        Path out = Path.of(args[0]);
+        Files.createDirectories(out);
+        textPdf(out.resolve("text-fa.pdf"), true);
+        textPdf(out.resolve("reversed-fa.pdf"), false);
+        garbageLayerPdf(out.resolve("garbage-layer.pdf"));
+        scanPdf(out.resolve("scan-jp2.pdf"), true, new String[]{"Scanned copy", "تحویل به انبار مرکزی", "بازرسی فنی مخزن", "تمدید قرارداد پشتیبانی نرم افزار", "Equipment tag PMP-1201", "Page one of one"});
+        mixedPdf(out.resolve("mixed.pdf"));
+        ImageIO.write(page(new String[]{"Photo", "تحویل به انبار مرکزی", "بازرسی فنی مخزن", "تمدید قرارداد پشتیبانی نرم افزار", "Delivery note 4471", "Taken by phone"}, 2480, 1400), "png",
+                out.resolve("photo.png").toFile());
+        slides(out.resolve("slides.pptx"));
+        sheets(out.resolve("sheets.xlsx"));
+        letter(out.resolve("letter.docx"));
+    }
+
+    /**
+     * Two pages of text: page 1 "قرارداد", page 2 "مناقصه". PDFBox, as most readers, takes a PDF's
+     * text for visual order and puts right-to-left runs back to logical order: so a sound PDF stores
+     * each line reversed ({@code visual}), and one stored in logical order - as the office-automation
+     * letters are - reads back reversed.
+     */
+    static void textPdf(Path file, boolean visual) throws Exception {
+        String[][] pages = {
+                {"این متن صفحه اول است و قرارداد پیمانکار را از نظر بودجه بیان می کند",
+                        "قرارداد برای تعمیرات واحد تولید که در آن تاریخ تحویل آمده است"},
+                {"در صفحه دوم این متن مناقصه برای خرید کالا به نام شرکت آمده است",
+                        "مناقصه عمومی که به آن پیمانکار از طریق این فرم پاسخ داده است"}};
+        try (PDDocument doc = new PDDocument()) {
+            PDFont font = PDType0Font.load(doc, TAHOMA);
+            for (String[] lines : pages) {
+                PDPage page = new PDPage(PDRectangle.A4);
+                doc.addPage(page);
+                try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                    float y = 760;
+                    for (String line : lines) {
+                        String shown = visual ? new StringBuilder(line).reverse().toString() : line;
+                        cs.beginText();
+                        cs.setFont(font, 12);
+                        cs.newLineAtOffset(40, y);
+                        cs.showText(shown);
+                        cs.endText();
+                        y -= 24;
+                    }
+                }
+            }
+            doc.save(file.toFile());
+        }
+    }
+
+    /** A page drawn as an image, with a layer of invisible garbage text over it - a scanner's own OCR in a font with no Unicode. */
+    static void garbageLayerPdf(Path file) throws Exception {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            BufferedImage image = page(new String[]{"Scanned copy", "تحویل به انبار مرکزی", "بازرسی فنی مخزن", "تمدید قرارداد پشتیبانی نرم افزار", "Invoice 7781", "Page one of one"}, 2480, 3508);
+            PDImageXObject xobject = LosslessFactory.createFromImage(doc, image);
+            PDFont font = PDType0Font.load(doc, TAHOMA);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.drawImage(xobject, 0, 0, PDRectangle.A4.getWidth(), PDRectangle.A4.getHeight());
+                String[] garbage = {"roi,rJr*lJ ill.l5 o 6 t,.o/1116 o3L.+.", "fr\"*- ;t;l(\"a (crh)Jlj,il f;, .,r,l.*lj\"j! oL,r= a3lrl",
+                        "+:-,n o i.o JL* 1,e.r uL y ;t*++ q;.a +$t-,s ;_F_..r ,-., ,l ,..^.i.rlj-",
+                        "ati- t l.^: 6JJ..- q+l:\" JlJn:*l jl o+ 4.-$ oL.r= 4u,i;iJ,J Jl . :il .s.jL .r;,,",
+                        "opt AtEpodFot :a;j.l.j Pt- A^ddooFt :Jul4j o\"Jti A..[. o;l':... * f;.- c6.p",
+                        "(.rat, dea,) irb{J otr? arur! ir!r< o 6 s<.,i! P. IJIJ-J,16/t aJLrt*j' ojd J !+,,, uJlirtr+r,Jtj"};
+                float y = 760;
+                for (String line : garbage) {
+                    cs.beginText();
+                    cs.setRenderingMode(RenderingMode.NEITHER);
+                    cs.setFont(font, 10);
+                    cs.newLineAtOffset(40, y);
+                    cs.showText(line);
+                    cs.endText();
+                    y -= 20;
+                }
+            }
+            doc.save(file.toFile());
+        }
+    }
+
+    /** One scanned page, its image JPEG 2000 or lossless. */
+    static void scanPdf(Path file, boolean jpeg2000, String[] lines) throws Exception {
+        try (PDDocument doc = new PDDocument()) {
+            addScan(doc, lines, jpeg2000);
+            doc.save(file.toFile());
+        }
+    }
+
+    /** Page 1 text ("قرارداد"), page 2 a scan ("بازرسی فنی مخزن"). */
+    static void mixedPdf(Path file) throws Exception {
+        try (PDDocument doc = new PDDocument()) {
+            PDFont font = PDType0Font.load(doc, TAHOMA);
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.beginText();
+                cs.setFont(font, 12);
+                cs.newLineAtOffset(40, 760);
+                cs.showText(new StringBuilder("این صفحه متن دارد و قرارداد پیمانکار در آن آمده است تا از آن برای تحویل کار استفاده شود").reverse().toString());
+                cs.endText();
+            }
+            addScan(doc, new String[]{"Scanned copy", "تحویل به انبار مرکزی", "بازرسی فنی مخزن", "تمدید قرارداد پشتیبانی نرم افزار", "Inspection report TK-2201", "Page two of two"}, false);
+            doc.save(file.toFile());
+        }
+    }
+
+    static void addScan(PDDocument doc, String[] lines, boolean jpeg2000) throws Exception {
+        int w = 2480, h = 3508;
+        BufferedImage image = page(lines, w, h);
+        PDImageXObject xobject;
+        if (jpeg2000) {
+            ByteArrayOutputStream jp2 = new ByteArrayOutputStream();
+            ImageWriter writer = ImageIO.getImageWritersByFormatName("jpeg2000").next();
+            try (ImageOutputStream out = ImageIO.createImageOutputStream(jp2)) {
+                writer.setOutput(out);
+                writer.write(image);
+            }
+            xobject = new PDImageXObject(doc, new ByteArrayInputStream(jp2.toByteArray()), COSName.JPX_DECODE, w, h, 8,
+                    PDDeviceRGB.INSTANCE);
+        } else {
+            xobject = LosslessFactory.createFromImage(doc, image);
+        }
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.drawImage(xobject, 0, 0, PDRectangle.A4.getWidth(), PDRectangle.A4.getHeight());
+        }
+    }
+
+    /** White, black text right-aligned at 300 dpi scale - TYPE_3BYTE_BGR, which JPEG 2000 keeps white. */
+    static BufferedImage page(String[] lines, int w, int h) {
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D g = img.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, w, h);
+        g.setColor(Color.BLACK);
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g.setFont(new Font("Segoe UI", Font.PLAIN, 64));
+        int y = 200;
+        for (String line : lines) {
+            int width = g.getFontMetrics().stringWidth(line);
+            g.drawString(line, w - 200 - width, y);
+            y += 200;
+        }
+        g.dispose();
+        return img;
+    }
+
+    static void slides(Path file) throws Exception {
+        try (XMLSlideShow show = new XMLSlideShow(); OutputStream out = new FileOutputStream(file.toFile())) {
+            String[] texts = {"اسلاید اول درباره بودجه سالانه", "اسلاید دوم درباره تعمیرات اساسی"};
+            for (String text : texts) {
+                XSLFSlide slide = show.createSlide();
+                XSLFTextBox box = slide.createTextBox();
+                box.setAnchor(new java.awt.Rectangle(50, 50, 600, 100));
+                box.setText(text);
+            }
+            show.write(out);
+        }
+    }
+
+    static void sheets(Path file) throws Exception {
+        try (XSSFWorkbook book = new XSSFWorkbook(); OutputStream out = new FileOutputStream(file.toFile())) {
+            XSSFSheet one = book.createSheet("خلاصه");
+            one.createRow(0).createCell(0).setCellValue("هزینه پیمانکار");
+            XSSFSheet two = book.createSheet("جزئیات");
+            two.createRow(0).createCell(0).setCellValue("فهرست کالا");
+            book.write(out);
+        }
+    }
+
+    static void letter(Path file) throws Exception {
+        try (XWPFDocument doc = new XWPFDocument(); OutputStream out = new FileOutputStream(file.toFile())) {
+            doc.createParagraph().createRun().setText("باسمه تعالی - نامه درخواست تمدید قرارداد نگهداری");
+            doc.createParagraph().createRun().setText("با احترام، خواهشمند است دستور فرمایید.");
+            doc.write(out);
+        }
+    }
+}

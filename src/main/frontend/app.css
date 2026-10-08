@@ -841,3 +841,17 @@
     .revision-metadata-details { @apply mt-2 text-sm; }
     .revision-metadata-details summary { @apply cursor-pointer text-ink-600; }
 }
+
+/* Search in contents (roadmap 11.2): a result per revision, the pages it matched on, a snippet each. */
+@layer components {
+    .content-results       { @apply m-0 flex list-none flex-col gap-4 p-0; }
+    .content-result        { @apply border-b border-ink-100 pb-4 last:border-b-0; }
+    .content-result-head   { @apply mb-2 flex flex-wrap items-center gap-2; }
+    .content-result-name   { @apply inline-flex items-center gap-1.5 font-semibold text-ink-900 hover:underline; overflow-wrap: anywhere; }
+    .content-result-folder { @apply inline-flex items-center gap-1; }
+    .content-result-pages  { @apply m-0 flex list-none flex-col gap-2 p-0 ps-6; }
+    .content-result-where  { @apply mb-1 flex flex-wrap items-center gap-2 text-sm; }
+    .content-snippet       { @apply m-0 text-sm leading-7 text-ink-700; overflow-wrap: anywhere; }
+    .content-snippet mark  { @apply rounded bg-amber-100 px-0.5 font-semibold text-ink-900; }
+    .content-search-term   { @apply sm:col-span-1 xl:col-span-2; }
+}

@@ -56,6 +56,12 @@ public enum PermissionGroup {
     /** Editing a folder's metadata, and the queue of folders still to be described (roadmap 12.3). */
     FOLDER_METADATA(EDIT_FOLDER_METADATA, FOLDER_METADATA_QUEUE_PAGE),
 
+    /** Searching the text of files - only those in folders the person may read (roadmap 11.2). */
+    FILE_CONTENT_SEARCH(SEARCH_FILE_CONTENTS),
+
+    /** The status of reading contents, and queuing a failed reading again. */
+    CONTENT_EXTRACTION(CONTENT_EXTRACTION_PAGE, RETRY_CONTENT_EXTRACTION),
+
     /** Deleting a file, or one of its versions. */
     FILE_DELETE(REST_DELETE_FILE_INFO, REST_DELETE_FILE_DETAILS),
 
@@ -96,7 +102,7 @@ public enum PermissionGroup {
 
     /** The v1 API an integration (the PL/SQL clients) signs in to with a password. */
     API_V1(API_HEALTH_TEST, API_SAVE_NEW_FILE, API_DELETE_FILE_DETAILS, API_DOWNLOAD_FILE,
-            API_GET_METADATA, API_SET_METADATA, API_SEARCH_METADATA);
+            API_GET_METADATA, API_SET_METADATA, API_SEARCH_METADATA, API_SEARCH_FILE_CONTENTS);
 
     /** Held, never offered on the role page; see the class comment. */
     public static final Set<PermissionEnum> NOT_ASSIGNABLE = Collections.unmodifiableSet(EnumSet.of(ADMIN, API_KEY));
