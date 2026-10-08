@@ -172,9 +172,9 @@ What the releases since the cut-over brought, newest first:
 3. ~~**Recording downloads** (9.2)~~ - **done (2.7.0)**.
    ~~**A page of locked sign-ins**~~ ([12.1](#121-a-page-of-locked-sign-ins--done-275)) - **done
    (2.7.5)**: deploy it with 2.7.4, so the lock reaches production with its way out.
-4. **Phase 11 - searching the contents of files** ([the plan](#phase-11--searching-the-contents-of-files--planned)):
+4. **Phase 11 - searching the contents of files** ([the plan](#phase-11--searching-the-contents-of-files--planned-next-decided-2026-10-08)):
    the pipeline and text documents first (11.1-11.2), the backfill after Phase 4's copy (11.3),
-   then OCR and drawings, each optional (11.4-11.5). It is also what Phase 8's "full-text search of
+   OCR in the first release with the text documents (decided 2026-10-08), then the text layer's quality gate and the drawings (11.4-11.5). It is also what Phase 8's "full-text search of
    their contents" will use. Wanted before it starts, and can be gathered now: a sample of real
    scans (Persian and English) and of real drawings (DWG and DXF with Persian text), how many
    scanned pages there are, and a Linux host for Tika - separate from the object store's
@@ -2373,6 +2373,25 @@ that can be switched off without a rebuild.
 > (today the second may fail on the unique name, and is retried by the client). 9.11's renewal and
 > replacement key came in 2.11.0. Before a release is used by an integration: `aws`, `rclone`,
 > `boto3` and the S3 node of n8n by hand (9.10.11) - `aws s3 sync` and `rclone sync` now among them.
+>
+> **Next on the S3 surface, deferred by decision (2026-10-08)** - Phase 11 goes first; these two are
+> the S3 surface's next steps when it is taken up again:
+>
+> 1. **An `ETag` that is the object's MD5** (9.10.4's `md5` column). Today it is the first 32 hex
+>    digits of the SHA-256: right for telling a change and for `If-Match`, but it looks like an MD5
+>    and is not one, and a client that checks an upload by comparing the `ETag` with the MD5 it
+>    computed - `rclone` does, for an object sent in one request - finds them differ and may report
+>    the transfer corrupt; `rclone check` and `sync --checksum` see every object as changed. The fix:
+>    `file_details.md5`, computed beside the SHA-256 as the bytes are written (no second read),
+>    backfilled for the revisions stored before as the checksum was (1.8.0), and the `ETag` the MD5
+>    of the whole object - a multipart one's too, which S3 would not give but which lets a client
+>    check every object the same way. `n8n` and `aws s3 cp` do not check it, which is why it has not
+>    been met yet. To be tried with `rclone` itself when built.
+> 2. **`CopyObject`** - `aws s3 cp` / `mv` from one key to another on this server, `rclone copyto` /
+>    `moveto` server-side: today a 501. Here a copy is a new file (or a new version of the title at
+>    the destination) of the same bytes, through the checks of an upload; a move is that copy and
+>    the source's delete as S3 deletes - the source's history does not travel with it, unlike the
+>    web's move of a file. Written so in api-s3.md when built.
 
 > **Rewritten 2026-10-04**, replacing the plan of a third surface beside v2: **API v1 stays exactly
 > as it is; API v2 becomes S3-compatible** - so that standard S3 clients (the S3 node of n8n, `aws`,
@@ -2992,7 +3011,7 @@ an expired one.
 **Done when:** each step's tests are green, the four docs are true, and — for 10.1 — the release
 that began sharding is named in `deployment.md`.
 
-## Phase 11 — Searching the contents of files — **planned**
+## Phase 11 — Searching the contents of files — **planned; next (decided 2026-10-08)**
 
 Today a search matches names and descriptions (trigram indexes on folded keys, 2.2.0). This phase
 lets it match **what is inside the files**: the text of a PDF or a Word document, the cells of a
@@ -3078,6 +3097,157 @@ folder access in the query itself, as every other search is.
   revision (a few MB), the text indexed (a `tsvector` is at most 1 MB - the first few hundred
   thousand characters), the pages OCR reads, the time one file may take - and what was cut off is
   recorded, never silently dropped.
+
+### Settings - decided 2026-10-08
+
+Three switches, one under the other, so an installation turns on what it is ready for and nothing
+more - and every combination is a state the application runs in, never a half-working one:
+
+```properties
+# 1. The search itself: the "search in contents" box, its page and its API. Off: nothing shows it.
+filemanagement.content-search.enabled=false
+# 2. Reading contents: the workers that give files to Tika. Off: nothing is read; what was read stays searchable.
+filemanagement.content-search.extraction.enabled=false
+#    and the files stored before 11.1 too, not only those uploaded since (11.3)
+filemanagement.content-search.extraction.backfill=false
+# 3. Where Tika is, needed once 2 is on - each lane its own URL (deploy/tika)
+filemanagement.content-search.tika.text-url=http://tika-host:9998
+filemanagement.content-search.tika.ocr-url=http://tika-host:9999
+filemanagement.content-search.tika.timeout-seconds=120
+filemanagement.content-search.extraction.ocr-enabled=true      # from the first release (2026-10-08)
+filemanagement.content-search.extraction.text-workers=2
+filemanagement.content-search.extraction.ocr-workers=2
+filemanagement.content-search.extraction.max-file-mb=200      # larger: SKIPPED, said so
+filemanagement.content-search.extraction.max-text-mb=10       # per revision kept; beyond: partial
+filemanagement.content-search.engine=postgres                  # 11.6: opensearch
+```
+
+| 1 search | 2 reading | What runs |
+|---|---|---|
+| off | off | nothing - the application as before 11.1; a revision uploaded still gets its *pending* row, so turning reading on later reads it |
+| off | on | the workers read; nobody can search yet - the way to fill the index before showing it |
+| on | off | search over what has been read; nothing new is read (Tika being moved, say) |
+| on | on | both |
+
+**OCR is part of the first release - decided 2026-10-08**: scanned PDFs, photographed forms and
+images are a large part of what is filed here, and a search that cannot find them would be taken for
+a search that does not work. `ocr-enabled` is on by default and needs `tika.ocr-url` (the `tika-ocr`
+container); it is off only for an installation that runs no OCR container, and then those files are
+`SKIPPED` with the reason, to be read when it is switched on.
+
+**Checked at the start, refused with the setting named**: reading on without `tika.text-url`, OCR on
+without `tika.ocr-url`, a URL that is not one, an engine that is not `postgres` (or, from 11.6,
+`opensearch` with its settings) - the start fails, as a wrong S3 master key fails it, rather than
+running workers that can never succeed. Tika *unreachable* at the start is not refused: it is a
+running state (rows stay pending, readiness warns).
+
+### The tables - decided 2026-10-08
+
+**`file_content`** - one row per revision: the queue and the outcome. Written as *pending* in the
+transaction that commits the revision (an outbox: a rolled-back upload leaves none); taken by a
+worker with `FOR UPDATE SKIP LOCKED` and a lease, so a killed worker's row is taken again when its
+lease runs out; cascades with the revision.
+
+| Column | |
+|---|---|
+| `file_details_id` | the revision - primary key, foreign key, `ON DELETE CASCADE` |
+| `state` | `PENDING`, `READING`, `DONE`, `EMPTY`, `SKIPPED`, `FAILED` |
+| `lane` | `TEXT`, `OCR` - which workers take it |
+| `priority` | 0 a new upload, 1 the backfill - new files are read first |
+| `reader` | what read it (`TIKA_TEXT`, `TIKA_OCR`, `DXF`, ...) and `detected_type`, the media type |
+| `attempts`, `next_attempt_at`, `lease_until` | retries with a back-off; the lease of the worker holding it |
+| `reason` | why `SKIPPED` or `FAILED`, or what made a `DONE` *partial* - never any of the text |
+| `partial`, `pages`, `characters` | what was read, and whether a cap cut it short |
+| `queued_at`, `read_at` | |
+
+Indexes: `(state, lane, priority, next_attempt_at)` - the queue a worker takes from - and `(state)`
+for the counts the status page shows.
+
+**`file_content_page`** - the text, **a row per page** (one row, page 0, for what has no pages):
+the unit a search matches and a result points at ("page 37").
+
+| Column | |
+|---|---|
+| `file_details_id`, `page_number` | primary key; cascades with `file_content` |
+| `source` | `TEXT` or `OCR` (from 11.2), `BOTH` (11.4) - which reading it holds; a result marks an OCR'd page |
+| `score` | the share of known words (11.4's quality gate); null before 11.4 |
+| `text` | the text as read (NFKC-normalised), for the snippet - a page at most `max-text-mb` in all |
+| `search_text` | the text folded as names are folded (`SearchKey`): ي/ك to ی/ک, the half-space removed, digits to ASCII, lower case - what is searched |
+| `search_vector` | `tsvector` of `search_text` (`simple`), **GIN-indexed** |
+
+A row per page, not per revision: a `tsvector` holds at most 1 MB, which a whole long document
+passes and a page does not; a hit names its page; and 11.4 re-reads a page, not a document.
+
+**`content_lexicon`** (11.4) - `word` (folded), `documents` (in how many trustworthy documents it
+appears): what the quality gate scores a page against.
+
+### Searching: what a query matches - measured on PostgreSQL 18, 2026-10-07
+
+PostgreSQL's full-text search is part of it - no extension (`tsvector`, `tsquery`, GIN, `ts_headline`).
+Read with the `simple` configuration, Persian is split into words at spaces and punctuation, the
+half-space kept inside a word (`می‌روم` one word). On a sample:
+
+| Searched | Found | |
+|---|---|---|
+| `قرارداد`, `قرارداد اجاره` (any order), `"قرارداد اجاره"` (a phrase), `علی رضایی`, `۱۴۰۳` | yes | as is |
+| `کتاب‌ها` (Persian ک) in a text with `كتاب‌ها` (Arabic ك); `میروم` for `می‌روم`; `1403` for `۱۴۰۳` | **no** | **yes once both sides are folded** - why `search_text` is the folded text, and a query folded the same way |
+| `کتاب` for `کتاب‌ها`, `کتابخانه` | no | **yes by prefix** (`کتاب:*`) - each word of a query matched as a prefix |
+| `کتب` for `کتاب` (a broken plural), `قراداد` (a typo), `روم` inside `می‌روم` | no | no - what OpenSearch would add (11.6) |
+
+So a query is: its words folded, each a prefix (`word:*`), all of them (`&`), a quoted part a phrase
+(`<->`); ranked by `ts_rank` over the pages of a file, a file's best page first; the snippet from
+`ts_headline` over the page's text, run on the page of results only, after the access filter.
+
+### Where in the file: the page of every match - decided 2026-10-08
+
+**A result says on which pages the words were found**, not only that the file holds them:
+
+```
+گزارش-عملکرد-۱۴۰۳.pdf  -  نسخهٔ ۲  -  پوشه: ERP / P-1234
+   صفحهٔ ۳   ... بر اساس «قرارداد اجاره» شمارهٔ C-5678 مورخ ...      [باز کردن در صفحهٔ ۳]
+   صفحهٔ ۱۷  ... تمدید «قرارداد اجاره» برای سال ...                 [باز کردن در صفحهٔ ۱۷]
+   و ۴ صفحهٔ دیگر
+```
+
+* **Every matching page is known**: a row per page (`file_content_page`) is what the query matches,
+  so the pages are the rows found - in page order, the best-ranked file first. A result shows its
+  first few pages (5) with a snippet each, and how many more; the file's page of results lists them
+  all.
+* **Opened at that page**: a PDF's preview opens with `#page=N` - the browser's viewer goes there. A
+  page that matched only through OCR is marked so ("از روی تصویر صفحه").
+* **What a page is depends on the format**, and a result says it as the file has it:
+
+  | Format | The unit | A result says |
+  |---|---|---|
+  | PDF (text or scanned), multi-page TIFF | the page | صفحهٔ ۳۷ |
+  | PowerPoint, OpenDocument presentation | the slide | اسلاید ۱۲ |
+  | Excel, OpenDocument spreadsheet | the sheet, by name | برگهٔ «خلاصه» |
+  | Word, OpenDocument text, RTF, text, HTML | none - a Word file has no pages until printed, they depend on the printer and the fonts | the snippet, no page |
+  | An image (JPEG, PNG) | the image | - |
+
+  Tika marks the units in its XHTML output - `<div class="page">` per PDF page, a slide's and a
+  sheet's own blocks - and the worker splits the text there; which marks each format really gives is
+  checked on the corpus in 11.1, never assumed. A Word file's text is kept as one unit (page 0).
+* **On API v1 too**: `GET /api/v1/files/content-search?q=` answers each file with its matching
+  `pages` - `[{"page": 37, "unit": "PAGE", "snippet": "..."}, ...]` - and the revision, so a client can
+  download it and go there.
+
+### One search, two engines: `ContentSearch` - decided 2026-10-08
+
+Reading and searching are separate, so the engine can change without reading anything again:
+
+* **The text is PostgreSQL's whatever the engine**: `file_content_page` is the record of what was read.
+* **Search goes through a port, `ContentSearch`**, as bytes go through `BlobStore`: a query of its
+  own (the words, the phrases, the prefix rule, a folder scope, a page) - never SQL or an OpenSearch
+  DSL - and results of its own (the file, the revision, the page, the snippet, the rank). The pages
+  and API v1 know the port only. `filemanagement.content-search.engine` chooses the implementation:
+  `PostgresContentSearch` now; `OpenSearchContentSearch` in 11.6, fed from `file_content_page` (an
+  outbox, rebuildable from nothing at any time), with the reader's granted folder paths as a
+  filter on a path field.
+* **`ContentSearchContractTest`**, which every engine passes, as every store passes
+  `BlobStoreContractTest`: what is found, the order of pages within a file, the paging - and above
+  all that **a file the reader may not open is never a result, a snippet or a count**, whatever the
+  engine.
 
 ### AutoCAD drawings
 
@@ -3237,7 +3407,7 @@ still misses that page, as with any scan.
 * **Nothing is saved by putting them together**: the bytes go store → application → Tika, so Tika
   beside the store saves no traffic.
 
-What it needs, as estimates until 11.4 measures real scans on the real host:
+What it needs, as estimates until the first release (OCR in it) measures real scans on the real host:
 
 | | CPU | RAM | Disk |
 |---|---|---|---|
@@ -3324,14 +3494,40 @@ number of statements whatever the reader's grants (`ListQueryCountTest`).
 | Step | What | Schema | Depends on |
 |---|---|---|---|
 | 11.1 | (`deploy/tika` written ahead of it and run on 2026-10-04: Tika 4.1, the two containers, the image with Persian, the two JSON configurations and their presets; text PDFs and Word read right, scans OCR'd at 2.3-2.5 s a page on 2 CPUs with most words right; the two Persian models compared - on clean pages equal at ~90% of words, on real scans `tessdata_best` 3-4 points better for ~30% more time, `fas+eng` kept over `fas` alone - the details in its README.) **The pipeline**: `file_content` and its states, the outbox row written with each revision, the workers in two lanes, `deploy/tika` (done ahead: the two containers, the Persian image, `tika-config.json` per lane, a README like `deploy/seaweedfs`'s), `tika-core` moved to 4.x and Tika in the suite (Testcontainers), the settings, a page of what failed with a retry | `V3.x` | - |
-| 11.2 | **Text documents**: PDF with a text layer, Word, PowerPoint, Excel, OpenDocument, RTF, text, HTML; page boundaries kept; the `tsvector`, its GIN index, "search in contents" on the file list, the explorer and API v1, a highlighted snippet per result with its page | (11.1's) | 11.1 |
-| 11.3 | **The backfill**: every existing revision queued, read at a set rate in the text lane, a report at the end - after Phase 4's copy, so every file is read once, from where it will stay | none | 11.2, 4.4 |
-| 11.4 | **OCR**: images and scanned PDFs, Persian and English, in the OCR lane, the two-pass PDF and the partial mark; **the text layer's quality gate** - each page scored against the installation's lexicon, a document with a failed page read again with `EXTRACT_AND_OCR`, both readings indexed for a failed page ("A text layer that cannot be trusted"); **measured first** - pages a minute per core and the quality of Persian on a sample of real scans, on the real host - and switched on only if what it reads is worth the CPU. The Tika host sized from that measure | none | 11.2 |
+| 11.2 | **Reading and searching - with OCR from the start** (decided 2026-10-08): text documents (PDF with a text layer, Word, PowerPoint, Excel, OpenDocument, RTF, text, HTML) in the text lane; **images and scanned PDFs, Persian and English, in the OCR lane** (`tika-ocr`, `fas+eng`), a PDF of text and scanned pages in the two passes ("A PDF with both text and scanned pages"), `ocr.max-pages` and the partial mark; the page, slide or sheet of every unit kept; the `tsvector`, its GIN index, "search in contents" on the file list, the explorer and API v1, **each result with the pages it matched on and a snippet per page**, opened at that page | (11.1's) | 11.1 |
+| 11.3 | **The backfill** (`extraction.backfill`): every revision stored before 11.1 queued at priority 1, in batches, read in the text lane behind new uploads, a report at the end. **Not waiting for Phase 4's copy** (decided 2026-10-08: the move to the object store is postponed): read from where the files are now - a file the copy later moves is not read again, its text is the bytes' | none | 11.2 |
+| 11.4 | **The text layer's quality gate** ("A text layer that cannot be trusted"): `content_lexicon` grown from the trustworthy documents read by 11.2 and 11.3, each PDF page scored against it, a document with a failed page read again with `EXTRACT_AND_OCR`, both readings indexed for a failed page. Its own release because it needs a lexicon, and the lexicon needs documents read: built on what 11.2 and 11.3 have read. (OCR itself moved into 11.2 on 2026-10-08.) | `content_lexicon` | 11.2, 11.3 |
 | 11.5 | **Drawings and diagrams**: first a sample of real drawings - which fonts their Persian is in (the SHX question); then DXF read directly, DWG through the converter, a mapping for each Persian SHX font found; Visio (`vsdx`, `vsd`) checked on real files | none | 11.2 |
 | 11.6 | **Only if needed**: OpenSearch behind `ContentSearch` - stems, typo tolerance, better ranking | none | 11.2 |
 
-11.1 and 11.2 ship together - the first useful release; 11.3 runs once on production after it;
-11.4 and 11.5 are each a release of their own and each optional.
+11.1 and 11.2 ship together - the first useful release: the settings, the tables, the workers in both
+lanes, text documents and OCR, the search with its pages on the web and on API v1, behind the
+switches (search and reading off by default, OCR on once reading is);
+11.3 is switched on in production after it, by a setting; 11.4 is a release of its own once 11.2
+and 11.3 have read enough to build its lexicon; 11.5 is optional; 11.6 only if PostgreSQL's matching is not enough.
+
+**11.1 + 11.2, in the order it is built** (one release):
+
+1. `V3.x`: `file_content`, `file_content_page`, their indexes; the settings and their checks at the start.
+2. The outbox row with every new revision (all three upload paths - they share `newFileDetails`); a
+   revision deleted takes its rows with it.
+3. `TikaClient` (HTTP, a timeout, the lane's URL), the workers of both lanes (`SKIP LOCKED`, the
+   lease, the back-off), the routing by detected kind; `tika-core` moved to 4.x with the detection
+   tests; `deploy/tika`'s image with `tessdata_best`'s Persian model baked in at a pinned checksum (the
+   README's recommendation, measured 3-4 points better on real scans).
+4. Reading by unit - a PDF's pages, a presentation's slides, a spreadsheet's sheets, the rest whole -
+   in the text lane, and images and scanned pages in the OCR lane (the two passes, the caps, the
+   partial mark); folding; `file_content_page` written in one transaction with the row's `DONE`.
+5. `ContentSearch` and `PostgresContentSearch`: the query model, the access filter in the query
+   (`GrantedFolderPath`), ranking by file, snippets on the page of results; `ContentSearchContractTest`.
+6. "Search in contents" on the file list and the explorer (`SEARCH_FILE_CONTENTS`) - each result
+   with the pages it matched on, a snippet each, opened at the page - and
+   `GET /api/v1/files/content-search` (`API_SEARCH_FILE_CONTENTS`) answering the same pages, paged as
+   every list is.
+7. A status page (`CONTENT_EXTRACTION_PAGE`): counts per state and lane, the failures with their
+   reason and a retry; readiness warns of a stuck queue or an unreachable Tika, never DOWN.
+8. Tests (below) - Tika as a container, the corpus, access, statements, the GIN plan; the docs and the
+   upgrade notes.
 
 ### What has to be true at each step
 
@@ -3351,7 +3547,8 @@ number of statements whatever the reader's grants (`ListQueryCountTest`).
 ### Tests
 
 A corpus of real-shaped samples under `src/test/resources/content/` - Persian and English PDFs with
-and without a text layer, one mixing both, one whose Persian reads in presentation forms, `docx`,
+and without a text layer, one mixing both (a word found on its scanned page 2 must be answered as page
+2, from OCR), a presentation and a spreadsheet whose words must come back with their slide and sheet, one whose Persian reads in presentation forms, `docx`,
 `xlsx`, `pptx`, `vsdx`, a photographed form, a `dxf` with a title block in TrueType and in an SHX
 font - each with the words it must yield; Tika as a container, as SeaweedFS is; the worker with
 Tika stopped, slow, and given a corrupt file; a cap that marks a row partial; folder access on
@@ -3361,7 +3558,8 @@ page.
 ### Open questions
 
 * **The OCR budget**: how many scanned pages there are today, and how many a day after - which
-  sizes the Tika host (11.4).
+  sizes the Tika host for the first release now (OCR is in it): to start, 4-8 vCPU and 16 GB
+  ("Where Tika runs, and on what").
 * **Persian in the drawings**: TrueType or SHX, and which SHX fonts (11.5).
 * **The ODA converter's licence terms** for this use.
 * **Whether the text of old revisions is worth keeping** once a newer one exists (11.1 keeps it).

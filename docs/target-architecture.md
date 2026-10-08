@@ -165,7 +165,7 @@ Roadmap Phase 11. A search should find a file by what is inside it - not only by
 what this system actually holds: PDFs with and without a text layer, Word, Excel and PowerPoint,
 images and photographed forms, Visio diagrams and AutoCAD drawings, in Persian and English. The
 order of work, the AutoCAD and mixed-PDF details and the sizing are in
-[roadmap Phase 11](roadmap.md#phase-11--searching-the-contents-of-files--planned); the hosts in
+[roadmap Phase 11](roadmap.md#phase-11--searching-the-contents-of-files--planned-next-decided-2026-10-08); the hosts in
 [deployment.md](deployment.md#the-hosts-and-what-each-needs).
 
 ```
