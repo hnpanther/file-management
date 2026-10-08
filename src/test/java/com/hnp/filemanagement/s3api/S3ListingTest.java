@@ -290,7 +290,8 @@ class S3ListingTest extends DatabaseSupport {
     void notServed() {
         S3Client s3 = client(key(false, false, false, bucketFolder.getId() + ":READ"));
         assertThat(code(() -> s3.listObjectVersions(r -> r.bucket(bucket)))).isEqualTo(501);
-        assertThat(code(() -> s3.listMultipartUploads(r -> r.bucket(bucket)))).isEqualTo(501);
+        assertThat(code(() -> s3.listMultipartUploads(r -> r.bucket(bucket).delimiter("/")))).as("served since 2.14.0, not by level")
+                .isEqualTo(501);
         assertThat(code(() -> s3.listObjectsV2(r -> r.bucket(bucket).delimiter("|")))).isEqualTo(501);
     }
 
@@ -311,13 +312,18 @@ class S3ListingTest extends DatabaseSupport {
                 .destinationBucket(bucket).destinationKey("copy.txt")))).as("copy").isEqualTo(501);
         assertThat(code(() -> s3.copyObject(r -> r.sourceBucket(bucket).sourceKey("c.pdf")
                 .destinationBucket(bucket).destinationKey("notes.txt")))).as("copy over").isEqualTo(501);
+        // A multipart upload's requests (2.14.0) name an upload: one that is not there is NoSuchUpload,
+        // never a write or a delete of the object of that key.
         assertThat(code(() -> s3.uploadPart(r -> r.bucket(bucket).key("notes.txt").uploadId("u").partNumber(1),
-                RequestBody.fromString("a part")))).as("upload part").isEqualTo(501);
+                RequestBody.fromString("a part")))).as("upload part").isEqualTo(404);
         assertThat(code(() -> s3.abortMultipartUpload(r -> r.bucket(bucket).key("notes.txt").uploadId("u"))))
-                .as("abort upload").isEqualTo(501);
-        assertThat(code(() -> s3.createMultipartUpload(r -> r.bucket(bucket).key("big.pdf")))).as("start upload").isEqualTo(501);
+                .as("abort upload").isEqualTo(404);
         assertThat(code(() -> s3.completeMultipartUpload(r -> r.bucket(bucket).key("notes.txt").uploadId("u")
-                .multipartUpload(m -> m.parts(p -> p.partNumber(1).eTag("e")))))).as("complete upload").isEqualTo(501);
+                .multipartUpload(m -> m.parts(p -> p.partNumber(1).eTag("e")))))).as("complete upload").isEqualTo(404);
+        String begun = s3.createMultipartUpload(r -> r.bucket(bucket).key("notes.txt")).uploadId();
+        s3.abortMultipartUpload(r -> r.bucket(bucket).key("notes.txt").uploadId(begun));
+        assertThat(code(() -> s3.uploadPartCopy(r -> r.sourceBucket(bucket).sourceKey("c.pdf").destinationBucket(bucket)
+                .destinationKey("notes.txt").uploadId("u").partNumber(1)))).as("upload part copy").isEqualTo(501);
 
         assertThat(revisionsIn(bucketFolder.getId())).as("every revision as it was").isEqualTo(before);
         assertThat(s3.getObjectAsBytes(r -> r.bucket(bucket).key("notes.txt")).asUtf8String()).isEqualTo("the notes");

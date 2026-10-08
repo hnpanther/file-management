@@ -1,4 +1,4 @@
-# The S3-compatible API (2.9.0 - 2.13.0)
+# The S3-compatible API (2.9.0 - 2.14.0)
 
 An S3 surface at **`/s3`**, for the clients that speak S3 - the AWS SDKs and CLI, `rclone`, `boto3`,
 the S3 node of n8n - so an integration files documents here as it would into any object store. It is
@@ -77,6 +77,12 @@ as v1's are.
 | `DELETE /s3/{bucket}/{key}?versionId=` | deletes **that version only** (2.12.0) | **may delete files** and `WRITE` |
 | `DELETE /s3/{bucket}/{key}/` | deletes the folder if it is empty; `409 FolderNotEmpty` otherwise | **may delete folders** and `WRITE` on its parent |
 | `POST /s3/{bucket}?delete` | `DeleteObjects` (2.12.0): up to 1000 keys - [Deleting many](#deleting-many) | as each `DELETE` |
+| `POST /s3/{bucket}/{key}?uploads` | `CreateMultipartUpload` (2.14.0) - [Multipart upload](#multipart-upload-2140) | as the `PUT` it ends in |
+| `PUT /s3/{bucket}/{key}?partNumber=&uploadId=` | `UploadPart` | the key that began the upload |
+| `POST /s3/{bucket}/{key}?uploadId=` | `CompleteMultipartUpload`: the parts become the object, as a `PUT` would store it | as the `PUT` |
+| `DELETE /s3/{bucket}/{key}?uploadId=` | `AbortMultipartUpload` | the key that began it |
+| `GET /s3/{bucket}/{key}?uploadId=` | `ListParts` | the key that began it |
+| `GET /s3/{bucket}?uploads` | `ListMultipartUploads`: the key's own uploads in progress | sight of the bucket |
 
 `READ` and `WRITE` are the key's folder grants (the key form's folder tree); the three capabilities
 are the checkboxes beneath them, an S3 key's only. A deletion of a key that names nothing is a `204`,
@@ -117,6 +123,44 @@ so `aws s3 ls`, `aws s3 sync`, `rclone ls` / `sync` and n8n's *Get Many* work as
   (`S3ListingScaleTest`): a page of 1000 in under 200 ms through the SDK, a key granted one of the
   twenty thousand folders answered in about 50 ms. The one thing sorted whole is the files directly
   in one folder, for a listing of that folder.
+
+## Multipart upload (2.14.0)
+
+What `aws s3 cp`, `aws s3 sync` and `rclone` switch to by themselves for a file above 8 MB (their
+`multipart_threshold`, `--s3-upload-cutoff`) - and the SDKs' transfer managers: an upload begun, its
+parts sent - in parallel, in any order, any of them again - then completed into one object, or
+aborted. Nothing to configure in the client.
+
+* **The object is stored as a `PUT` stores it.** Completed, the parts are read as one body and go
+  through the same path: the checks of the bytes against the extension and the upload policy, a title
+  already there a new version, folders created only by a key that may, `If-None-Match: *` (on the
+  completion), the metadata (sent with `CreateMultipartUpload`, as S3 takes it), the history and the
+  download log. Its `ETag` is the same as a `PUT`'s of those bytes would be - not S3's
+  `md5-of-md5s-N` (the SDKs do not check it).
+* **Refused at the start where the `PUT` would be**: no `WRITE`, folders the key may not create, a
+  folder's key, an extension the key's creator may not upload - before a part is sent, so a client is
+  not told after gigabytes.
+* **The parts wait on the server's disk** - in the upload temporary directory
+  (`FILEMANAGEMENT_UPLOAD_TEMP_DIR`, under `s3-multipart/`), never in memory - until the completion or
+  the abort. Each part's `ETag` is its MD5, as S3's; a `Content-MD5` sent with it is checked
+  (`BadDigest`); a part sent again replaces the one before, whole.
+* **Bounded**: the parts may not hold more than the server's upload cap, or the key creator's limit
+  for the extension if smaller - asked as each part arrives (`EntityTooLarge`; a part sent again
+  counts once); 10,000 parts; `filemanagement.s3-api.multipart.max-open-uploads` uploads in progress
+  per key (20; `InvalidArgument` past it). **An upload neither completed nor aborted is removed after
+  `expire-hours` (24)**, its parts with it - what S3 leaves to a lifecycle rule, done by itself.
+* **One key's**: an upload is reached by its id and the key that began it. With another key - even
+  one granted the same folders - it is `NoSuchUpload`, and `ListMultipartUploads` lists only the
+  key's own.
+* **A completion** names its parts in ascending order (`InvalidPartOrder`), each with the `ETag` it was
+  answered (`InvalidPart` otherwise); parts not named are discarded. A refused completion leaves the
+  upload as it was, to complete again or abort; two completions at once make one object, the other is
+  `NoSuchUpload`.
+
+Not served: `UploadPartCopy` (a part copied from another object), `ListMultipartUploads` with a
+`delimiter` - each a `501`. A server whose upload temporary directory is not kept across a restart
+(`FILEMANAGEMENT_UPLOAD_TEMP_DIR` unset: Tomcat's own, new at every start) loses the parts in
+progress: their completion is `InvalidPart`, and the client sends the file again.
 
 ## Deleting many
 
@@ -171,7 +215,8 @@ S3's XML (`<Error><Code>…</Code><Message>…</Message><Resource>…</Resource>
 | 403 | `InvalidAccessKeyId` | no such S3 key, or one disabled, revoked or expired |
 | 403 | `RequestTimeTooSkewed`, `AccessDenied` (expired URL) | the clock, or a pre-signed URL past its time |
 | 403 | `AccessDenied` | no grant or no capability for what was asked |
-| 404 | `NoSuchBucket`, `NoSuchKey` | |
+| 404 | `NoSuchBucket`, `NoSuchKey`, `NoSuchUpload` | |
+| 400 | `InvalidPart`, `InvalidPartOrder`, `BadDigest` | a multipart completion naming a part not sent or out of order; a part not matching its `Content-MD5` |
 | 409 | `FolderNotEmpty` | a folder deleted with something in it |
 | 412 | `PreconditionFailed` | `If-None-Match: *` and the title is there |
 | 400 | `EntityTooLarge` | above the server's upload cap (as S3 answers it) |
@@ -196,9 +241,7 @@ S3's XML (`<Error><Code>…</Code><Message>…</Message><Resource>…</Resource>
   MD5 they computed must not (the AWS SDKs validate with their own checksums instead).
 * **A listing shows folders as they are**: an empty folder is a `CommonPrefix` with a delimiter, and
   a folder is never an object without one.
-* **Not yet**: multipart upload, `ListObjectVersions`, `CopyObject`, and every other
+* **Not yet**: `ListObjectVersions`, `CopyObject`, `UploadPartCopy`, and every other
   bucket sub-resource (`?uploads`, `?acl`, `?policy`, `?tagging`, …) - each answered
   `501 NotImplemented`, as are `CreateBucket` and `DeleteBucket` (a bucket is a top-level folder,
-  made and removed on the web). An upload is one request, up to the server's cap: `aws s3 cp` and
-  `sync` switch to multipart above 8 MiB by default, so raise their `multipart_threshold` (or
-  `rclone`'s `--s3-upload-cutoff`) above the largest file.
+  made and removed on the web).

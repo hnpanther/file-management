@@ -41,6 +41,12 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.14.0 is written: **multipart upload on the S3 surface** (9.10 step 5) - `CreateMultipartUpload`,
+`UploadPart`, `CompleteMultipartUpload`, `AbortMultipartUpload`, `ListParts`, `ListMultipartUploads`
+(`V3.11`): the parts wait on disk in the upload temporary directory, each part's file registered
+under the upload's row lock, the completed file stored by the same path as any `PUT`, refused at the
+start where that `PUT` would be, bounded by the upload cap as each part arrives, one key's only, an
+abandoned upload swept after a day. `aws s3 cp` and `sync` above 8 MB now work without configuration.
 2.13.0 is written: **metadata of files and folders** (12.2, 12.3) - a JSON document on each revision
 and each folder (`V3.10`), sent with an upload (the form, v1's `metadata`, S3's `x-amz-meta-*`),
 shown and edited on the file and folder pages, set afterwards through v1 by external id or folder
@@ -2354,8 +2360,16 @@ that can be switched off without a rebuild.
 >   `POST` to an object - a 501, where `DELETE …?tagging` had deleted the file
 >   ([issue 116](issues.md#116-an-s3-request-for-a-sub-resource-of-an-object-was-taken-for-the-object--s1)).
 >
-> **Still to come**: multipart upload (step 5), `ListObjectVersions`, `CopyObject`, `x-amz-meta-*`
-> (12.2 step 4), `folder.bucket_name`, and two uploads creating one path at once answered as one
+> **What 2.14.0 adds** (2026-10-08): **multipart upload** (step 5) - as written in 9.10.4: the parts
+> wait in the upload temporary directory, an abandoned upload is cleared after a day
+> (`expire-hours`), the completed file goes through the same path as any upload. Its `ETag` is the
+> one a `PUT` of the same bytes gets, not S3's `md5-of-md5s-N` (the `md5` column of 9.10.4 is still
+> to come, for both). Tested through the AWS SDK: parts in parallel and out of order, a part sent
+> twice, two completions at once, another key's upload, the cap as parts arrive, the sweep
+> (`S3MultipartTest`, `S3MultipartLimitsTest`).
+>
+> **Still to come**: `ListObjectVersions`, `CopyObject`, `UploadPartCopy`, `x-amz-meta-*`
+> (12.2 step 4, done in 2.13.0), `folder.bucket_name`, and two uploads creating one path at once answered as one
 > (today the second may fail on the unique name, and is retried by the client). 9.11's renewal and
 > replacement key came in 2.11.0. Before a release is used by an integration: `aws`, `rclone`,
 > `boto3` and the S3 node of n8n by hand (9.10.11) - `aws s3 sync` and `rclone sync` now among them.
@@ -2639,7 +2653,7 @@ differently.
 | 2 | 9.11 - the kind of key, renewal, the replacement key | keys managed as below; S3 not yet selectable | 9.11's |
 | 3 | S3 keys (encrypted secret), Signature V4, the host name; `ListBuckets`, `HeadBucket`, `ListObjectsV2`, `GetObject`, `HeadObject`, XML errors | `aws s3 ls`, downloads with any S3 tool | the S3 key's secret, `bucket_name` |
 | 4 | `PutObject` with folder creation and versions, folder create and delete, `DeleteObject(s)`, `versionId`, the capabilities on the key page | **uploads from any S3 tool - the ERP workflow** | - |
-| 5 | Multipart upload | large files from any tool | - |
+| 5 | Multipart upload - **done (2.14.0)** | large files from any tool | `V3.11` |
 | 6 | The old v2 retired - only when every condition of 9.10.1 holds (the S3 surface complete, proven in production a month, no `API_V2` download that month); the S3 surface's manual is `docs/api-s3.md` (2.9.0) | - | - |
 
 About four to six weeks in all; Signature V4 and the streamed bodies are most of it.

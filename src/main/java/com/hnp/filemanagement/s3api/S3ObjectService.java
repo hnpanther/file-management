@@ -210,6 +210,42 @@ public class S3ObjectService {
         return new Stored(stored.getId(), latest.getExternalId(), latest.getVersion(), latest.getChecksumSha256());
     }
 
+    /**
+     * What a {@link #put} of this key would be refused for, asked before a single part of a multipart
+     * upload is received (roadmap 9.10 step 5): a key that names no object, a bucket the key cannot
+     * see, folders it may not create, a folder it may not write - so that a client is told now, not
+     * after sending gigabytes. Nothing is created; the completion asks every question again, through
+     * {@link #put} itself. The extension and the size are the upload policy's, asked by the caller.
+     */
+    @Transactional(readOnly = true)
+    public void preflightPut(String bucket, String key, ApiKey apiKey, int principalId) {
+        S3Key parsed = S3Key.parse(key);
+        if (parsed.namesFolder()) {
+            throw new InvalidDataException("a key ending in / names a folder");
+        }
+        if (FileNames.withoutExtension(parsed.objectName()).equals(parsed.objectName())) {
+            throw new InvalidDataException("the object's name must carry an extension: " + parsed.objectName());
+        }
+        FolderAccess access = folderAccessService.accessFor(principalId);
+        Folder current = requireBucket(bucket, access);
+        int existing = 0;
+        for (String name : parsed.folders()) {
+            Optional<Folder> child = folderRepository.findByParentIdAndNameIgnoreCase(current.getId(), name);
+            if (child.isEmpty()) {
+                break;
+            }
+            current = child.get();
+            existing++;
+        }
+        if (existing < parsed.folders().size() && !apiKey.isMayCreateFolders()) {
+            throw new AccessDeniedException("the key may not create folders: "
+                    + String.join("/", parsed.folders().subList(existing, parsed.folders().size())) + " does not exist");
+        }
+        if (!access.canWrite(current.getPath())) {
+            throw new AccessDeniedException("no write access to " + key);
+        }
+    }
+
     /** {@code PUT …/folder/} with an empty body: the folder, and any missing above it. Idempotent. */
     @Transactional
     public void createFolder(String bucket, String key, ApiKey apiKey, int principalId) {
