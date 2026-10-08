@@ -3172,7 +3172,7 @@ the unit a search matches and a result points at ("page 37").
 | Column | |
 |---|---|
 | `file_details_id`, `page_number` | primary key; cascades with `file_content` |
-| `source` | `TEXT` or `OCR` (from 11.2), `BOTH` (11.4) - which reading it holds; a result marks an OCR'd page |
+| `source` | `TEXT`, `TEXT_REVERSED` (a reversed text layer put right) or `OCR` (from 11.2), `BOTH` - which reading it holds; a result marks an OCR'd page |
 | `score` | the share of known words (11.4's quality gate); null before 11.4 |
 | `text` | the text as read (NFKC-normalised), for the snippet - a page at most `max-text-mb` in all |
 | `search_text` | the text folded as names are folded (`SearchKey`): ي/ك to ی/ک, the half-space removed, digits to ASCII, lower case - what is searched |
@@ -3396,6 +3396,57 @@ What it costs: the score is a set lookup per word, nothing beside the parsing; t
 documents that need it. What it does not do: correct a wrong word - a search for a word OCR misread
 still misses that page, as with any scan.
 
+#### Measured again on fifteen real files - 2026-10-08
+
+Fifteen files from production's kind of work - eight scanned PDFs (one of 30 pages of JPEG 2000 and
+JBIG2 images, one of 13 bilingual forms, one of 16 pages of a procedure), a screenshot, six PDFs with
+a text layer, a Word document and a spreadsheet - through the image as deployed (Tika 4.1, the
+JPEG 2000 jar, `tessdata_best`'s `fas`, `fas+eng`, 2 CPUs a lane), each routed as 11.2 will route it:
+
+* **Scans read as the 2026-10-05 measure said**: printed text right with a few letters off
+  (procedures, minutes, bilingual forms - their part numbers and tags whole), **4.5-5.5 s a page**.
+  **Handwriting is not read** - the filled-in fields of a printed form come out as noise, its printed
+  labels are found: Tesseract reads print, and nothing in this stack reads a hand.
+* **Word, Excel and sound text PDFs: every word right.**
+* **Three of the six text-layer PDFs have a text layer `AUTO` trusts and nobody can search** - so the
+  gate cannot wait for 11.4:
+
+| PDF | Its text layer | `AUTO` did | What reads it |
+|---|---|---|---|
+| a scanner's own PDF (Canon) | **garbage** - `roi,rJr*lJ ill.l5` - a non-Unicode font mapped to Latin; plenty of characters, none unmapped | trusted it: no OCR | OCR (the `ocr-only` preset): the letter read right - its sender, account number, address |
+| a letter of the office-automation system (iTextSharp) | **every Persian word stored reversed**, the line's words in reverse order - `یلاعت همساب` for `باسمه تعالی`; a search for `شماره` never finds it | trusted it | reversing each word and each line's order: right, but for the `لا` ligature (`الزم` for `لازم`) |
+| a proposal from Word 365 | sound but for some paragraphs whose letters moved inside words - `تیوضع` for `وضعیت` | trusted it | OCR of those pages |
+
+**The share of function words tells the first two apart without a lexicon.** Per page, the share of
+its words (Persian and English) that are among about fifty function words - `از`, `در`, `به`, `که`,
+`را`, `برای`, `the`, `of`, ... - counted once as stored and once with each Persian word reversed
+(palindromes, `و` among them, counted in neither):
+
+| Page | Words | Function words as stored | Reversed |
+|---|---|---|---|
+| sound prose (letters, proposals) | 50-450 | **14-27%** | 0% |
+| a sound invoice - a table, mostly numbers | 189 | **3%** | 0% |
+| the Canon PDF's garbage | 40-543 | **0%** on every page | 0% |
+| the automation letter's reversed text | 167-321 | **0-1%** | **7-13%** on every page |
+| the Word page with scrambled paragraphs | 155 | 6% | 0% |
+
+**Decided 2026-10-08: the gate's first two checks are part of 11.2**, measured on these pages; the
+lexicon of 11.4 stays for what they cannot see:
+
+1. **A reversed page is repaired, not read again**: reversed function words at least 3% and three
+   times those as stored - each Persian word reversed and each line's words put back in order; the
+   page is scored again, and one that still fails is OCR'd. The reading is marked
+   (`source = TEXT_REVERSED`) so a change of rule can find it.
+2. **A page of garbage is OCR'd**: at least 50 words and under 1% function words either way - the
+   document goes to the OCR lane with the `every-page` preset, and both readings are indexed for that
+   page, as point 4 above says.
+3. **What the share cannot tell is 11.4's**: the Word page with some scrambled paragraphs scores 6%,
+   above a sound table's 3% - only a lexicon separates them.
+
+The thresholds are a first setting from fifteen files (`content-search.extraction.quality.*`), to be
+measured again on the backfill's first thousand PDFs; each page's score is stored, so a new threshold
+re-queues exactly the pages it changes.
+
 ### Where Tika runs, and on what
 
 **A host of its own** - not the application's, and not the object store's:
@@ -3497,9 +3548,9 @@ number of statements whatever the reader's grants (`ListQueryCountTest`).
 | Step | What | Schema | Depends on |
 |---|---|---|---|
 | 11.1 | (`deploy/tika` written ahead of it and run on 2026-10-04: Tika 4.1, the two containers, the image with Persian, the two JSON configurations and their presets; text PDFs and Word read right, scans OCR'd at 2.3-2.5 s a page on 2 CPUs with most words right; the two Persian models compared - on clean pages equal at ~90% of words, on real scans `tessdata_best` 3-4 points better for ~30% more time, `fas+eng` kept over `fas` alone - the details in its README.) **The pipeline**: `file_content` and its states, the outbox row written with each revision, the workers in two lanes, `deploy/tika` (done ahead: the two containers, the Persian image, `tika-config.json` per lane, a README like `deploy/seaweedfs`'s), `tika-core` moved to 4.x and Tika in the suite (Testcontainers), the settings, a page of what failed with a retry | `V3.x` | - |
-| 11.2 | **Reading and searching - with OCR from the start** (decided 2026-10-08): text documents (PDF with a text layer, Word, PowerPoint, Excel, OpenDocument, RTF, text, HTML) in the text lane; **images and scanned PDFs, Persian and English, in the OCR lane** (`tika-ocr`, `fas+eng`), a PDF of text and scanned pages in the two passes ("A PDF with both text and scanned pages"), `ocr.max-pages` and the partial mark; the page, slide or sheet of every unit kept; the `tsvector`, its GIN index, "search in contents" on the file list, the explorer and API v1, **each result with the pages it matched on and a snippet per page**, opened at that page | (11.1's) | 11.1 |
+| 11.2 | **Reading and searching - with OCR from the start** (decided 2026-10-08): text documents (PDF with a text layer, Word, PowerPoint, Excel, OpenDocument, RTF, text, HTML) in the text lane; **images and scanned PDFs, Persian and English, in the OCR lane** (`tika-ocr`, `fas+eng`), a PDF of text and scanned pages in the two passes ("A PDF with both text and scanned pages"), `ocr.max-pages` and the partial mark; the page, slide or sheet of every unit kept; **the text layer's first checks** - a reversed page repaired, a page of garbage OCR'd (decided 2026-10-08, "Measured again on fifteen real files"); a document OCR'd to no text `FAILED`, never `EMPTY`; the `tsvector`, its GIN index, "search in contents" on the file list, the explorer and API v1, **each result with the pages it matched on and a snippet per page**, opened at that page | (11.1's) | 11.1 |
 | 11.3 | **The backfill** (`extraction.backfill`): every revision stored before 11.1 queued at priority 1, in batches, read in the text lane behind new uploads, a report at the end. **Not waiting for Phase 4's copy** (decided 2026-10-08: the move to the object store is postponed): read from where the files are now - a file the copy later moves is not read again, its text is the bytes' | none | 11.2 |
-| 11.4 | **The text layer's quality gate** ("A text layer that cannot be trusted"): `content_lexicon` grown from the trustworthy documents read by 11.2 and 11.3, each PDF page scored against it, a document with a failed page read again with `EXTRACT_AND_OCR`, both readings indexed for a failed page. Its own release because it needs a lexicon, and the lexicon needs documents read: built on what 11.2 and 11.3 have read. (OCR itself moved into 11.2 on 2026-10-08.) | `content_lexicon` | 11.2, 11.3 |
+| 11.4 | **The text layer's quality gate, by lexicon** ("A text layer that cannot be trusted") - what the function-word checks of 11.2 cannot see, a page partly scrambled: `content_lexicon` grown from the trustworthy documents read by 11.2 and 11.3, each PDF page scored against it, a document with a failed page read again with `EXTRACT_AND_OCR`, both readings indexed for a failed page. Its own release because it needs a lexicon, and the lexicon needs documents read: built on what 11.2 and 11.3 have read. (OCR itself moved into 11.2 on 2026-10-08.) | `content_lexicon` | 11.2, 11.3 |
 | 11.5 | **Drawings and diagrams**: first a sample of real drawings - which fonts their Persian is in (the SHX question); then DXF read directly, DWG through the converter, a mapping for each Persian SHX font found; Visio (`vsdx`, `vsd`) checked on real files | none | 11.2 |
 | 11.6 | **Only if needed**: OpenSearch behind `ContentSearch` - stems, typo tolerance, better ranking | none | 11.2 |
 
@@ -3520,7 +3571,8 @@ and 11.3 have read enough to build its lexicon; 11.5 is optional; 11.6 only if P
    README's recommendation, measured 3-4 points better on real scans).
 4. Reading by unit - a PDF's pages, a presentation's slides, a spreadsheet's sheets, the rest whole -
    in the text lane, and images and scanned pages in the OCR lane (the two passes, the caps, the
-   partial mark); folding; `file_content_page` written in one transaction with the row's `DONE`.
+   partial mark); each text page scored by its function words - a reversed one repaired, one of
+   garbage sent to OCR; folding; `file_content_page` written in one transaction with the row's `DONE`.
 5. `ContentSearch` and `PostgresContentSearch`: the query model, the access filter in the query
    (`GrantedFolderPath`), ranking by file, snippets on the page of results; `ContentSearchContractTest`.
 6. "Search in contents" on the file list and the explorer (`SEARCH_FILE_CONTENTS`) - each result
@@ -3554,7 +3606,7 @@ and 11.3 have read enough to build its lexicon; 11.5 is optional; 11.6 only if P
 
 A corpus of real-shaped samples under `src/test/resources/content/` - Persian and English PDFs with
 and without a text layer, one mixing both (a word found on its scanned page 2 must be answered as page
-2, from OCR), a presentation and a spreadsheet whose words must come back with their slide and sheet, one whose Persian reads in presentation forms, `docx`,
+2, from OCR), a presentation and a spreadsheet whose words must come back with their slide and sheet, one whose Persian reads in presentation forms, one whose text layer is stored reversed (repaired, found by `شماره`) and one whose text layer is a non-Unicode font's garbage (OCR'd), a scan of JPEG 2000 images (read, not `EMPTY`) - each made for the test, never a real document of the archive, `docx`,
 `xlsx`, `pptx`, `vsdx`, a photographed form, a `dxf` with a title block in TrueType and in an SHX
 font - each with the words it must yield; Tika as a container, as SeaweedFS is; the worker with
 Tika stopped, slow, and given a corrupt file; a cap that marks a row partial; folder access on
