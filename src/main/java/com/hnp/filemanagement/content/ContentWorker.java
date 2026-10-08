@@ -78,6 +78,7 @@ public class ContentWorker implements SmartLifecycle {
     private final AtomicReference<Instant> problemSince = new AtomicReference<>();
     private final AtomicReference<Instant> lastRelease = new AtomicReference<>(Instant.EPOCH);
     private final AtomicLong read = new AtomicLong();
+    private final AtomicBoolean loopFailing = new AtomicBoolean();
     private final AtomicReference<Integer> reading = new AtomicReference<>();
     /** A permit when a new revision was queued: an idle worker wakes for it at once. */
     private final java.util.concurrent.Semaphore wakeUps = new java.util.concurrent.Semaphore(0);
@@ -181,18 +182,30 @@ public class ContentWorker implements SmartLifecycle {
                 releaseExpiredLeases(now);
                 Optional<Integer> claimed = repository.claim(now, now.plus(lease));
                 if (claimed.isEmpty()) {
+                    if (loopFailing.getAndSet(false)) {
+                        logger.info("content extraction: the worker's loop runs again");
+                    }
                     idle();
                     continue;
                 }
                 readOne(claimed.get());
+                if (loopFailing.getAndSet(false)) {
+                    logger.info("content extraction: the worker's loop runs again");
+                }
             } catch (InterruptedException e) {
                 if (!running.get()) {
                     return;
                 }
                 Thread.interrupted();
             } catch (RuntimeException | Error e) {
-                // The database gone, a bug: said, waited out, and the loop goes on.
-                logger.error("content extraction: the worker's loop failed, and goes on in {} s", AFTER_AN_ERROR.toSeconds(), e);
+                // The database gone, a bug: said - in full once, then briefly until it runs again, so
+                // an outage of the database is not a stack trace every ten seconds - waited out, and
+                // the loop goes on.
+                if (!loopFailing.getAndSet(true)) {
+                    logger.error("content extraction: the worker's loop failed, and goes on in {} s", AFTER_AN_ERROR.toSeconds(), e);
+                } else {
+                    logger.warn("content extraction: the worker's loop still fails: {}", e.toString());
+                }
                 try {
                     sleep(AFTER_AN_ERROR);
                 } catch (InterruptedException interrupted) {

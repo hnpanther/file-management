@@ -237,9 +237,9 @@ made under `ERP`, before anyone has written who each is.
 
 `GET /api/v1/files/content-search?q=...` - files by the text inside them, read by Apache Tika: a PDF's
 pages (a scanned page's words too, by OCR, Persian and English), a Word document, the slides of a
-presentation, the sheets of a spreadsheet. Needs `API_SEARCH_FILE_CONTENTS`; a `404` while the
-installation has the search switched off. Only files the caller may read are found - a key, only in
-its own folders.
+presentation, the sheets of a spreadsheet. Needs `API_SEARCH_FILE_CONTENTS` - an API key holds it
+by itself, as it holds the download - and a `404` while the installation has the search switched off.
+Only files the caller may read are found - a key, only in its own folders.
 
 | Parameter | |
 |---|---|

@@ -41,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * JPEG 2000 scan, a PDF of a text page and a scanned one, slides, sheets, a letter, a photo.
  */
 @SpringBootTest
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TikaEndToEndTest extends DatabaseSupport {
 
