@@ -3101,6 +3101,45 @@ folder access in the query itself, as every other search is.
   thousand characters), the pages OCR reads, the time one file may take - and what was cut off is
   recorded, never silently dropped.
 
+### The first release as its owner set it - decided 2026-10-08
+
+What the first release must be, as the owner asked it, and how each is met - these win over anything
+below that says otherwise:
+
+| Asked | How |
+|---|---|
+| **A setting that stops the reading** - and the application starting even with Tika unreachable | `extraction.enabled=false`: no worker is started, and nothing calls Tika - not at the start, not later. On, Tika is called by the worker alone, **never at the start**: the application starts whether Tika is up, down or misconfigured |
+| **A setting that turns the search page and its API on** | `content-search.enabled`; off, the page and the API answer `404` and no menu shows them. The two are independent (the table below) |
+| **Access exact** | the endpoint's permission and the reader's folder access, in the query - "Who sees what" |
+| **The page a match is on** | a row per page, slide or sheet - "Where in the file" |
+| **In the background, never in the way of the rest** | "The worker" below |
+| **One file at a time to Tika**, the next only once the last one's result is known | `extraction.concurrency=1`: one worker thread, one request at a time to either container |
+| **Nothing heavy** | one thread; no database connection held while Tika works; bytes streamed, the answer bounded |
+| **A worker in trouble never takes the application down; Tika unreachable never crashes it** | "The worker" below |
+| **A PDF of text pages and scanned pages read as one file** | one request to `tika-ocr`, page by page - "A PDF with both text and scanned pages" |
+
+**The worker, and why it cannot hurt the rest:**
+
+* **A thread of its own** - a single-thread executor, not the scheduler's shared pool and never a
+  request's thread - so `StorageSweeper`, the multipart sweep and the download recorder never wait
+  for it, and no page or API call does.
+* **Nothing escapes its loop.** An exception reading one file ends that file (`FAILED` after its
+  attempts, the reason kept), never the loop; if the loop itself ends, it is started again and says
+  so in the log. No error of the worker reaches a request or the application's start.
+* **A database connection only for moments**: the claim (`FOR UPDATE SKIP LOCKED`, a lease) and the
+  write of the result, each its own short transaction - none while Tika works, so a ten-minute OCR
+  holds no connection from the pool.
+* **Streamed and bounded**: the bytes go from `BlobStore` to Tika as they are read; the answer is
+  read up to `max-text-mb` and the row marked *partial* beyond it. Nothing is held whole in memory.
+* **Tika unreachable is not the file's fault**: refused, timed out, `429` or `503` - the file goes
+  back to *pending* without spending an attempt, and the worker waits, from 30 seconds doubling to
+  10 minutes, then tries again. One warning when Tika is lost and one when it is back - not one per
+  file. Readiness shows it as a warning, never `DOWN`.
+* **Last in line**: a new upload is read before the backfill; an upload's transaction holds nothing
+  of it but the *pending* row.
+* **Stopped by the setting** (`extraction.enabled=false` and a restart): the worker never starts; a
+  file it was reading when the application stopped is *pending* again when its lease runs out.
+
 ### Settings - decided 2026-10-08
 
 Three switches, one under the other, so an installation turns on what it is ready for and nothing
@@ -3118,8 +3157,8 @@ filemanagement.content-search.tika.text-url=http://tika-host:9998
 filemanagement.content-search.tika.ocr-url=http://tika-host:9999
 filemanagement.content-search.tika.timeout-seconds=120
 filemanagement.content-search.extraction.ocr-enabled=true      # from the first release (2026-10-08)
-filemanagement.content-search.extraction.text-workers=2
-filemanagement.content-search.extraction.ocr-workers=2
+filemanagement.content-search.extraction.concurrency=1       # files at Tika at once - 1 asked by the owner, 2026-10-08
+filemanagement.content-search.extraction.retry-max-wait-minutes=10   # Tika unreachable: from 30 s, doubling to this
 filemanagement.content-search.extraction.max-file-mb=200      # larger: SKIPPED, said so
 filemanagement.content-search.extraction.max-text-mb=10       # per revision kept; beyond: partial
 filemanagement.content-search.engine=postgres                  # 11.6: opensearch
@@ -3138,11 +3177,12 @@ a search that does not work. `ocr-enabled` is on by default and needs `tika.ocr-
 container); it is off only for an installation that runs no OCR container, and then those files are
 `SKIPPED` with the reason, to be read when it is switched on.
 
-**Checked at the start, refused with the setting named**: reading on without `tika.text-url`, OCR on
-without `tika.ocr-url`, a URL that is not one, an engine that is not `postgres` (or, from 11.6,
-`opensearch` with its settings) - the start fails, as a wrong S3 master key fails it, rather than
-running workers that can never succeed. Tika *unreachable* at the start is not refused: it is a
-running state (rows stay pending, readiness warns).
+**Nothing here stops the application from starting** (the owner, 2026-10-08 - this replaces the
+first plan, which refused to start on a missing URL). Reading on without `tika.text-url` or
+`tika.ocr-url`, or with one that is not a URL: the application starts, the worker does not, an error
+names the setting once in the log, the status page and readiness say reading is stopped and why.
+Tika unreachable is a running state, as above. Only an engine that is not `postgres` is refused -
+a typo there is not a state to run in.
 
 ### The tables - decided 2026-10-08
 
@@ -3296,13 +3336,21 @@ runs no converter.
 
 Tika's `auto` OCR strategy decides **page by page**: a page with a text layer is read as text; a
 page with no text, too little, or text in characters that map to nothing is rendered (about
-300 dpi) and given to Tesseract. A 100-page PDF of 60 text pages and 40 scans is read in two passes:
+300 dpi) and given to Tesseract.
 
-1. **The text lane** (seconds): the whole PDF without OCR. The 60 text pages are **searchable at
-   once**; the worker sees 40 pages with no text and, with OCR on, queues the file in the OCR lane.
-2. **The OCR lane** (minutes): the PDF again with `auto` - the text pages pass quickly, only the 40
-   scans are recognised, at an estimated 2-5 s a page for Persian on one core - and the complete
-   text, page by page, replaces the first.
+**One pass, one file - decided 2026-10-08** (one file at a time, nothing heavy): every PDF and every
+image goes once to `tika-ocr` with `auto`. A 100-page PDF of 60 text pages and 40 scans is one
+request: the 60 text pages read from their text layer in a moment, the 40 scans recognised at about
+5 s a page (measured), and one answer with all 100 pages, each marked as read or recognised. A PDF
+with no scanned page costs no more there than in the text lane (0.1-0.3 s measured). `tika-text`
+reads the rest - Word, Excel, PowerPoint, OpenDocument, RTF, text, HTML. (The first plan read a PDF
+twice, its text pages searchable before its scans were done; with one file at a time that is a
+second trip for little.)
+
+**The time one file may take**: Tika's own limit in `config/ocr.json` (`totalTaskTimeoutMillis`, 30
+minutes - about 350 scanned pages at 5 s) and the client's, a little longer. A scan longer than that
+is `FAILED`, "too long to recognise in one pass" - 11.1 checks whether Tika 4.1 can stop at a page
+count instead, so that such a file is `DONE` and *partial* rather than failed.
 
 Two caps apply: `ocr.max-pages` (pages recognised per file - beyond it the row is `DONE` and marked
 **partial**, "OCR of pages 1-50 of 80", so nobody mistakes it for complete), and a time limit that
@@ -3482,6 +3530,24 @@ hours = scanned pages x seconds a page / (cores x 3600)
         50,000 pages x 4 s / (8 x 3600) ≈ 7 hours;  with 4 cores ≈ 14
 ```
 
+**The Tika host as it is - 2026-10-08: 4 cores, 32 GB.** One file at a time means one container
+works at a time, so each may be given most of the host (a `cpus` limit is a ceiling, not a share):
+
+```properties
+# deploy/tika/.env
+TIKA_TEXT_CPUS=2
+TIKA_TEXT_MEMORY=6g
+TIKA_OCR_CPUS=4
+TIKA_OCR_MEMORY=12g
+```
+
+`pipes.numClients` stays `1` in both configurations: one file at a time needs one parsing fork. One
+PDF is recognised a page at a time on about one core, ~5 s a page: 1,000 scanned pages ≈ 1.4 hours,
+a backfill of 50,000 ≈ 70 hours behind new uploads. Faster is a setting when wanted:
+`extraction.concurrency=2` and `numClients=2` in `config/ocr.json` (2 x 2 + 2 > 4 cores, so Tika's
+rule wants the OCR container's 4 for one fork beside its server - measured before it is changed)
+roughly halve it on this host.
+
 **Only one host for both, for now?** Possible, with: `cpus` and `mem_limit` on the Tika containers
 (half the cores, say); few OCR workers, the backfill at night; Tika on a Docker network of its own,
 unable to reach the master, filer, volume or filer database; Tika as a non-root user on a
@@ -3548,7 +3614,7 @@ number of statements whatever the reader's grants (`ListQueryCountTest`).
 | Step | What | Schema | Depends on |
 |---|---|---|---|
 | 11.1 | (`deploy/tika` written ahead of it and run on 2026-10-04: Tika 4.1, the two containers, the image with Persian, the two JSON configurations and their presets; text PDFs and Word read right, scans OCR'd at 2.3-2.5 s a page on 2 CPUs with most words right; the two Persian models compared - on clean pages equal at ~90% of words, on real scans `tessdata_best` 3-4 points better for ~30% more time, `fas+eng` kept over `fas` alone - the details in its README.) **The pipeline**: `file_content` and its states, the outbox row written with each revision, the workers in two lanes, `deploy/tika` (done ahead: the two containers, the Persian image, `tika-config.json` per lane, a README like `deploy/seaweedfs`'s), `tika-core` moved to 4.x and Tika in the suite (Testcontainers), the settings, a page of what failed with a retry | `V3.x` | - |
-| 11.2 | **Reading and searching - with OCR from the start** (decided 2026-10-08): text documents (PDF with a text layer, Word, PowerPoint, Excel, OpenDocument, RTF, text, HTML) in the text lane; **images and scanned PDFs, Persian and English, in the OCR lane** (`tika-ocr`, `fas+eng`), a PDF of text and scanned pages in the two passes ("A PDF with both text and scanned pages"), `ocr.max-pages` and the partial mark; the page, slide or sheet of every unit kept; **the text layer's first checks** - a reversed page repaired, a page of garbage OCR'd (decided 2026-10-08, "Measured again on fifteen real files"); a document OCR'd to no text `FAILED`, never `EMPTY`; the `tsvector`, its GIN index, "search in contents" on the file list, the explorer and API v1, **each result with the pages it matched on and a snippet per page**, opened at that page | (11.1's) | 11.1 |
+| 11.2 | **Reading and searching - with OCR from the start** (decided 2026-10-08): Office documents, RTF, text and HTML in the text lane; **every PDF and image in the OCR lane** (`tika-ocr`, `fas+eng`, `auto`): a text page read as text, a scanned one recognised, a PDF of both in one pass ("A PDF with both text and scanned pages"); **one file at a time**, the worker on a thread of its own that nothing waits for ("The first release as its owner set it"), `ocr.max-pages` and the partial mark; the page, slide or sheet of every unit kept; **the text layer's first checks** - a reversed page repaired, a page of garbage OCR'd (decided 2026-10-08, "Measured again on fifteen real files"); a document OCR'd to no text `FAILED`, never `EMPTY`; the `tsvector`, its GIN index, "search in contents" on the file list, the explorer and API v1, **each result with the pages it matched on and a snippet per page**, opened at that page | (11.1's) | 11.1 |
 | 11.3 | **The backfill** (`extraction.backfill`): every revision stored before 11.1 queued at priority 1, in batches, read in the text lane behind new uploads, a report at the end. **Not waiting for Phase 4's copy** (decided 2026-10-08: the move to the object store is postponed): read from where the files are now - a file the copy later moves is not read again, its text is the bytes' | none | 11.2 |
 | 11.4 | **The text layer's quality gate, by lexicon** ("A text layer that cannot be trusted") - what the function-word checks of 11.2 cannot see, a page partly scrambled: `content_lexicon` grown from the trustworthy documents read by 11.2 and 11.3, each PDF page scored against it, a document with a failed page read again with `EXTRACT_AND_OCR`, both readings indexed for a failed page. Its own release because it needs a lexicon, and the lexicon needs documents read: built on what 11.2 and 11.3 have read. (OCR itself moved into 11.2 on 2026-10-08.) | `content_lexicon` | 11.2, 11.3 |
 | 11.5 | **Drawings and diagrams**: first a sample of real drawings - which fonts their Persian is in (the SHX question); then DXF read directly, DWG through the converter, a mapping for each Persian SHX font found; Visio (`vsdx`, `vsd`) checked on real files | none | 11.2 |
@@ -3565,12 +3631,13 @@ and 11.3 have read enough to build its lexicon; 11.5 is optional; 11.6 only if P
 1. `V3.x`: `file_content`, `file_content_page`, their indexes; the settings and their checks at the start.
 2. The outbox row with every new revision (all three upload paths - they share `newFileDetails`); a
    revision deleted takes its rows with it.
-3. `TikaClient` (HTTP, a timeout, the lane's URL), the workers of both lanes (`SKIP LOCKED`, the
-   lease, the back-off), the routing by detected kind; `tika-core` moved to 4.x with the detection
+3. `TikaClient` (HTTP, a timeout, the lane's URL, the body streamed, the answer bounded), the
+   worker - one thread, `extraction.concurrency` files at a time (1), `SKIP LOCKED`, the lease, the
+   back-off while Tika is unreachable, nothing escaping its loop - and the routing by detected kind; `tika-core` moved to 4.x with the detection
    tests; `deploy/tika`'s image with `tessdata_best`'s Persian model baked in at a pinned checksum (the
    README's recommendation, measured 3-4 points better on real scans).
 4. Reading by unit - a PDF's pages, a presentation's slides, a spreadsheet's sheets, the rest whole -
-   in the text lane, and images and scanned pages in the OCR lane (the two passes, the caps, the
+   in the text lane, and every PDF and image in the OCR lane in one pass (the caps, the
    partial mark); each text page scored by its function words - a reversed one repaired, one of
    garbage sent to OCR; folding; `file_content_page` written in one transaction with the row's `DONE`.
 5. `ContentSearch` and `PostgresContentSearch`: the query model, the access filter in the query
@@ -3589,6 +3656,10 @@ and 11.3 have read enough to build its lexicon; 11.5 is optional; 11.6 only if P
 * **An upload never waits for, and never fails because of, reading its contents.** Tika down,
   slow or failing leaves rows *pending* or *failed* and uploads, downloads and name search exactly
   as they were (the test of 2.7.0's download records, again).
+* **The application starts, and stays up, whatever Tika and the worker do**: started with Tika
+  stopped, with no URL, with a URL to nowhere; a file that makes the parser throw, hang or answer
+  garbage; Tika stopped while a file is at it - each a test, each ending with the application
+  answering and the row in a state ("The worker, and why it cannot hurt the rest").
 * **Nobody learns from a search what they could not open** - a result, a snippet, a count: only
   files in folders the reader may read, filtered in the query, never after it; public files and
   share links grant nothing here ([Who sees what](#who-sees-what-only-the-documents-each-person-may-open)).
