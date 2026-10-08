@@ -31,13 +31,26 @@ No backup: Tika holds no data.
 cd deploy/tika
 cp .env.example .env
 docker pull apache/tika:4.1.0-1-full          # ~2 GB; once
-docker compose build                          # adds Ubuntu's tesseract-ocr-fas: about a minute
+docker compose build                          # adds Ubuntu's tesseract-ocr-fas and the JPEG 2000 jar: about a minute
 docker compose run --rm --no-deps --entrypoint tesseract tika-ocr --list-langs
 ```
 
 The last command must list **`fas`** and **`eng`** - the build itself stops if either is missing.
 One image, `file-management/tika:4.1.0-1-fas`, serves both containers: the text lane runs it with
 OCR switched off.
+
+The build reaches Docker Hub, Ubuntu's archive and **Maven Central** (`repo1.maven.org`, for
+`jai-imageio-jpeg2000`, pinned by its SHA-256 - the build fails if the file differs). A host that
+reaches none of them is given the image built elsewhere:
+
+```bash
+docker save file-management/tika:4.1.0-1-fas -o tika-4.1.0-1-fas.tar      # where it was built
+docker load -i tika-4.1.0-1-fas.tar                                         # on the Tika host
+docker compose up -d                                                        # recreates both with it
+```
+
+To check an image has the JPEG 2000 decoder: `docker compose exec tika-ocr ls -l /tika-extras` lists
+`jai-imageio-jpeg2000-1.4.0.jar`, readable by all.
 
 ## Running it
 
@@ -112,6 +125,7 @@ Save an answer to read it in an editor that shows Persian right to left: `curl .
 | The same scanned PDF, text lane or the `text-layer-only` preset | no text, as intended |
 | `rmeta` of a scanned PDF | `pdf:ocr-page-count = 1`, `pdf:chars-per-page = 0`, 4.x's `tk:` keys |
 | Six sample files (2026-10-05): a photo, three scans, two PDFs from Word | the photo and the scans OCR'd at 80-90% real words (50 pages in 129 s); one Word PDF's text layer **partly scrambled** (letters moved across words) and mostly charts - `AUTO` takes it for a sound text page; its text layer alone has 748 distinct words, with OCR of every page 1,546. The quality gate this calls for: roadmap 11, "A text layer that cannot be trusted" |
+| A scanned PDF whose pages are JPEG 2000 images (`JPXDecode` - what many scanners write), 2026-10-08, on the server | **`200` and no text at all**; the log alone says `Cannot read JPEG2000 image: Java Advanced Imaging (JAI) Image I/O Tools are not installed`. PDFBox decodes JPEG 2000 only with `jai-imageio-jpeg2000`, which the official image leaves out for its licence. `rmeta` says nothing either - `pdf:ocr-page-count = 2`, no exception, no `tk:content`. **Fixed in the image**: the jar in `/tika-extras/` (the Dockerfile); the same PDF then OCR'd on both pages. What it means for roadmap 11: an OCR'd document with no text is a reading to doubt, not an `EMPTY` to trust |
 
 What this means for roadmap 11.4:
 
@@ -191,3 +205,4 @@ reads Persian more accurately, more slowly. To try it:
 | a container restarts, its log mentions a read-only file system | something writes outside `/tmp`: remove `read_only: true` from `compose.yaml` to try, and note what it was |
 | `429` under load | every fork busy: raise `pipes.numClients` in `config/*.json` together with the container's CPUs (`numClients x 2 + 2 <= cores`) |
 | an answer is empty for a scan sent to 9998 | as it should be: the text lane does no OCR - send it to 9999 |
+| an answer is empty for a scan sent to 9999, and the log says `Cannot read JPEG2000 image` | an image built before the JPEG 2000 jar was added (2026-10-08): build it again, or load the new one |
