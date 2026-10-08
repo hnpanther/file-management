@@ -31,6 +31,10 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -119,6 +123,36 @@ class S3MultipartLimitsTest extends DatabaseSupport {
                 .as("each key its own three").isNotBlank();
         s3.abortMultipartUpload(r -> r.bucket(bucket).key("open-0.pdf").uploadId(open.getFirst()));
         assertThat(s3.createMultipartUpload(r -> r.bucket(bucket).key("fourth.pdf")).uploadId()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("sixteen uploads begun at once by one key: three begin, the rest are refused - the bound on its disk holds under a race")
+    void openUploadsAtOnce() throws Exception {
+        ExecutorService threads = Executors.newFixedThreadPool(16);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<String>> answers = new ArrayList<>();
+            for (int i = 0; i < 16; i++) {
+                int n = i;
+                answers.add(threads.submit(() -> {
+                    start.await();
+                    try {
+                        return s3.createMultipartUpload(r -> r.bucket(bucket).key("race-" + n + ".pdf")).uploadId() == null ? "?" : "begun";
+                    } catch (S3Exception e) {
+                        return e.awsErrorDetails().errorCode();
+                    }
+                }));
+            }
+            start.countDown();
+            List<String> results = new ArrayList<>();
+            for (Future<String> answer : answers) {
+                results.add(answer.get());
+            }
+            assertThat(results).filteredOn("begun"::equals).hasSize(3);
+            assertThat(results).filteredOn(r -> !"begun".equals(r)).containsOnly("InvalidArgument");
+        } finally {
+            threads.shutdownNow();
+        }
     }
 
     // ---------------------------------------------------------------- helpers

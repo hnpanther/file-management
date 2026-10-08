@@ -63,6 +63,17 @@ public class S3MultipartRepository {
         return keys.getKey().longValue();
     }
 
+    /**
+     * Holds the key's own row until the transaction ends, so that one key's uploads are begun one
+     * after another and the count of its uploads in progress is still true when the next is added:
+     * counted unheld, sixteen begun at once by one key were ten where the bound was three.
+     * {@code NO KEY UPDATE}, which the foreign keys' checks on the row do not wait for.
+     */
+    public void lockKey(int apiKeyId) {
+        jdbc.query("SELECT id FROM api_key WHERE id = :apiKeyId FOR NO KEY UPDATE",
+                new MapSqlParameterSource("apiKeyId", apiKeyId), (rs, n) -> rs.getInt(1));
+    }
+
     /** How many uploads a key has in progress. */
     public int countOpen(int apiKeyId) {
         return jdbc.queryForObject("SELECT count(*) FROM s3_multipart_upload WHERE api_key_id = :apiKeyId",

@@ -143,6 +143,7 @@ public class S3MultipartService {
         long maxBytes = maxBytesFor(key, principalId);
         String uploadId = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes());
         transactions.executeWithoutResult(status -> {
+            repository.lockKey(apiKey.getId());
             if (repository.countOpen(apiKey.getId()) >= properties.maxOpenUploads()) {
                 throw new InvalidDataException("the key has " + properties.maxOpenUploads()
                         + " multipart uploads in progress already: complete or abort one first");
@@ -169,18 +170,21 @@ public class S3MultipartService {
 
     /**
      * Receives a part: written to its own file as it arrives - its MD5 computed on the way, the
-     * upload's room never exceeded - then made the part of its number.
+     * upload's room never exceeded - then made the part of its number. The key's access is asked
+     * again first, as S3 asks it of every part: a key whose write was taken away after the upload
+     * began sends nothing more to the server's disk.
      *
      * @param declaredLength the body's length as declared, or -1
      * @param contentMd5     the request's {@code Content-MD5}, or null
      * @return the part's entity tag: its MD5, quoted, as S3 answers it
      */
     public String uploadPart(String bucket, String key, String uploadId, int partNumber, InputStream body,
-                             long declaredLength, String contentMd5, ApiKey apiKey) throws IOException {
+                             long declaredLength, String contentMd5, ApiKey apiKey, int principalId) throws IOException {
         if (partNumber < 1 || partNumber > S3Xml.MAX_PARTS) {
             throw new InvalidDataException("a part number is 1 to " + S3Xml.MAX_PARTS + ": " + partNumber);
         }
         S3MultipartRepository.Upload upload = find(bucket, key, uploadId, apiKey);
+        objectService.preflightPut(bucket, key, apiKey, principalId);
         if (declaredLength > upload.maxBytes()) {
             throw new MaxUploadSizeExceededException(upload.maxBytes());
         }

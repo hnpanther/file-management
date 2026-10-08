@@ -105,7 +105,7 @@ public class S3Controller {
                 // UploadPartCopy, or a part without its number: not served.
                 return notImplemented(request);
             }
-            return uploadPart(bucket, key, request, context);
+            return uploadPart(bucket, key, request, context, userDetails.getId());
         }
         if (asksWhatIsNotServed(request, Set.of()) || request.getHeader("x-amz-copy-source") != null) {
             // PutObjectTagging, PutObjectAcl, a part without its upload, CopyObject, ...: never an upload of the body.
@@ -311,8 +311,8 @@ public class S3Controller {
     private static final int MAX_COMPLETE_BODY = 2 * 1024 * 1024;
 
     /** {@code UploadPart}: the part's bytes as they were signed, to its own file - its MD5 is its entity tag. */
-    private ResponseEntity<String> uploadPart(String bucket, String key, HttpServletRequest request, S3RequestContext context)
-            throws IOException {
+    private ResponseEntity<String> uploadPart(String bucket, String key, HttpServletRequest request, S3RequestContext context,
+                                              int principalId) throws IOException {
         int partNumber;
         try {
             partNumber = Integer.parseInt(request.getParameter("partNumber"));
@@ -326,7 +326,7 @@ public class S3Controller {
         String etag;
         try (InputStream in = payload(request, context)) {
             etag = multipartService.uploadPart(bucket, key, request.getParameter("uploadId"), partNumber, in, declared,
-                    request.getHeader("Content-MD5"), context.apiKey());
+                    request.getHeader("Content-MD5"), context.apiKey(), principalId);
         }
         return ResponseEntity.ok().eTag(etag).build();
     }
