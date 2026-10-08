@@ -78,7 +78,7 @@ as v1's are.
 | `DELETE /s3/{bucket}/{key}/` | deletes the folder if it is empty; `409 FolderNotEmpty` otherwise | **may delete folders** and `WRITE` on its parent |
 | `POST /s3/{bucket}?delete` | `DeleteObjects` (2.12.0): up to 1000 keys - [Deleting many](#deleting-many) | as each `DELETE` |
 | `POST /s3/{bucket}/{key}?uploads` | `CreateMultipartUpload` (2.14.0) - [Multipart upload](#multipart-upload-2140) | as the `PUT` it ends in |
-| `PUT /s3/{bucket}/{key}?partNumber=&uploadId=` | `UploadPart` | the key that began the upload |
+| `PUT /s3/{bucket}/{key}?partNumber=&uploadId=` | `UploadPart` | the key that began the upload, still with the `PUT`'s access |
 | `POST /s3/{bucket}/{key}?uploadId=` | `CompleteMultipartUpload`: the parts become the object, as a `PUT` would store it | as the `PUT` |
 | `DELETE /s3/{bucket}/{key}?uploadId=` | `AbortMultipartUpload` | the key that began it |
 | `GET /s3/{bucket}/{key}?uploadId=` | `ListParts` | the key that began it |
@@ -139,7 +139,8 @@ aborted. Nothing to configure in the client.
   `md5-of-md5s-N` (the SDKs do not check it).
 * **Refused at the start where the `PUT` would be**: no `WRITE`, folders the key may not create, a
   folder's key, an extension the key's creator may not upload - before a part is sent, so a client is
-  not told after gigabytes.
+  not told after gigabytes. The access is asked again of every part (2.14.1), as S3 asks it: a key
+  whose `WRITE` is withdrawn mid-upload is `AccessDenied` for its next part.
 * **The parts wait on the server's disk** - in the upload temporary directory
   (`FILEMANAGEMENT_UPLOAD_TEMP_DIR`, under `s3-multipart/`), never in memory - until the completion or
   the abort. Each part's `ETag` is its MD5, as S3's; a `Content-MD5` sent with it is checked
@@ -147,7 +148,7 @@ aborted. Nothing to configure in the client.
 * **Bounded**: the parts may not hold more than the server's upload cap, or the key creator's limit
   for the extension if smaller - asked as each part arrives (`EntityTooLarge`; a part sent again
   counts once); 10,000 parts; `filemanagement.s3-api.multipart.max-open-uploads` uploads in progress
-  per key (20; `InvalidArgument` past it). **An upload neither completed nor aborted is removed after
+  per key (20; `InvalidArgument` past it, however many are begun at once). **An upload neither completed nor aborted is removed after
   `expire-hours` (24)**, its parts with it - what S3 leaves to a lifecycle rule, done by itself.
 * **One key's**: an upload is reached by its id and the key that began it. With another key - even
   one granted the same folders - it is `NoSuchUpload`, and `ListMultipartUploads` lists only the
@@ -161,6 +162,9 @@ Not served: `UploadPartCopy` (a part copied from another object), `ListMultipart
 `delimiter` - each a `501`. A server whose upload temporary directory is not kept across a restart
 (`FILEMANAGEMENT_UPLOAD_TEMP_DIR` unset: Tomcat's own, new at every start) loses the parts in
 progress: their completion is `InvalidPart`, and the client sends the file again.
+
+A body shorter than the `Content-Length` it declared - the connection lost mid-part, or mid-`PUT` -
+is `IncompleteBody` and stores nothing, whether or not its hash was signed (`S3MultipartTest.aBodyCutShort`).
 
 ## Deleting many
 

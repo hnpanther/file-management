@@ -41,6 +41,9 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.14.1 is written: **a review of 2.14.0** - one key's uploads begun at once now keep to `max-open-uploads`
+(issue 117), each part asks the key's access again (118); every multipart case run again with the
+bytes in SeaweedFS, and a body cut short of its length shown to store nothing.
 2.14.0 is written: **multipart upload on the S3 surface** (9.10 step 5) - `CreateMultipartUpload`,
 `UploadPart`, `CompleteMultipartUpload`, `AbortMultipartUpload`, `ListParts`, `ListMultipartUploads`
 (`V3.11`): the parts wait on disk in the upload temporary directory, each part's file registered

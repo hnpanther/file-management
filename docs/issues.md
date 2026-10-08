@@ -2225,6 +2225,27 @@ a `POST` to an object - multipart upload, restore, select - is a 501 too
 (`S3Controller.asksWhatIsNotServed`, `S3ListingTest.subResourcesLeaveTheObjectAlone`, which checks
 every revision is as it was).
 
+### 117. One key's multipart uploads begun at once passed the bound on uploads in progress — **S2**
+
+Found reviewing 2.14.0 (2026-10-08). `S3MultipartService.create` counted the key's uploads in progress
+and then added one, with nothing held between: sixteen `CreateMultipartUpload`s of one key at once,
+where `max-open-uploads` was three, began ten. The bound is what limits the server's disk a key can
+fill with parts (each upload up to the upload cap), so a key could pass it by asking in parallel.
+
+**Fixed in 2.14.1**: the key's own row is held (`FOR NO KEY UPDATE`, `S3MultipartRepository.lockKey`)
+before the count, so one key's uploads begin one after another - the foreign keys' checks on the row
+do not wait for it. `S3MultipartLimitsTest.openUploadsAtOnce`.
+
+### 118. A part was taken from a key whose write had been taken away after its upload began — **S3**
+
+Found reviewing 2.14.0 (2026-10-08). The key's access was asked when the upload began and at its
+completion, not of each part: a key whose `WRITE` on the folder was withdrawn could go on sending
+parts to the server's disk until the upload expired - bounded by the upload cap, and never completed
+(the completion is a `PUT`, and is refused) - where S3 asks every `UploadPart`.
+
+**Fixed in 2.14.1**: each part asks `S3ObjectService.preflightPut` first, as the start does;
+`AccessDenied`, and nothing of it is written. `S3MultipartTest.accessAskedOfEveryPart`.
+
 ### What the review found nothing wrong in - and the test that now holds each
 
 * **Every endpoint states who may call it**: `@PreAuthorize` on every handler but seven that are

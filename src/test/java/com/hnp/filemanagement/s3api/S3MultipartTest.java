@@ -26,6 +26,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadResponse;
 import software.amazon.awssdk.services.s3.model.CompletedPart;
 import software.amazon.awssdk.services.s3.model.ListMultipartUploadsResponse;
@@ -33,13 +34,17 @@ import software.amazon.awssdk.services.s3.model.ListPartsResponse;
 import software.amazon.awssdk.services.s3.model.MultipartUpload;
 import software.amazon.awssdk.services.s3.model.Part;
 import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
+import java.io.OutputStream;
+import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -407,6 +412,70 @@ class S3MultipartTest extends DatabaseSupport {
         s3.abortMultipartUpload(r -> r.bucket(bucket).key("fresh.pdf").uploadId(fresh));
     }
 
+    @Test
+    @DisplayName("write taken away after the upload began: the next part is AccessDenied and reaches no disk, and the completion is refused")
+    void accessAskedOfEveryPart() {
+        ApiKeyCreatedDTO created = key(true, bucketFolder.getId() + ":WRITE");
+        S3Client client = client(created);
+        String key = "revoked.pdf";
+        String uploadId = client.createMultipartUpload(r -> r.bucket(bucket).key(key)).uploadId();
+        String one = client.uploadPart(r -> r.bucket(bucket).key(key).uploadId(uploadId).partNumber(1),
+                RequestBody.fromBytes(pdf(5000, 23))).eTag();
+        jdbc.update("UPDATE api_key_folder SET permission = 'READ' WHERE api_key_id = (SELECT id FROM api_key WHERE key_id = ?)",
+                created.keyId());
+
+        assertThat(code(() -> client.uploadPart(r -> r.bucket(bucket).key(key).uploadId(uploadId).partNumber(2),
+                RequestBody.fromBytes(letters(5000, 24))))).isEqualTo("AccessDenied");
+        assertThat(client.listParts(r -> r.bucket(bucket).key(key).uploadId(uploadId)).parts())
+                .extracting(Part::partNumber).containsExactly(1);
+        assertThat(directory(uploadId).toFile().list()).as("part 1's file only").hasSize(1);
+        assertThat(code(() -> client.completeMultipartUpload(r -> r.bucket(bucket).key(key).uploadId(uploadId)
+                .multipartUpload(m -> m.parts(part(1, one)))))).isEqualTo("AccessDenied");
+        client.abortMultipartUpload(r -> r.bucket(bucket).key(key).uploadId(uploadId));
+        assertThat(directory(uploadId)).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("a body cut short of its Content-Length - an unsigned payload, nothing to check it against - is no part and no object")
+    void aBodyCutShort() throws Exception {
+        ApiKeyCreatedDTO created = key(true, bucketFolder.getId() + ":WRITE");
+        S3Client client = client(created);
+        String uploadId = client.createMultipartUpload(r -> r.bucket(bucket).key("cut.pdf")).uploadId();
+        try (S3Presigner presigner = presigner(created)) {
+            URI part = presigner.presignUploadPart(p -> p.signatureDuration(Duration.ofMinutes(5))
+                    .uploadPartRequest(u -> u.bucket(bucket).key("cut.pdf").uploadId(uploadId).partNumber(1))).url().toURI();
+            sendCutShort(part, pdf(200_000, 21), 100_000);
+            assertThat(client.listParts(r -> r.bucket(bucket).key("cut.pdf").uploadId(uploadId)).parts())
+                    .as("a part of half its bytes would complete into a file of half its bytes").isEmpty();
+            assertThat(directory(uploadId).toFile().list()).as("its file deleted").isNullOrEmpty();
+
+            URI put = presigner.presignPutObject(p -> p.signatureDuration(Duration.ofMinutes(5))
+                    .putObjectRequest(u -> u.bucket(bucket).key("cut-put.pdf"))).url().toURI();
+            sendCutShort(put, pdf(200_000, 22), 100_000);
+            assertThat(status(() -> client.headObject(r -> r.bucket(bucket).key("cut-put.pdf")))).isEqualTo(404);
+        }
+        client.abortMultipartUpload(r -> r.bucket(bucket).key("cut.pdf").uploadId(uploadId));
+    }
+
+    /** A PUT declaring all of {@code body} that sends {@code sent} bytes of it, then ends its side of the connection. */
+    private static void sendCutShort(URI url, byte[] body, int sent) throws Exception {
+        try (Socket socket = new Socket(url.getHost(), url.getPort())) {
+            socket.setSoTimeout(30_000);
+            OutputStream out = socket.getOutputStream();
+            out.write(("PUT " + url.getRawPath() + "?" + url.getRawQuery() + " HTTP/1.1\r\n"
+                    + "Host: " + url.getHost() + ":" + url.getPort() + "\r\n"
+                    + "Content-Length: " + body.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+            out.write(body, 0, sent);
+            out.flush();
+            socket.shutdownOutput();
+            try {
+                socket.getInputStream().readAllBytes();
+            } catch (java.io.IOException e) {
+                // reset by the server: an answer as good as any
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private CompleteMultipartUploadResponse complete(String key, String uploadId, CompletedPart... parts) {
@@ -440,12 +509,27 @@ class S3MultipartTest extends DatabaseSupport {
     }
 
     private S3Client client(boolean createFolders, String grant) {
+        return client(key(createFolders, grant));
+    }
+
+    private S3Presigner presigner(ApiKeyCreatedDTO created) {
+        return S3Presigner.builder().endpointOverride(URI.create("http://localhost:" + port + S3Controller.MOUNT))
+                .region(Region.US_EAST_1)
+                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(created.keyId(), created.credential())))
+                .build();
+    }
+
+    private ApiKeyCreatedDTO key(boolean createFolders, String grant) {
         ApiKeyDTO request = new ApiKeyDTO();
         request.setTitle("s3 multipart " + TestData.nextSequence());
         request.setKind(ApiKeyKind.S3);
         request.setMayCreateFolders(createFolders);
         request.setFolderGrants(grant == null ? List.of() : List.of(grant));
-        ApiKeyCreatedDTO created = apiKeyService.create(request, ownerId);
+        return apiKeyService.create(request, ownerId);
+    }
+
+    private S3Client client(ApiKeyCreatedDTO created) {
         S3Client client = S3Client.builder()
                 .endpointOverride(URI.create("http://localhost:" + port + S3Controller.MOUNT))
                 .region(Region.US_EAST_1)
