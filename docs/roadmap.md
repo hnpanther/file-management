@@ -41,6 +41,12 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 ## Where things stand, and what comes next
 
 **Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+2.15.0 is written: **searching the contents of files** (Phase 11.1, 11.2 and the backfill of 11.3,
+`V3.12`) - every revision queued as it is stored, read by Tika one at a time on a worker of its own
+that nothing waits for and nothing can stop the application for, page by page (OCR in the first
+release, a PDF of text and scanned pages in one pass, a text layer stored reversed put right and a
+garbage one read again by OCR), searched through a GIN index in the reader's folder scope with each
+result's pages and snippets, on the web and API v1, behind two switches off by default.
 2.14.1 is written: **a review of 2.14.0** - one key's uploads begun at once now keep to `max-open-uploads`
 (issue 117), each part asks the key's access again (118); every multipart case run again with the
 bytes in SeaweedFS, and a body cut short of its length shown to store nothing.
@@ -3014,7 +3020,34 @@ an expired one.
 **Done when:** each step's tests are green, the four docs are true, and — for 10.1 — the release
 that began sharding is named in `deployment.md`.
 
-## Phase 11 — Searching the contents of files — **planned; next (decided 2026-10-08)**
+## Phase 11 — Searching the contents of files — **11.1, 11.2 and 11.3 done (2.15.0)**
+
+> **Delivered in 2.15.0** (2026-10-08), as the sections below decide, with what building it measured:
+>
+> * **The corpus** (`src/test/resources/content`, made, never real): a text PDF, one stored
+>   reversed, a scanner's garbage layer over a scan, a JPEG 2000 scan, a PDF of a text page and a
+>   scanned one, slides, sheets, a letter, a photo - all read through the real Tika image by
+>   `TikaEndToEndTest`, each with the units and sources it must give and found on its page.
+> * **Search over 100,000 pages** (`ContentSearchScaleTest`): a rare word 30 ms, a word on 1% of the
+>   pages 51 ms, a reader of half the folders 43 ms. **A word on every page took 1.2 s with every page
+>   ranked, and grew with the archive** - so a query on more than 20,000 pages (`MOST_PAGES_RANKED`,
+>   found by a probe stopped at the bound) is answered from the newest 20,000 and the page says so
+>   (`limited`, "add a word"): 335 ms, whatever the archive's size; a phrase on every page 405 ms.
+>   The reader's scope and the version are applied before the bound, so a reader of a few folders is
+>   never answered with nothing. A selective query goes through the GIN index behind a planning
+>   fence: without it, the planner started from the reader's folders and tested every page of their
+>   files (330 ms for a rare word).
+> * **Folding is SearchKey's to the letter** (`ContentFoldingTest`), reduced to letters and digits;
+>   building it found that a line break, a control character, was dropped and joined two lines'
+>   words - whitespace is asked first, as SearchKey asks it.
+> * **The quality rule counts words with a letter**, as the measure of 2026-10-08 did: a page of
+>   numbers was otherwise taken for garbage. Run on the fifteen real files it gives the measured
+>   verdicts - the Canon PDF's five pages garbage, the automation letter's seven reversed, the rest
+>   sound.
+> * **Still to come**: the lexicon gate (11.4), drawings (11.5), OpenSearch only if needed (11.6),
+>   `ocr.max-pages` (a scan past Tika's 30 minutes is `FAILED`, said so), `tessdata_best` baked into
+>   the image (the host mounts it), `tika-core` 4.x in the application (detection only, not needed by
+>   this release).
 
 Today a search matches names and descriptions (trigram indexes on folded keys, 2.2.0). This phase
 lets it match **what is inside the files**: the text of a PDF or a Word document, the cells of a
@@ -3530,23 +3563,23 @@ hours = scanned pages x seconds a page / (cores x 3600)
         50,000 pages x 4 s / (8 x 3600) ≈ 7 hours;  with 4 cores ≈ 14
 ```
 
-**The Tika host as it is - 2026-10-08: 4 cores, 32 GB.** One file at a time means one container
-works at a time, so each may be given most of the host (a `cpus` limit is a ceiling, not a share):
+**The Tika host as it is - 2026-10-08: 2 cores** (first said 4; `nproc` on the host said 2). One file
+at a time means one container works at a time, so each may be given the whole host (a `cpus` limit is
+a ceiling, not a share):
 
 ```properties
 # deploy/tika/.env
 TIKA_TEXT_CPUS=2
 TIKA_TEXT_MEMORY=6g
-TIKA_OCR_CPUS=4
-TIKA_OCR_MEMORY=12g
+TIKA_OCR_CPUS=2
+TIKA_OCR_MEMORY=8g
 ```
 
 `pipes.numClients` stays `1` in both configurations: one file at a time needs one parsing fork. One
 PDF is recognised a page at a time on about one core, ~5 s a page: 1,000 scanned pages ≈ 1.4 hours,
 a backfill of 50,000 ≈ 70 hours behind new uploads. Faster is a setting when wanted:
-`extraction.concurrency=2` and `numClients=2` in `config/ocr.json` (2 x 2 + 2 > 4 cores, so Tika's
-rule wants the OCR container's 4 for one fork beside its server - measured before it is changed)
-roughly halve it on this host.
+`extraction.concurrency=2` and `numClients=2` in `config/ocr.json` - on a host of at least 6 cores
+(Tika's rule: `numClients x 2 + 2 <= cores`); on 2 cores one file at a time is what it can do.
 
 **Only one host for both, for now?** Possible, with: `cpus` and `mem_limit` on the Tika containers
 (half the cores, say); few OCR workers, the backfill at night; Tika on a Docker network of its own,

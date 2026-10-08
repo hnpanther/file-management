@@ -111,6 +111,14 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   (`S3PartsBody`), never stored by a path of their own, so the checks, the versions and the records
   are a `PUT`'s. A part is a file named in its row, written before the row under the upload's lock;
   an upload is one key's (`NoSuchUpload` to any other).
+* **Searching the contents of files is never in anyone's way** (2.15.0, package `content`): a new
+  revision is queued by `ContentQueue` in `FileService.store` - nowhere else, and never by reading
+  anything in a request; Tika is called by `ContentWorker` alone, on its own threads, with no
+  connection held, and **no content-search setting may stop the application from starting** (only
+  `engine`). A search goes through `ContentSearch` with the reader's scope *in* the query, before any
+  bound; its text is folded by `ContentFolding` (SearchKey's rules - `ContentFoldingTest`), and neither a
+  page's text nor a snippet nor the term (`q`, masked) is ever logged. A snippet is segments written
+  with `th:text`, never HTML.
 * **Metadata is checked by `MetadataRules` and written through `FileMetadataService` /
   `FolderMetadataService`** (or an upload's own path) - never set on `FileDetails.metadata` or
   `Folder.metadata` elsewhere: those are what check access, record the change with both documents and

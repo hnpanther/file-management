@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{contentSearch.pageTitle}">جستجو در محتوای فایل‌ها | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  Search in contents (roadmap 11.2): ContentSearchController, over ContentSearchService. A GET form, so
+  a search is a link that can be kept. Each result is a revision - the latest version of its file
+  unless every version is asked for - with the pages it matched on, a snippet of each and, for a PDF,
+  a link that opens it at that page. A snippet is segments written with th:text, the words found in
+  <mark>: a document's text never becomes markup here.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{nav.section.files}">مدیریت فایل‌ها</div>
+        <h1 th:text="#{contentSearch.heading}">جستجو در محتوای فایل‌ها</h1>
+        <p class="page-description" th:text="#{contentSearch.description}">متن داخل فایل‌ها، صفحه به صفحه.</p>
+    </header>
+
+    <section class="card" aria-labelledby="content-search-title">
+        <div class="card-body">
+            <h2 id="content-search-title" class="sr-only" th:text="#{contentSearch.heading}">جستجو در محتوای فایل‌ها</h2>
+
+            <form class="history-filters" method="get" th:action="@{/files/content-search}" role="search">
+                <div class="history-filter content-search-term">
+                    <label for="content-search-q" th:text="#{contentSearch.term}">عبارت</label>
+                    <input id="content-search-q" class="form-control" type="search" name="q" th:value="${q}"
+                           maxlength="200" th:placeholder="#{contentSearch.termPlaceholder}" autocomplete="off" required>
+                </div>
+                <div class="history-filter">
+                    <label class="form-check-label" for="content-search-all">
+                        <input id="content-search-all" class="form-check-input" type="checkbox" name="all" value="1"
+                               th:checked="${all}">
+                        <span th:text="#{contentSearch.allVersions}">همهٔ نسخه‌ها، نه فقط آخرین نسخه</span>
+                    </label>
+                </div>
+                <div class="history-filter-actions">
+                    <button class="btn btn-primary" type="submit">
+                        <i class="bi bi-search" aria-hidden="true"></i>
+                        <span th:text="#{contentSearch.submit}">جستجو</span>
+                    </button>
+                </div>
+            </form>
+            <p class="field-hint mb-4" th:text="#{contentSearch.hint}">
+                همهٔ کلمه‌ها باید در یک صفحه باشند؛ هر کلمه ابتدای یک کلمه را پیدا می‌کند؛ عبارت داخل گیومهٔ انگلیسی کنار هم.
+            </p>
+
+            <div th:if="${message != null}" class="alert alert-warning mb-4" role="alert" id="content-search-message"
+                 th:text="${message}">یک کلمه برای جستجو بنویسید.</div>
+
+            <th:block th:if="${results != null}">
+                <div th:if="${#lists.isEmpty(results.items())}" class="empty-state empty-state-panel" role="status"
+                     id="content-search-empty">
+                    <strong th:text="#{contentSearch.empty.results}">فایلی با این متن پیدا نشد.</strong>
+                    <p class="field-hint" th:text="#{contentSearch.empty.hint}">فقط فایل‌هایی که خوانده شده‌اند و اجازهٔ دیدنشان را دارید.</p>
+                </div>
+
+                <div th:if="${results.limited()}" class="alert alert-info mb-4" role="status" id="content-search-limited"
+                     th:text="#{contentSearch.limited}">این عبارت در صفحه‌های بسیاری هست؛ نتایج از جدیدترین آن‌هاست.</div>
+
+                <ol class="content-results" th:unless="${#lists.isEmpty(results.items())}" id="content-search-results">
+                    <li class="content-result" th:each="r : ${results.items()}" th:attr="data-file-details-id=${r.hit().fileDetailsId()}">
+                        <div class="content-result-head">
+                            <a class="content-result-name" th:href="@{/files/file-info/{id}(id=${r.hit().fileId()})}">
+                                <i class="bi bi-file-earmark-text" aria-hidden="true"></i>
+                                <span dir="auto" th:text="${r.hit().fileName() + '.' + r.hit().fileExtension()}">گزارش.pdf</span>
+                            </a>
+                            <span class="badge" th:text="#{contentSearch.version(${r.hit().version()})}">نسخهٔ ۲</span>
+                            <span th:if="${r.hit().version() != r.hit().lastVersion()}" class="badge history-gone"
+                                  th:text="#{contentSearch.olderVersion(${r.hit().lastVersion()})}">نسخهٔ قدیمی</span>
+                            <span class="content-result-folder field-hint">
+                                <i class="bi bi-folder" aria-hidden="true"></i>
+                                <span dir="auto" th:text="${r.hit().folderName()}">پوشه</span>
+                            </span>
+                        </div>
+
+                        <ul class="content-result-pages">
+                            <li th:each="p : ${r.pages()}" class="content-result-page">
+                                <div class="content-result-where">
+                                    <strong th:switch="${p.unit()}">
+                                        <span th:case="'PAGE'" th:text="#{contentSearch.unit.page(${p.pageNumber()})}">صفحهٔ ۳</span>
+                                        <span th:case="'SLIDE'" th:text="#{contentSearch.unit.slide(${p.pageNumber()})}">اسلاید ۲</span>
+                                        <span th:case="'SHEET'" th:text="${p.label() != null} ? #{contentSearch.unit.sheet(${p.label()})} : #{contentSearch.unit.sheetNumber(${p.pageNumber()})}">برگهٔ «خلاصه»</span>
+                                        <span th:case="*" th:text="#{contentSearch.unit.whole}">متن فایل</span>
+                                    </strong>
+                                    <span th:if="${p.source() == 'OCR' or p.source() == 'BOTH'}" class="badge"
+                                          th:title="#{contentSearch.fromImageHint}">
+                                        <i class="bi bi-image" aria-hidden="true"></i>
+                                        <span th:text="#{contentSearch.fromImage}">از روی تصویر صفحه</span>
+                                    </span>
+                                    <a th:if="${p.unit() == 'PAGE' and r.hit().fileExtension().equalsIgnoreCase('pdf')}"
+                                       sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')"
+                                       class="btn btn-sm btn-outline-secondary content-open-page" target="_blank" rel="noopener"
+                                       th:href="@{/files/file-info/{f}/file-details/{d}/download(f=${r.hit().fileId()}, d=${r.hit().fileDetailsId()}, inline=1)} + '#page=' + ${p.pageNumber()}">
+                                        <i class="bi bi-box-arrow-up-left" aria-hidden="true"></i>
+                                        <span th:text="#{contentSearch.openAtPage(${p.pageNumber()})}">باز کردن در صفحهٔ ۳</span>
+                                    </a>
+                                </div>
+                                <p class="content-snippet" dir="auto"><span th:if="${p.snippet().before()}">… </span><th:block
+                                        th:each="s : ${p.snippet().segments()}"><mark th:if="${s.match()}" th:text="${s.text()}">قرارداد</mark><span
+                                        th:unless="${s.match()}" th:text="${s.text()}"> متن </span></th:block><span
+                                        th:if="${p.snippet().after()}"> …</span></p>
+                            </li>
+                        </ul>
+                        <p th:if="${r.morePages() > 0}" class="field-hint"
+                           th:text="#{contentSearch.morePages(${r.morePages()})}">و ۴ صفحهٔ دیگر</p>
+                    </li>
+                </ol>
+
+                <nav th:if="${results.page() > 0 or results.hasNext()}" class="mt-3" th:aria-label="#{contentSearch.heading}">
+                    <ul class="pagination mb-0">
+                        <li th:if="${results.page() > 0}" class="page-item">
+                            <a class="page-link" th:href="@{/files/content-search(q=${q}, all=${all ? 1 : null}, page=${results.page() - 1})}"
+                               th:text="#{action.previous}">قبلی</a>
+                        </li>
+                        <li class="page-item active" aria-current="page"><span class="page-link" th:text="${results.page() + 1}">1</span></li>
+                        <li th:if="${results.hasNext()}" class="page-item">
+                            <a class="page-link" th:href="@{/files/content-search(q=${q}, all=${all ? 1 : null}, page=${results.page() + 1})}"
+                               th:text="#{action.next}">بعدی</a>
+                        </li>
+                    </ul>
+                </nav>
+            </th:block>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

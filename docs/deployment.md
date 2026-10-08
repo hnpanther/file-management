@@ -788,6 +788,40 @@ database restored without it has S3 keys nobody can use. Lost or changed, every 
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
 
+### Upgrading from 2.14.1 to 2.15.0 — searching the contents of files
+
+A jar swap with **one migration, `V3.12`**: two new, empty tables (`file_content`, `file_content_page`).
+**Everything new is off by default** - the application behaves as 2.14.1 until it is switched on, and
+**nothing here can stop it from starting**: Tika stopped, unreachable or misconfigured, the
+application starts and runs; reading waits and says why (the log, `/settings/content-extraction`, a
+`warning` in `/actuator/health`, which stays `UP`).
+
+* **Every revision uploaded from now on is queued** for reading, whatever the switches - one row each,
+  nothing read until reading is on.
+* **To switch it on**, in this order:
+  1. **Tika** on its own host (deploy/tika, its README): the image with Persian and the JPEG 2000
+     decoder, the two containers, the firewall letting **only the application's host** reach 9998 and
+     9999 (tika-server has no authentication).
+  2. **Reading**: `FILEMANAGEMENT_CONTENT_EXTRACTION_ENABLED=true`,
+     `FILEMANAGEMENT_TIKA_TEXT_URL=http://<tika-host>:9998`, `FILEMANAGEMENT_TIKA_OCR_URL=http://<tika-host>:9999`,
+     and a restart. One file at a time (`FILEMANAGEMENT_CONTENT_EXTRACTION_CONCURRENCY`, 1); the status
+     page shows what was read, what waits and what failed - with a retry, for after Tika's image is
+     put right.
+  3. **The search**: `FILEMANAGEMENT_CONTENT_SEARCH_ENABLED=true`, and the permission
+     `SEARCH_FILE_CONTENTS` (group "search in the contents of files") given to the roles that should
+     have it - **USER does not hold it**; `API_SEARCH_FILE_CONTENTS` for an integration; the status page
+     is `CONTENT_EXTRACTION_PAGE`, its retry `RETRY_CONTENT_EXTRACTION`. ADMIN holds them all.
+  4. **The files stored before 2.15.0**, every version: `FILEMANAGEMENT_CONTENT_EXTRACTION_BACKFILL=true` -
+     queued 500 at a time behind the new uploads, newest first. At about 5 s a scanned page on one
+     core, 50,000 scanned pages take some 70 hours; text pages a fraction of a second.
+* **Turning reading off** (`..._ENABLED=false` and a restart) stops it; what was read stays searchable.
+  The search off makes its page and API a 404.
+* **Room in the database**: the text of a revision is kept, folded beside it with its index - about
+  three times the text read, so a few KB a typical page - an estimate, to be measured on the archive
+  once the backfill has read a first thousand files (`SELECT pg_total_relation_size('file_content_page')`).
+
+**Rollback** is the 2.14.1 jar: it reads neither table, and nothing else changed.
+
 ### Upgrading from 2.13.0 to 2.14.0 — multipart upload on the S3 surface
 
 A jar swap with **one migration, `V3.11`**: two new, empty tables for the uploads in progress

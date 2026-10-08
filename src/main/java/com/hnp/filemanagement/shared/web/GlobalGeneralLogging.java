@@ -77,8 +77,12 @@ public class GlobalGeneralLogging {
         return maskSecrets(query == null ? request.getRequestURI() : request.getRequestURI() + "?" + query);
     }
 
-    /** Query parameters whose value is a metadata document - personal data, never logged (2.13.0). */
-    private static final java.util.Set<String> MASKED_PARAMETERS = java.util.Set.of("metadata", "folderMetadata");
+    /**
+     * Query parameters whose value may be personal, never logged: a metadata document (2.13.0), and a
+     * search term - a content search's (2.15.0), or a name typed into the history's filter - which is
+     * as often a national code or a person's name as a word.
+     */
+    private static final java.util.Set<String> MASKED_PARAMETERS = java.util.Set.of("metadata", "folderMetadata", "q");
 
     /**
      * A path as it may be written down. A share link's token is the whole access to a file

@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.11`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.12`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -249,6 +249,51 @@ _As of migration `V3.11`. Types and defaults are PostgreSQL's own; every table i
 * **foreign key** `fk_content_kind_updated_by_user` `updated_by` → `app_user` (`id`)
 * **index** `fk_content_kind_created_by_user` (`created_by`)
 * **index** `fk_content_kind_updated_by_user` (`updated_by`)
+
+### `file_content`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `file_details_id` | `integer` | no |  |  |
+| `state` | `varchar(10)` | no |  |  |
+| `priority` | `smallint` | no | `0` |  |
+| `attempts` | `smallint` | no | `0` |  |
+| `next_attempt_at` | `timestamptz(0)` | no |  |  |
+| `lease_until` | `timestamptz(0)` | yes |  |  |
+| `lane` | `varchar(4)` | yes |  |  |
+| `detected_type` | `varchar(255)` | yes |  |  |
+| `reason` | `varchar(500)` | yes |  |  |
+| `partial` | `boolean` | no | `false` |  |
+| `pages` | `integer` | yes |  |  |
+| `ocr_pages` | `integer` | yes |  |  |
+| `characters` | `integer` | yes |  |  |
+| `queued_at` | `timestamptz(0)` | no |  |  |
+| `read_at` | `timestamptz(0)` | yes |  |  |
+
+* **primary key** `file_details_id`
+* **foreign key** `fk_file_content_file_details` `file_details_id` → `file_details` (`id`), on delete cascade
+* **index** `ix_file_content_queue` (`priority`, `next_attempt_at`, `file_details_id`, only where `((state)::text = 'PENDING'::text)`)
+* **index** `ix_file_content_reading` (`lease_until`, only where `((state)::text = 'READING'::text)`)
+* **index** `ix_file_content_state` (`state`, `file_details_id`)
+
+### `file_content_page`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `file_details_id` | `integer` | no |  |  |
+| `page_number` | `integer` | no |  |  |
+| `part` | `smallint` | no | `0` |  |
+| `unit` | `varchar(5)` | no |  |  |
+| `label` | `varchar(255)` | yes |  |  |
+| `source` | `varchar(13)` | no |  |  |
+| `score` | `smallint` | yes |  |  |
+| `text` | `text` | no |  |  |
+| `search_text` | `text` | no |  |  |
+| `search_vector` | `tsvector` | yes |  |  |
+
+* **primary key** `file_details_id`, `page_number`, `part`
+* **foreign key** `fk_file_content_page_content` `file_details_id` → `file_content` (`file_details_id`), on delete cascade
+* **index** `ix_file_content_page_search` (`search_vector`)
 
 ### `file_details`
 

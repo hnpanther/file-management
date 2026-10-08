@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{contentExtraction.pageTitle}">خواندن محتوای فایل‌ها | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The status of reading contents (roadmap 11.2): ContentExtractionController, over
+  ContentExtractionService. Whether the worker runs and why not, whether Tika answers, how many
+  revisions are in each state, and the failed readings - of files the reader may open - with their
+  reason, never any text, and a way to queue them again.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{uploadPolicy.kicker}">تنظیمات</div>
+        <h1 th:text="#{contentExtraction.heading}">خواندن محتوای فایل‌ها</h1>
+        <p class="page-description" th:text="#{contentExtraction.description}">
+            متن فایل‌ها در پس‌زمینه با Apache Tika خوانده می‌شود تا جستجو در محتوا ممکن شود.
+        </p>
+    </header>
+
+    <div th:if="${showMessage && valid}" class="alert alert-success mb-5" role="status" id="success_message"
+         th:text="${message}"></div>
+    <div th:if="${showMessage && !valid}" class="alert alert-warning mb-5" role="alert" id="warning_message"
+         th:text="${message}"></div>
+
+    <section class="card mb-5" aria-labelledby="worker-title" th:with="w=${overview.worker()}">
+        <div class="card-body">
+            <h2 id="worker-title" class="h5" th:text="#{contentExtraction.worker}">وضعیت خواندن</h2>
+            <ul class="list-unstyled mb-0" id="worker-status">
+                <li th:if="${w.running()}">
+                    <i class="bi bi-check-circle text-success" aria-hidden="true"></i>
+                    <span th:text="#{contentExtraction.running}">در حال اجرا</span>
+                </li>
+                <li th:unless="${w.running()}">
+                    <i class="bi bi-pause-circle" aria-hidden="true"></i>
+                    <span th:text="#{contentExtraction.notRunning}">اجرا نمی‌شود:</span>
+                    <span class="technical" dir="ltr" th:text="${w.whyNotRunning()}">reading is switched off</span>
+                </li>
+                <li th:if="${w.running() and !w.tikaReachable()}" class="text-danger" id="tika-unreachable">
+                    <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+                    <span th:text="#{contentExtraction.tikaUnreachable(${@jalali.format(w.problemSince())})}">Tika در دسترس نیست</span>
+                    <span class="technical" dir="ltr" th:text="${w.lastProblem()}">connection refused</span>
+                    <div th:if="${w.waitingUntil() != null}" class="field-hint"
+                         th:text="#{contentExtraction.waitingUntil(${@jalali.format(w.waitingUntil())})}">تلاش دوباره …</div>
+                </li>
+                <li th:if="${w.running()}" th:text="#{contentExtraction.readSinceStart(${w.read()})}">از شروع: ۱۲ فایل</li>
+                <li th:if="${w.reading() != null}" th:text="#{contentExtraction.readingNow(${w.reading()})}">در حال خواندن</li>
+                <li th:text="${overview.searchEnabled()} ? #{contentExtraction.searchOn} : #{contentExtraction.searchOff}">جستجو فعال است</li>
+                <li th:text="${overview.ocrEnabled()} ? #{contentExtraction.ocrOn} : #{contentExtraction.ocrOff}">OCR فعال است</li>
+                <li th:text="${overview.backfill()} ? #{contentExtraction.backfillOn(${overview.unqueued()})} : #{contentExtraction.backfillOff(${overview.unqueued()})}">
+                    فایل‌های قدیمی هم خوانده می‌شوند
+                </li>
+            </ul>
+        </div>
+    </section>
+
+    <section class="card mb-5" aria-labelledby="counts-title">
+        <div class="card-body">
+            <h2 id="counts-title" class="h5" th:text="#{contentExtraction.counts}">شمار نسخه‌ها</h2>
+            <div th:if="${#lists.isEmpty(overview.counts())}" class="empty-state" role="status"
+                 th:text="#{contentExtraction.nothingQueued}">هنوز نسخه‌ای در صف نیست.</div>
+            <div th:unless="${#lists.isEmpty(overview.counts())}" class="table-responsive">
+                <table class="table history-table" id="content-counts">
+                    <thead>
+                    <tr>
+                        <th scope="col" th:text="#{contentExtraction.column.state}">وضعیت</th>
+                        <th scope="col" th:text="#{contentExtraction.column.lane}">مسیر</th>
+                        <th scope="col" th:text="#{contentExtraction.column.priority}">نوع</th>
+                        <th scope="col" th:text="#{contentExtraction.column.count}">شمار</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="c : ${overview.counts()}">
+                        <td th:text="#{'contentExtraction.state.' + ${c.state()}}">خوانده شد</td>
+                        <td class="technical" th:text="${c.lane() == ''} ? '-' : ${c.lane()}">OCR</td>
+                        <td th:text="${c.priority() == 0} ? #{contentExtraction.priority.new} : #{contentExtraction.priority.backfill}">بارگذاری جدید</td>
+                        <td th:text="${c.count()}">12</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="failures-title">
+        <div class="card-body">
+            <h2 id="failures-title" class="h5" th:text="#{contentExtraction.failures}">خواندن‌های ناموفق</h2>
+            <form th:unless="${#lists.isEmpty(failures.items())}"
+                  sec:authorize="hasAuthority('RETRY_CONTENT_EXTRACTION') || hasAuthority('ADMIN')"
+                  th:action="@{/settings/content-extraction/retry-failed}" method="post" class="mb-3">
+                <button type="submit" class="btn btn-outline-secondary btn-sm"
+                        th:attr="onclick=|return confirm('${#messages.msg('contentExtraction.retryAllConfirm')}')|">
+                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                    <span th:text="#{contentExtraction.retryAll}">همه را دوباره بخوان</span>
+                </button>
+            </form>
+            <div th:if="${#lists.isEmpty(failures.items())}" class="empty-state" role="status"
+                 th:text="#{contentExtraction.noFailures}">خواندن ناموفقی نیست.</div>
+            <div th:unless="${#lists.isEmpty(failures.items())}" class="table-responsive">
+                <table class="table history-table" id="content-failures">
+                    <thead>
+                    <tr>
+                        <th scope="col" th:text="#{contentExtraction.column.file}">فایل</th>
+                        <th scope="col" th:text="#{contentExtraction.column.reason}">علت</th>
+                        <th scope="col" th:text="#{contentExtraction.column.attempts}">تلاش</th>
+                        <th scope="col" th:text="#{contentExtraction.column.when}">زمان</th>
+                        <th scope="col" sec:authorize="hasAuthority('RETRY_CONTENT_EXTRACTION') || hasAuthority('ADMIN')"
+                            th:text="#{apiKey.column.actions}">عملیات</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="f : ${failures.items()}">
+                        <td>
+                            <a th:href="@{/files/file-info/{id}(id=${f.fileInfoId()})}" dir="auto"
+                               th:text="${f.fileName() + '.' + f.fileExtension()}">گزارش.pdf</a>
+                            <span class="badge" th:text="#{contentSearch.version(${f.version()})}">نسخهٔ ۱</span>
+                        </td>
+                        <td class="technical" dir="ltr" th:text="${f.reason()}">OCR read nothing</td>
+                        <td th:text="${f.attempts()}">1</td>
+                        <td class="history-when technical" dir="ltr"
+                            th:text="${f.readAt() == null} ? '-' : ${@jalali.format(f.readAt())}">۱۴۰۵/۰۷/۱۶</td>
+                        <td sec:authorize="hasAuthority('RETRY_CONTENT_EXTRACTION') || hasAuthority('ADMIN')">
+                            <form th:action="@{/settings/content-extraction/{id}/retry(id=${f.fileDetailsId()})}" method="post" class="inline">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                                    <span th:text="#{contentExtraction.retry}">دوباره بخوان</span>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <nav th:if="${failures.page() > 0 or failures.hasNext()}" class="mt-3" th:aria-label="#{contentExtraction.failures}">
+                <ul class="pagination mb-0">
+                    <li th:if="${failures.page() > 0}" class="page-item">
+                        <a class="page-link" th:href="@{/settings/content-extraction(page=${failures.page() - 1})}"
+                           th:text="#{action.previous}">قبلی</a>
+                    </li>
+                    <li class="page-item active" aria-current="page"><span class="page-link" th:text="${failures.page() + 1}">1</span></li>
+                    <li th:if="${failures.hasNext()}" class="page-item">
+                        <a class="page-link" th:href="@{/settings/content-extraction(page=${failures.page() + 1})}"
+                           th:text="#{action.next}">بعدی</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

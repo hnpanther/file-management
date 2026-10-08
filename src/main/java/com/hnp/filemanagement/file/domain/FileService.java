@@ -14,6 +14,7 @@ import java.io.IOException;
 import com.hnp.filemanagement.storage.BlobStore;
 import com.hnp.filemanagement.storage.StorageKey;
 import com.hnp.filemanagement.storage.StorageWriter;
+import com.hnp.filemanagement.content.ContentQueue;
 import com.hnp.filemanagement.storage.StoredBlob;
 import com.hnp.filemanagement.audit.domain.ActionEnum;
 import com.hnp.filemanagement.audit.domain.EntityEnum;
@@ -144,6 +145,7 @@ public class FileService {
     private final ApiKeyRepository apiKeyRepository;
     private final FileHistoryService fileHistoryService;
     private final MetadataRules metadataRules;
+    private final ContentQueue contentQueue;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileDetailsRepository fileDetailsRepository,
@@ -159,7 +161,8 @@ public class FileService {
                        FileShareLinkRepository fileShareLinkRepository,
                        ApiKeyRepository apiKeyRepository,
                        FileHistoryService fileHistoryService,
-                       MetadataRules metadataRules) {
+                       MetadataRules metadataRules,
+                       ContentQueue contentQueue) {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
@@ -175,6 +178,7 @@ public class FileService {
         this.apiKeyRepository = apiKeyRepository;
         this.fileHistoryService = fileHistoryService;
         this.metadataRules = metadataRules;
+        this.contentQueue = contentQueue;
     }
 
     // ------------------------------------------------------------------ upload
@@ -1040,6 +1044,9 @@ public class FileService {
             fileDetails.setFileSize(stored.sizeBytes());
         }
         fileDetails.setChecksumSha256(stored.checksumSha256());
+        // Every new revision - the form, v1, v2 and S3 alike, every one of them stored here - is queued
+        // for its contents to be read (roadmap 11.2), in this transaction: rolled back, it is not queued.
+        contentQueue.enqueue(fileDetails.getId());
     }
 
     private static void requireValidState(int newState) {
