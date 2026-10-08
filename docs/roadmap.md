@@ -3044,6 +3044,16 @@ that began sharding is named in `deployment.md`.
 >   numbers was otherwise taken for garbage. Run on the fifteen real files it gives the measured
 >   verdicts - the Canon PDF's five pages garbage, the automation letter's seven reversed, the rest
 >   sound.
+> * **The review before production** (2026-10-08) added what the first tests had not asked, and
+>   found one bug: **an API key could not search** - a key holds a fixed set of v1 permissions, not
+>   its creator's, and `API_SEARCH_FILE_CONTENTS` was not among them (`ContentSecurityTest`, with a
+>   real Bearer key kept to its own folder). Also held now: the status page and its retry kept to the
+>   reader's folders, every name and text escaped, no form without its token, anything typed into
+>   `q`, `page` or `size` answered (`ContentSecurityTest`); the queue statement by statement
+>   (`FileContentRepositoryTest`); two workers never reading one revision twice, a reading stopped
+>   mid-way put back (`ContentWorkerLifecycleTest`); and under load, 100,000 committed pages and
+>   eight people searching at once - median 162 ms, p95 724 ms - the worker's and the status page's
+>   queries 2-15 ms (`ContentLoadTest`). A database outage is logged once, not every ten seconds.
 > * **Still to come**: the lexicon gate (11.4), drawings (11.5), OpenSearch only if needed (11.6),
 >   `ocr.max-pages` (a scan past Tika's 30 minutes is `FAILED`, said so), `tessdata_best` baked into
 >   the image (the host mounts it), `tika-core` 4.x in the application (detection only, not needed by
