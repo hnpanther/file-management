@@ -3541,7 +3541,10 @@ and 11.3 have read enough to build its lexicon; 11.5 is optional; 11.6 only if P
   files in folders the reader may read, filtered in the query, never after it; public files and
   share links grant nothing here ([Who sees what](#who-sees-what-only-the-documents-each-person-may-open)).
 * **Every row ends in a state**: `DONE` (marked *partial* when a cap cut it short), `EMPTY` (read,
-  nothing in it), `SKIPPED` (a kind nothing reads, OCR off, over a cap), `FAILED` (with the reason
+  nothing in it - but **a document OCR'd to no text is `FAILED`, "OCR read nothing", never `EMPTY`**:
+  a scan has something on it, and Tika answers an image it could not decode as `200` with no text
+  and no exception in `rmeta`, the error in its own log only - met with JPEG 2000 scans on
+  2026-10-08, deploy/tika README), `SKIPPED` (a kind nothing reads, OCR off, over a cap), `FAILED` (with the reason
   and the attempts, retried with a back-off, then left for the failures page). A `PENDING` row older
   than a day is a stuck worker, and readiness says so as a warning, not a DOWN.
 * **A revision deleted takes its text with it**; a file moved or renamed changes nothing (the text
