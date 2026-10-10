@@ -40,7 +40,16 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: production runs 2.5.0 on PostgreSQL, and MySQL is decommissioned** (2026-09-30).
+**Now: production runs 2.15.0** (2026-10-10), searching the contents of files switched on and the
+files stored before it being read - a few days of OCR on the Tika host. (2.5.0 until then; MySQL
+decommissioned 2026-09-30.)
+
+**Next - decided 2026-10-10: [12.8, an advanced search](#128-an-advanced-search-the-contents-the-metadata-and-a-folder-together--next)** -
+the text inside the files, the metadata and a folder, asked together on one page and on API v1.
+Alongside it, while the backfill reads: watch `/settings/content-extraction` and the Tika host, and
+once it is done measure the tables and look at the failures - what decides whether 11.4 (the lexicon
+gate) is wanted.
+
 2.15.0 is written: **searching the contents of files** (Phase 11.1, 11.2 and the backfill of 11.3,
 `V3.12`) - every revision queued as it is stored, read by Tika one at a time on a worker of its own
 that nothing waits for and nothing can stop the application for, page by page (OCR in the first
@@ -3749,6 +3758,51 @@ Small things asked for once 2.7 was in use, each sized to ship on its own, none 
 | 12.5 | Storage keys that say nothing: a new revision stored under its id, not its title | none | **done (2.10.0)** |
 | 12.6 | The existing revisions re-keyed the same way - at the move to the object store, by the storage copy | `legacy_storage_key` | with 4.7, when that move is decided |
 | 12.7 | An upload policy of a key's own: the kinds and sizes one API key may upload, as a role's - planned, not yet scheduled (asked 2026-10-10) | a key's policy, as `upload_policy` is a role's | 2-3 days |
+| 12.8 | **An advanced search - next (decided 2026-10-10)**: the text inside the files, the metadata and a folder, together, on one page and on API v1 | none | 3-5 days |
+
+### 12.8 An advanced search: the contents, the metadata and a folder together — **next**
+
+Decided 2026-10-10, 2.15.0 running in production. Today the three are apart, and two of them only
+halfway:
+
+* **The text inside the files** (2.15.0) is searched on its page and on API v1 - in every folder the
+  reader may read, with **no way to keep it to one folder** and the folders below it.
+* **Metadata** (2.13.0) is searched **on API v1 only** - `files/search?metadata=&folderMetadata=` and
+  `folders/search` - by containment, as a JSON document typed whole. The pages have no form for it
+  ("on the all files page: still later", 12.2).
+* **A folder** narrows nothing but the explorer's own listing.
+
+What is asked: one search that takes any of them, each optional, all of them required together -
+"`اجاره` in the text, in `ERP/P-1234` and below, its metadata `status` = `signed`":
+
+| Part | How | Built on |
+|---|---|---|
+| words in the text | as now: each a prefix, all on one page, a quoted part a phrase | `ContentQuery`, the GIN index of `file_content_page` |
+| a folder, and the folders below it | the file's folder's path beginning with the chosen folder's - the range on `ix_folder_path` the metadata search already uses | `folder.path` |
+| metadata of the file | key = value pairs on a form - a key per row, the value as typed, a number as a number - made into the JSON document containment asks; or the JSON whole, for a nested part | `MetadataRules`, `@>` through `ix_file_details_metadata` |
+| metadata of a folder above it | the same, held by any folder above the file - "the files of the person whose national code is X" | `MetadataSearchRepository`'s `BELOW_DESCRIBED_FOLDERS` |
+| the file's name | as the file list's search, its folded key | `search_name`, the trigram index |
+| versions | the latest, or every one | as now |
+
+* **Access as everywhere**: the reader's grants in the query (`GrantedFolderPath`), before any
+  bound; a folder chosen that the reader may not read is no results, never an error that says it
+  exists. A described folder is asked only if the reader may read it (12.2's rule: no oracle).
+* **One query, planned on the most selective part**: the text's GIN index or the metadata's, behind
+  the content search's probe and fence (2.15.0) - a word on every page and a rare metadata value must
+  not scan the pages; the plans and the times measured at 100,000 pages and 20,000 files as
+  `ContentSearchScaleTest` and `MetadataSearchScaleTest` measure theirs. Without words, a search
+  by metadata and folder alone answers files, newest first, with no pages.
+* **The pages**: the search page grows a folder picker (the explorer's tree, by folder access) and a
+  metadata form; the explorer's folder view a "search in this folder" that opens it with the folder
+  chosen; each result as now - its pages and snippets when words were asked, its metadata's matching
+  keys when a document was.
+* **API v1**: `content-search` takes `folderId`, `metadata` and `folderMetadata` (the metadata as v1's
+  search takes them, masked in the log as there); `files/search` keeps working as it is.
+* **Permissions**: the content search's (`SEARCH_FILE_CONTENTS`, `API_SEARCH_FILE_CONTENTS`) - a search
+  without words still needs one of them, since the page is the same; nothing new to grant.
+* **Tests**: each part alone and every pair together; a folder chosen outside the reader's grants; a
+  described folder the reader cannot read; the plans and the times at scale; the form's metadata
+  checked by `MetadataRules` as an upload's is; everything escaped; the API's answers.
 
 ### 12.7 An upload policy of a key's own — **planned**
 
