@@ -991,7 +991,9 @@ that role alone. The rules:
   alone.** An own policy that lists nothing means the role may upload nothing.
 * **Across several roles, the union**: a person may upload what any of their roles allows, up to
   the largest limit any of them gives for that kind — the same way permissions combine. A person
-  with no role, and an API key (which holds none), have the system-wide limits.
+  with no role, and an API key (which holds none), have the system-wide limits - **every key, on v1,
+  v2 and S3, whoever made it**: not its creator's roles' policy, and not the administrator's
+  exemption below. A policy of a key's own is planned ([roadmap 12.7](roadmap.md#127-an-upload-policy-of-a-keys-own--planned)).
 * **The administrator is above the policy** (1.9.0): a holder of the ADMIN role may upload every
   catalogued kind - built-in and custom - up to the server's cap (`administratorLimits`),
   whatever the policies say. Computed on each upload, not stored: a custom kind added on the

@@ -79,6 +79,12 @@ The paths keep their parameter names, and **`{fileInfoId}` is the file's externa
 | `public-file` | `1` or `true` to list it on the public files page. **Anything else, absent included, keeps it private** (since 1.7.0; before, it was public unless `0`) |
 | `metadata` | optional (2.13.0): what is known about the document that it does not say, as a JSON object - `{"contractNo":"C-5678","party":{"code":"P-1234"}}`. Checked as [Metadata](#metadata-2130) says; a document the rules refuse refuses the upload, and nothing is stored |
 
+**Which kinds and sizes may be uploaded.** With the shared account's password, what its roles allow.
+**With an API key, the system-wide upload policy** (`/settings/upload`) - for every key, whoever
+made it: not its creator's role's, and an administrator's key is no exception. A key cannot yet be
+given kinds of its own ([roadmap 12.7](roadmap.md#127-an-upload-policy-of-a-keys-own--planned)). A
+kind the policy does not allow, or a file above its size, is a `400` whose `detail` names it.
+
 The answer:
 
 ```json
