@@ -3748,6 +3748,29 @@ Small things asked for once 2.7 was in use, each sized to ship on its own, none 
 | 12.4 | A folder of thousands of folders: every listing of folders paged in SQL | none | **done (2.11.0)** |
 | 12.5 | Storage keys that say nothing: a new revision stored under its id, not its title | none | **done (2.10.0)** |
 | 12.6 | The existing revisions re-keyed the same way - at the move to the object store, by the storage copy | `legacy_storage_key` | with 4.7, when that move is decided |
+| 12.7 | An upload policy of a key's own: the kinds and sizes one API key may upload, as a role's - planned, not yet scheduled (asked 2026-10-10) | a key's policy, as `upload_policy` is a role's | 2-3 days |
+
+### 12.7 An upload policy of a key's own — **planned**
+
+**Today every API key follows the system-wide upload policy** - the kinds and sizes of
+`/settings/upload` - on v1, v2 and the S3 surface alike, multipart included
+(`UploadPolicyService.effectiveLimitsFor`: a request with a key is given `globalLimits()`). Not its
+creator's: a key made by an administrator, or by a person whose role has a policy of its own, uploads
+what the system-wide policy allows and nothing else. So one integration cannot be kept to `pdf` and
+`jpg` up to 10 MB while another sends spreadsheets: every key may send every kind the system allows.
+
+What is asked: a key's page offers what a role's does - **the system-wide policy** (the default, and
+what every existing key keeps, so nothing changes for it), or **a policy of its own**, the kinds ticked
+from the catalogue and a size for each, bounded by the server's cap. Built as the role's is:
+
+* the policy stored against the key, as `upload_policy` is against a role (`V3.x`); the system-wide
+  policy where it has none;
+* `effectiveLimitsFor` asks the acting key's own first - one enforcement point still, so v1, v2, S3
+  and the multipart start (`S3MultipartService.maxBytesFor`) all follow it with no change of their own;
+* the key's create and edit pages with the role page's kind picker; a change recorded in the action
+  history; the key's page shows what it may upload;
+* tests: a key kept to its kinds and sizes on each of the three APIs and on a multipart upload, a
+  key without one on the system-wide policy, an existing key unchanged by the migration.
 
 ### 12.1 A page of locked sign-ins — **done (2.7.5)**
 
