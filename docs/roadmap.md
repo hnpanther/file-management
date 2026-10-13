@@ -3759,6 +3759,7 @@ Small things asked for once 2.7 was in use, each sized to ship on its own, none 
 | 12.6 | The existing revisions re-keyed the same way - at the move to the object store, by the storage copy | `legacy_storage_key` | with 4.7, when that move is decided |
 | 12.7 | An upload policy of a key's own: the kinds and sizes one API key may upload, as a role's - planned, not yet scheduled (asked 2026-10-10) | a key's policy, as `upload_policy` is a role's | 2-3 days |
 | 12.8 | **An advanced search - next (decided 2026-10-10)**: the text inside the files, the metadata and a folder, together, on one page and on API v1 | none | 3-5 days |
+| 12.9 | **Reports on the files** (asked 2026-10-13): the size of everything and of each top-level folder, its growth month by month and where it is heading, kinds, versions, uploaders, downloads, cold and duplicate files, quotas, coverage - a page of their own, exportable | `storage_snapshot` (a row a day) | 5-7 days |
 
 ### 12.8 An advanced search: the contents, the metadata and a folder together — **next**
 
@@ -3803,6 +3804,50 @@ What is asked: one search that takes any of them, each optional, all of them req
 * **Tests**: each part alone and every pair together; a folder chosen outside the reader's grants; a
   described folder the reader cannot read; the plans and the times at scale; the form's metadata
   checked by `MetadataRules` as an upload's is; everything escaped; the API's answers.
+
+### 12.9 Reports on the files — **planned** (asked 2026-10-13)
+
+A page of reports (`/reports`) - what is stored, where, how fast it grows and what is used - so that
+storage is planned before it runs out and the archive is understood without SQL by hand. Every
+figure is read from what the application already records: `file_details` (size, kind, version,
+`created_at`, `created_by`, `created_by_api_key_id`, `checksum_sha256`), the tree (`folder.path`,
+`quota_bytes`), `file_download` (2.7.0), `file_history` (2.5.0), `file_content` (2.15.0).
+
+**The reports**, each a table and, where it helps, a chart:
+
+| Report | What it answers | From |
+|---|---|---|
+| **Totals** | files, revisions and bytes stored - every version, and the latest only (what deleting old versions would free) | `file_details` |
+| **By top-level folder** | each folder below the root (a bucket): its files, bytes and share of the whole, and a level further down by a click | `folder.path`'s first segment |
+| **Growth, month by month** | files and bytes added each month, removed each month (`FILE_DELETED`), the net; the last twelve months and a projection: at this rate, when the disk the operator states is full | `file_details.created_at`, `file_history`, `storage_snapshot` |
+| **By kind** | each extension's files and bytes - which kinds fill the store | `file_extension` |
+| **The largest** | the 50 largest files, and the folders holding the most bytes | `file_size` |
+| **Versions** | bytes held by versions older than a file's latest; the files with the most versions | `version`, `last_version` |
+| **Who uploads** | files and bytes by person and by API key, a month at a time - the integrations' share beside the people's | `created_by`, `created_by_api_key_id` |
+| **Downloads** | downloads a month by channel (page, preview, public, share link, v1, v2, S3); the most downloaded files | `file_download` |
+| **Cold files** | files never downloaded, or not for a year - with their bytes: candidates for archiving | `file_download`, `file_details` |
+| **Duplicates** | the same bytes stored more than once (one checksum, several revisions) - and the bytes it costs | `checksum_sha256` |
+| **Quotas** | each personal folder's use against its quota, the fullest first; those above 90% | `quota_bytes` |
+| **Coverage** | metadata: the share of files and folders described, the folders still to describe; contents: the share read, OCR'd, failed (2.15.0) | `metadata`, `file_content` |
+| **Integrity** | revisions without a checksum, writes left unsettled (`file_storage_write`) - what should be zero | `checksum_sha256`, `file_storage_write` |
+
+**Decisions to take when it is built:**
+
+* **Who sees what**: a permission of its own (`REPORTS_PAGE`, in a group of its own, not USER's). The
+  figures are aggregates over the folders the person may read - the reader's grants in each query
+  (`GrantedFolderPath`), as every list - so that a report never names a folder, a file or an uploader
+  its reader could not see; an administrator, everything.
+* **Growth needs history the tables do not keep**: `created_at` says when bytes arrived, not what was
+  stored on a day after deletions. A **daily snapshot** (`storage_snapshot`: the day, each top-level
+  folder, its files and bytes, every version and the latest) written by a nightly job makes the
+  trend true from the day it starts; before it, the trend is reconstructed from `created_at` and
+  `file_history`'s deletions, said so on the page.
+* **Never slow**: each report one aggregate query, measured at a million revisions (as
+  `LargeTreeTest` and the content search's scale tests measure theirs); the heavy ones (duplicates,
+  cold files) from the snapshot or cached for a few minutes, never computed on each page view.
+* **Exported**: each table as CSV (Excel opens it, UTF-8 with a BOM for Persian), the time range
+  and the folder chosen kept in the link.
+* **Dates as everywhere**: Jalali on the page, months as Jalali months, in `filemanagement.time-zone`.
 
 ### 12.7 An upload policy of a key's own — **planned**
 
