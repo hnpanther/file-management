@@ -2278,3 +2278,51 @@ missed would let one surface answer differently from the others. Nothing is wron
 
 **To do, when either file is next touched**: call `ReadScopeSql` and delete the copy; the existing
 tests of each (`MetadataSearchTest`, `S3ListingTest`) hold the behaviour.
+
+### 120. A failed reading's reason could carry the document's own text — **S2**
+
+Found 2026-10-14, looking into seven readings that failed in production. Tika 4.1 answers a document it
+could not finish (a parse out of time, an image Tesseract would not decode) with `422` and the XHTML it had
+read so far - the document's metadata and the start of its text. `HttpTikaClient` took an error's body for
+Tika's short JSON and kept its first 200 characters in the exception, so the reason stored in
+`file_content.reason`, shown on `/settings/content-extraction` and logged by the worker could hold a
+document's title, its author or its first line - where a reason never holds any of a document's text.
+
+**Fixed in 2.16.0**: a body that is markup is dropped (`HttpTikaClient.said`), and `V3.14` cuts the markup
+off every reason already stored. `HttpTikaClientTest.statuses`, `ContentReasonMigrationTest`.
+
+### 121. A long PDF with a few untrustworthy pages lost its whole reading — **S2**
+
+Found 2026-10-14 on a 330-page report: its text layer was sound on 326 pages, garbage on two
+(`TextQuality`), and the two sent the document back to the OCR container with `every-page` - which OCRs
+every page, since Tika cannot be asked for some. On two cores that is some 30 seconds a page; Tika's 30
+minutes ran out, its `422` propagated, and the reading was `FAILED`: the 326 sound pages lost with it, the
+document unsearchable. Its text layer alone is read in ten seconds.
+
+**Fixed in 2.16.0** (`ContentReader`): a PDF is read again only if it has at most
+`extraction.reread-max-pages` pages (40), and a reading again that fails - a `422`, a timeout - leaves the
+first reading standing, the untrustworthy pages kept as read and said so in the reason; Tika unreachable
+still puts the revision back. The same report is now read in ten seconds, every page.
+`ContentReaderTest.longDocumentKeepsItsLayer`, `aFailedReadingAgainKeepsTheFirst`.
+
+### 122. A JPEG every viewer shows was refused by Tesseract's decoder — **S3**
+
+Found 2026-10-14 on a newspaper clipping: "Corrupt JPEG data: 78680 extraneous bytes before marker 0xda" -
+Leptonica, which decodes the image for Tesseract, treats what libjpeg warns of as an error; Tika answered
+`422`. Java decodes the same file, and written again as PNG it is read in three seconds.
+
+**Fixed in 2.16.0**: a JPEG is decoded by the application and sent as a grey PNG (`OcrImage`), up to
+36 megapixels; one Java cannot decode, or larger, goes as it came. `OcrImageTest`, against the real image.
+
+### Seen with them, and not a defect of the application
+
+* **After Tika's own time limit, its OCR goes on.** When a document runs out Tika's 30 minutes, Tika
+  answers `422` but its forked parser keeps recognising the document's pages for minutes after, and asks
+  in the meantime are answered `429` (busy). The worker takes a `429` as Tika unavailable: the revision is
+  put back, no attempt spent, and the worker waits (30 s, doubling) - so it costs time, not readings.
+  121 makes it rare; nothing else is changed.
+* **What OCR cannot read stays `FAILED`, said so**: a handwritten page (Tesseract reads print, not
+  Persian handwriting), a scan of 72 dpi, a card on a blank page. Their reason now names these
+  ("OCR read no text from 1 page(s): handwriting, a scan too coarse or too faint, ..."), where it guessed
+  at a decoder before. A photograph with little text can run out Tesseract's 10 minutes a page and be
+  `FAILED` too: once, and nothing in it was searchable.

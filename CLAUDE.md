@@ -118,7 +118,8 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   `engine`). A search goes through `ContentSearch` with the reader's scope *in* the query, before any
   bound; its text is folded by `ContentFolding` (SearchKey's rules - `ContentFoldingTest`), and neither a
   page's text nor a snippet nor the term (`q`, masked) is ever logged. A snippet is segments written
-  with `th:text`, never HTML. **A new part of the advanced search** (2.16.0) is a condition in
+  with `th:text`, never HTML. A reading's reason holds no document text either: Tika answers a failed
+  parse with the document's XHTML, which `HttpTikaClient.said` drops (issue 120). **A new part of the advanced search** (2.16.0) is a condition in
   `PostgresContentSearch.conditions` that an index serves, a parameter masked in `GlobalGeneralLogging`
   if a person typed it, and a case in `AdvancedSearchScaleTest`; a revision's pages are read through
   `PAGES_OF_ONE` (the key, behind a fence), never joined to the pages as a set.

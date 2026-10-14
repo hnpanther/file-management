@@ -790,8 +790,9 @@ restored or a copied installation makes its S3 keys work there too.
 
 ### Upgrading from 2.15.0 to 2.16.0 — the advanced search, and reports on the files
 
-A jar swap with **one migration, `V3.13`**: a new, empty table (`storage_snapshot`). Nothing that
-exists changes.
+A jar swap with **two migrations**: `V3.13`, a new, empty table (`storage_snapshot`); `V3.14`, which cuts
+off the document text Tika's error answers left in the reasons of failed readings (issue 120). Nothing
+else that exists changes.
 
 * **The advanced search** (roadmap 12.8): the search page and API v1's `content-search` take a folder,
   a name, the file's and its folders' metadata, kinds and days beside the words; whoever holds
@@ -812,8 +813,16 @@ exists changes.
   a second or two at a million - and once a day after that, a few rows a day. Until there are two
   weeks of them, the growth report's rate is drawn from what arrived, and says so.
 
+* **Reading contents, corrected** (issues 121, 122): a long PDF with a few untrustworthy pages is no longer
+  lost to a reading again that cannot end, and a JPEG Tesseract's decoder refuses is read. One new setting,
+  none needed: `FILEMANAGEMENT_CONTENT_EXTRACTION_REREAD_MAX_PAGES` (40) - the longest PDF read again by OCR
+  when part of its text layer is garbage.
+* **After the start, read the failed readings again**: `/settings/content-extraction`, «همه را دوباره بخوان» -
+  those that failed for these reasons are then read; what OCR cannot read (handwriting, a coarse scan) fails
+  again, now said so.
+
 Rolling back to 2.15.0 is the jar swap; `storage_snapshot` stays, unread, and is filled again where it
-left off when 2.16.0 returns.
+left off when 2.16.0 returns. `V3.14` changed reasons only; 2.15.0 reads them as they are.
 
 ### Upgrading from 2.14.1 to 2.15.0 — searching the contents of files
 

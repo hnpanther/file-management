@@ -272,12 +272,15 @@ Tika (deploy/tika, a host of its own) and searched page by page (roadmap Phase 1
   3 h, `FAILED` after `max-attempts`. Nothing escapes the loop. A new upload wakes an idle worker once
   it commits.
 * **Reading** (`ContentReader`, `HttpTikaClient`, `TikaReading`) - a PDF or an image to the OCR
-  container once (`auto`: a text page read as text, a scanned one recognised), an Office document to
-  the text container; the XHTML streamed and split into pages (`div.page`), slides (`div.slide-content`)
+  container once (`auto`: a text page read as text, a scanned one recognised), a JPEG decoded here and
+  sent as a grey PNG first (`OcrImage`: Tesseract's decoder refuses some that Java reads, issue 122), an
+  Office document to the text container; the XHTML streamed and split into pages (`div.page`), slides (`div.slide-content`)
   and sheets (`div.sheet`), the OCR of a page (`div.ocr`) apart; capped at `max-text-mb` (*partial*).
   Each PDF text page judged by its function words (`TextQuality`): stored reversed - put right
   (`TEXT_REVERSED`); garbage - the document read again with `every-page`, the page kept with both
-  readings (`BOTH`). A PDF OCR'd to no text is `FAILED`, never `EMPTY` (the JPEG 2000 case).
+  readings (`BOTH`), if it has at most `reread-max-pages` pages (40; `every-page` OCRs all of them); a
+  reading again that fails leaves the first standing (issue 121). An error's body that is markup - the
+  document's own XHTML - never reaches a reason (issue 120). A PDF OCR'd to no text is `FAILED`, never `EMPTY` (the JPEG 2000 case).
 * **The pages** (`file_content_page`) - a row per page, slide or sheet (0 for what has none), long ones
   in parts of 100,000 characters; `search_text` folded by `ContentFolding` exactly as `SearchKey` folds
   a name and reduced to letters and digits, so matching depends on no locale; `search_vector` its

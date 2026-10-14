@@ -108,11 +108,19 @@ public class HttpTikaClient implements TikaClient {
         }
     }
 
-    /** The first lines of an error's body, for the reason - Tika's are short JSON. */
-    private static String said(InputStream answer) {
+    /**
+     * The first lines of an error's body, for the reason - unless it is markup. Tika 4.1 answers a
+     * document it could not parse with the XHTML it had read so far: the document's own metadata and
+     * text, which a reason never holds (it is stored, and shown on the status page). Seen 2026-10-14
+     * on a 330-page PDF whose reading timed out.
+     */
+    static String said(InputStream answer) {
         try {
             String text = new String(answer.readNBytes(ERROR_BODY_BYTES), StandardCharsets.UTF_8)
                     .replaceAll("\\s+", " ").strip();
+            if (text.startsWith("<")) {
+                return "";
+            }
             return text.isEmpty() ? "" : ": " + (text.length() > 200 ? text.substring(0, 200) : text);
         } catch (IOException e) {
             return "";
