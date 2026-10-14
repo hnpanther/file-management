@@ -25,7 +25,7 @@ public record ContentSearchProperties(Boolean enabled, String engine, Extraction
     public ContentSearchProperties {
         enabled = Boolean.TRUE.equals(enabled);
         engine = engine == null || engine.isBlank() ? "postgres" : engine.trim();
-        extraction = extraction == null ? new Extraction(null, null, null, null, null, null, null, null, null, null) : extraction;
+        extraction = extraction == null ? new Extraction(null, null, null, null, null, null, null, null, null, null, null) : extraction;
         tika = tika == null ? new Tika(null, null, null, null, null) : tika;
     }
 
@@ -43,10 +43,13 @@ public record ContentSearchProperties(Boolean enabled, String engine, Extraction
      * @param retryMaxWaitMinutes Tika unreachable: the worker waits {@code retryFirstWaitSeconds}, doubling up to this
      * @param backfillBatch       revisions the backfill queues at a time
      * @param retryFirstWaitSeconds the first wait once Tika is lost - 30
+     * @param rereadMaxPages      a PDF with a text layer judged garbage is read again by OCR, every page, only
+     *                            if it has at most this many pages (40: about what OCR reads in Tika's 30 minutes
+     *                            on two cores); a longer one keeps the layer as read. 0 never reads one again
      */
     public record Extraction(Boolean enabled, Boolean backfill, Boolean ocrEnabled, Integer concurrency,
                              Integer maxFileMb, Integer maxTextMb, Integer maxAttempts, Integer retryMaxWaitMinutes,
-                             Integer backfillBatch, Integer retryFirstWaitSeconds) {
+                             Integer backfillBatch, Integer retryFirstWaitSeconds, Integer rereadMaxPages) {
 
         public Extraction {
             enabled = Boolean.TRUE.equals(enabled);
@@ -59,6 +62,7 @@ public record ContentSearchProperties(Boolean enabled, String engine, Extraction
             retryMaxWaitMinutes = clamp(retryMaxWaitMinutes, 10, 1, 240);
             backfillBatch = clamp(backfillBatch, 500, 10, 10_000);
             retryFirstWaitSeconds = clamp(retryFirstWaitSeconds, 30, 1, 600);
+            rereadMaxPages = clamp(rereadMaxPages, 40, 0, 2_000);
         }
 
         public long maxFileBytes() {

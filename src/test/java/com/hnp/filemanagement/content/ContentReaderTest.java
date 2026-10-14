@@ -30,6 +30,8 @@ class ContentReaderTest {
         final List<String> answers = new ArrayList<>();
         final List<String> asked = new ArrayList<>();
         IOException failure;
+        /** Thrown at a reading again (a request with a preset) only. */
+        IOException rereadFailure;
 
         ScriptedTika answer(String body) {
             answers.add(body);
@@ -43,6 +45,9 @@ class ContentReaderTest {
             if (failure != null) {
                 throw failure;
             }
+            if (preset != null && rereadFailure != null) {
+                throw rereadFailure;
+            }
             try (InputStream in = body.get()) {
                 in.readAllBytes();
             }
@@ -52,10 +57,14 @@ class ContentReaderTest {
         }
     }
 
+    /** The longest PDF read again by OCR, here. */
+    private static final int REREAD_MAX_PAGES = 3;
+    private static final String NOISE = String.join(" ", java.util.Collections.nCopies(12, "roi,rJr*lJ ill.l5 o 6 t,.o/1116 o3L.+."));
+
     private static final Supplier<InputStream> BYTES = () -> new ByteArrayInputStream(new byte[]{1, 2, 3});
 
     private static ContentSearchProperties.Extraction settings(boolean ocr, int maxFileMb, int maxTextMb) {
-        return new ContentSearchProperties.Extraction(true, false, ocr, 1, maxFileMb, maxTextMb, 3, 10, 500, 30);
+        return new ContentSearchProperties.Extraction(true, false, ocr, 1, maxFileMb, maxTextMb, 3, 10, 500, 30, REREAD_MAX_PAGES);
     }
 
     private static FileContentRepository.Target target(String type, String extension) {
@@ -152,12 +161,49 @@ class ContentReaderTest {
     }
 
     @Test
+    @DisplayName("a PDF longer than reread-max-pages is not read again: its untrustworthy page kept as read, said so")
+    void longDocumentKeepsItsLayer() throws Exception {
+        ScriptedTika tika = new ScriptedTika().answer(page(TextQualityTest.PROSE) + page(TextQualityTest.PROSE)
+                + page(TextQualityTest.PROSE) + page(NOISE));
+        ContentReader.Result result = new ContentReader(tika, settings(true, 200, 10)).read(target("application/pdf", "pdf"), BYTES);
+        assertThat(tika.asked).as("no every-page reading of a document of 4 pages").containsExactly("OCR");
+        assertThat(result.outcome().state()).isEqualTo("DONE");
+        assertThat(result.pages()).extracting(PageRow::source).containsExactly("TEXT", "TEXT", "TEXT", "TEXT");
+        assertThat(result.outcome().reason()).contains("1 page(s) with an untrustworthy text layer kept as read",
+                "4 pages are more than are read again", "reread-max-pages 3");
+    }
+
+    @Test
+    @DisplayName("a reading again that fails leaves the first reading standing - every page kept, the failure said")
+    void aFailedReadingAgainKeepsTheFirst() throws Exception {
+        ScriptedTika tika = new ScriptedTika().answer(page(TextQualityTest.PROSE) + page(NOISE));
+        tika.rereadFailure = new TikaClient.Refused("Tika could not parse the document (422)");
+        ContentReader.Result result = new ContentReader(tika, settings(true, 200, 10)).read(target("application/pdf", "pdf"), BYTES);
+        assertThat(tika.asked).containsExactly("OCR", "OCR/every-page");
+        assertThat(result.outcome().state()).isEqualTo("DONE");
+        assertThat(result.pages()).extracting(PageRow::pageNumber, PageRow::source)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(1, "TEXT"), org.assertj.core.groups.Tuple.tuple(2, "TEXT"));
+        assertThat(result.outcome().reason()).contains("reading them again by OCR failed (Tika could not parse the document (422))");
+
+        ScriptedTika timedOut = new ScriptedTika().answer(page(TextQualityTest.PROSE) + page(NOISE));
+        timedOut.rereadFailure = new java.net.http.HttpTimeoutException("request timed out");
+        assertThat(new ContentReader(timedOut, settings(true, 200, 10)).read(target("application/pdf", "pdf"), BYTES).outcome().state())
+                .isEqualTo("DONE");
+
+        ScriptedTika lost = new ScriptedTika().answer(page(TextQualityTest.PROSE) + page(NOISE));
+        lost.rereadFailure = new TikaClient.Unavailable("Tika's OCR container is busy (429)", null);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new ContentReader(lost, settings(true, 200, 10))
+                        .read(target("application/pdf", "pdf"), BYTES))
+                .as("Tika lost: put back, as any reading").isInstanceOf(TikaClient.Unavailable.class);
+    }
+
+    @Test
     @DisplayName("a PDF that OCR read nothing from is FAILED - never EMPTY; an image with no text is EMPTY; a Word document with none is EMPTY")
     void noText() throws Exception {
         ContentReader.Result scan = new ContentReader(new ScriptedTika().answer("<div class=\"page\"><div class=\"ocr\"></div></div>"),
                 settings(true, 200, 10)).read(target("application/pdf", "pdf"), BYTES);
         assertThat(scan.outcome().state()).isEqualTo("FAILED");
-        assertThat(scan.outcome().reason()).contains("OCR read nothing");
+        assertThat(scan.outcome().reason()).contains("OCR read no text from 1 page(s)", "handwriting");
 
         ContentReader.Result photo = new ContentReader(new ScriptedTika().answer("<div class=\"ocr\"> </div>"),
                 settings(true, 200, 10)).read(target("image/jpeg", "jpg"), BYTES);

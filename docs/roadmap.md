@@ -55,7 +55,10 @@ totals and each top-level folder, the folders a level at a time, growth by Jalal
 projection of when the disk is full, kinds, the largest, versions, uploaders, downloads, cold and
 duplicate files, quotas, coverage and integrity - each over the reader's folders, each table as CSV,
 a daily count of each top-level folder (`storage_snapshot`, `V3.13`) for a true trend; measured at a
-million revisions, 0.2-2.1 s counted afresh, then kept five minutes. And **the advanced search** (12.8) - the words inside the files, a folder and those
+million revisions, 0.2-2.1 s counted afresh, then kept five minutes. And **reading contents corrected**
+after seven readings failed in production (issues 120-122): a long PDF is no longer lost to a reading
+again that cannot end (a 330-page report: 30 minutes and failed, now 10 seconds and every page), a JPEG
+Tesseract refuses is decoded here, and no reason keeps a document's text (`V3.14`). And **the advanced search** (12.8) - the words inside the files, a folder and those
 below it, a fragment of the name, the file's metadata and its folders' above it, kinds, days and the
 order, each optional and all together, on the search page (a folder chooser by name, two metadata
 forms, "search in this folder" in the explorer) and on API v1; the reader's grants in the query, a

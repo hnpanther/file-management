@@ -131,6 +131,15 @@ class HttpTikaClientTest {
         answer.set(new Answer(422, "{\"status\":\"PARSE_EXCEPTION\"}", 0));
         assertThatThrownBy(() -> client.read(TikaClient.Lane.TEXT, null, bytes("x"), 1, "text/plain", "txt", 100))
                 .isInstanceOf(TikaClient.Refused.class).hasMessageContaining("422").hasMessageContaining("PARSE_EXCEPTION");
+        // Tika 4.1 answers a document it could not finish with what it had read: its metadata and text,
+        // which never become a reason.
+        answer.set(new Answer(422, "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><meta name=\"dc:title\""
+                + " content=\"قرارداد محرمانه\"/></head><body><p>متن سند</p></body></html>", 0));
+        assertThatThrownBy(() -> client.read(TikaClient.Lane.OCR, null, bytes("x"), 1, "application/pdf", "pdf", 100))
+                .isInstanceOf(TikaClient.Refused.class).hasMessage("Tika could not parse the document (422)");
+        answer.set(new Answer(500, "  <html><body>secret</body></html>", 0));
+        assertThatThrownBy(() -> client.read(TikaClient.Lane.OCR, null, bytes("x"), 1, "application/pdf", "pdf", 100))
+                .isInstanceOf(IOException.class).hasMessageNotContaining("secret");
         for (int status : new int[]{500, 503}) {
             answer.set(new Answer(status, "{\"status\":\"TIMEOUT\"}", 0));
             assertThatThrownBy(() -> client.read(TikaClient.Lane.TEXT, null, bytes("x"), 1, "text/plain", "txt", 100))

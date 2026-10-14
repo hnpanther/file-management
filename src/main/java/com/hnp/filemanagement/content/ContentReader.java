@@ -8,6 +8,7 @@ import com.hnp.filemanagement.content.TikaReading.Unit;
 import com.hnp.filemanagement.content.TextQuality.Score;
 import com.hnp.filemanagement.content.TextQuality.Verdict;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -29,9 +31,12 @@ import java.util.function.Supplier;
  *       (decided 2026-10-08). With OCR off, a PDF goes to the text container and an image is skipped.</li>
  *   <li><b>Office documents and text go to the text container.</b> Anything else - video, audio,
  *       archives - is skipped, said so.</li>
+ *   <li><b>A JPEG is decoded here and sent as a grey PNG</b> ({@link OcrImage}): Tesseract's decoder
+ *       refuses JPEGs every viewer shows (2026-10-14).</li>
  *   <li><b>A PDF's text pages are judged</b> ({@link TextQuality}): one stored reversed is put right;
- *       one of garbage sends the document back to the OCR container with {@code every-page}, and that
- *       page keeps both readings, the recognised one first.</li>
+ *       one of garbage sends the document back to the OCR container with {@code every-page} - if it has
+ *       at most {@code reread-max-pages} pages - and that page keeps both readings, the recognised one
+ *       first. A reading again that fails leaves the first one standing (2026-10-14).</li>
  *   <li><b>A PDF that OCR read nothing from is {@code FAILED}</b>, never {@code EMPTY}: Tika answers an
  *       image it could not decode with no text and no error (the JPEG 2000 scans of 2026-10-08). An
  *       image with no text is {@code EMPTY} - a photograph may have none.</li>
@@ -113,7 +118,15 @@ public class ContentReader {
         }
 
         long maxCharacters = settings.maxTextCharacters();
-        TikaReading reading = tika.read(lane, null, bytes, target.size(), type, target.extension(), maxCharacters);
+        TikaReading reading;
+        Optional<byte[]> png = lane == Lane.OCR && OcrImage.decodedHere(type, target.extension())
+                ? OcrImage.asGreyPng(bytes) : Optional.empty();
+        if (png.isPresent()) {
+            byte[] image = png.get();
+            reading = tika.read(lane, null, () -> new ByteArrayInputStream(image), image.length, "image/png", "png", maxCharacters);
+        } else {
+            reading = tika.read(lane, null, bytes, target.size(), type, target.extension(), maxCharacters);
+        }
         boolean pdf = "application/pdf".equalsIgnoreCase(type) || "pdf".equalsIgnoreCase(target.extension());
 
         Map<Integer, Judged> judged = new HashMap<>();
@@ -128,9 +141,29 @@ public class ContentReader {
             }
         }
 
+        // The pages judged garbage read again by OCR - and with them every other page, since Tika OCRs a
+        // document's pages all or none. So only a document short enough for that to end, and never at the
+        // cost of what was read: a reading again that fails leaves the first one standing (a 330-page PDF
+        // with two such pages ran out Tika's 30 minutes, and its 326 sound pages were lost with it).
         TikaReading recognised = null;
+        String kept = null;
         if (garbage && lane == Lane.OCR) {
-            recognised = tika.read(Lane.OCR, EVERY_PAGE, bytes, target.size(), type, target.extension(), maxCharacters);
+            long garbagePages = judged.values().stream().filter(verdict -> verdict.verdict() == Verdict.GARBAGE).count();
+            int pageCount = reading.pages() > 0 ? reading.pages()
+                    : (int) reading.units().stream().filter(unit -> unit.kind() == Kind.PAGE).count();
+            if (pageCount > settings.rereadMaxPages()) {
+                kept = garbagePages + " page(s) with an untrustworthy text layer kept as read: " + pageCount
+                        + " pages are more than are read again by OCR (reread-max-pages " + settings.rereadMaxPages() + ")";
+            } else {
+                try {
+                    recognised = tika.read(Lane.OCR, EVERY_PAGE, bytes, target.size(), type, target.extension(), maxCharacters);
+                } catch (TikaClient.Unavailable unavailable) {
+                    throw unavailable;
+                } catch (IOException failed) {
+                    kept = garbagePages + " page(s) with an untrustworthy text layer kept as read: reading them again by OCR failed ("
+                            + failed.getMessage() + ")";
+                }
+            }
         }
 
         List<PageRow> rows = new ArrayList<>();
@@ -168,7 +201,8 @@ public class ContentReader {
         boolean ocrRan = reading.ocrBlocks() > 0 || (recognised != null && recognised.ocrBlocks() > 0);
         int ocrPages = Math.max(reading.ocrBlocks(), recognised == null ? 0 : recognised.ocrBlocks());
         boolean partial = reading.partial() || (recognised != null && recognised.partial());
-        String detected = reading.contentType();
+        // What the revision is - not the PNG it was sent as.
+        String detected = png.isPresent() ? type : reading.contentType();
         Integer pages = reading.pages() > 0 ? reading.pages() : null;
         String laneName = lane.name();
 
@@ -177,7 +211,8 @@ public class ContentReader {
                 // A scan has something on it: no text at all is a reading that went wrong (an image the
                 // container could not decode answers 200 with nothing), not an empty document.
                 return new Result(new Outcome("FAILED", laneName, detected,
-                        "OCR read nothing from " + ocrPages + " page(s) - an image the container could not decode?",
+                        "OCR read no text from " + ocrPages + " page(s): handwriting, a scan too coarse or too faint,"
+                                + " little text on a blank page - or an image the container could not decode",
                         false, pages, ocrPages, 0), List.of());
             }
             String why = ocrRan ? "OCR found no text" : (pdf && lane == Lane.TEXT ? "no text layer, and OCR is switched off" : null);
@@ -191,6 +226,9 @@ public class ContentReader {
                     + (repaired > 0 && both > 0 ? "; " : "")
                     + (both > 0 ? both + " page(s) with an untrustworthy text layer, read again by OCR" : "");
             reason = reason == null ? notes : reason + "; " + notes;
+        }
+        if (kept != null) {
+            reason = reason == null ? kept : reason + "; " + kept;
         }
         return new Result(new Outcome("DONE", laneName, detected, reason, partial, pages, ocrRan ? ocrPages : null, characters),
                 rows);

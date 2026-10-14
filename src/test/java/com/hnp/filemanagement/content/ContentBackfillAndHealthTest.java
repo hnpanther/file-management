@@ -29,7 +29,7 @@ class ContentBackfillAndHealthTest {
 
     private static ContentSearchProperties properties(boolean reading, boolean backfill) {
         return new ContentSearchProperties(true, "postgres",
-                new ContentSearchProperties.Extraction(reading, backfill, true, 1, 200, 10, 3, 10, 500, 30),
+                new ContentSearchProperties.Extraction(reading, backfill, true, 1, 200, 10, 3, 10, 500, 30, 40),
                 new ContentSearchProperties.Tika("http://tika:9998", "http://tika:9999", 5, 6, 35));
     }
 
@@ -92,8 +92,11 @@ class ContentBackfillAndHealthTest {
     @DisplayName("settings brought into range, never refused; why reading cannot run, said")
     void settings() {
         ContentSearchProperties.Extraction wild = new ContentSearchProperties.Extraction(true, null, null, 99, -5, 100_000, 0, 0,
-                1, 0);
+                1, 0, 99_999);
         assertThat(wild.concurrency()).isEqualTo(4);
+        assertThat(wild.rereadMaxPages()).isEqualTo(2_000);
+        assertThat(new ContentSearchProperties.Extraction(null, null, null, null, null, null, null, null, null, null, null)
+                .rereadMaxPages()).isEqualTo(40);
         assertThat(wild.maxFileMb()).isEqualTo(1);
         assertThat(wild.maxTextMb()).isEqualTo(100);
         assertThat(wild.maxAttempts()).isEqualTo(1);
