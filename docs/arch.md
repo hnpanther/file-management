@@ -310,8 +310,9 @@ Tika (deploy/tika, a host of its own) and searched page by page (roadmap Phase 1
   a set - joined, the planner scanned every page to keep a few. Measured at 100,000 pages and 10,000
   described files (`AdvancedSearchScaleTest`): 14-45 ms without words, 28-44 the words first, up to
   240 the files first, 311 the newest pages. The folder chooser offers, by name, the folders the
-  reader may walk into (`folderChoices`), with their trails - a folder chosen outside the grants is no
-  results, and the page shows no name for it.
+  reader may walk into (`folderChoices` over `FolderSearchRepository.visibleMatches`: access in the
+  statement, the folder named exactly first, a sibling of the same label told apart by its name), with
+  their trails - a folder chosen outside the grants is no results, and the page shows no name for it.
 * **Never logged**: no text, no snippet, no metadata; the parameters `q`, `name`, `metadata` and
   `folderMetadata` are masked by `GlobalGeneralLogging`. The status page (`/settings/content-extraction`) shows reasons, never text,
   and failures only of files the reader may open. `/actuator/health` has `contentExtraction`, always

@@ -25,8 +25,10 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   build never had ([issue 1](docs/issues.md#1-the-spring-boot-upgrade-was-silently-reverted-by-a-merge--s1)).
 * **The tests need only a Docker daemon.** `support/DatabaseSupport` starts a PostgreSQL 18
   container, `support/TestObjectStores` a SeaweedFS one for the object-store tests (2.6.0), and
-  `support/StorageRootSupport` uses `./target/test-storage/`. Run `./mvnw verify`;
-  if you did not run it, say you did not run it - do not describe a change as verified.
+  `support/StorageRootSupport` uses `./target/test-storage/`. Run `./mvnw verify`; the tests tagged
+  `scale` (a million revisions, 100,000 pages, load) run only with `-Pscale` - before a release, and when
+  a query they measure changes; a new scale test is tagged so. If you did not run it, say you did not run
+  it - do not describe a change as verified.
 * **PostgreSQL only since release C (2.1.0).** A schema change is the next
   `db/migration/V3.x__Description.sql`, never an edit of `V3.0` or any applied migration (Flyway
   checksums comments too, and production refuses to start on a mismatch).

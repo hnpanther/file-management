@@ -26,6 +26,15 @@
 		<!-- Extra JVM options for the test run, appended by surefire below. Empty by default so that
 		     -DargLine=... on the command line (SchemaDocumentationTest's write switch) still works. -->
 		<argLine></argLine>
+		<!-- The tests tagged "scale" - a million revisions, 100,000 pages, 41,000 objects, eight readers
+		     at once: about seven of the run's fifteen minutes - are left out of a plain ./mvnw verify and
+		     run with ./mvnw verify -Pscale: before a release, and whenever a query they measure changes. -->
+		<excludedGroups>scale</excludedGroups>
+		<!-- The test classes run in this many JVMs at once, each with its own PostgreSQL, SeaweedFS and
+		     Tika containers and its own storage root (target/test-storage-N): measured 2026-10-14 on 8
+		     cores, 7.5 minutes in one, 6.2 in two, 5.3 in three. Two leave the machine usable;
+		     -DforkCount=3 when it is idle. The scale profile runs in one, so that its times are its own. -->
+		<forkCount>2</forkCount>
 		<springdoc.version>3.1.0</springdoc.version>
 		<tika.version>3.3.2</tika.version>
 		<!-- The S3 client of the object-store backend (roadmap Phase 4). Its BOM keeps every
@@ -250,6 +259,12 @@
 					     agent is loaded dynamically and will refuse it by default one day, so it is loaded
 					     the supported way, on the command line. -->
 					<argLine>-javaagent:${net.bytebuddy:byte-buddy-agent:jar} ${argLine}</argLine>
+					<excludedGroups>${excludedGroups}</excludedGroups>
+					<forkCount>${forkCount}</forkCount>
+					<reuseForks>true</reuseForks>
+					<systemPropertyVariables>
+						<filemanagement.base-dir>./target/test-storage-${surefire.forkNumber}/</filemanagement.base-dir>
+					</systemPropertyVariables>
 				</configuration>
 			</plugin>
 			<plugin>
@@ -310,4 +325,14 @@
 		</plugins>
 	</build>
 
+	<profiles>
+		<!-- Every test, the scale ones too (see excludedGroups above). -->
+		<profile>
+			<id>scale</id>
+			<properties>
+				<excludedGroups>none</excludedGroups>
+				<forkCount>1</forkCount>
+			</properties>
+		</profile>
+	</profiles>
 </project>

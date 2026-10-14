@@ -17,6 +17,7 @@ import com.hnp.filemanagement.support.ServiceIntegrationTest;
 import com.hnp.filemanagement.support.TestData;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @ServiceIntegrationTest
 @TestPropertySource(properties = {"filemanagement.folder-access.enabled=true", "filemanagement.content-search.enabled=true"})
+@Tag("scale")
 class AdvancedSearchScaleTest extends DatabaseSupport {
 
     static final int FILES = 10_000;
