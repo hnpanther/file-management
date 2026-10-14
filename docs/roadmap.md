@@ -44,9 +44,8 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 files stored before it being read - a few days of OCR on the Tika host. (2.5.0 until then; MySQL
 decommissioned 2026-09-30.)
 
-**Next: deploy 2.16.0** (the advanced search, the reports and the content-reading fixes, two migrations - deployment.md), and
-set `FILEMANAGEMENT_REPORTS_CAPACITY_GB` there. After it: [12.7, an upload policy of a key's own](#127-an-upload-policy-of-a-keys-own--planned),
-when it is wanted. Alongside, while the backfill reads: watch `/settings/content-extraction` and the Tika host, and
+**Next: deploy 2.16.0** (the advanced search, the reports, the content-reading fixes and a key's own upload policy, three migrations - deployment.md), and
+set `FILEMANAGEMENT_REPORTS_CAPACITY_GB` there. Alongside, while the backfill reads: watch `/settings/content-extraction` and the Tika host, and
 once it is done measure the tables and look at the failures - what decides whether 11.4 (the lexicon
 gate) is wanted.
 
@@ -60,7 +59,8 @@ after seven readings failed in production (issues 120-122): a long PDF is no lon
 again that cannot end (a 330-page report: 30 minutes and failed, now 10 seconds and every page), a JPEG
 Tesseract refuses is decoded here, and no reason keeps a document's text (`V3.14`). The search's
 folder chooser finds a reader's folder among thousands of the same word (access in the statement,
-issue 123), the folder named exactly first, two people of one name told apart. And **the advanced search** (12.8) - the words inside the files, a folder and those
+issue 123), the folder named exactly first, two people of one name told apart. And **an upload policy of
+a key's own** (12.7, `V3.15`): a key may be kept to its own kinds and sizes; every other key, as before. And **the advanced search** (12.8) - the words inside the files, a folder and those
 below it, a fragment of the name, the file's metadata and its folders' above it, kinds, days and the
 order, each optional and all together, on the search page (a folder chooser by name, two metadata
 forms, "search in this folder" in the explorer) and on API v1; the reader's grants in the query, a
@@ -3775,7 +3775,7 @@ Small things asked for once 2.7 was in use, each sized to ship on its own, none 
 | 12.4 | A folder of thousands of folders: every listing of folders paged in SQL | none | **done (2.11.0)** |
 | 12.5 | Storage keys that say nothing: a new revision stored under its id, not its title | none | **done (2.10.0)** |
 | 12.6 | The existing revisions re-keyed the same way - at the move to the object store, by the storage copy | `legacy_storage_key` | with 4.7, when that move is decided |
-| 12.7 | An upload policy of a key's own: the kinds and sizes one API key may upload, as a role's - planned, not yet scheduled (asked 2026-10-10) | a key's policy, as `upload_policy` is a role's | 2-3 days |
+| 12.7 | An upload policy of a key's own: the kinds and sizes one API key may upload, as a role's (asked 2026-10-10) | `upload_policy.api_key_id` (`V3.15`) | **done (2.16.0)** |
 | 12.8 | An advanced search: the text inside the files, the metadata, a folder and the name, together, on one page and on API v1 | none | **done (2.16.0)** |
 | 12.9 | Reports on the files (asked 2026-10-13), **done (2.16.0)**: the size of everything and of each top-level folder, its growth month by month and where it is heading, kinds, versions, uploaders, downloads, cold and duplicate files, quotas, coverage - a page of their own, exportable | `storage_snapshot` (a row a day) | 5-7 days |
 
@@ -3921,7 +3921,18 @@ figure is read from what the application already records: `file_details` (size, 
   and the folder chosen kept in the link.
 * **Dates as everywhere**: Jalali on the page, months as Jalali months, in `filemanagement.time-zone`.
 
-### 12.7 An upload policy of a key's own — **planned**
+### 12.7 An upload policy of a key's own — **done (2.16.0)**
+
+**Done in 2.16.0**, as planned below: `upload_policy.api_key_id` (`V3.15`, one owner a policy, a key's
+going with the key); `effectiveLimitsFor` asks the acting key's own first, the system-wide policy where
+it has none - so every key stays as it was until it is given one; the key's create and edit pages carry
+the role page's kind picker (shown with `UPLOAD_POLICY_PAGE`, saved with `SAVE_UPLOAD_POLICY` too - a
+section posted without it is dropped); a policy that could not be kept is refused before the key is
+written; a revoked key's replacement takes its policy; the list marks a key of its own policy.
+`ApiKeyUploadPolicyTest` (v1, v2, S3, multipart - a key kept to its kinds and sizes, a key without one as
+before), `ApiKeyUploadPolicyServiceTest`, `ApiKeyUploadPolicyPageTest`.
+
+The plan, as written before it was built:
 
 **Today every API key follows the system-wide upload policy** - the kinds and sizes of
 `/settings/upload` - on v1, v2 and the S3 surface alike, multipart included

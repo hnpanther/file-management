@@ -368,12 +368,13 @@ public class ReportRepository {
 
     public List<DownloadedRow> mostDownloaded(FolderReadScope scope, Instant from, int limit) {
         String sql = with(scope, "") + """
-                SELECT t.file_info_id, fi.id AS present, coalesce(fi.file_name, t.file_name) AS file_name,
-                       CASE WHEN fi.id IS NOT NULL AND %s THEN fo.path END AS path, t.downloads, t.last_at
+                SELECT t.file_info_id, fi.id AS present,
+                       CASE WHEN fi.id IS NOT NULL AND %1$s THEN fi.file_name ELSE t.file_name END AS file_name,
+                       CASE WHEN fi.id IS NOT NULL AND %1$s THEN fo.path END AS path, t.downloads, t.last_at
                 FROM (SELECT dl.file_info_id, max(dl.file_name) AS file_name, count(*) AS downloads, max(dl.occurred_at) AS last_at
                       FROM file_download dl
                       LEFT JOIN folder dfo ON dfo.id = dl.folder_id
-                      WHERE dl.occurred_at >= :from AND %s
+                      WHERE dl.occurred_at >= :from AND %2$s
                       GROUP BY dl.file_info_id
                       ORDER BY downloads DESC, dl.file_info_id
                       LIMIT :limit) t

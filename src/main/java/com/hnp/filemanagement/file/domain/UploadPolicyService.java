@@ -2,7 +2,9 @@ package com.hnp.filemanagement.file.domain;
 
 import com.hnp.filemanagement.audit.domain.ActionHistoryService;
 import com.hnp.filemanagement.identity.domain.RoleService;
-import com.hnp.filemanagement.identity.security.UserDetailsImpl;
+import com.hnp.filemanagement.identity.domain.ApiKey;
+import com.hnp.filemanagement.identity.persistence.ApiKeyRepository;
+import com.hnp.filemanagement.identity.security.ActingApiKey;
 import com.hnp.filemanagement.audit.domain.ActionEnum;
 import com.hnp.filemanagement.identity.domain.FixedRole;
 import com.hnp.filemanagement.audit.domain.EntityEnum;
@@ -15,8 +17,6 @@ import com.hnp.filemanagement.identity.persistence.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.unit.DataSize;
@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Which kinds of file may be uploaded, and how large each may be - a system-wide policy the
@@ -38,7 +39,12 @@ import java.util.Optional;
  * own policy if it has one, the system-wide policy otherwise. The person may upload what any of
  * those sets allows, up to the largest limit any of them gives for that kind - the union, which
  * is how permissions combine across roles too. A person with no role at all has the system-wide
- * limits. An API key holds no role and has the system-wide limits.
+ * limits.
+ *
+ * <p><b>An API key</b> holds no role: it has the system-wide limits, unless it has a policy of its own
+ * (roadmap 12.7, 2.16.0) - then that alone, as a role's own replaces the system-wide one. Neither its
+ * creator's roles nor ADMIN count: a key uploads what its policy says, whoever made it. Asked here,
+ * so v1, v2, the S3 surface and a multipart upload's start follow it alike.
  *
  * <p><b>The administrator is the exception</b> (1.9.0): a holder of the ADMIN role may upload every
  * kind the catalogue recognises ({@link ContentTypes#knownExtensions()}), built-in and custom, each
@@ -68,6 +74,7 @@ public class UploadPolicyService {
     private final UploadPolicyRepository uploadPolicyRepository;
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
+    private final ApiKeyRepository apiKeyRepository;
     private final ActionHistoryService actionHistoryService;
 
     /**
@@ -78,10 +85,12 @@ public class UploadPolicyService {
     private DataSize serverCap;
 
     public UploadPolicyService(UploadPolicyRepository uploadPolicyRepository, RoleRepository roleRepository,
-                               UserRepository userRepository, ActionHistoryService actionHistoryService) {
+                               UserRepository userRepository, ApiKeyRepository apiKeyRepository,
+                               ActionHistoryService actionHistoryService) {
         this.uploadPolicyRepository = uploadPolicyRepository;
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
+        this.apiKeyRepository = apiKeyRepository;
         this.actionHistoryService = actionHistoryService;
     }
 
@@ -109,14 +118,28 @@ public class UploadPolicyService {
         return uploadPolicyRepository.findByRoleId(roleId).map(policy -> inCatalogueOrder(policy.limits()));
     }
 
+    /** An API key's own limits, or empty when the key follows the system-wide policy (roadmap 12.7). */
+    @Transactional(readOnly = true)
+    public Optional<Map<String, Long>> apiKeyLimits(int apiKeyId) {
+        return uploadPolicyRepository.findByApiKeyId(apiKeyId).map(policy -> inCatalogueOrder(policy.limits()));
+    }
+
+    /** The ids of the API keys with a policy of their own. */
+    @Transactional(readOnly = true)
+    public Set<Integer> apiKeysWithOwnPolicy() {
+        return Set.copyOf(uploadPolicyRepository.findApiKeyIdsWithOwnPolicy());
+    }
+
     /**
      * What this principal may upload: extension → bytes, in catalogue order. Resolved from the
-     * roles of the person, or the system-wide policy for an API key.
+     * roles of the person; for a request with an API key, from the key's own policy, or the
+     * system-wide one when it has none.
      */
     @Transactional(readOnly = true)
     public Map<String, Long> effectiveLimitsFor(int principalId) {
-        if (currentRequestIsAnApiKey()) {
-            return globalLimits();
+        Integer apiKeyId = ActingApiKey.currentId();
+        if (apiKeyId != null) {
+            return apiKeyLimits(apiKeyId).orElseGet(this::globalLimits);
         }
         if (roleRepository.userHasRole(principalId, FixedRole.ADMIN.roleName())) {
             return administratorLimits();
@@ -266,6 +289,73 @@ public class UploadPolicyService {
                         + " to role=" + target.getRoleName() + ", kinds=" + copy.limits().keySet());
     }
 
+    /**
+     * Refuses limits (extension → megabytes) a policy could not hold - a kind the catalogue does not
+     * know, a size under 1 MB or above the server's cap - as saving them would; for a caller that must
+     * know before it writes anything else (a key is not made with a policy that would be refused).
+     */
+    public void requireValid(Map<String, Long> limitsMb) {
+        validated(limitsMb);
+    }
+
+    /**
+     * Gives the API key a policy of its own with these limits (extension → megabytes), or - with
+     * {@code null} - takes its own away so the system-wide one governs it again (roadmap 12.7). An own
+     * policy with nothing in it means the key may upload nothing, as a role's does.
+     */
+    @Transactional
+    public void saveForApiKey(int apiKeyId, Map<String, Long> limitsMb, int principalId) {
+        ApiKey apiKey = apiKeyRepository.findById(apiKeyId).orElseThrow(
+                () -> new ResourceNotFoundException("api key with id=" + apiKeyId + " doesn't exists"));
+        Optional<UploadPolicy> existing = uploadPolicyRepository.findByApiKeyId(apiKeyId);
+
+        if (limitsMb == null) {
+            if (existing.isPresent()) {
+                uploadPolicyRepository.delete(existing.get());
+                actionHistoryService.saveActionHistory(EntityEnum.UploadPolicy, existing.get().getId(), ActionEnum.DELETE,
+                        principalId, "DELETE UPLOAD_POLICY", "DELETE UPLOAD_POLICY, apiKey=" + apiKey.getKeyId());
+            }
+            return;
+        }
+
+        Map<String, Long> limits = validated(limitsMb);
+        UploadPolicy policy = existing.orElseGet(() -> {
+            UploadPolicy created = new UploadPolicy();
+            created.setApiKey(apiKey);
+            created.setCreatedBy(userRepository.getReferenceById(principalId));
+            return created;
+        });
+        policy.replaceRules(limits);
+        policy.setUpdatedBy(userRepository.getReferenceById(principalId));
+        policy = uploadPolicyRepository.save(policy);
+        actionHistoryService.saveActionHistory(EntityEnum.UploadPolicy, policy.getId(),
+                existing.isPresent() ? ActionEnum.UPDATE_VALUES : ActionEnum.CREATE,
+                principalId, "SAVE UPLOAD_POLICY", "SAVE UPLOAD_POLICY, apiKey=" + apiKey.getKeyId() + ", kinds=" + limits.keySet());
+    }
+
+    /**
+     * Gives {@code targetApiKeyId} a copy of {@code sourceApiKeyId}'s own policy, or nothing when the
+     * source follows the system-wide one - what replacing a revoked key ({@code ApiKeyService.reissue})
+     * does, so that the new key may upload what the old one might.
+     */
+    @Transactional
+    public void copyApiKeyPolicy(int sourceApiKeyId, int targetApiKeyId, int principalId) {
+        Optional<UploadPolicy> source = uploadPolicyRepository.findByApiKeyId(sourceApiKeyId);
+        if (source.isEmpty()) {
+            return;
+        }
+        ApiKey target = apiKeyRepository.findById(targetApiKeyId).orElseThrow(
+                () -> new ResourceNotFoundException("api key with id=" + targetApiKeyId + " doesn't exists"));
+        UploadPolicy copy = new UploadPolicy();
+        copy.setApiKey(target);
+        copy.setCreatedBy(userRepository.getReferenceById(principalId));
+        copy.replaceRules(source.get().limits());
+        copy = uploadPolicyRepository.save(copy);
+        actionHistoryService.saveActionHistory(EntityEnum.UploadPolicy, copy.getId(), ActionEnum.CREATE,
+                principalId, "COPY UPLOAD_POLICY", "COPY UPLOAD_POLICY from api key id=" + sourceApiKeyId
+                        + " to apiKey=" + target.getKeyId() + ", kinds=" + copy.limits().keySet());
+    }
+
     // ---------------------------------------------------------------- pieces
 
     /** The system-wide row for writing, created if an installation somehow lacks it. */
@@ -327,13 +417,6 @@ public class UploadPolicyService {
             }
         }
         return ordered;
-    }
-
-    private static boolean currentRequestIsAnApiKey() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication != null
-                && authentication.getPrincipal() instanceof UserDetailsImpl principal
-                && principal.getApiKeyId() != null;
     }
 
     /** Whole megabytes for a byte count, for messages; never less than one. */

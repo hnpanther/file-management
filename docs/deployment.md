@@ -790,9 +790,11 @@ restored or a copied installation makes its S3 keys work there too.
 
 ### Upgrading from 2.15.0 to 2.16.0 — the advanced search, and reports on the files
 
-A jar swap with **two migrations**: `V3.13`, a new, empty table (`storage_snapshot`); `V3.14`, which cuts
-off the document text Tika's error answers left in the reasons of failed readings (issue 120). Nothing
-else that exists changes.
+A jar swap with **three migrations**: `V3.13`, a new, empty table (`storage_snapshot`); `V3.14`, which cuts
+off the document text Tika's error answers left in the reasons of failed readings (issue 120); `V3.15`, a
+column on `upload_policy` for a key's own policy - no row is added, so **every key uploads exactly as
+before** until it is given a policy of its own on its page (roadmap 12.7). Nothing else that exists
+changes.
 
 * **The advanced search** (roadmap 12.8): the search page and API v1's `content-search` take a folder,
   a name, the file's and its folders' metadata, kinds and days beside the words; whoever holds

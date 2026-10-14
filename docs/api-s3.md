@@ -37,11 +37,11 @@ aws --endpoint-url https://files.example/s3 s3 cp contract.pdf s3://erp/P-1234/c
   Folder names are compared as the application compares them - without case, folded - so two keys
   that differ only so name the same folder. A key ending in `/` names a folder. Empty segments, `.`
   and `..` are refused.
-* The file's name is its title and extension; the extension must be one the **system-wide** upload
-  policy allows (`/settings/upload`) - every key follows it, whoever made the key: not its creator's
-  role's policy, and an administrator's key is no exception; a key of its own kinds is
-  [roadmap 12.7](roadmap.md#127-an-upload-policy-of-a-keys-own--planned) - and the bytes must be what it
-  says.
+* The file's name is its title and extension; the extension must be one the key's upload policy allows,
+  up to its size: the **system-wide** policy (`/settings/upload`), or - since 2.16.0 - the key's own, if it
+  was given one on its page (roadmap 12.7). Whoever made the key: not its creator's roles' policy, and an
+  administrator's key is no exception. A multipart upload is held to it at its start (the kind) and as its
+  parts arrive (the size). And the bytes must be what the extension says.
 
 ## Authentication
 

@@ -1042,8 +1042,10 @@ visitor is sent to the login form like any other protected page, and the login f
 
 Which kinds of file may be uploaded, and how large each may be, is a setting rather than a
 constant: `upload_policy` and `upload_policy_rule` (`V2.6`), edited on `/settings/upload`
-(`UPLOAD_POLICY_PAGE`, `SAVE_UPLOAD_POLICY`) for the whole system, and on a role's edit page for
-that role alone. The rules:
+(`UPLOAD_POLICY_PAGE`, `SAVE_UPLOAD_POLICY`) for the whole system, on a role's edit page for that
+role alone, and on an API key's page for that key alone (2.16.0, `upload_policy.api_key_id`, `V3.15`;
+a policy belongs to one role, one key, or neither - the system-wide one - `ck_upload_policy_one_owner`).
+The rules:
 
 * **What is on offer is the catalogue, never more.** `ContentTypes` lists the kinds it can
   recognise from their first bytes; the policy chooses among them and sets a size. A kind the
@@ -1052,9 +1054,13 @@ that role alone. The rules:
   alone.** An own policy that lists nothing means the role may upload nothing.
 * **Across several roles, the union**: a person may upload what any of their roles allows, up to
   the largest limit any of them gives for that kind — the same way permissions combine. A person
-  with no role, and an API key (which holds none), have the system-wide limits - **every key, on v1,
-  v2 and S3, whoever made it**: not its creator's roles' policy, and not the administrator's
-  exemption below. A policy of a key's own is planned ([roadmap 12.7](roadmap.md#127-an-upload-policy-of-a-keys-own--planned)).
+  with no role has the system-wide limits.
+* **An API key: its own policy if it has one, the system-wide one otherwise** (2.16.0, roadmap 12.7) -
+  on v1, v2, S3 and a multipart upload's start alike (`effectiveLimitsFor` asks `ActingApiKey`), whoever
+  made it: not its creator's roles' policy, and not the administrator's exemption below. Set on the
+  key's page (shown with `UPLOAD_POLICY_PAGE`, saved with `SAVE_UPLOAD_POLICY` as well as the key's own
+  permission; a section posted without it changes nothing), validated before the key is written, copied
+  to the key that replaces a revoked one, recorded in the action history.
 * **The administrator is above the policy** (1.9.0): a holder of the ADMIN role may upload every
   catalogued kind - built-in and custom - up to the server's cap (`administratorLimits`),
   whatever the policies say. Computed on each upload, not stored: a custom kind added on the

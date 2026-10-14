@@ -65,4 +65,17 @@ public class ApiKeyDTO {
     private boolean mayCreateFolders;
     private boolean mayDeleteFiles;
     private boolean mayDeleteFolders;
+
+    /**
+     * What the key may upload (roadmap 12.7): {@code GLOBAL} to follow the system-wide policy, {@code OWN}
+     * for one of its own made of {@code uploadAllowed} and {@code uploadMax} - as a role's. Null when the
+     * form did not carry the section (the editor may not change upload policies): the key's policy is then
+     * left as it is - a new key's, the system-wide one.
+     */
+    private String uploadPolicyMode;
+    private List<String> uploadAllowed;
+    private java.util.Map<String, Long> uploadMax;
+
+    /** Whether the key has a policy of its own - for the list and the form. */
+    private boolean uploadPolicyOwn;
 }

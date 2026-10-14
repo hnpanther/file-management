@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl"
       xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:th="http://www.thymeleaf.org">
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 <head>
     <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
     <title th:text="#{apiKey.form.pageTitle}">کلید API | سامانه مدیریت اسناد</title>
@@ -113,6 +114,41 @@
                     <th:block th:unless="${#lists.isEmpty(folders)}">
                         <div th:replace="~{fragments.html :: folder-grant-tree(${folders}, false)}"></div>
                     </th:block>
+                </fieldset>
+
+                <!--
+                  What the key may upload (roadmap 12.7): the system-wide policy - every key's, unless it is
+                  given one of its own here - or the key's own, the ticked kinds and their sizes, as a role's.
+                  Shown to whoever may see the upload policy; changed only by whoever may save it (the
+                  fieldset is disabled, so nothing of it is posted, and the server drops it anyway).
+                -->
+                <fieldset class="mt-8" id="api-key-upload"
+                          sec:authorize="hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('ADMIN')"
+                          th:disabled="${!#authorization.expression('hasAuthority(''SAVE_UPLOAD_POLICY'') || hasAuthority(''ADMIN'')')}"
+                          th:attr="x-data=|{ mode: '${uploadOwn ? 'OWN' : 'GLOBAL'}' }|">
+                    <legend class="mb-1 text-base font-semibold text-ink-900"
+                            th:text="#{apiKey.upload.title}">قوانین بارگذاری</legend>
+                    <p class="mb-4 text-sm text-ink-500" th:text="#{apiKey.upload.hint}">
+                        نوع فایل‌هایی که این کلید می‌تواند بارگذاری کند و حداکثر حجم هر نوع.
+                    </p>
+                    <div class="mb-4 flex flex-wrap gap-4">
+                        <label class="flex items-center gap-2 text-sm">
+                            <input type="radio" name="uploadPolicyMode" value="GLOBAL" x-model="mode" id="upload-mode-global"
+                                   th:checked="${!uploadOwn}">
+                            <span th:text="#{apiKey.upload.global}">قوانین کلی سامانه</span>
+                        </label>
+                        <label class="flex items-center gap-2 text-sm">
+                            <input type="radio" name="uploadPolicyMode" value="OWN" x-model="mode" id="upload-mode-own"
+                                   th:checked="${uploadOwn}">
+                            <span th:text="#{apiKey.upload.own}">اختصاصی این کلید</span>
+                        </label>
+                    </div>
+                    <p class="mb-3 text-xs text-ink-500" th:text="#{uploadPolicy.hint(${serverCapMb})}">
+                        سقف سرور برای هر فایل ۲۰ مگابایت است.
+                    </p>
+                    <div class="overflow-x-auto">
+                        <div th:replace="~{fragments.html :: upload-rules(rows=${uploadRows}, allowedName='uploadAllowed', maxName='uploadMax', serverCapMb=${serverCapMb})}"></div>
+                    </div>
                 </fieldset>
 
                 <div th:if="${showMessage && valid}" class="alert alert-success mt-5" role="status"
