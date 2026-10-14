@@ -132,7 +132,9 @@ class ListQueryCountTest extends DatabaseSupport {
             apiKeyService.create(request, creator);
         }
 
-        List<ApiKeyDTO> keys = statements(1, () -> apiKeyService.getAll());
+        // Two, whatever the number of keys: the keys with their creators, and which of them have an upload
+        // policy of their own (2.16.0, roadmap 12.7) - one query for all, never one a key.
+        List<ApiKeyDTO> keys = statements(2, () -> apiKeyService.getAll());
 
         assertThat(keys).hasSizeGreaterThanOrEqualTo(ROWS).allMatch(key -> key.getCreatedBy() != null);
     }

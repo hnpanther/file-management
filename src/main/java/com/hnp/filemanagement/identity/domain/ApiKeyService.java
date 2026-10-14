@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.identity.domain;
 
+import com.hnp.filemanagement.file.domain.UploadPolicyService;
 import com.hnp.filemanagement.audit.domain.ActionHistoryService;
 import com.hnp.filemanagement.audit.domain.ActionEnum;
 import com.hnp.filemanagement.folder.domain.ApiKeyFolderGrant;
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -79,6 +81,7 @@ public class ApiKeyService {
     private final UserRepository userRepository;
     private final ActionHistoryService actionHistoryService;
     private final S3SecretCipher s3SecretCipher;
+    private final UploadPolicyService uploadPolicyService;
     private final Clock clock;
 
     public ApiKeyService(ApiKeyRepository apiKeyRepository,
@@ -86,12 +89,14 @@ public class ApiKeyService {
                          UserRepository userRepository,
                          ActionHistoryService actionHistoryService,
                          S3SecretCipher s3SecretCipher,
+                         UploadPolicyService uploadPolicyService,
                          Clock clock) {
         this.apiKeyRepository = apiKeyRepository;
         this.folderRepository = folderRepository;
         this.userRepository = userRepository;
         this.actionHistoryService = actionHistoryService;
         this.s3SecretCipher = s3SecretCipher;
+        this.uploadPolicyService = uploadPolicyService;
         this.clock = clock;
     }
 
@@ -120,6 +125,8 @@ public class ApiKeyService {
 
         LocalDate expiresOn = request.getExpiresAt();
         requireFuture(expiresOn);
+        // Its upload policy refused before anything is written, not after the key is made.
+        requireValidUploadPolicy(request);
 
         boolean s3 = request.getKind() == ApiKeyKind.S3;
         if (s3 && !s3SecretCipher.configured()) {
@@ -150,6 +157,8 @@ public class ApiKeyService {
 
         actionHistoryService.saveActionHistory(EntityEnum.ApiKey, saved.getId(), ActionEnum.CREATE,
                 principalId, "CREATE API_KEY", "CREATE API_KEY, keyId=" + keyId + ", kind=" + apiKey.getKind() + capabilities(apiKey));
+        // In the same transaction: a policy refused (a size above the server's cap) leaves no key behind.
+        applyUploadPolicy(saved.getId(), request, principalId);
 
         // An S3 key is two values a client is given separately: the access key id and the secret.
         return new ApiKeyCreatedDTO(saved.getId(), keyId, s3 ? secret : PREFIX + keyId + "_" + secret);
@@ -216,6 +225,8 @@ public class ApiKeyService {
                 .toList());
 
         ApiKeyCreatedDTO created = create(request, principalId);
+        // What the revoked key might upload, the new one may: its own policy, if it had one.
+        uploadPolicyService.copyApiKeyPolicy(id, created.id(), principalId);
         revoked.setReplacedById(created.id());
         revoked.setUpdatedAt(Instant.now(clock));
 
@@ -245,6 +256,8 @@ public class ApiKeyService {
     /** Every key, newest first. Never carries a secret, because none is stored. */
     public List<ApiKeyDTO> getAll() {
         List<ApiKeyDTO> keys = apiKeyRepository.findAllByOrderByCreatedAtDesc().stream().map(this::toDto).toList();
+        Set<Integer> ownPolicy = uploadPolicyService.apiKeysWithOwnPolicy();
+        keys.forEach(k -> k.setUploadPolicyOwn(ownPolicy.contains(k.getId())));
         // Which key each one replaced: the other side of replaced_by_id, read off the same list.
         Map<Integer, Integer> replaces = new HashMap<>();
         keys.stream().filter(k -> k.getReplacedById() != null).forEach(k -> replaces.put(k.getReplacedById(), k.getId()));
@@ -264,6 +277,7 @@ public class ApiKeyService {
         dto.setFolderGrants(apiKey.getFolderGrants().stream()
                 .map(grant -> grant.getFolder().getId() + ":" + grant.getPermission().name())
                 .toList());
+        dto.setUploadPolicyOwn(uploadPolicyService.apiKeyLimits(id).isPresent());
         return dto;
     }
 
@@ -278,6 +292,7 @@ public class ApiKeyService {
     public void update(int id, ApiKeyDTO request, int principalId) {
         ApiKey apiKey = apiKeyRepository.findByIdWithFolders(id).orElseThrow(
                 () -> new ResourceNotFoundException("api key with id=" + id + " doesn't exists"));
+        requireValidUploadPolicy(request);
 
         apiKey.setTitle(request.getTitle());
         apiKey.setDescription(request.getDescription());
@@ -294,6 +309,35 @@ public class ApiKeyService {
 
         actionHistoryService.saveActionHistory(EntityEnum.ApiKey, id, ActionEnum.UPDATE_VALUES,
                 principalId, "UPDATE API_KEY", "UPDATE API_KEY, keyId=" + apiKey.getKeyId() + capabilities(apiKey));
+        applyUploadPolicy(id, request, principalId);
+    }
+
+    /** Refuses an upload section that could not be saved - a mode not known, limits a policy cannot hold. */
+    private void requireValidUploadPolicy(ApiKeyDTO request) {
+        String mode = request.getUploadPolicyMode();
+        if (mode != null && !"GLOBAL".equals(mode) && !"OWN".equals(mode)) {
+            throw new InvalidDataException("upload policy mode must be GLOBAL or OWN, was " + mode);
+        }
+        if ("OWN".equals(mode)) {
+            uploadPolicyService.requireValid(UploadPolicyService.limitsFrom(request.getUploadAllowed(), request.getUploadMax()));
+        }
+    }
+
+    /**
+     * The key's upload policy as the form says (roadmap 12.7): the system-wide one for {@code GLOBAL}, its
+     * own of the ticked kinds for {@code OWN}; nothing at all when the form did not carry the section.
+     */
+    private void applyUploadPolicy(int apiKeyId, ApiKeyDTO request, int principalId) {
+        String mode = request.getUploadPolicyMode();
+        if (mode == null) {
+            return;
+        }
+        switch (mode) {
+            case "GLOBAL" -> uploadPolicyService.saveForApiKey(apiKeyId, null, principalId);
+            case "OWN" -> uploadPolicyService.saveForApiKey(apiKeyId,
+                    UploadPolicyService.limitsFrom(request.getUploadAllowed(), request.getUploadMax()), principalId);
+            default -> throw new InvalidDataException("upload policy mode must be GLOBAL or OWN, was " + mode);
+        }
     }
 
     /**

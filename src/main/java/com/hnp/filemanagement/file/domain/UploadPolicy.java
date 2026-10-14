@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.domain;
 
+import com.hnp.filemanagement.identity.domain.ApiKey;
 import com.hnp.filemanagement.identity.domain.Role;
 import com.hnp.filemanagement.identity.domain.User;
 import com.hnp.filemanagement.shared.domain.AbstractEntity;
@@ -23,8 +24,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Which kinds of file may be uploaded and how large each may be - system-wide when {@link #role}
- * is null, for one role otherwise.
+ * Which kinds of file may be uploaded and how large each may be - for one role ({@link #role}), for
+ * one API key ({@link #apiKey}, 2.16.0), or system-wide when it belongs to neither. The database holds
+ * it to one owner at most ({@code ck_upload_policy_one_owner}).
  *
  * <p>A role without a policy of its own is governed by the system-wide one; a role with one is
  * governed by that alone, so a policy that lists nothing means "this role may upload nothing".
@@ -42,10 +44,15 @@ import java.util.Map;
 @Table(name = "upload_policy")
 public class UploadPolicy extends AbstractEntity {
 
-    /** Null for the system-wide policy. */
+    /** The role it governs; null for an API key's and for the system-wide policy. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "role_id")
     private Role role;
+
+    /** The API key it governs (roadmap 12.7); null for a role's and for the system-wide policy. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "api_key_id")
+    private ApiKey apiKey;
 
     @OneToMany(mappedBy = "policy", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<UploadRule> rules = new ArrayList<>();

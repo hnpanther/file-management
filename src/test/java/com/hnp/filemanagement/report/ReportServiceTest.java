@@ -268,6 +268,25 @@ class ReportServiceTest extends DatabaseSupport {
     }
 
     @Test
+    @DisplayName("a downloaded file since moved out of the reader's sight and renamed: counted, by the name it was downloaded under - no link, no trail, not its new name")
+    void downloadedThenMovedAway() {
+        download(medium, a.tag(), "PAGE", Instant.now(clock));
+        jdbc.update("UPDATE file_info SET folder_id = ?, file_name = ? WHERE id = ?", b.tag().getId(), "secret-new-name",
+                medium.getFileInfoId());
+        flush();
+
+        List<List<Object>> readers = rows(view(Report.DOWNLOADS, readerId), "files");
+        assertThat(readers).singleElement().satisfies(row -> {
+            FileCell file = (FileCell) row.get(0);
+            assertThat(file.fileId()).isNull();
+            assertThat(file.name()).isEqualTo("x").doesNotContain("secret");
+            assertThat(file.trail()).isEmpty();
+        });
+        List<List<Object>> admins = rows(view(Report.DOWNLOADS, adminId), "files");
+        assertThat(admins).extracting(row -> ((FileCell) row.get(0)).name()).contains("secret-new-name");
+    }
+
+    @Test
     @DisplayName("cold files: stored long ago and not downloaded since - a new file and a downloaded one are not")
     void cold() {
         Instant twoYearsAgo = Instant.now(clock).minus(Duration.ofDays(800));

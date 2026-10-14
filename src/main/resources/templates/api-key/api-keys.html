@@ -110,6 +110,8 @@
                             <span th:text="${k.keyId}"></span>
                             <span class="badge badge-secondary ms-1" th:if="${k.kind != null}"
                                   th:text="#{'apiKey.kind.' + ${k.kind}}">V1</span>
+                            <span class="badge badge-secondary ms-1 api-key-upload-own" dir="rtl" th:if="${k.uploadPolicyOwn}"
+                                  th:text="#{apiKey.upload.badge}">قوانین بارگذاری اختصاصی</span>
                             <!-- The two sides of a replacement (roadmap 9.11), each naming the other. -->
                             <span class="block text-ink-500" dir="rtl" th:if="${k.replacedById != null}"
                                   th:text="#{apiKey.replacedBy(${k.replacedById})}">جایگزین شده با کلید ۱۲</span>

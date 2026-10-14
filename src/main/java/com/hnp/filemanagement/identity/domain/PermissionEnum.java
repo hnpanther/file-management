@@ -99,9 +99,11 @@ public enum PermissionEnum {
 
     // UploadPolicyController @RequestMapping("/settings/upload") =======================================
 
-    //@GetMapping - the system-wide upload policy page; also unlocks the role page's own-policy section
+    //@GetMapping - the system-wide upload policy page; also unlocks the role page's own-policy section,
+    //and the API key page's (roadmap 12.7)
     UPLOAD_POLICY_PAGE,
-    //@PostMapping - saves the system-wide policy; with SAVE_UPDATED_ROLE, a role's own policy too
+    //@PostMapping - saves the system-wide policy; with SAVE_UPDATED_ROLE, a role's own policy too; with
+    //SAVE_NEW_API_KEY or SAVE_UPDATED_API_KEY, an API key's own (roadmap 12.7)
     SAVE_UPLOAD_POLICY,
 
     // ===================================================================================================
@@ -244,11 +246,11 @@ public enum PermissionEnum {
     GET_ALL_API_KEY_PAGE,
     //@GetMapping("create")
     CREATE_API_KEY_PAGE,
-    //@PostMapping
+    //@PostMapping - a key, and with SAVE_UPLOAD_POLICY its own upload policy (roadmap 12.7)
     SAVE_NEW_API_KEY,
     //@GetMapping("{id}")
     UPDATE_API_KEY_PAGE,
-    //@PostMapping("{id}")
+    //@PostMapping("{id}") - a key, and with SAVE_UPLOAD_POLICY its own upload policy (roadmap 12.7)
     SAVE_UPDATED_API_KEY,
     //@PostMapping("{id}/revoke")
     REVOKE_API_KEY,

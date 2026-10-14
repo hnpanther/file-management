@@ -80,9 +80,9 @@ The paths keep their parameter names, and **`{fileInfoId}` is the file's externa
 | `metadata` | optional (2.13.0): what is known about the document that it does not say, as a JSON object - `{"contractNo":"C-5678","party":{"code":"P-1234"}}`. Checked as [Metadata](#metadata-2130) says; a document the rules refuse refuses the upload, and nothing is stored |
 
 **Which kinds and sizes may be uploaded.** With the shared account's password, what its roles allow.
-**With an API key, the system-wide upload policy** (`/settings/upload`) - for every key, whoever
-made it: not its creator's role's, and an administrator's key is no exception. A key cannot yet be
-given kinds of its own ([roadmap 12.7](roadmap.md#127-an-upload-policy-of-a-keys-own--planned)). A
+**With an API key, the system-wide upload policy** (`/settings/upload`) - unless the key has a policy
+of its own (2.16.0, roadmap 12.7: chosen on the key's page, the kinds and a size for each), and then that
+alone. Whoever made the key: not its creator's roles', and an administrator's key is no exception. A
 kind the policy does not allow, or a file above its size, is a `400` whose `detail` names it.
 
 The answer:
@@ -327,7 +327,7 @@ whatever it is when the request is made.
 
 | Release | |
 |---|---|
-| 2.16.0 | **the advanced search**: `content-search` takes `name`, `folderId`, `metadata`, `folderMetadata`, `type`, `from`, `to` and `sort`, `q` no longer required, and answers `folderTrail` and `metadata`. A client of 2.15.0's search is unaffected |
+| 2.16.0 | **an upload policy of a key's own**: a key may be given its own kinds and sizes on its page; a key without one follows the system-wide policy as before. **The advanced search**: `content-search` takes `name`, `folderId`, `metadata`, `folderMetadata`, `type`, `from`, `to` and `sort`, `q` no longer required, and answers `folderTrail` and `metadata`. A client of 2.15.0's search is unaffected |
 | 2.15.0 | **search in contents**: `GET content-search` above - new, needs `API_SEARCH_FILE_CONTENTS`. Nothing else changes |
 | 2.13.0 | **metadata**: an optional `metadata` field on the upload, `metadata` in its answer; the metadata endpoints, conditioned writes and search above; `412` for a failed condition. Nothing else changes - a client that sends none is unaffected |
 | 1.6.x | the id-only forms (`file-details/{id}/download`, `DELETE file-details/{id}`); `folderId` on the upload |

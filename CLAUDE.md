@@ -150,6 +150,10 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   [issue 24](docs/issues.md#24-timestamps-are-hand-set-localdatetime--s2)). No
   `LocalDateTime.now()`, `LocalDate.now()` or `ZoneId.systemDefault()`; `Instant.now(clock)`, and
   `JalaliDate` / `appDateTime` to show one.
+* **What an API key may upload is its own policy, or the system-wide one** (2.16.0, roadmap 12.7) -
+  never its creator's roles' or ADMIN's: `UploadPolicyService.effectiveLimitsFor` asks `ActingApiKey`
+  first. A policy belongs to one role, one key, or neither (`ck_upload_policy_one_owner`); the
+  system-wide one is the row of neither (`findGlobal`) - a new kind of owner keeps that query true.
 * **A request with an API key runs as the key's creator; the key is recorded beside them** (2.3.0,
   [issue 97](docs/issues.md#97-what-an-api-key-did-was-recorded-as-its-creators-doing-with-nothing-to-say-a-key-did-it--s2)):
   `ActingApiKey.currentId()`. The audit trail takes it by itself; a new way to create a file or a

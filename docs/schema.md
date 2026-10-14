@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.14`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.15`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -707,9 +707,12 @@ _As of migration `V3.14`. Types and defaults are PostgreSQL's own; every table i
 | `updated_at` | `timestamptz(0)` | yes |  |  |
 | `created_by` | `integer` | yes |  |  |
 | `updated_by` | `integer` | yes |  |  |
+| `api_key_id` | `integer` | yes |  |  |
 
 * **primary key** `id`
+* **unique** `uq_upload_policy_api_key` (`api_key_id`)
 * **unique** `uq_upload_policy_role` (`role_id`)
+* **foreign key** `fk_upload_policy_api_key` `api_key_id` → `api_key` (`id`), on delete cascade
 * **foreign key** `fk_upload_policy_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_upload_policy_role` `role_id` → `role` (`id`), on delete cascade
 * **foreign key** `fk_upload_policy_updated_by_user` `updated_by` → `app_user` (`id`)

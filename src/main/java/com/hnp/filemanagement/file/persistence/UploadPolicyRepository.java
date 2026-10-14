@@ -9,12 +9,23 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-/** The upload policies: the one system-wide row and one per role that has its own. */
+/** The upload policies: the one system-wide row, and one per role and per API key that has its own. */
 public interface UploadPolicyRepository extends JpaRepository<UploadPolicy, Integer> {
 
-    /** The system-wide policy, with its rules. The service creates it when it is missing. */
-    @Query("SELECT DISTINCT p FROM UploadPolicy p LEFT JOIN FETCH p.rules WHERE p.role IS NULL")
+    /**
+     * The system-wide policy, with its rules: the one that belongs to no role and to no API key - a key's
+     * has no role either (2.16.0). The service creates it when it is missing.
+     */
+    @Query("SELECT DISTINCT p FROM UploadPolicy p LEFT JOIN FETCH p.rules WHERE p.role IS NULL AND p.apiKey IS NULL")
     Optional<UploadPolicy> findGlobal();
+
+    /** An API key's own policy, with its rules (roadmap 12.7). */
+    @Query("SELECT DISTINCT p FROM UploadPolicy p LEFT JOIN FETCH p.rules WHERE p.apiKey.id = :apiKeyId")
+    Optional<UploadPolicy> findByApiKeyId(@Param("apiKeyId") int apiKeyId);
+
+    /** The ids of the API keys that have a policy of their own - for the list of keys. */
+    @Query("SELECT p.apiKey.id FROM UploadPolicy p WHERE p.apiKey IS NOT NULL")
+    List<Integer> findApiKeyIdsWithOwnPolicy();
 
     @Query("SELECT DISTINCT p FROM UploadPolicy p LEFT JOIN FETCH p.rules WHERE p.role.id = :roleId")
     Optional<UploadPolicy> findByRoleId(@Param("roleId") int roleId);

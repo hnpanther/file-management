@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.identity.web;
 
 import com.hnp.filemanagement.file.domain.FileHistoryService;
+import com.hnp.filemanagement.file.domain.UploadPolicyService;
 import com.hnp.filemanagement.file.persistence.FileHistoryQuery;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
 import com.hnp.filemanagement.shared.web.PageRequests;
@@ -25,6 +26,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
+
 /**
  * The API key screens (roadmap 9.2): list, create, edit, revoke.
  *
@@ -45,17 +50,20 @@ public class ApiKeyController {
     private final ApiKeyService apiKeyService;
     private final RoleService roleService;
     private final FileHistoryService fileHistoryService;
+    private final UploadPolicyService uploadPolicyService;
     private final UiMessages messages;
 
     public ApiKeyController(GlobalGeneralLogging globalGeneralLogging,
                             ApiKeyService apiKeyService,
                             RoleService roleService,
                             FileHistoryService fileHistoryService,
+                            UploadPolicyService uploadPolicyService,
                             UiMessages messages) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.apiKeyService = apiKeyService;
         this.roleService = roleService;
         this.fileHistoryService = fileHistoryService;
+        this.uploadPolicyService = uploadPolicyService;
         this.messages = messages;
     }
 
@@ -117,7 +125,8 @@ public class ApiKeyController {
                                 @ModelAttribute("apiKey") @Validated ApiKeyDTO apiKeyDTO,
                                 BindingResult bindingResult, Model model) {
 
-        globalGeneralLogging.detail("save new api key title=" + apiKeyDTO.getTitle());
+        globalGeneralLogging.detail("save new api key title=" + apiKeyDTO.getTitle()
+                + ", upload policy=" + uploadPolicyOf(userDetails, apiKeyDTO));
 
         if (bindingResult.hasErrors()) {
             prepareForm(model, apiKeyDTO, "create", true, false, "");
@@ -160,14 +169,21 @@ public class ApiKeyController {
                                     @ModelAttribute("apiKey") @Validated ApiKeyDTO apiKeyDTO,
                                     BindingResult bindingResult, Model model) {
 
-        globalGeneralLogging.detail("save updated api key id=" + id);
+        globalGeneralLogging.detail("save updated api key id=" + id + ", upload policy=" + uploadPolicyOf(userDetails, apiKeyDTO));
 
         if (bindingResult.hasErrors()) {
             prepareForm(model, apiKeyDTO, "update", true, false, "");
             return "api-key/save-api-key.html";
         }
 
-        apiKeyService.update(id, apiKeyDTO, userDetails.getId());
+        try {
+            apiKeyService.update(id, apiKeyDTO, userDetails.getId());
+        } catch (InvalidDataException e) {
+            globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
+            apiKeyDTO.setId(id);
+            prepareForm(model, apiKeyDTO, "update", true, false, messageOf(e));
+            return "api-key/save-api-key.html";
+        }
 
         prepareForm(model, apiKeyService.getByIdWithGrants(id), "update", true, true, "");
         return "api-key/save-api-key.html";
@@ -271,5 +287,46 @@ public class ApiKeyController {
         model.addAttribute("showMessage", showMessage);
         model.addAttribute("valid", valid);
         model.addAttribute("message", message);
+
+        // The upload section (roadmap 12.7): what was posted, when the form is shown again after a
+        // refusal; else the key's own policy, or the system-wide one it follows.
+        boolean own;
+        Map<String, Long> limits;
+        if (apiKey.getUploadPolicyMode() != null) {
+            own = "OWN".equals(apiKey.getUploadPolicyMode());
+            limits = own ? bytesOf(UploadPolicyService.limitsFrom(apiKey.getUploadAllowed(), apiKey.getUploadMax()))
+                    : uploadPolicyService.globalLimits();
+        } else {
+            Optional<Map<String, Long>> ownLimits = apiKey.getId() == null ? Optional.empty()
+                    : uploadPolicyService.apiKeyLimits(apiKey.getId());
+            own = ownLimits.isPresent();
+            limits = ownLimits.orElseGet(uploadPolicyService::globalLimits);
+        }
+        model.addAttribute("uploadOwn", own);
+        model.addAttribute("uploadRows", uploadPolicyService.rowsFor(limits));
+        model.addAttribute("serverCapMb", uploadPolicyService.serverCapMb());
+    }
+
+    /**
+     * The posted upload section, or none: an editor who may not change upload policies has it dropped
+     * here - the page does not show it to them, and a field posted all the same changes nothing. Said in
+     * the log as the mode alone.
+     */
+    private static String uploadPolicyOf(UserDetailsImpl editor, ApiKeyDTO form) {
+        boolean may = editor.getAuthorities().stream().anyMatch(authority ->
+                "SAVE_UPLOAD_POLICY".equals(authority.getAuthority()) || "ADMIN".equals(authority.getAuthority()));
+        if (!may) {
+            form.setUploadPolicyMode(null);
+            form.setUploadAllowed(null);
+            form.setUploadMax(null);
+        }
+        return form.getUploadPolicyMode() == null ? "unchanged" : form.getUploadPolicyMode();
+    }
+
+    /** Megabytes to bytes, for showing posted limits again. */
+    private static Map<String, Long> bytesOf(Map<String, Long> megabytes) {
+        Map<String, Long> bytes = new LinkedHashMap<>();
+        megabytes.forEach((extension, mb) -> bytes.put(extension, mb * 1024L * 1024L));
+        return bytes;
     }
 }
