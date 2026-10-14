@@ -44,12 +44,25 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 files stored before it being read - a few days of OCR on the Tika host. (2.5.0 until then; MySQL
 decommissioned 2026-09-30.)
 
-**Next - decided 2026-10-10: [12.8, an advanced search](#128-an-advanced-search-the-contents-the-metadata-and-a-folder-together--next)** -
-the text inside the files, the metadata and a folder, asked together on one page and on API v1.
-Alongside it, while the backfill reads: watch `/settings/content-extraction` and the Tika host, and
+**Next: deploy 2.16.0** (the advanced search and the reports, one migration - deployment.md), and
+set `FILEMANAGEMENT_REPORTS_CAPACITY_GB` there. After it: [12.7, an upload policy of a key's own](#127-an-upload-policy-of-a-keys-own--planned),
+when it is wanted. Alongside, while the backfill reads: watch `/settings/content-extraction` and the Tika host, and
 once it is done measure the tables and look at the failures - what decides whether 11.4 (the lexicon
 gate) is wanted.
 
+2.16.0 is written: **reports on the files** (12.9) - thirteen of them at `/reports` (`REPORTS_PAGE`):
+totals and each top-level folder, the folders a level at a time, growth by Jalali month with a
+projection of when the disk is full, kinds, the largest, versions, uploaders, downloads, cold and
+duplicate files, quotas, coverage and integrity - each over the reader's folders, each table as CSV,
+a daily count of each top-level folder (`storage_snapshot`, `V3.13`) for a true trend; measured at a
+million revisions, 0.2-2.1 s counted afresh, then kept five minutes. And **the advanced search** (12.8) - the words inside the files, a folder and those
+below it, a fragment of the name, the file's metadata and its folders' above it, kinds, days and the
+order, each optional and all together, on the search page (a folder chooser by name, two metadata
+forms, "search in this folder" in the explorer) and on API v1; the reader's grants in the query, a
+described folder asked only if the reader may read it. Answered one of four ways chosen by two
+bounded probes, a revision's pages always read through their key: at 100,000 pages and 10,000
+described files 14-45 ms without words, 28-44 the words first, up to 240 the files first, 311 the
+newest pages - and 2.15.0's word on every page from 335 ms to 250 (684 to 257 for a reader of half).
 2.15.0 is written: **searching the contents of files** (Phase 11.1, 11.2 and the backfill of 11.3,
 `V3.12`) - every revision queued as it is stored, read by Tika one at a time on a worker of its own
 that nothing waits for and nothing can stop the application for, page by page (OCR in the first
@@ -3758,10 +3771,38 @@ Small things asked for once 2.7 was in use, each sized to ship on its own, none 
 | 12.5 | Storage keys that say nothing: a new revision stored under its id, not its title | none | **done (2.10.0)** |
 | 12.6 | The existing revisions re-keyed the same way - at the move to the object store, by the storage copy | `legacy_storage_key` | with 4.7, when that move is decided |
 | 12.7 | An upload policy of a key's own: the kinds and sizes one API key may upload, as a role's - planned, not yet scheduled (asked 2026-10-10) | a key's policy, as `upload_policy` is a role's | 2-3 days |
-| 12.8 | **An advanced search - next (decided 2026-10-10)**: the text inside the files, the metadata and a folder, together, on one page and on API v1 | none | 3-5 days |
-| 12.9 | **Reports on the files** (asked 2026-10-13): the size of everything and of each top-level folder, its growth month by month and where it is heading, kinds, versions, uploaders, downloads, cold and duplicate files, quotas, coverage - a page of their own, exportable | `storage_snapshot` (a row a day) | 5-7 days |
+| 12.8 | An advanced search: the text inside the files, the metadata, a folder and the name, together, on one page and on API v1 | none | **done (2.16.0)** |
+| 12.9 | Reports on the files (asked 2026-10-13), **done (2.16.0)**: the size of everything and of each top-level folder, its growth month by month and where it is heading, kinds, versions, uploaders, downloads, cold and duplicate files, quotas, coverage - a page of their own, exportable | `storage_snapshot` (a row a day) | 5-7 days |
 
-### 12.8 An advanced search: the contents, the metadata and a folder together — **next**
+### 12.8 An advanced search: the contents, the metadata and a folder together — **done (2.16.0)**
+
+**Done in 2.16.0** - as planned below, with these differences and findings:
+
+* **The folder is chosen by name, not from the tree**: a name typed offers the folders the reader may
+  walk into, each with its trail (`GET /files/content-search/folders`). A tree of 20,000 personal
+  folders under one is a paged list a person cannot find one in; the explorer's "search in this
+  folder" opens the search with the folder it shows. The root, chosen by its id, is everything.
+* **Also asked, as cheap as the rest**: kinds (`type`), the days uploaded (`from`, `to` - Gregorian;
+  a year before 1900 refused, since `1403-07-01` would ask for everything), and the order (best
+  match, newest, oldest).
+* **Four ways, two probes** (`PostgresContentSearch.pathOf`): no words - the revisions alone; words on
+  at most 20,000 pages - their index first, behind a fence; on more, with the rest leaving at most
+  2,000 revisions - those first; otherwise the newest revisions walked back until 20,000 pages.
+* **Found at scale, and fixed**: joined as a set, a revision's pages were scanned whole - the planner
+  read all 100,000 pages to keep 10,000 (1.3 s), and a kind it misjudged as 50 revisions of 9,000 had
+  90,000 pages ranked (2.0 s). The pages are now read per revision through their key behind a fence:
+  240 and 311 ms. 2.15.0's own broad search took the same walk: 335 ms to 250, a reader's 684 to 257.
+* **Measured** (`AdvancedSearchScaleTest`, 100,000 pages, 10,000 files each with its metadata, ten
+  top-level folders each with its own): without words 14-22 ms (a reader of half 14-45); the words
+  first 28-44; the files first 66-239 (a reader 132-203); the newest pages 311 - a broad word's probe
+  about 130 of that.
+* **Tests**: `AdvancedSearchTest` (each part alone, every part together and each left out in turn,
+  versions, order and pages, folder access and the chooser, every refusal, the plans),
+  `AdvancedSearchPagesTest` (the form kept, the pager's links, escaping, the chooser's JSON, the
+  explorer's link, API v1, masking), `MetadataConditionsTest`, `AppScriptTest` (a component of
+  `app.js` defined twice - the search's chooser had first taken the upload's name).
+
+The plan, as written before it was built:
 
 Decided 2026-10-10, 2.15.0 running in production. Today the three are apart, and two of them only
 halfway:
@@ -3805,7 +3846,33 @@ What is asked: one search that takes any of them, each optional, all of them req
   described folder the reader cannot read; the plans and the times at scale; the form's metadata
   checked by `MetadataRules` as an upload's is; everything escaped; the API's answers.
 
-### 12.9 Reports on the files — **planned** (asked 2026-10-13)
+### 12.9 Reports on the files — **done (2.16.0)** (asked 2026-10-13)
+
+**Done in 2.16.0**, with the advanced search - as planned below, with these decisions and findings:
+
+* **Who sees what**: `REPORTS_PAGE`, a group of its own; every figure over the reader's folders, rows
+  naming only what the reader may see; integrity (over the whole installation) for an unrestricted
+  reader only. A page a report (`/reports/{slug}`), so that a view counts only what it shows.
+* **Growth**: added and deleted each month from the rows and the history; what was stored at each
+  month's end from `storage_snapshot` (V3.13), counted daily by `StorageSnapshotJob` - asked hourly,
+  so a day the application was down is counted when it is back. The rate is drawn from the last 90
+  days of those counts (least squares), or, until two weeks exist, from what arrived in the last six
+  whole months; the projection needs `filemanagement.reports.capacity-gb`. "Bytes removed" cannot be
+  told from the history (a deleted file is recorded with its latest size), so deletions are counts.
+* **Counts that cost a sort were rewritten**: a file count is `file_info`'s, a level of folders is
+  summed per folder before it is rolled up, the months' bounds are cast once - each a factor of two
+  to eight at a million revisions. Kinds count each kind's latest revisions; uploaders the files they
+  began.
+* **Measured** (`ReportScaleTest`, 250,000 files of four versions in a thousand folders, 300,000
+  downloads): 0.2-1.3 s a report counted afresh, 1.3-2.1 s for versions, cold and duplicate files; a
+  reader of half the archive no slower than an administrator once its scope is planned as wide. Each
+  report is then kept five minutes (`cache-minutes`) for the same reader.
+* **Exported**: each table as CSV - UTF-8 with a BOM, every cell quoted, numbers raw (bytes in bytes),
+  Jalali dates and months in Latin digits, a name that begins as a formula never one.
+* **Not built**: charts beyond a bar per row (no chart library is vendored; a download would be
+  needed), and a report of the files' growth per person - the uploaders report answers it per period.
+
+The plan, as written before it was built:
 
 A page of reports (`/reports`) - what is stored, where, how fast it grows and what is used - so that
 storage is planned before it runs out and the archive is understood without SQL by hand. Every

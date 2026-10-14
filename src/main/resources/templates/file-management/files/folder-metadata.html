@@ -40,7 +40,7 @@
             <form th:if="${mayEdit}" method="post" id="metadataForm"
                   th:action="@{/files/folders/{id}/metadata(id=${folder.folderId()})}">
                 <input type="hidden" name="etag" th:value="${etag}">
-                <div th:replace="~{fragments.html :: metadata-editor(${metadataText}, #{metadata.editor.clearHint})}"></div>
+                <div th:replace="~{fragments.html :: metadata-editor(${metadataText}, #{metadata.editor.clearHint}, 'metadata')}"></div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-check2" aria-hidden="true"></i>

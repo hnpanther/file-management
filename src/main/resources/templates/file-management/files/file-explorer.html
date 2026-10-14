@@ -160,6 +160,15 @@
                         <i class="bi bi-card-list" aria-hidden="true"></i>
                         <span class="hidden md:inline" th:text="#{metadata.folder.title}">متادیتای پوشه</span>
                     </a>
+                    <!-- Roadmap 12.8: the search, kept to this folder and those below it. -->
+                    <a class="btn btn-secondary btn-sm" x-cloak id="folder-search-link"
+                       th:if="${@contentSearchService.enabled()}"
+                       sec:authorize="hasAuthority('SEARCH_FILE_CONTENTS') || hasAuthority('ADMIN')"
+                       x-show="folder && folder.kind !== 'ROOT'"
+                       th:data-base="@{/files/content-search(folder='')}" :href="folder ? $el.dataset.base + folder.id : '#'">
+                        <i class="bi bi-search" aria-hidden="true"></i>
+                        <span class="hidden md:inline" th:text="#{explorer.searchHere}">جستجو در این پوشه</span>
+                    </a>
                     <!-- Only where a document can actually be filed: any folder but the root, inside a WRITE grant. -->
                     <a class="btn btn-primary btn-sm" x-show="writable" x-cloak
                        :href="uploadHref()" th:data-href="@{/files/create}"

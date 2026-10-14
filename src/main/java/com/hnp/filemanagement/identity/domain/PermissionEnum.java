@@ -57,7 +57,9 @@ public enum PermissionEnum {
 
     // ContentSearchController @RequestMapping("/files") (roadmap 11.2 - 2.15.0) ==========================
     //@GetMapping("content-search") - search the text of files, read by Tika: each result with the pages it
-    //matched on; only files in folders the person may read. Given on its own, not with USER.
+    //matched on; only files in folders the person may read. Given on its own, not with USER. Since 12.8 the
+    //advanced search too - a folder and those below it, the name, the metadata, kinds, dates - and
+    //@GetMapping("content-search/folders"), the folders its chooser offers (those the person may walk into).
     SEARCH_FILE_CONTENTS,
 
     // ContentExtractionController @RequestMapping("/settings/content-extraction") (roadmap 11.2 - 2.15.0) ===
@@ -67,6 +69,12 @@ public enum PermissionEnum {
 
     //@PostMapping("{fileDetailsId}/retry"), @PostMapping("retry-failed") - a failed reading queued again
     RETRY_CONTENT_EXTRACTION,
+
+    // ReportController @RequestMapping("/reports") (roadmap 12.9 - 2.16.0) =================================
+    //@GetMapping, @GetMapping("{slug}"), @GetMapping("{slug}/csv") - the reports on the files: totals, folders,
+    //growth, kinds, the largest, versions, uploaders, downloads, cold and duplicate files, quotas, coverage,
+    //integrity - each counted over the folders the person may read, each table as CSV. Given on its own.
+    REPORTS_PAGE,
 
     // ===================================================================================================
 

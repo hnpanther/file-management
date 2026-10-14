@@ -29,7 +29,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Search in contents over 100,000 pages, measured (roadmap 11: ten thousand files of ten pages, the
  * archive's size): a rare word, a word on one page in a hundred, a word on every page - the worst
  * case, answered from the newest pages it is on - as an administrator and as a reader granted half the
- * folders. Measured 2026-10-08: 30, 51 and 335 ms; 43 and 684 ms for the reader. The times
+ * folders. Measured 2026-10-08: 30, 51 and 335 ms; 43 and 684 ms for the reader; 2026-10-13, the newest
+ * pages walked from the revisions (12.8): 36, 55 and 250 ms; 41 and 257 ms. The times
  * are printed and bounded generously - a shared database in a container, not a benchmark. The rows
  * are the test's transaction's, rolled back.
  */

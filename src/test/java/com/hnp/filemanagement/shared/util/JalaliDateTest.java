@@ -116,4 +116,29 @@ class JalaliDateTest {
         assertThat(underTest.local(Instant.parse("2023-06-01T12:00:00Z")))
                 .isEqualTo(LocalDateTime.of(2023, 6, 1, 15, 30));
     }
+
+    @Test
+    @DisplayName("back to the Gregorian day: every day of a century round-trips, and each month begins where the almanac says")
+    void backToGregorian() {
+        for (LocalDate day = LocalDate.of(1990, 1, 1); day.isBefore(LocalDate.of(2090, 1, 1)); day = day.plusDays(1)) {
+            int[] jalali = JalaliDate.toJalali(day);
+            assertThat(JalaliDate.toGregorian(jalali[0], jalali[1], jalali[2])).as(day.toString()).isEqualTo(day);
+        }
+        assertThat(JalaliDate.toGregorian(1405, 1, 1)).isEqualTo(LocalDate.of(2026, 3, 21));
+        assertThat(JalaliDate.toGregorian(1405, 7, 1)).isEqualTo(LocalDate.of(2026, 9, 23));
+        assertThat(JalaliDate.toGregorian(1403, 12, 30)).isEqualTo(LocalDate.of(2025, 3, 20));
+    }
+
+    @Test
+    @DisplayName("months: the one an instant is in, where it begins in the installation's zone, and counting across a year")
+    void months() {
+        JalaliDate.JalaliMonth mehr = underTest.monthOf(Instant.parse("2026-10-13T08:00:00Z"));
+        assertThat(mehr).isEqualTo(new JalaliDate.JalaliMonth(1405, 7));
+        assertThat(underTest.startOf(mehr)).isEqualTo(Instant.parse("2026-09-22T20:30:00Z"));
+        assertThat(underTest.monthOf(Instant.parse("2026-09-22T20:29:59Z"))).isEqualTo(new JalaliDate.JalaliMonth(1405, 6));
+        assertThat(mehr.plus(-7)).isEqualTo(new JalaliDate.JalaliMonth(1404, 12));
+        assertThat(mehr.plus(6)).isEqualTo(new JalaliDate.JalaliMonth(1406, 1));
+        assertThat(mehr.label()).isEqualTo("۱۴۰۵/۰۷");
+        assertThat(mehr.iso()).isEqualTo("1405-07");
+    }
 }

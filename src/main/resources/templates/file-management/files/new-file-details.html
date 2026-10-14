@@ -74,7 +74,7 @@
                     </div>
                     <!-- The new revision's metadata (roadmap 12.2); left empty, it takes the file's current. -->
                     <div class="form-group md:col-span-2">
-                        <div th:replace="~{fragments.html :: metadata-editor(${file.metadata}, #{metadata.editor.versionHint})}"></div>
+                        <div th:replace="~{fragments.html :: metadata-editor(${file.metadata}, #{metadata.editor.versionHint}, 'metadata')}"></div>
                     </div>
                 </div>
 

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{report.pageTitle}">گزارش‌ها | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The reports on the files (roadmap 12.9): ReportController over ReportService. Every report is a
+  ReportView - headline figures, tables, notes - so this page draws any of them: a cell by its
+  column's kind (ReportFormat), a folder as a link into the folders report, a file as a link to its
+  page, a bar beside the column that has one. Every figure is over the folders the reader may read.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content" th:with="slug=${view.report().slug()}">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{report.kicker}">گزارش‌ها</div>
+        <h1 th:text="#{${view.report().titleCode()}}">خلاصه</h1>
+        <p class="page-description" th:text="#{${view.report().descriptionCode()}}">توضیح گزارش</p>
+    </header>
+
+    <nav class="report-menu mb-4" th:attr="aria-label=#{report.menu}" id="report-menu">
+        <a th:each="r : ${reports}" th:href="@{/reports/{s}(s=${r.slug()})}" th:text="#{${r.titleCode()}}"
+           th:classappend="${r == view.report()} ? 'active'" th:attr="aria-current=${r == view.report()} ? 'page'"
+           class="report-menu-link">گزارش</a>
+    </nav>
+
+    <form th:if="${view.report().takesMonths()}" method="get" th:action="@{/reports/{s}(s=${slug})}" class="report-period mb-4"
+          id="report-period">
+        <label for="report-months" th:text="#{report.period}">بازه</label>
+        <select id="report-months" name="months" class="form-control">
+            <option th:each="m : ${monthChoices}" th:value="${m}" th:selected="${m == request.months()}"
+                    th:text="#{report.period.months(${@reportFormat.count(m)})}">۱۲ ماه اخیر</option>
+        </select>
+        <button type="submit" class="btn btn-secondary btn-sm" th:text="#{report.show}">نمایش</button>
+    </form>
+    <form th:if="${slug == 'cold'}" method="get" th:action="@{/reports/{s}(s=${slug})}" class="report-period mb-4" id="report-days">
+        <label for="report-days-select" th:text="#{report.period}">بازه</label>
+        <select id="report-days-select" name="days" class="form-control">
+            <option th:each="d : ${dayChoices}" th:value="${d}" th:selected="${d == request.days()}"
+                    th:text="#{report.period.days(${@reportFormat.count(d)})}">۳۶۵ روز</option>
+        </select>
+        <button type="submit" class="btn btn-secondary btn-sm" th:text="#{report.show}">نمایش</button>
+    </form>
+
+    <nav th:if="${slug == 'folders'}" class="report-trail mb-4" id="report-trail" aria-label="trail">
+        <a th:href="@{/reports/folders}" th:text="#{report.trail.root}">همهٔ پوشه‌ها</a>
+        <th:block th:each="f : ${trail}">
+            <span aria-hidden="true">/</span>
+            <a th:href="@{/reports/folders(folder=${f.id()})}" th:text="${f.label()}" dir="auto">پوشه</a>
+        </th:block>
+    </nav>
+
+    <ul th:unless="${#lists.isEmpty(view.notes())}" class="report-notes mb-4" id="report-notes" role="note">
+        <li th:each="n : ${view.notes()}" th:text="${#messages.msgWithParams(n.code(), n.arguments().toArray())}">یادداشت</li>
+    </ul>
+
+    <section th:unless="${#lists.isEmpty(view.stats())}" class="report-stats mb-5" id="report-stats">
+        <div th:each="st : ${view.stats()}" class="report-stat card">
+            <div class="report-stat-label" th:text="#{${st.code()}}">فایل‌ها</div>
+            <div class="report-stat-value" th:text="${@reportFormat.shown(st.kind(), st.value())}">۱۲٬۳۴۵</div>
+            <div th:if="${st.hint() != null}" class="report-stat-hint field-hint"
+                 th:text="${#messages.msgWithParams(st.hint().code(), st.hint().arguments().toArray())}">توضیح</div>
+        </div>
+    </section>
+
+    <section th:each="t : ${view.tables()}" class="card mb-5 report-table" th:id="'report-table-' + ${t.id()}">
+        <div class="card-body">
+            <div class="report-table-head">
+                <h2 class="h5" th:text="#{${t.titleCode()}}">جدول</h2>
+                <a class="btn btn-outline-secondary btn-sm"
+                   th:href="@{/reports/{s}/csv(s=${slug}, table=${t.id()}, folder=${request.folder()}, months=${request.months()}, days=${request.days()})}">
+                    <i class="bi bi-filetype-csv" aria-hidden="true"></i>
+                    <span th:text="#{report.csv}">خروجی CSV</span>
+                </a>
+            </div>
+            <div th:if="${#lists.isEmpty(t.rows())}" class="empty-state" role="status" th:text="#{${t.emptyCode()}}">چیزی نیست.</div>
+            <div th:unless="${#lists.isEmpty(t.rows())}" class="table-responsive">
+                <table class="table history-table">
+                    <thead>
+                    <tr>
+                        <th th:each="c : ${t.columns()}" scope="col" th:text="#{${c.code()}}">ستون</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="row : ${t.rows()}">
+                        <td th:each="cell, it : ${row.cells()}" th:with="kind=${t.columns()[it.index].kind().name()}"
+                            th:classappend="${kind == 'COUNT' or kind == 'BYTES' or kind == 'PERCENT'} ? 'report-number'">
+                            <th:block th:switch="${kind}">
+                                <th:block th:case="'FOLDER'">
+                                    <a th:if="${cell != null and cell.id() != null}" th:href="@{/reports/folders(folder=${cell.id()})}"
+                                       th:text="${cell.label()}" dir="auto">پوشه</a>
+                                    <span th:if="${cell != null and cell.id() == null}" class="field-hint" th:text="${cell.label()}">دیگر</span>
+                                </th:block>
+                                <th:block th:case="'FILE'">
+                                    <a th:if="${cell.fileId() != null}" th:href="@{/files/file-info/{id}(id=${cell.fileId()})}"
+                                       th:text="${cell.name()}" dir="auto">فایل</a>
+                                    <span th:if="${cell.fileId() == null}" th:text="${cell.name()}" dir="auto">فایل</span>
+                                    <div th:if="${cell.trail() != null and !#strings.isEmpty(cell.trail())}" class="field-hint"
+                                         dir="auto" th:text="${cell.trail()}">مسیر</div>
+                                </th:block>
+                                <th:block th:case="*">
+                                    <span th:text="${@reportFormat.shown(t.columns()[it.index].kind(), cell)}"
+                                          th:attr="dir=${kind == 'TEXT'} ? 'auto'">مقدار</span>
+                                    <div th:if="${it.index == t.barColumn()}" class="report-bar" aria-hidden="true">
+                                        <span th:style="'width:' + ${row.bar()} + '%'"></span>
+                                    </div>
+                                </th:block>
+                            </th:block>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <p class="field-hint" id="report-counted-at"
+       th:text="#{report.countedAt(${@jalali.format(view.countedAt())})}">شمارش: ۱۴۰۵/۰۷/۲۲ ۱۰:۲۰</p>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

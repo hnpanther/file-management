@@ -12,7 +12,9 @@ import java.util.Map;
  * <b>a file the reader may not open is never a result, a page or a count</b>: the scope is applied by
  * the engine, in its query.
  *
- * <p>A revision matches when one of its pages, slides or sheets holds every word of the query.
+ * <p>A revision matches when one of its pages, slides or sheets holds every word of the query, and
+ * when it holds whatever else the criteria ask - its name, its folder, its metadata and its folders',
+ * its kind, its date (roadmap 12.8).
  */
 public interface ContentSearch {
 
@@ -22,8 +24,14 @@ public interface ContentSearch {
      * the newest of them.
      */
     record Hit(int fileDetailsId, String fileDetailsExternalId, int version, String fileExtension, int fileId,
-               String fileExternalId, String fileName, int lastVersion, int folderId, String folderName, double rank,
-               int pages, boolean limited) {
+               String fileExternalId, String fileName, int lastVersion, int folderId, String folderName, String folderPath,
+               double rank, int pages, boolean limited, String metadata) {
+
+        @Override
+        public String toString() {
+            // Never the metadata - it may be personal.
+            return "Hit[file details " + fileDetailsId + ", rank " + rank + ", " + pages + " pages]";
+        }
     }
 
     /** A page, slide or sheet of a revision that matched, with its text for the snippet. */
@@ -36,12 +44,13 @@ public interface ContentSearch {
     }
 
     /**
-     * Revisions matching {@code query} that the reader may open, the best first.
+     * Revisions matching {@code criteria} that the reader may open, in the order asked - the words'
+     * pages ranked when there are words, the newest first when there are none. {@code metadata} of a
+     * hit is its document only when the criteria asked the file's metadata.
      *
-     * @param allVersions every version of a file, or only its latest (every format of it)
      * @return up to {@code size + 1}: the page, and one more if there is a next
      */
-    List<Hit> search(ContentQuery query, FolderReadScope scope, boolean allVersions, int page, int size);
+    List<Hit> search(SearchCriteria criteria, FolderReadScope scope, int page, int size);
 
     /**
      * The pages of these revisions that match, in page order, at most {@code perRevision} of each - for

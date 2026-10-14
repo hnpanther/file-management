@@ -45,6 +45,7 @@ com.hnp.filemanagement
 ├── folder/     the tree, folder access (grants), tags and tag groups, quotas, personal folders
 ├── identity/   users, roles, permissions, API keys; security/ (sign-in, Active Directory,
 │               the filter chains) and bootstrap/ (the fixed roles and the first administrator)
+├── report/     the reports on the files (2.16.0): their statements, the daily count, the pages, CSV
 ├── settings/   the general settings page and its app_setting rows
 ├── storage/    the BlobStore port, its filesystem adapter, the storage write journal and sweeper
 └── shared/     config/, domain/ (AbstractEntity), exception/, util/ (SearchKey, SearchTerms),
@@ -284,14 +285,67 @@ Tika (deploy/tika, a host of its own) and searched page by page (roadmap Phase 1
 * **Searching** (`ContentSearchService` over the `ContentSearch` port, `PostgresContentSearch`) - the
   query made of folded words only (`ContentQuery`: each a prefix, all required, a quoted part a
   phrase, every word on one page); the reader's grants in the query (`GrantedFolderPath`), the latest
-  version unless every one is asked for, both **before** any bound. A query on more than 20,000 pages
-  (a probe, stopped at the bound) is answered from the newest 20,000 and says so (`limited`); any
-  other goes through the GIN index behind a planning fence. Snippets cut in Java from the text as read
-  (`Snippets`), the words found marked through the folded text's map, written with `th:text`.
-* **Never logged**: no text, no snippet; the term is the query parameter `q`, masked by
-  `GlobalGeneralLogging`. The status page (`/settings/content-extraction`) shows reasons, never text,
+  version unless every one is asked for, both **before** any bound. Snippets cut in Java from the text
+  as read (`Snippets`), the words found marked through the folded text's map, written with `th:text`.
+* **The advanced search** (2.16.0, roadmap 12.8) - beside the words, any of: a folder and those below
+  it (the range of its `path`, `ix_folder_path`), a fragment of the name (the file list's folded key,
+  its trigram index), the file's metadata and a folder's above it (`MetadataConditions`: a key a
+  containment test, a number typed as text and a dotted key `a.b` matched both ways, through the GIN
+  indexes; a described folder only if the reader may read it - no oracle), kinds, days (Gregorian,
+  ISO, in the application's zone, the last included), and the order (best match, newest, oldest).
+  `SearchCriteria` carries them; `PostgresContentSearch.conditions` makes each an indexed condition on
+  the revision, and `pathOf` picks one of four ways with two probes stopped at their bound:
+
+  | The words | The rest | The way |
+  |---|---|---|
+  | none | anything | `FILES_ONLY` - the revisions alone, newest first, no pages |
+  | on at most 20,000 pages | anything | `WORDS_FIRST` - the words' GIN index behind a planning fence |
+  | on more | at most 2,000 revisions | `FILES_FIRST` - those revisions, then each one's pages through the key |
+  | on more | more, or nothing | `NEWEST_PAGES` - the newest revisions walked back, each one's pages through the key, until 20,000 pages; said (`limited`) |
+
+  A revision's pages are read through the page key behind a fence (`PAGES_OF_ONE`), never joined as
+  a set - joined, the planner scanned every page to keep a few. Measured at 100,000 pages and 10,000
+  described files (`AdvancedSearchScaleTest`): 14-45 ms without words, 28-44 the words first, up to
+  240 the files first, 311 the newest pages. The folder chooser offers, by name, the folders the
+  reader may walk into (`folderChoices`), with their trails - a folder chosen outside the grants is no
+  results, and the page shows no name for it.
+* **Never logged**: no text, no snippet, no metadata; the parameters `q`, `name`, `metadata` and
+  `folderMetadata` are masked by `GlobalGeneralLogging`. The status page (`/settings/content-extraction`) shows reasons, never text,
   and failures only of files the reader may open. `/actuator/health` has `contentExtraction`, always
   `UP`, a `warning` when reading cannot run, Tika is lost or an upload has waited a day.
+
+### Reports on the files (2.16.0)
+
+Thirteen reports at `/reports/{slug}` (roadmap 12.9), package `report`, behind one permission,
+`REPORTS_PAGE`: the overview (totals and each top-level folder), the folders a level at a time,
+growth month by month, kinds, the largest, versions, uploaders, downloads, cold files, duplicates,
+quotas, coverage (metadata and contents) and integrity.
+
+* **Every figure is over the folders the reader may read** - the grants in each statement
+  (`ReportRepository`: `seen`, the readable folders, asked once per folder, not per revision); a row
+  never names a folder, a file or an uploader the reader could not see. Integrity is over the whole
+  installation, so for an unrestricted reader only. A reader whose readable folders are a real share
+  of the tree (5 %) has nested loops switched off for the report's transaction (`planFor`, `SET LOCAL`):
+  PostgreSQL guesses a few folders for any grant, and walked a reader of half the archive by index.
+* **What is recorded decides what is said**: `file_details` says when bytes arrived, not what was kept
+  on a day (a deleted revision leaves no row, and `file_history` keeps a deleted file's latest size
+  only), so the trend of what is stored and the projection of when the disk is full read
+  **`storage_snapshot`** (V3.13) - each top-level folder's files, revisions and bytes, counted once a day
+  by `StorageSnapshotJob` (asked hourly, idempotent per day); until two weeks of it exist, the rate is
+  drawn from what arrived, and the page says so. Downloads are kept `retention-days`, so a cold file
+  is cold over at most that; the page says so too.
+* **Months are Jalali months** in `filemanagement.time-zone` (`JalaliDate.monthOf` / `startOf`); a
+  statement buckets them with `width_bucket` over the months' starting instants, cast once (cast per
+  row it cost 3 s at a million revisions).
+* **One shape for all** (`ReportView`): headline figures, tables of typed columns (`Kind`: a size, a
+  share, a month, a file, a folder...), notes. One template draws any of them (`reports/reports.html`,
+  bars in CSS, no chart library), `ReportFormat` shows a value (Persian digits and units) or writes it
+  for a spreadsheet, and every table is a CSV (`/reports/{slug}/csv?table=`): UTF-8 with a BOM, every
+  cell quoted, a name that begins as a formula prefixed with an apostrophe.
+* **Measured at a million revisions** (`ReportScaleTest`): 0.2-1.3 s a report counted afresh,
+  1.3-2.1 s for versions, cold and duplicate files (a grouping of every revision by its file or its
+  checksum); a report is kept `cache-minutes` (5) for the same reader and question
+  (`ReportCache`), so the next view is immediate. Production's archive is some forty times smaller.
 
 ### Magic-number columns
 
@@ -630,9 +684,12 @@ document, so a browser navigation still lands on a page.
 | POST | `/roles/{id}/copy` (`newRoleName`) - a new role with the source's permissions, folder grants and own upload policy | `COPY_ROLE` |
 | GET / POST | `/share/{token}` | permitAll — the landing page, and the download (a `POST`, with the password when the link has one); unknown, expired, revoked and used-up tokens are one 404 |
 | GET | `/files/share-links` | `SHARE_LINKS_PAGE` (one's own links; every link with `REVOKE_SHARE_LINK`) |
-| GET | `/files/content-search` (`q`, `all=1` for every version) - search in contents; a 404 while `filemanagement.content-search.enabled` is off | `SEARCH_FILE_CONTENTS` |
+| GET | `/files/content-search` (`q`, `name`, `folder`, `metadata`, `folderMetadata`, `type`, `from`, `to`, `sort`, `all=1` for every version, `page`) - the search, in contents and beyond (2.16.0); a 404 while `filemanagement.content-search.enabled` is off | `SEARCH_FILE_CONTENTS` |
+| GET | `/files/content-search/folders` (`q`) - the folders the search's chooser offers: those the person may walk into, with their trails, as JSON | `SEARCH_FILE_CONTENTS` |
 | GET | `/settings/content-extraction` - the status of reading contents | `CONTENT_EXTRACTION_PAGE` |
 | POST | `/settings/content-extraction/{fileDetailsId}/retry`, `/settings/content-extraction/retry-failed` | `RETRY_CONTENT_EXTRACTION` |
+| GET | `/reports`, `/reports/{slug}` (`folder`, `months`, `days`) - the reports on the files (2.16.0), over the reader's folders | `REPORTS_PAGE` |
+| GET | `/reports/{slug}/csv` (`table`, and the report's own) - one of its tables as CSV | `REPORTS_PAGE` |
 
 </details>
 
@@ -670,7 +727,7 @@ document, so a browser navigation still lands on a page.
 | GET | `/file-info/{fileInfoId}/file-details/{fileDetailsId}/download` | `API_DOWNLOAD_FILE` |
 | GET | `/file-details/{fileDetailsId}/download` (the same download by the version's id alone) | `API_DOWNLOAD_FILE` |
 | GET | `/file-info/{fileInfoId}/download` (`?version=`, `?format=`) - a file by its own id: the latest version, or the one named; a version with several formats and no `format` is a 400 listing them (1.9.0) | `API_DOWNLOAD_FILE` |
-| GET | `/content-search` (`q`, `allVersions`, `page`, `size`) - files by the text in them, each with the pages it matched on (2.15.0); a 404 while the search is off | `API_SEARCH_FILE_CONTENTS` |
+| GET | `/content-search` (`q`, `name`, `folderId`, `metadata`, `folderMetadata`, `type`, `from`, `to`, `sort`, `allVersions`, `page`, `size`) - files by the text in them and the rest (2.15.0, 2.16.0), each with the pages it matched on; a 404 while the search is off | `API_SEARCH_FILE_CONTENTS` |
 
 The id-only forms with `folderId` on the upload are the contract an integration keeps since Phase 7
 step 4: nothing in them names anything but a folder and a version. **Since 2.4.0 every id in these
@@ -1299,6 +1356,9 @@ schema at startup but never modifies it.
 | `filemanagement.share-links.lock-minutes` | `15` | how long it stays locked |
 | `filemanagement.downloads.enabled` | `true` | `DownloadRecorder`: whether downloads are recorded (2.7.0); off, nothing is queued and no writer starts |
 | `filemanagement.downloads.retention-days` | `365` | `DownloadRetention`: records older than this go every night at 03:40; `0` keeps them |
+| `filemanagement.reports.capacity-gb` | `0` | `ReportService`: the space given to the files; the growth report projects when it is full (2.16.0) |
+| `filemanagement.reports.snapshot-enabled` | `true` | `StorageSnapshotJob`: each top-level folder counted once a day into `storage_snapshot` |
+| `filemanagement.reports.cache-minutes` | `5` | `ReportCache`: how long a report is kept for the same reader and question (0 - 60) |
 | `filemanagement.storage.sweep-enabled` | `true` | `StorageSweeper`: whether the scheduled sweep of unfinished byte writes runs. Off leaves the notes for an operator to settle by hand |
 | `filemanagement.storage.sweep-every-minutes` | `15` | how often it runs. Read by the `@Scheduled` annotation from the raw property, because an annotation is resolved before any binding happens |
 | `filemanagement.storage.unfinished-after-minutes` | `60` | how old a byte write must be before it is treated as abandoned; longer than any upload could possibly take |

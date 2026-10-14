@@ -326,15 +326,16 @@
 
 <!--
   The metadata editor: rows of a key and a text value, or JSON for a nested or typed document
-  (metadataEditor in app.js). It posts the hidden field `metadata`; the enclosing form calls
-  check($event) on submit through the x-data scope this fragment opens. `initial` is the document
-  as JSON text, or empty; `hint` a message for under it, or null.
+  (metadataEditor in app.js). It posts the hidden field named `field` (`metadata` on an upload's
+  form; the search page has two); the enclosing form calls check($event) on submit through the
+  x-data scope this fragment opens. `initial` is the document as JSON text, or empty; `hint` a
+  message for under it, or null.
 -->
-<div th:fragment="metadata-editor(initial, hint)" class="metadata-editor"
+<div th:fragment="metadata-editor(initial, hint, field)" class="metadata-editor"
      th:attr="data-initial=${initial},data-invalid=#{metadata.editor.invalid},data-not-flat=#{metadata.editor.notFlat},data-duplicate=#{metadata.editor.duplicate}"
      x-data="metadataEditor({ initial: $el.dataset.initial, copy: { invalid: $el.dataset.invalid, notFlat: $el.dataset.notFlat, duplicate: $el.dataset.duplicate } })"
      x-init="$el.closest('form') && $el.closest('form').addEventListener('submit', (event) => check(event))">
-    <input type="hidden" name="metadata" :value="value">
+    <input type="hidden" th:name="${field}" :value="value">
     <div class="flex flex-wrap items-center gap-2 mb-2">
         <span class="text-sm font-medium" th:text="#{metadata.editor.title}">متادیتا</span>
         <button type="button" class="btn btn-sm btn-outline-secondary" x-show="mode === 'rows'" @click="toJson()"

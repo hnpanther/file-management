@@ -80,6 +80,53 @@ public class JalaliDate {
         return zone.getId();
     }
 
+    /** The Jalali month an instant falls in, in the installation's zone - for a report by month (12.9). */
+    public JalaliMonth monthOf(Instant value) {
+        int[] jalali = toJalali(LocalDate.ofInstant(value, zone));
+        return new JalaliMonth(jalali[0], jalali[1]);
+    }
+
+    /** The instant a Jalali month begins, in the installation's zone. */
+    public Instant startOf(JalaliMonth month) {
+        return toGregorian(month.year(), month.month(), 1).atStartOfDay(zone).toInstant();
+    }
+
+    /**
+     * A month of the Jalali calendar, {@code month} 1 (Farvardin) to 12 (Esfand). Its name is
+     * {@code jalali.month.{month}} in {@code messages.properties}; {@link #label} is its number.
+     */
+    public record JalaliMonth(int year, int month) {
+
+        public JalaliMonth {
+            if (month < 1 || month > 12) {
+                throw new IllegalArgumentException("a month is 1 to 12: " + month);
+            }
+        }
+
+        public JalaliMonth plus(int months) {
+            int index = year * 12 + (month - 1) + months;
+            return new JalaliMonth(Math.floorDiv(index, 12), Math.floorMod(index, 12) + 1);
+        }
+
+        /** {@code ۱۴۰۵/۰۷}. */
+        public String label() {
+            return persianDigits(String.format("%04d/%02d", year, month));
+        }
+
+        /** {@code 1405-07} - for a file read by a program. */
+        public String iso() {
+            return String.format("%04d-%02d", year, month);
+        }
+    }
+
+    /** The Gregorian day a Jalali date falls on - the inverse of the conversion the pages show. */
+    static LocalDate toGregorian(int jy, int jm, int jd) {
+        int[] cal = jalaliCalendar(jy);
+        int jdn = toJulianDayNumber(cal[1], 3, cal[2]) + (jm - 1) * 31 - (jm / 7) * (jm - 7) + jd - 1;
+        int[] gregorian = fromJulianDayNumber(jdn);
+        return LocalDate.of(gregorian[0], gregorian[1], gregorian[2]);
+    }
+
     private static String date(LocalDate value) {
         int[] jalali = toJalali(value);
         return String.format("%04d/%02d/%02d", jalali[0], jalali[1], jalali[2]);

@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.12`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.13`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -637,6 +637,23 @@ _As of migration `V3.12`. Types and defaults are PostgreSQL's own; every table i
 * **index** `fk_s3_multipart_upload_api_key` (`api_key_id`, `bucket`, `object_key`, `id`)
 * **index** `fk_s3_multipart_upload_user` (`user_id`)
 * **index** `ix_s3_multipart_upload_created_at` (`created_at`)
+
+### `storage_snapshot`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `day` | `date` | no |  |  |
+| `folder_id` | `integer` | no |  |  |
+| `folder_name` | `varchar(200)` | no |  |  |
+| `folder_path` | `varchar(1000)` | no |  |  |
+| `files` | `bigint` | no |  |  |
+| `revisions` | `bigint` | no |  |  |
+| `bytes` | `bigint` | no |  |  |
+| `latest_bytes` | `bigint` | no |  |  |
+| `taken_at` | `timestamptz(0)` | no |  |  |
+
+* **primary key** `day`, `folder_id`
+* **index** `ix_storage_snapshot_folder` (`folder_id`, `day`)
 
 ### `tag`
 

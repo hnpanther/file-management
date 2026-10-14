@@ -80,9 +80,10 @@ public class GlobalGeneralLogging {
     /**
      * Query parameters whose value may be personal, never logged: a metadata document (2.13.0), and a
      * search term - a content search's (2.15.0), or a name typed into the history's filter - which is
-     * as often a national code or a person's name as a word.
+     * as often a national code or a person's name as a word; and the fragment of a file's name the
+     * advanced search takes (12.8), for the same reason.
      */
-    private static final java.util.Set<String> MASKED_PARAMETERS = java.util.Set.of("metadata", "folderMetadata", "q");
+    private static final java.util.Set<String> MASKED_PARAMETERS = java.util.Set.of("metadata", "folderMetadata", "q", "name");
 
     /**
      * A path as it may be written down. A share link's token is the whole access to a file
