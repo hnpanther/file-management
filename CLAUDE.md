@@ -118,7 +118,16 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   `engine`). A search goes through `ContentSearch` with the reader's scope *in* the query, before any
   bound; its text is folded by `ContentFolding` (SearchKey's rules - `ContentFoldingTest`), and neither a
   page's text nor a snippet nor the term (`q`, masked) is ever logged. A snippet is segments written
-  with `th:text`, never HTML.
+  with `th:text`, never HTML. **A new part of the advanced search** (2.16.0) is a condition in
+  `PostgresContentSearch.conditions` that an index serves, a parameter masked in `GlobalGeneralLogging`
+  if a person typed it, and a case in `AdvancedSearchScaleTest`; a revision's pages are read through
+  `PAGES_OF_ONE` (the key, behind a fence), never joined to the pages as a set.
+* **A report counts over the reader's folders, in one statement** (2.16.0, package `report`):
+  `ReportRepository`'s `with` / `readable` (the readable folders, `seen`, asked once per folder), never
+  a figure counted in Java over rows read whole; `planFor` first. A month is a Jalali month
+  (`JalaliDate.monthOf` / `startOf`), and a bound cast in a statement is cast once (a scalar subquery):
+  per row it cost 3 s at a million revisions. A new report is a `Report`, its `ReportView`, its
+  messages and a case in `ReportScaleTest`; a CSV cell a person wrote goes through `ReportController.quoted`.
 * **Metadata is checked by `MetadataRules` and written through `FileMetadataService` /
   `FolderMetadataService`** (or an upload's own path) - never set on `FileDetails.metadata` or
   `Folder.metadata` elsewhere: those are what check access, record the change with both documents and

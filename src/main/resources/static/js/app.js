@@ -740,6 +740,54 @@
     }
 
     /**
+     * The folder chooser of the search page (roadmap 12.8): a name typed, the folders the person may
+     * walk into offered with their trails (the server decides which), one picked into the hidden
+     * `folder` field. The trail is set as text, never as markup.
+     *
+     * data: { id: "<the chosen folder's id, or empty>", trail: "<its trail>", url: "<the choices' URL>" }
+     */
+    window.searchFolderChooser = function (data) {
+        return {
+            chosenId: data.id || "",
+            chosenTrail: data.trail || "",
+            term: "",
+            choices: [],
+            searched: false,
+            lookup: function () {
+                var self = this;
+                var term = (this.term || "").trim();
+                if (!term) {
+                    this.choices = [];
+                    this.searched = false;
+                    return;
+                }
+                fetch(data.url + "?q=" + encodeURIComponent(term), { credentials: "same-origin", headers: { "Accept": "application/json" } })
+                    .then(function (response) { return response.ok ? response.json() : []; })
+                    .then(function (choices) {
+                        if ((self.term || "").trim() === term) {
+                            self.choices = Array.isArray(choices) ? choices : [];
+                            self.searched = true;
+                        }
+                    })
+                    .catch(function () {
+                        self.choices = [];
+                    });
+            },
+            pick: function (choice) {
+                this.chosenId = String(choice.id);
+                this.chosenTrail = choice.trail;
+                this.choices = [];
+                this.term = "";
+                this.searched = false;
+            },
+            clear: function () {
+                this.chosenId = "";
+                this.chosenTrail = "";
+            }
+        };
+    };
+
+    /**
      * The metadata editor (roadmap 12.2, 12.3): a document as rows of a key and a text value, or as
      * JSON for what rows cannot say - a nested value, a number, a list. Whichever is on screen is
      * what the hidden `metadata` field posts: rows as a JSON object, nothing for no row. The server

@@ -98,7 +98,7 @@ class ContentSearchPagesTest extends DatabaseSupport {
 
         String empty = page(mockMvc.perform(get("/files/content-search").param("q", "!!!")
                 .with(user(person(PermissionEnum.SEARCH_FILE_CONTENTS)))), 200);
-        assertThat(empty).contains("یک کلمه برای جستجو بنویسید");
+        assertThat(empty).contains("برای جستجو یک کلمه بنویسید");
         String none = page(mockMvc.perform(get("/files/content-search").param("q", run + "نیست")
                 .with(user(person(PermissionEnum.SEARCH_FILE_CONTENTS)))), 200);
         assertThat(none).contains("content-search-empty");

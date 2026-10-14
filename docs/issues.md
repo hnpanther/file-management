@@ -2264,3 +2264,17 @@ parts to the server's disk until the upload expired - bounded by the upload cap,
   what a role or a key reaches (issue 91); the largest classes (`FileService`, 1,057 lines, much of
   it explanation) are cohesive and left whole - splitting them is a refactor with risk and no
   defect behind it.
+
+## Found while building 2.16.0 (2026-10-14)
+
+### 119. The reader's grants as SQL are written out three times — **S3**
+
+`MetadataSearchRepository` (`granted`, `readable`, `scoped`, lines 143-156) and `S3ListingRepository`
+(lines 241-257) each keep their own copy of the statement that reads a reader's grants and of the
+condition that a folder is under one; 2.16.0 gave the content search and the reports one, in
+`folder.domain.ReadScopeSql`. The copies agree today - all three read `GrantedFolderPath.SQL` - but a
+change to how a grant covers a folder (issue 114 was one) would have to be made three times, and a copy
+missed would let one surface answer differently from the others. Nothing is wrong now.
+
+**To do, when either file is next touched**: call `ReadScopeSql` and delete the copy; the existing
+tests of each (`MetadataSearchTest`, `S3ListingTest`) hold the behaviour.

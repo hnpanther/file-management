@@ -788,6 +788,33 @@ database restored without it has S3 keys nobody can use. Lost or changed, every 
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
 
+### Upgrading from 2.15.0 to 2.16.0 — the advanced search, and reports on the files
+
+A jar swap with **one migration, `V3.13`**: a new, empty table (`storage_snapshot`). Nothing that
+exists changes.
+
+* **The advanced search** (roadmap 12.8): the search page and API v1's `content-search` take a folder,
+  a name, the file's and its folders' metadata, kinds and days beside the words; whoever holds
+  `SEARCH_FILE_CONTENTS` or `API_SEARCH_FILE_CONTENTS` has it at once. It follows
+  `filemanagement.content-search.enabled` as the search did - off, the page and the endpoint stay a 404.
+* **The reports** (roadmap 12.9) at `/reports`, under a new permission, **`REPORTS_PAGE`** - the
+  administrators have it at the next start, anybody else when a role is given it (the role page,
+  "گزارش‌ها"). Each is counted over the folders its reader may read.
+* **Three settings, none needed** (the environment file or `application.properties`):
+
+  | Setting | Default | |
+  |---|---|---|
+  | `FILEMANAGEMENT_REPORTS_CAPACITY_GB` | `0` | the space given to the files, in GB; set it, and the growth report says when, at its rate, it is full |
+  | `FILEMANAGEMENT_REPORTS_SNAPSHOT_ENABLED` | `true` | the daily count of each top-level folder - the growth report's true history, from the first day on |
+  | `FILEMANAGEMENT_REPORTS_CACHE_MINUTES` | `5` | how long a report is kept for the same reader before it is counted again |
+
+* **The first day's count** runs within the hour after the start - one aggregate over every revision,
+  a second or two at a million - and once a day after that, a few rows a day. Until there are two
+  weeks of them, the growth report's rate is drawn from what arrived, and says so.
+
+Rolling back to 2.15.0 is the jar swap; `storage_snapshot` stays, unread, and is filled again where it
+left off when 2.16.0 returns.
+
 ### Upgrading from 2.14.1 to 2.15.0 — searching the contents of files
 
 A jar swap with **one migration, `V3.12`**: two new, empty tables (`file_content`, `file_content_page`).

@@ -13,22 +13,29 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Files by the text in them, on API v1 (roadmap 11.2): the same search as the page - only files the
  * caller may read, each result with the pages it matched on and a snippet of each, the latest
- * version of a file unless {@code allVersions=true}. A page at a time, {@code size} at most 200, with
+ * version of a file unless {@code allVersions=true} - and, since 12.8, narrowed by a fragment of the
+ * name, a folder and those below it, the file's metadata or a folder's above it, kinds and dates,
+ * each optional and all of them together; without words, the newest files that hold the rest. A page at a time, {@code size} at most 200, with
  * {@code hasNext} and no count. Switched off, a 404.
  */
 @RestController
 @RequestMapping("/api/v1/files")
 public class ContentSearchApi {
 
-    /** A result: the file, the revision that matched, and its matching pages. */
+    /**
+     * A result: the file, the revision that matched, the trail of folders it is in (the root left out),
+     * its matching pages when words were asked, and what its metadata holds for the keys asked.
+     */
     public record Hit(String fileId, int fileNumber, String fileName, String fileDetailsId, int fileDetailsNumber,
-                      int version, boolean latestVersion, String extension, int folderId, String folderName, int matchedPages,
-                      List<PageHit> pages) {
+                      int version, boolean latestVersion, String extension, int folderId, String folderName,
+                      List<String> folderTrail, int matchedPages, List<PageHit> pages, Map<String, String> metadata) {
     }
 
     /**
@@ -59,19 +66,31 @@ public class ContentSearchApi {
     @GetMapping("content-search")
     public Page search(@AuthenticationPrincipal UserDetailsImpl userDetails,
                        @RequestParam(value = "q", required = false) String q,
+                       @RequestParam(value = "name", required = false) String name,
+                       @RequestParam(value = "folderId", required = false) Integer folderId,
+                       @RequestParam(value = "metadata", required = false) String metadata,
+                       @RequestParam(value = "folderMetadata", required = false) String folderMetadata,
+                       @RequestParam(value = "type", required = false) List<String> types,
+                       @RequestParam(value = "from", required = false) String from,
+                       @RequestParam(value = "to", required = false) String to,
                        @RequestParam(value = "allVersions", required = false) Boolean allVersions,
+                       @RequestParam(value = "sort", required = false) String sort,
                        @RequestParam(value = "page", required = false) Integer page,
                        @RequestParam(value = "size", required = false) Integer size) {
         boolean every = Boolean.TRUE.equals(allVersions);
-        globalGeneralLogging.detail("api content search page=" + page + (every ? " (every version)" : ""));
-        ContentSearchService.Results results = contentSearchService.search(q, every, page, size, userDetails.getId());
+        globalGeneralLogging.detail("api content search page=" + page + (folderId == null ? "" : " folder=" + folderId)
+                + (every ? " (every version)" : ""));
+        ContentSearchService.Results results = contentSearchService.search(new ContentSearchService.SearchRequest(
+                q, name, folderId, metadata, folderMetadata, types, from, to, every, sort), page, size, userDetails.getId());
         List<Hit> hits = new ArrayList<>(results.items().size());
         for (ContentSearchService.Result result : results.items()) {
             ContentSearch.Hit hit = result.hit();
             List<PageHit> pages = result.pages().stream().map(ContentSearchApi::pageHit).toList();
+            Map<String, String> values = new LinkedHashMap<>();
+            result.metadata().forEach(value -> values.put(value.key(), value.value()));
             hits.add(new Hit(hit.fileExternalId(), hit.fileId(), hit.fileName(), hit.fileDetailsExternalId(),
                     hit.fileDetailsId(), hit.version(), hit.version() == hit.lastVersion(), hit.fileExtension(),
-                    hit.folderId(), hit.folderName(), hit.pages(), pages));
+                    hit.folderId(), hit.folderName(), result.trail(), hit.pages(), pages, values));
         }
         return new Page(hits, results.page(), results.size(), results.hasNext(), results.limited());
     }

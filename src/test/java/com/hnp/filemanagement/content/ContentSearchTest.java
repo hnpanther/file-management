@@ -188,9 +188,11 @@ class ContentSearchTest extends DatabaseSupport {
                 "K" + TestData.nextSequence(), adminId);
         jdbc.update("INSERT INTO api_key_folder (api_key_id, folder_id, permission) VALUES (?, ?, 'READ')", keyId, folderB.getId());
         ContentQuery query = ContentQuery.of(run).orElseThrow();
-        List<ContentSearch.Hit> hits = new PostgresContentSearch(named).search(query, FolderReadScope.ofApiKey(keyId, false), false, 0, 10);
+        List<ContentSearch.Hit> hits = new PostgresContentSearch(named).search(SearchCriteria.ofText(query, false),
+                FolderReadScope.ofApiKey(keyId, false), 0, 10);
         assertThat(hits).extracting(ContentSearch.Hit::fileDetailsId).containsExactly(inB.getId());
-        assertThat(new PostgresContentSearch(named).search(query, FolderReadScope.ofApiKey(keyId, true), false, 0, 10)).isEmpty();
+        assertThat(new PostgresContentSearch(named).search(SearchCriteria.ofText(query, false), FolderReadScope.ofApiKey(keyId, true),
+                0, 10)).isEmpty();
     }
 
     @Test
@@ -237,11 +239,13 @@ class ContentSearchTest extends DatabaseSupport {
         jdbc.execute("SET LOCAL enable_seqscan = off");
         jdbc.execute("SET LOCAL enable_indexscan = off");
         jdbc.execute("SET LOCAL enable_indexonlyscan = off");
-        String plan = String.join("\n", named.queryForList("EXPLAIN " + PostgresContentSearch.searchSql(restricted, false, false),
-                parameters, String.class));
+        ContentQuery query = ContentQuery.of("قرارداد").orElseThrow();
+        String plan = String.join("\n", named.queryForList("EXPLAIN " + PostgresContentSearch.searchSql(
+                SearchCriteria.ofText(query, false), restricted, PostgresContentSearch.Path.WORDS_FIRST), parameters, String.class));
         assertThat(plan).contains("ix_file_content_page_search");
-        assertThat(String.join("\n", named.queryForList("EXPLAIN " + PostgresContentSearch.searchSql(FolderReadScope.everything(),
-                true, false), parameters, String.class))).contains("ix_file_content_page_search");
+        assertThat(String.join("\n", named.queryForList("EXPLAIN " + PostgresContentSearch.searchSql(
+                SearchCriteria.ofText(query, true), FolderReadScope.everything(), PostgresContentSearch.Path.WORDS_FIRST),
+                parameters, String.class))).contains("ix_file_content_page_search");
     }
 
     @Test

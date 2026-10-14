@@ -239,7 +239,7 @@ number of files.
 children without metadata, newest first, paged the same way - the person folders the ERP's uploads
 made under `ERP`, before anyone has written who each is.
 
-### Searching the text of files (2.15.0)
+### Searching the text of files, and the rest (2.15.0, 2.16.0)
 
 `GET /api/v1/files/content-search?q=...` - files by the text inside them, read by Apache Tika: a PDF's
 pages (a scanned page's words too, by OCR, Persian and English), a Word document, the slides of a
@@ -250,15 +250,27 @@ Only files the caller may read are found - a key, only in its own folders.
 | Parameter | |
 |---|---|
 | `q` | the words: every one required, each matched as the beginning of a word (`کتاب` finds `کتاب‌ها`), all on one page; a part in double quotes is a phrase, its words in that order. Arabic `ي`/`ك`, Persian or Arabic digits and the half-space make no difference. At most 200 characters, 12 words |
+| `name` | a fragment of the file's name, compared as the file list compares it (2.16.0): case, the half-space and Arabic letters make no difference, `%` and `_` are characters |
+| `folderId` | the folder, by number, **and every folder below it** (2.16.0). A folder the caller may not read is no results, as one that does not exist is |
+| `metadata` | a JSON object the revision's metadata must hold (2.16.0) - each key with that value exactly; `"1500"` finds `1500` and the other way round, `"true"` the boolean; a key `a.b` finds `{"a.b": ...}` and `{"a": {"b": ...}}`. At most 10 keys; checked as an upload's metadata is |
+| `folderMetadata` | the same, held by the file's folder or any folder above it (2.16.0) - "the files of the person whose national code is X". A folder the caller may not read itself is never matched |
+| `type` | kinds, by extension - `pdf`, or `pdf,docx`, or the parameter repeated; at most 20 (2.16.0) |
+| `from`, `to` | the days the revision was uploaded in, `yyyy-MM-dd`, **Gregorian**, in the installation's time zone; `to` included. A year before 1900 is a `400` - a Jalali date (`1403-07-01`) is not read as the year 1403 (2.16.0) |
+| `sort` | `relevance` (the default: the best match first, newest without words), `newest`, `oldest` (2.16.0) |
 | `allVersions` | `true` to search every version of a file; otherwise its latest version (every format of it) |
 | `page`, `size` | a page at a time, `size` at most 200 (20 by default) |
+
+Every parameter is optional, and those given are all required together; at least one of `q`, `name`,
+`folderId`, `metadata`, `folderMetadata`, `type`, `from` or `to` - none is a `400`. Without `q` the
+answer is the files themselves, newest first, with no pages.
 
 ```json
 {"items": [{"fileId": "0b6f...", "fileNumber": 41, "fileName": "report", "fileDetailsId": "7c1e...",
             "fileDetailsNumber": 97, "version": 2, "latestVersion": true, "extension": "pdf",
-            "folderId": 12, "folderName": "P-1234", "matchedPages": 5,
+            "folderId": 12, "folderName": "P-1234", "folderTrail": ["ERP", "P-1234"], "matchedPages": 5,
             "pages": [{"page": 3, "unit": "PAGE", "label": null, "source": "TEXT",
-                       "snippet": "... بر اساس قرارداد اجاره شماره ...", "matches": [[12, 7]]}]}],
+                       "snippet": "... بر اساس قرارداد اجاره شماره ...", "matches": [[12, 7]]}],
+            "metadata": {"status": "signed"}}],
  "page": 0, "size": 20, "hasNext": false, "limited": false}
 ```
 
@@ -268,6 +280,8 @@ Only files the caller may read are found - a key, only in its own folders.
   stored backwards, put right), `OCR` (recognised from the page's image - a word or two may be off), or
   `BOTH`.
 * `snippet` is a few lines of the page; `matches` the `[offset, length]` of each word found in it.
+* `folderTrail` - the folders from the top down to the file's (2.16.0). `metadata` - what the
+  revision's metadata holds for the keys `metadata` asked, as text; `{}` when none was asked.
 * `limited: true` - the words are on more than 20,000 pages, and the results come from the newest of
   them: add a word to narrow the search.
 * A file is found only once its text has been read - minutes after an upload, longer for a long scan.
@@ -313,6 +327,7 @@ whatever it is when the request is made.
 
 | Release | |
 |---|---|
+| 2.16.0 | **the advanced search**: `content-search` takes `name`, `folderId`, `metadata`, `folderMetadata`, `type`, `from`, `to` and `sort`, `q` no longer required, and answers `folderTrail` and `metadata`. A client of 2.15.0's search is unaffected |
 | 2.15.0 | **search in contents**: `GET content-search` above - new, needs `API_SEARCH_FILE_CONTENTS`. Nothing else changes |
 | 2.13.0 | **metadata**: an optional `metadata` field on the upload, `metadata` in its answer; the metadata endpoints, conditioned writes and search above; `412` for a failed condition. Nothing else changes - a client that sends none is unaffected |
 | 1.6.x | the id-only forms (`file-details/{id}/download`, `DELETE file-details/{id}`); `folderId` on the upload |

@@ -28,7 +28,7 @@
             <form method="post" id="metadataForm"
                   th:action="${target == 'file'} ? @{/files/file-info/{id}/metadata(id=${revision.fileInfoId()})} : @{/files/file-details/{id}/metadata(id=${revision.fileDetailsId()})}">
                 <input type="hidden" name="etag" th:value="${etag}">
-                <div th:replace="~{fragments.html :: metadata-editor(${metadataText}, #{metadata.editor.clearHint})}"></div>
+                <div th:replace="~{fragments.html :: metadata-editor(${metadataText}, #{metadata.editor.clearHint}, 'metadata')}"></div>
 
                 <div th:if="${error != null}" class="alert alert-warning mt-3" role="alert" id="metadata-error" th:text="${error}"></div>
 

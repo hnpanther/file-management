@@ -1,7 +1,7 @@
 package com.hnp.filemanagement.content;
 
 import com.hnp.filemanagement.folder.domain.FolderReadScope;
-import com.hnp.filemanagement.folder.domain.GrantedFolderPath;
+import com.hnp.filemanagement.folder.domain.ReadScopeSql;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.core.namedparam.SqlParameterSource;
@@ -281,20 +281,18 @@ public class FileContentRepository {
                 new MapSqlParameterSource("now", Timestamp.from(now)));
     }
 
-    /** The reader's granted paths, read once for the statement (as every list filtered by folder access). */
+    /** The reader's granted paths, read once for the statement ({@link ReadScopeSql#granted}). */
     static String granted(FolderReadScope scope) {
-        return scope.unrestricted() ? "" : "WITH granted AS MATERIALIZED (SELECT g.path FROM (" + GrantedFolderPath.SQL
-                + ") g WHERE g.user_id = :userId AND g.api_key_id = :apiKeyId)\n";
+        return ReadScopeSql.granted(scope);
     }
 
-    /** Whether the folder {@code alias} is readable in the scope. */
+    /** Whether the folder {@code alias} is readable in the scope ({@link ReadScopeSql#readable}). */
     static String readable(FolderReadScope scope, String alias) {
-        return scope.unrestricted() ? "TRUE"
-                : "EXISTS (SELECT 1 FROM granted WHERE " + alias + ".path LIKE granted.path || '%')";
+        return ReadScopeSql.readable(scope, alias);
     }
 
     static MapSqlParameterSource scoped(FolderReadScope scope) {
-        return new MapSqlParameterSource().addValue("userId", scope.userId()).addValue("apiKeyId", scope.apiKeyId());
+        return ReadScopeSql.parameters(scope);
     }
 
     private static String reasonOf(String reason) {

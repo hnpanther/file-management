@@ -62,6 +62,9 @@ public enum PermissionGroup {
     /** The status of reading contents, and queuing a failed reading again. */
     CONTENT_EXTRACTION(CONTENT_EXTRACTION_PAGE, RETRY_CONTENT_EXTRACTION),
 
+    /** The reports on the files - counted over the folders the person may read (roadmap 12.9). */
+    REPORTS(REPORTS_PAGE),
+
     /** Deleting a file, or one of its versions. */
     FILE_DELETE(REST_DELETE_FILE_INFO, REST_DELETE_FILE_DETAILS),
 

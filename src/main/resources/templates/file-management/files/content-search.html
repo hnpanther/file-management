@@ -28,25 +28,94 @@
         <div class="card-body">
             <h2 id="content-search-title" class="sr-only" th:text="#{contentSearch.heading}">جستجو در محتوای فایل‌ها</h2>
 
-            <form class="history-filters" method="get" th:action="@{/files/content-search}" role="search">
-                <div class="history-filter content-search-term">
-                    <label for="content-search-q" th:text="#{contentSearch.term}">عبارت</label>
-                    <input id="content-search-q" class="form-control" type="search" name="q" th:value="${q}"
-                           maxlength="200" th:placeholder="#{contentSearch.termPlaceholder}" autocomplete="off" required>
+            <form method="get" th:action="@{/files/content-search}" role="search" id="content-search-form">
+                <div class="history-filters">
+                    <div class="history-filter content-search-term">
+                        <label for="content-search-q" th:text="#{contentSearch.term}">عبارت</label>
+                        <input id="content-search-q" class="form-control" type="search" name="q" th:value="${q}"
+                               maxlength="200" th:placeholder="#{contentSearch.termPlaceholder}" autocomplete="off">
+                    </div>
+                    <div class="history-filter">
+                        <label for="content-search-sort" th:text="#{contentSearch.sort}">ترتیب</label>
+                        <select id="content-search-sort" class="form-control" name="sort">
+                            <option value="relevance" th:selected="${sort == 'relevance'}" th:text="#{contentSearch.sort.relevance}">مرتبط‌ترین</option>
+                            <option value="newest" th:selected="${sort == 'newest'}" th:text="#{contentSearch.sort.newest}">جدیدترین</option>
+                            <option value="oldest" th:selected="${sort == 'oldest'}" th:text="#{contentSearch.sort.oldest}">قدیمی‌ترین</option>
+                        </select>
+                    </div>
+                    <div class="history-filter">
+                        <label class="form-check-label" for="content-search-all">
+                            <input id="content-search-all" class="form-check-input" type="checkbox" name="all" value="1"
+                                   th:checked="${all}">
+                            <span th:text="#{contentSearch.allVersions}">همهٔ نسخه‌ها، نه فقط آخرین نسخه</span>
+                        </label>
+                    </div>
+                    <div class="history-filter-actions">
+                        <button class="btn btn-primary" type="submit">
+                            <i class="bi bi-search" aria-hidden="true"></i>
+                            <span th:text="#{contentSearch.submit}">جستجو</span>
+                        </button>
+                        <a class="btn btn-outline-secondary" th:href="@{/files/content-search}" th:text="#{contentSearch.clear}">پاک کردن</a>
+                    </div>
                 </div>
-                <div class="history-filter">
-                    <label class="form-check-label" for="content-search-all">
-                        <input id="content-search-all" class="form-check-input" type="checkbox" name="all" value="1"
-                               th:checked="${all}">
-                        <span th:text="#{contentSearch.allVersions}">همهٔ نسخه‌ها، نه فقط آخرین نسخه</span>
-                    </label>
-                </div>
-                <div class="history-filter-actions">
-                    <button class="btn btn-primary" type="submit">
-                        <i class="bi bi-search" aria-hidden="true"></i>
-                        <span th:text="#{contentSearch.submit}">جستجو</span>
-                    </button>
-                </div>
+
+                <!-- Roadmap 12.8: everything but the words - each optional, all of them together. -->
+                <details class="content-search-advanced" th:open="${advanced}" id="content-search-advanced">
+                    <summary th:text="#{contentSearch.advanced}">جستجوی پیشرفته</summary>
+                    <div class="content-search-advanced-grid">
+                        <div class="history-filter content-search-folder"
+                             th:attr="data-id=${folder != null ? folder.id() : ''},data-trail=${folder != null ? folder.trail() : ''},data-url=@{/files/content-search/folders}"
+                             x-data="searchFolderChooser($el.dataset)">
+                            <label for="content-search-folder-term" th:text="#{contentSearch.folder}">پوشه</label>
+                            <input type="hidden" name="folder" :value="chosenId" th:value="${folder != null ? folder.id() : ''}">
+                            <div x-show="chosenId" x-cloak class="content-search-chosen" id="content-search-chosen">
+                                <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                                <span dir="auto" x-text="chosenTrail" th:text="${folder != null ? folder.trail() : ''}">پوشه</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @click="clear()"
+                                        th:text="#{contentSearch.folder.clear}">همهٔ پوشه‌ها</button>
+                            </div>
+                            <input id="content-search-folder-term" class="form-control" type="search" x-show="!chosenId"
+                                   x-model="term" @input.debounce.300ms="lookup()" @keydown.enter.prevent="lookup()"
+                                   th:placeholder="#{contentSearch.folder.placeholder}" autocomplete="off">
+                            <ul class="content-search-choices" x-show="choices.length" x-cloak>
+                                <template x-for="choice in choices" :key="choice.id">
+                                    <li><button type="button" @click="pick(choice)" dir="auto" x-text="choice.trail"></button></li>
+                                </template>
+                            </ul>
+                            <p class="field-hint" x-show="searched && !choices.length && !chosenId" x-cloak
+                               th:text="#{contentSearch.folder.none}">پوشه‌ای با این نام پیدا نشد.</p>
+                            <p class="field-hint" th:text="#{contentSearch.folder.hint}">این پوشه و همهٔ زیرپوشه‌هایش.</p>
+                        </div>
+                        <div class="history-filter">
+                            <label for="content-search-name" th:text="#{contentSearch.name}">نام فایل</label>
+                            <input id="content-search-name" class="form-control" type="search" name="name" th:value="${name}"
+                                   maxlength="200" th:placeholder="#{contentSearch.name.placeholder}" autocomplete="off">
+                        </div>
+                        <div class="history-filter">
+                            <label for="content-search-type" th:text="#{contentSearch.type}">نوع فایل</label>
+                            <input id="content-search-type" class="form-control" type="text" name="type" th:value="${types}"
+                                   dir="ltr" maxlength="200" placeholder="pdf, docx" autocomplete="off">
+                        </div>
+                        <div class="history-filter">
+                            <label for="content-search-from" th:text="#{contentSearch.from}">بارگذاری از</label>
+                            <input id="content-search-from" class="form-control" type="date" name="from" th:value="${from}" dir="ltr">
+                        </div>
+                        <div class="history-filter">
+                            <label for="content-search-to" th:text="#{contentSearch.to}">تا</label>
+                            <input id="content-search-to" class="form-control" type="date" name="to" th:value="${to}" dir="ltr">
+                        </div>
+                    </div>
+                    <div class="content-search-metadata">
+                        <section id="content-search-file-metadata">
+                            <h3 class="text-sm font-semibold mb-1" th:text="#{contentSearch.metadata}">متادیتای فایل</h3>
+                            <div th:replace="~{fragments.html :: metadata-editor(${metadataText}, #{contentSearch.metadata.hint}, 'metadata')}"></div>
+                        </section>
+                        <section id="content-search-folder-metadata">
+                            <h3 class="text-sm font-semibold mb-1" th:text="#{contentSearch.folderMetadata}">متادیتای پوشه‌های بالاتر</h3>
+                            <div th:replace="~{fragments.html :: metadata-editor(${folderMetadataText}, #{contentSearch.folderMetadata.hint}, 'folderMetadata')}"></div>
+                        </section>
+                    </div>
+                </details>
             </form>
             <p class="field-hint mb-4" th:text="#{contentSearch.hint}">
                 همهٔ کلمه‌ها باید در یک صفحه باشند؛ هر کلمه ابتدای یک کلمه را پیدا می‌کند؛ عبارت داخل گیومهٔ انگلیسی کنار هم.
@@ -77,9 +146,15 @@
                                   th:text="#{contentSearch.olderVersion(${r.hit().lastVersion()})}">نسخهٔ قدیمی</span>
                             <span class="content-result-folder field-hint">
                                 <i class="bi bi-folder" aria-hidden="true"></i>
-                                <span dir="auto" th:text="${r.hit().folderName()}">پوشه</span>
+                                <span dir="auto" th:text="${#strings.listJoin(r.trail(), ' / ')}">پوشه</span>
                             </span>
                         </div>
+                        <dl th:unless="${#lists.isEmpty(r.metadata())}" class="content-result-metadata">
+                            <th:block th:each="m : ${r.metadata()}">
+                                <dt dir="auto" th:text="${m.key()}">contractNo</dt>
+                                <dd dir="auto" th:text="${m.value()}">C-5678</dd>
+                            </th:block>
+                        </dl>
 
                         <ul class="content-result-pages">
                             <li th:each="p : ${r.pages()}" class="content-result-page">
@@ -117,12 +192,12 @@
                 <nav th:if="${results.page() > 0 or results.hasNext()}" class="mt-3" th:aria-label="#{contentSearch.heading}">
                     <ul class="pagination mb-0">
                         <li th:if="${results.page() > 0}" class="page-item">
-                            <a class="page-link" th:href="@{/files/content-search(q=${q}, all=${all ? 1 : null}, page=${results.page() - 1})}"
+                            <a class="page-link" th:href="@{/files/content-search} + ${pageQuery} + '&page=' + ${results.page() - 1}"
                                th:text="#{action.previous}">قبلی</a>
                         </li>
                         <li class="page-item active" aria-current="page"><span class="page-link" th:text="${results.page() + 1}">1</span></li>
                         <li th:if="${results.hasNext()}" class="page-item">
-                            <a class="page-link" th:href="@{/files/content-search(q=${q}, all=${all ? 1 : null}, page=${results.page() + 1})}"
+                            <a class="page-link" th:href="@{/files/content-search} + ${pageQuery} + '&page=' + ${results.page() + 1}"
                                th:text="#{action.next}">بعدی</a>
                         </li>
                     </ul>
