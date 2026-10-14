@@ -2326,3 +2326,19 @@ Leptonica, which decodes the image for Tesseract, treats what libjpeg warns of a
   ("OCR read no text from 1 page(s): handwriting, a scan too coarse or too faint, ..."), where it guessed
   at a decoder before. A photograph with little text can run out Tesseract's 10 minutes a page and be
   `FAILED` too: once, and nothing in it was searchable.
+
+### 123. A folder search filtered by access after its page: a reader's folder could go unfound — **S2**
+
+Found 2026-10-14 in the content search's folder chooser (2.16.0, before it was deployed): it read the first
+75 folders matching the term, by depth and name, and dropped in Java those the reader may not walk into,
+showing at most 15 of the rest. A reader of a few personal folders, typing a word thousands of folders
+share, saw the first 75 all someone else's - and "no folder by that name", their own folder there.
+
+**Fixed for the chooser in 2.16.0**: `FolderSearchRepository.visibleMatches`, folder access in the
+statement (`ReadScopeSql`), the folder named exactly first, two siblings of one label told apart by their
+names. `FolderChooserTest` - a reader's folder among a hundred of the same word; 20,000 personal folders,
+55-89 ms.
+
+**Still in the explorer's folder search** (`FolderContentService.folderHitsOf`, the search box of
+`/files/explorer`): the same read of five times what it shows, filtered in Java. To do: call
+`visibleMatches` there, as the chooser does - its test (`FolderContentServiceTest`) holds the listing.

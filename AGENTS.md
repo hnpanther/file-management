@@ -29,11 +29,14 @@ database is PostgreSQL since 2026-09-26 (roadmap Phase 3; MySQL removed from the
 ## Commands
 
 ```bash
-./mvnw verify                 # build + all tests on PostgreSQL; needs only a Docker daemon (no Node)
+./mvnw verify                 # build + the tests on PostgreSQL; needs only a Docker daemon (no Node)
+./mvnw verify -Pscale         # ... and the scale tests too (@Tag("scale"), in one JVM: about 15 minutes)
+./mvnw verify -DforkCount=3   # the test classes in three JVMs instead of two, when the machine is idle
 npm run build:css             # only if you edited src/main/frontend/app.css
 ./mvnw clean package          # build → target/file-management.jar (executable)
 ./mvnw spring-boot:run        # run on :8122
 ./mvnw test -Dtest=FileServiceTest
+./mvnw test -Pscale -Dtest=ReportScaleTest   # a scale test alone: -Pscale, or it is skipped
 docker compose up -d          # PostgreSQL for running the application (NOT for tests)
 ```
 
@@ -418,7 +421,8 @@ Rules for new tests:
 
 A change is done when:
 
-* `./mvnw verify` is green;
+* `./mvnw verify` is green - and `./mvnw verify -Pscale` before a release, or when the change touches a
+  query a scale test measures (the content search, the reports, the metadata search, the S3 listing);
 * new behaviour has a test, or you have stated explicitly that you could not run the suite and why;
 * any new endpoint has a `PermissionEnum` constant, placed in a `PermissionGroup`, and a `@PreAuthorize`;
 * any new mutation writes an `ActionHistory` row;

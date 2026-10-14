@@ -15,6 +15,7 @@ import com.hnp.filemanagement.support.TestData;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -46,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * database in a container, not a benchmark.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@Tag("scale")
 class S3ListingScaleTest extends DatabaseSupport {
 
     static final int WIDE = 20_000;

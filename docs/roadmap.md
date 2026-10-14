@@ -44,7 +44,7 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 files stored before it being read - a few days of OCR on the Tika host. (2.5.0 until then; MySQL
 decommissioned 2026-09-30.)
 
-**Next: deploy 2.16.0** (the advanced search and the reports, one migration - deployment.md), and
+**Next: deploy 2.16.0** (the advanced search, the reports and the content-reading fixes, two migrations - deployment.md), and
 set `FILEMANAGEMENT_REPORTS_CAPACITY_GB` there. After it: [12.7, an upload policy of a key's own](#127-an-upload-policy-of-a-keys-own--planned),
 when it is wanted. Alongside, while the backfill reads: watch `/settings/content-extraction` and the Tika host, and
 once it is done measure the tables and look at the failures - what decides whether 11.4 (the lexicon
@@ -58,7 +58,9 @@ a daily count of each top-level folder (`storage_snapshot`, `V3.13`) for a true 
 million revisions, 0.2-2.1 s counted afresh, then kept five minutes. And **reading contents corrected**
 after seven readings failed in production (issues 120-122): a long PDF is no longer lost to a reading
 again that cannot end (a 330-page report: 30 minutes and failed, now 10 seconds and every page), a JPEG
-Tesseract refuses is decoded here, and no reason keeps a document's text (`V3.14`). And **the advanced search** (12.8) - the words inside the files, a folder and those
+Tesseract refuses is decoded here, and no reason keeps a document's text (`V3.14`). The search's
+folder chooser finds a reader's folder among thousands of the same word (access in the statement,
+issue 123), the folder named exactly first, two people of one name told apart. And **the advanced search** (12.8) - the words inside the files, a folder and those
 below it, a fragment of the name, the file's metadata and its folders' above it, kinds, days and the
 order, each optional and all together, on the search page (a folder chooser by name, two metadata
 forms, "search in this folder" in the explorer) and on API v1; the reader's grants in the query, a

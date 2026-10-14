@@ -1,10 +1,10 @@
 package com.hnp.filemanagement.content;
 
 import com.hnp.filemanagement.folder.domain.Folder;
-import com.hnp.filemanagement.folder.domain.FolderAccess;
 import com.hnp.filemanagement.folder.domain.FolderAccessService;
 import com.hnp.filemanagement.folder.domain.FolderKind;
 import com.hnp.filemanagement.folder.domain.FolderTrails;
+import com.hnp.filemanagement.folder.persistence.FolderSearchRepository;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
@@ -13,7 +13,6 @@ import com.hnp.filemanagement.shared.metadata.MetadataRules;
 import com.hnp.filemanagement.shared.util.SearchKey;
 import com.hnp.filemanagement.shared.util.SearchTerms;
 import com.hnp.filemanagement.shared.web.PageRequests;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
@@ -107,7 +106,10 @@ public class ContentSearchService {
     public record Results(List<Result> items, int page, int size, boolean hasNext, boolean limited) {
     }
 
-    /** A folder the chooser offers: its id and its trail, the root left out. */
+    /**
+     * A folder the chooser offers: its id and its label - its trail, the root left out, and its name after
+     * it where the trail alone does not tell it from another (a sibling of the same label).
+     */
     public record FolderChoice(int id, String trail) {
     }
 
@@ -118,14 +120,16 @@ public class ContentSearchService {
     private final ContentSearchProperties properties;
     private final Clock clock;
     private final FolderTrails folderTrails;
+    private final FolderSearchRepository folderSearch;
 
     public ContentSearchService(ContentSearch search, FolderAccessService folderAccessService,
-                                FolderRepository folderRepository, FolderTrails folderTrails, MetadataRules metadataRules,
-                                ContentSearchProperties properties, Clock clock) {
+                                FolderRepository folderRepository, FolderTrails folderTrails, FolderSearchRepository folderSearch,
+                                MetadataRules metadataRules, ContentSearchProperties properties, Clock clock) {
         this.search = search;
         this.folderAccessService = folderAccessService;
         this.folderRepository = folderRepository;
         this.folderTrails = folderTrails;
+        this.folderSearch = folderSearch;
         this.metadataRules = metadataRules;
         this.properties = properties;
         this.clock = clock;
@@ -259,20 +263,31 @@ public class ContentSearchService {
         if (key.isEmpty() && id == null) {
             return List.of();
         }
-        FolderAccess access = folderAccessService.accessFor(principalId);
         List<Folder> roots = folderRepository.findRoots();
         if (roots.size() != 1) {
             return List.of();
         }
-        List<Folder> visible = folderRepository.searchFolders(id, key.isEmpty() ? SearchKey.MATCHES_NOTHING
-                                : SearchTerms.escapeLike(key), roots.getFirst().getPath(), PageRequest.of(0, FOLDER_CHOICES * 5))
-                .stream()
-                .filter(folder -> access.visible(folder.getPath()))
-                .limit(FOLDER_CHOICES)
-                .toList();
-        FolderTrails.Names names = folderTrails.of(visible.stream().map(Folder::getPath).toList());
-        return visible.stream().map(folder -> new FolderChoice(folder.getId(), String.join(" / ", names.trail(folder.getPath()))))
-                .toList();
+        // Folder access in the statement: the first fifteen the reader may walk into, never fifteen of
+        // the first seventy-five whatever their access.
+        List<FolderSearchRepository.Match> found = folderSearch.visibleMatches(folderAccessService.readScope(principalId), id,
+                term, roots.getFirst().getPath(), FOLDER_CHOICES);
+        FolderTrails.Names names = folderTrails.of(found.stream().map(FolderSearchRepository.Match::path).toList());
+        List<FolderChoice> choices = new ArrayList<>(found.size());
+        for (FolderSearchRepository.Match match : found) {
+            choices.add(new FolderChoice(match.id(), labelOf(names.trail(match.path()), match.name(), match.sharesItsLabel())));
+        }
+        // What is still alike - two folders whose trails and names are one (siblings of alike parents) -
+        // told apart by number.
+        Map<String, Long> alike = choices.stream().collect(java.util.stream.Collectors.groupingBy(FolderChoice::trail,
+                java.util.stream.Collectors.counting()));
+        return choices.stream().map(choice -> alike.get(choice.trail()) > 1
+                ? new FolderChoice(choice.id(), choice.trail() + " #" + choice.id()) : choice).toList();
+    }
+
+    /** A folder's trail, and its name after it where a sibling has its label - the name is unique among siblings. */
+    private static String labelOf(List<String> trail, String name, boolean sharesItsLabel) {
+        String label = String.join(" / ", trail);
+        return sharesItsLabel ? label + " (" + name + ")" : label;
     }
 
     /** The chosen folder as the page shows it - only if the person may walk into it. */
@@ -287,7 +302,8 @@ public class ContentSearchService {
             return Optional.empty();
         }
         FolderTrails.Names names = folderTrails.of(List.of(folder.get().getPath()));
-        return Optional.of(new FolderChoice(folderId, String.join(" / ", names.trail(folder.get().getPath()))));
+        return Optional.of(new FolderChoice(folderId, labelOf(names.trail(folder.get().getPath()), folder.get().getName(),
+                folderSearch.sharesItsLabel(folderId))));
     }
 
     // ------------------------------------------------------------------ helpers
