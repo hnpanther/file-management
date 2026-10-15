@@ -2339,6 +2339,22 @@ statement (`ReadScopeSql`), the folder named exactly first, two siblings of one 
 names. `FolderChooserTest` - a reader's folder among a hundred of the same word; 20,000 personal folders,
 55-89 ms.
 
-**Still in the explorer's folder search** (`FolderContentService.folderHitsOf`, the search box of
-`/files/explorer`): the same read of five times what it shows, filtered in Java. To do: call
-`visibleMatches` there, as the chooser does - its test (`FolderContentServiceTest`) holds the listing.
+**Fixed for the explorer's folder search too, in 2.16.0** (`FolderContentService.folderHitsOf`, the search
+box of `/files/explorer`): it calls `visibleMatches` as the chooser does, then loads the twenty rows with
+their tag groups in one statement - the number typed first, the folder named exactly next.
+`ExplorerFolderSearchTest` - a reader's folder among a hundred of the same word, a stranger finds none,
+a scope still confines; 20,000 personal folders, 110-320 ms. `FolderRepository.searchFolders` is left to
+the access tree of the role and key pages, which an administrator edits and which filters nothing.
+
+### 124. A plan test that passes or fails with the table's statistics — **S4**
+
+Found 2026-10-15 in a full `./mvnw verify` (2.16.0): `SearchIndexTest.theFileHistoryIsReadThroughItsIndexes`
+failed once and passed alone and in the run before. Its case for one event asks that the plan names
+`ix_file_history_event`; with plain index scans allowed, on a `file_history` of a few dozen rows left by the
+other tests of the same JVM, the planner may walk `ix_file_history_occurred_at` in order and filter each row
+- the cheaper plan for those statistics, and what the test's own comment already says of its case for a name,
+which it therefore asks with bitmap scans only. Nothing in the application: the query is the same either
+way, and at production's size the event index is the plan. To do: ask the event's case with bitmap scans
+only too (`planOfEach(..., true)`), as the name's - a test-only change.
+
+**Fixed in 2.16.0**: the event's case is asked with bitmap scans only, as the name's.

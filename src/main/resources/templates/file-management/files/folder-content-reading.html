@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{folderReading.pageTitle}">خواندن متن پوشه</title>
+</head>
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<!--
+  Whether the files of a folder, and of the folders below it, are read for the search in contents
+  (2.16.0): FolderReadingController, over FolderReadingService. The folder's setting and what decides it,
+  the revisions held back below it, the folders below it with a setting of their own - and the choice, for
+  whoever holds SET_FOLDER_CONTENT_READING and may write in the folder.
+-->
+<main class="container-fluid app-content"
+      th:with="title=${#lists.isEmpty(reading.trail()) ? #messages.msg('explorer.root') : #strings.listJoin(reading.trail(), ' ◂ ')}">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{folderReading.heading}">خواندن متن برای جستجو</div>
+        <h1 class="break-words" dir="auto" th:text="${title}">پوشه</h1>
+        <p class="page-description" th:text="#{folderReading.description}">…</p>
+        <div class="flex flex-wrap gap-2 mt-2">
+            <a th:href="@{/files/explorer(folder=${reading.folderId()})}" class="btn btn-sm btn-outline-secondary"
+               th:text="#{metadata.folder.openInExplorer}">باز کردن در فایل اکسپلورر</a>
+            <a sec:authorize="hasAuthority('CONTENT_EXTRACTION_PAGE') || hasAuthority('ADMIN')"
+               th:href="@{/settings/content-extraction}" class="btn btn-sm btn-outline-secondary"
+               th:text="#{reading.statusPage}">وضعیت خواندن همهٔ فایل‌ها</a>
+        </div>
+    </header>
+
+    <div th:if="${changed != null}" class="alert alert-success mb-5" role="status" id="reading-changed" th:text="${changed}"></div>
+    <div th:if="${refused != null}" class="alert alert-warning mb-5" role="alert" id="reading-refused" th:text="${refused}"></div>
+
+    <section class="card mx-auto max-w-4xl" aria-labelledby="state-title">
+        <div class="card-body">
+            <h2 id="state-title" class="mb-3" th:text="#{folderReading.now}">وضعیت این پوشه</h2>
+            <p id="reading-state" th:attr="data-reads=${reading.reads()}">
+                <span class="badge" th:classappend="${reading.reads()} ? 'badge-success' : 'history-gone'"
+                      th:text="${reading.reads()} ? #{folderReading.reads} : #{folderReading.notRead}">روشن</span>
+                <span th:if="${reading.decidedHere()}" th:text="#{folderReading.decidedHere}">به تنظیم همین پوشه</span>
+                <span th:if="${reading.byDefault()}" th:text="#{folderReading.byDefault}">پیش‌فرض</span>
+                <span th:if="${reading.decidedById() != null}">
+                    <span th:text="#{folderReading.inherited}">به پیروی از پوشهٔ</span>
+                    <a th:href="@{/files/folders/{id}/content-reading(id=${reading.decidedById()})}" id="decided-by"
+                       th:text="${#lists.isEmpty(reading.decidedByTrail()) ? #messages.msg('explorer.root') : #strings.listJoin(reading.decidedByTrail(), ' ◂ ')}">بالا</a>
+                </span>
+            </p>
+            <p th:if="${reading.decidedHere() and reading.setAt() != null}" class="field-hint"
+               th:text="#{folderReading.setBy(${@jalali.format(reading.setAt())}, ${reading.setBy() == null ? '—' : reading.setBy()})}">…</p>
+            <p class="field-hint" id="held-back" th:if="${reading.heldBack() > 0}"
+               th:text="#{folderReading.heldBack(${reading.heldBack()})}">۱۲ نسخه خوانده نشده‌اند.</p>
+
+            <!-- The choice: for whoever holds SET_FOLDER_CONTENT_READING and may write here (FolderReadingService). -->
+            <form th:if="${reading.mayChange()}" method="post" id="reading-form" class="mt-4"
+                  th:action="@{/files/folders/{id}/content-reading(id=${reading.folderId()})}">
+                <fieldset class="space-y-3">
+                    <legend class="mb-2 font-semibold" th:text="#{folderReading.choose}">برای این پوشه و زیرپوشه‌هایش</legend>
+                    <label class="flex items-start gap-2">
+                        <input type="radio" name="choice" value="INHERIT" id="choice-inherit" th:checked="${reading.choice().name() == 'INHERIT'}">
+                        <span>
+                            <b th:text="#{folderReading.choice.inherit}">مثل پوشهٔ بالا</b>
+                            <span class="field-hint block" th:text="#{folderReading.choice.inherit.hint}">…</span>
+                        </span>
+                    </label>
+                    <label class="flex items-start gap-2">
+                        <input type="radio" name="choice" value="ON" id="choice-on" th:checked="${reading.choice().name() == 'ON'}">
+                        <span>
+                            <b th:text="#{folderReading.choice.on}">روشن</b>
+                            <span class="field-hint block" th:text="#{folderReading.choice.on.hint}">…</span>
+                        </span>
+                    </label>
+                    <label class="flex items-start gap-2">
+                        <input type="radio" name="choice" value="OFF" id="choice-off" th:checked="${reading.choice().name() == 'OFF'}">
+                        <span>
+                            <b th:text="#{folderReading.choice.off}">خاموش</b>
+                            <span class="field-hint block" th:text="#{folderReading.choice.off.hint}">…</span>
+                        </span>
+                    </label>
+                </fieldset>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary"
+                            th:attr="onclick=|return confirm('${#messages.msg('folderReading.confirm')}')|">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
+                    </button>
+                </div>
+            </form>
+            <p th:unless="${reading.mayChange()}" class="field-hint mt-3" id="reading-read-only"
+               th:text="#{folderReading.readOnly}">برای تغییر، مجوز و دسترسی نوشتن لازم است.</p>
+        </div>
+    </section>
+
+    <section class="card mx-auto max-w-4xl mt-5" aria-labelledby="exceptions-title">
+        <div class="card-body">
+            <h2 id="exceptions-title" class="mb-3" th:text="#{folderReading.exceptions}">زیرپوشه‌هایی با تنظیم خودشان</h2>
+            <p th:if="${#lists.isEmpty(reading.exceptions())}" class="field-hint" th:text="#{folderReading.noExceptions}">
+                همهٔ زیرپوشه‌ها از این پوشه پیروی می‌کنند.</p>
+            <div th:replace="~{file-management/files/folder-content-reading-fragments.html :: own-choices(${reading.exceptions()})}"></div>
+            <p th:if="${reading.moreExceptions()}" class="field-hint mt-2"
+               th:text="#{folderReading.moreExceptions(${T(com.hnp.filemanagement.content.FolderReadingService).EXCEPTIONS_SHOWN})}">…</p>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

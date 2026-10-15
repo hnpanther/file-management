@@ -15,6 +15,7 @@ import com.hnp.filemanagement.identity.persistence.UserRepository;
 import com.hnp.filemanagement.shared.util.SearchKey;
 import com.hnp.filemanagement.shared.validation.ValidationUtil;
 import com.hnp.filemanagement.shared.config.FileManagementProperties;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -81,12 +82,15 @@ public class FolderService {
     private final FolderQuotaService folderQuotaService;
     private final int maxDepth;
 
+    private final ApplicationEventPublisher events;
+
     public FolderService(FolderRepository folderRepository, FileInfoRepository fileInfoRepository,
                          TagGroupRepository tagGroupRepository, UserRepository userRepository,
                          FolderAccessService folderAccessService, TagMirrorService tagMirrorService,
                          ActionHistoryService actionHistoryService, FolderQuotaService folderQuotaService,
-                         FileManagementProperties properties) {
+                         FileManagementProperties properties, ApplicationEventPublisher events) {
         int maxDepth = properties.folders().maxDepth();
+        this.events = events;
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.tagGroupRepository = tagGroupRepository;
@@ -386,6 +390,9 @@ public class FolderService {
         folderRepository.saveAllAndFlush(subtree);
 
         tagMirrorService.retagFilesUnder(folder);
+        // Whether the subtree's files are read for the search follows the folders above it (2.16.0): the
+        // queue settles them under the new parent's setting - in this transaction, the paths written.
+        events.publishEvent(new FolderMoved(folder.getId(), newPrefix));
         actionHistoryService.saveActionHistory(EntityEnum.Folder, folder.getId(), ActionEnum.UPDATE_VALUES, principalId,
                 "MOVE FOLDER", "MOVE folder id=" + folderId + " from folder id=" + oldParent.getId()
                         + " to folder id=" + newParentId);

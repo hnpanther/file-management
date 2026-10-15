@@ -153,6 +153,16 @@
             </nav>
         </div>
     </section>
+
+    <!-- The folders switched off, or on again below one switched off (2.16.0): those the reader may read. -->
+    <section class="card mt-5" aria-labelledby="own-choices-title" id="folder-reading">
+        <div class="card-body">
+            <h2 id="own-choices-title" class="mb-2" th:text="#{folderReading.everywhere}">پوشه‌هایی با تنظیم خواندن متن</h2>
+            <p class="field-hint mb-3" th:text="#{folderReading.everywhere.hint}">…</p>
+            <p th:if="${#lists.isEmpty(ownChoices)}" class="text-ink-500" th:text="#{folderReading.everywhere.none}">…</p>
+            <div th:replace="~{file-management/files/folder-content-reading-fragments.html :: own-choices(${ownChoices})}"></div>
+        </div>
+    </section>
 </main>
 
 <th:block th:replace="~{fragments.html :: scripts}"></th:block>

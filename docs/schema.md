@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.15`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.16`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -510,10 +510,14 @@ _As of migration `V3.15`. Types and defaults are PostgreSQL's own; every table i
 | `updated_by` | `integer` | yes |  |  |
 | `key_path` | `varchar(4000)` | no | `` |  |
 | `metadata` | `jsonb` | yes |  |  |
+| `content_reading` | `boolean` | yes |  |  |
+| `content_reading_set_at` | `timestamptz(0)` | yes |  |  |
+| `content_reading_set_by` | `integer` | yes |  |  |
 
 * **primary key** `id`
 * **unique** `uq_folder_owner_user` (`owner_user_id`)
 * **unique** `uq_folder_sibling_name` (`parent_id`, `upper(name)`)
+* **foreign key** `fk_folder_content_reading_set_by` `content_reading_set_by` → `app_user` (`id`), on delete set null
 * **foreign key** `fk_folder_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_folder_owner_user` `owner_user_id` → `app_user` (`id`)
 * **foreign key** `fk_folder_parent` `parent_id` → `folder` (`id`)
@@ -523,6 +527,8 @@ _As of migration `V3.15`. Types and defaults are PostgreSQL's own; every table i
 * **index** `fk_folder_tag_group` (`tag_group_id`)
 * **index** `fk_folder_updated_by_user` (`updated_by`)
 * **index** `ix_folder_bucket_key_path` (`split_part(path, '/', 3)`, `key_path`, in byte order (`COLLATE "C"`))
+* **index** `ix_folder_content_reading` (`path`, only where `(content_reading IS NOT NULL)`)
+* **index** `ix_folder_content_reading_set_by` (`content_reading_set_by`, only where `(content_reading_set_by IS NOT NULL)`)
 * **index** `ix_folder_metadata` (`metadata`, GIN for containment `@>` (`jsonb_path_ops`))
 * **index** `ix_folder_parent` (`parent_id`)
 * **index** `ix_folder_parent_key_path` (`parent_id`, `key_path`, in byte order (`COLLATE "C"`))

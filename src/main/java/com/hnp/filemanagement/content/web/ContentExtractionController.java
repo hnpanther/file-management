@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.content.web;
 
 import com.hnp.filemanagement.content.ContentExtractionService;
+import com.hnp.filemanagement.content.FolderReadingService;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.shared.web.GlobalGeneralLogging;
@@ -31,9 +32,12 @@ public class ContentExtractionController {
     private final ContentExtractionService contentExtractionService;
     private final GlobalGeneralLogging globalGeneralLogging;
     private final UiMessages messages;
+    private final FolderReadingService folderReadingService;
 
     public ContentExtractionController(ContentExtractionService contentExtractionService,
-                                       GlobalGeneralLogging globalGeneralLogging, UiMessages messages) {
+                                       GlobalGeneralLogging globalGeneralLogging, UiMessages messages,
+                                       FolderReadingService folderReadingService) {
+        this.folderReadingService = folderReadingService;
         this.contentExtractionService = contentExtractionService;
         this.globalGeneralLogging = globalGeneralLogging;
         this.messages = messages;
@@ -51,19 +55,31 @@ public class ContentExtractionController {
         return VIEW;
     }
 
+    /**
+     * A failed reading queued again. Sent from the file's own page (2.16.0) it names the file, and the
+     * answer is that page again - an id, never an address the form chose.
+     */
     // RETRY_CONTENT_EXTRACTION
     @PreAuthorize("hasAuthority('RETRY_CONTENT_EXTRACTION') || hasAuthority('ADMIN')")
     @PostMapping("{fileDetailsId}/retry")
     public String retry(@AuthenticationPrincipal UserDetailsImpl userDetails,
-                        @PathVariable("fileDetailsId") int fileDetailsId, Model model) {
-        globalGeneralLogging.detail("retry content extraction of file details id=" + fileDetailsId);
+                        @PathVariable("fileDetailsId") int fileDetailsId,
+                        @RequestParam(value = "file", required = false) Integer fileInfoId, Model model) {
+        globalGeneralLogging.detail("retry content extraction of file details id=" + fileDetailsId
+                + (fileInfoId == null ? "" : ", from the page of file id=" + fileInfoId));
+        boolean queued;
         try {
             contentExtractionService.retry(fileDetailsId, userDetails.getId());
-            fill(model, 0, userDetails.getId(), messages.get("contentExtraction.retried"), true);
+            queued = true;
         } catch (InvalidDataException e) {
             globalGeneralLogging.detail("InvalidDataException:" + e.getMessage());
-            fill(model, 0, userDetails.getId(), messages.get("contentExtraction.retry.notFailed"), false);
+            queued = false;
         }
+        if (fileInfoId != null) {
+            return "redirect:/files/file-info/" + fileInfoId + (queued ? "?readingQueued" : "?readingNotQueued");
+        }
+        fill(model, 0, userDetails.getId(), messages.get(queued ? "contentExtraction.retried" : "contentExtraction.retry.notFailed"),
+                queued);
         return VIEW;
     }
 
@@ -80,6 +96,7 @@ public class ContentExtractionController {
     private void fill(Model model, int page, int principalId, String message, boolean valid) {
         model.addAttribute("overview", contentExtractionService.overview());
         model.addAttribute("failures", contentExtractionService.failures(page, principalId));
+        model.addAttribute("ownChoices", folderReadingService.everywhere(principalId));
         model.addAttribute("showMessage", message != null);
         model.addAttribute("message", message);
         model.addAttribute("valid", valid);

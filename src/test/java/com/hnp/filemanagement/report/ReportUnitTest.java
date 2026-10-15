@@ -95,7 +95,7 @@ class ReportUnitTest {
         for (String channel : List.of("PAGE", "PREVIEW", "PUBLIC", "SHARE_LINK", "API_V1", "API_V2", "S3")) {
             assertThat(bundle.getProperty("fileDownloads.channel." + channel)).as(channel).isNotBlank();
         }
-        for (String state : List.of("PENDING", "READING", "DONE", "EMPTY", "SKIPPED", "FAILED")) {
+        for (String state : List.of("PENDING", "READING", "DONE", "EMPTY", "SKIPPED", "FAILED", "EXCLUDED")) {
             assertThat(bundle.getProperty("contentExtraction.state." + state)).as(state).isNotBlank();
         }
     }

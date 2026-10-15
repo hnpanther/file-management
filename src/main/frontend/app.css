@@ -394,6 +394,19 @@
     }
     .revision-external-id-copy:focus-visible { outline: 2px solid var(--color-brand-600); outline-offset: 1px; }
     .revision-external-id-copy.is-copied { @apply text-brand-700; }
+    /* How a version's contents were read for the content search (2.16.0, CONTENT_EXTRACTION_PAGE). */
+    .revision-reading {
+        @apply mb-3 rounded-[var(--radius-control)] border border-ink-200 bg-white px-3 py-2 text-xs text-ink-600;
+    }
+    .revision-reading-head { @apply flex flex-wrap items-center gap-2 font-semibold text-ink-700; }
+    .revision-reading-head > .bi { @apply text-sm text-brand-600; }
+    .revision-reading-facts { @apply mt-2 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4; }
+    .revision-reading-facts dt { @apply text-ink-500; }
+    .revision-reading-facts dd { @apply text-ink-800; overflow-wrap: anywhere; }
+    .revision-reading-reason { @apply mt-2 text-ink-700; overflow-wrap: anywhere; }
+    /* Who is signed in (2.16.0): a dot, green when a session of theirs was used in the last minutes. */
+    .online-dot { @apply inline-block size-2 shrink-0 rounded-full bg-ink-300; }
+    .online-dot.is-active { @apply bg-brand-600; }
     /* The file history (2.5.0): a filter row, and a table whose event is a badge - additions in
        the brand colour, deletions in red, the rest neutral. */
     .history-filters { @apply mb-2 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-[2fr_1.5fr_1fr_1fr_auto]; }

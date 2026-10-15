@@ -611,6 +611,16 @@
                         <p class="explorer-detail-term" th:text="#{explorer.details.totalFolders}">مجموع پوشه‌ها در زیرشاخه‌ها</p>
                         <p class="explorer-detail-value" x-text="number(selectedFolder.totalFolders)"></p>
 
+                        <!-- Whether the files here are read for the search in contents (2.16.0); its page for whoever may see it. -->
+                        <p class="explorer-detail-term" th:text="#{explorer.details.contentReading}">خواندن متن برای جستجو</p>
+                        <p class="explorer-detail-value" id="folder-content-reading">
+                            <span x-text="selectedFolder.contentRead ? EX.contentReadOn : EX.contentReadOff"></span>
+                            <a sec:authorize="hasAuthority('SET_FOLDER_CONTENT_READING') || hasAuthority('CONTENT_EXTRACTION_PAGE') || hasAuthority('ADMIN')"
+                               th:data-base="@{/files/folders/}" class="ms-2 text-brand-700 underline"
+                               :href="$el.dataset.base + selectedFolder.folder.id + '/content-reading'"
+                               th:text="#{explorer.details.contentReading.change}">تنظیم</a>
+                        </p>
+
                         <template x-if="selectedFolder.createdAt">
                             <div>
                                 <p class="explorer-detail-term" th:text="#{explorer.details.created}">تاریخ ایجاد</p>
@@ -734,7 +744,9 @@
         moveFolder:        [[#{explorer.manage.moveTo}]],
         moveFile:          [[#{explorer.manage.moveFileTo}]],
         filesUrl:          [[@{/resource/files}]],
-        keepTagGroup:      [[#{explorer.manage.keepTagGroup}]]
+        keepTagGroup:      [[#{explorer.manage.keepTagGroup}]],
+        contentReadOn:     [[#{folderReading.reads}]],
+        contentReadOff:    [[#{folderReading.notRead}]]
     };
 
     const INITIAL_FOLDER_ID = /*[[${initialFolderId}]]*/ null;

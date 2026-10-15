@@ -27,6 +27,10 @@
         </div>
     </header>
     <div th:if="${metadataSaved != null}" class="alert alert-success" role="status" id="metadata-saved" th:text="${metadataSaved}"></div>
+    <div th:if="${param.readingQueued}" class="alert alert-success" role="status" id="reading-queued"
+         th:text="#{contentExtraction.retried}">دوباره در صف قرار گرفت.</div>
+    <div th:if="${param.readingNotQueued}" class="alert alert-warning" role="alert" id="reading-not-queued"
+         th:text="#{contentExtraction.retry.notFailed}">این نسخه خواندن ناموفقی ندارد.</div>
     <div class="detail-layout">
         <section class="card min-w-0" aria-labelledby="file-metadata-title">
             <div class="card-body">
@@ -186,6 +190,80 @@
                             <i class="bi" :class="copied ? 'bi-clipboard-check' : 'bi-clipboard'" aria-hidden="true"></i>
                             <span x-show="copied" x-cloak th:text="#{action.copied}">کپی شد</span>
                         </button>
+                    </div>
+                    <!-- How this revision's contents were read for the content search (2.16.0): FileController
+                         fills readings only for CONTENT_EXTRACTION_PAGE, as the status page. Never any text. -->
+                    <div class="revision-reading" th:if="${readings != null}"
+                         th:with="r=${readings.get(fd.getId())},
+                                  finished=${r != null and r.state() != 'PENDING' and r.state() != 'READING'}"
+                         th:attr="data-reading-state=${r == null ? 'NONE' : r.state()}">
+                        <div class="revision-reading-head">
+                            <i class="bi bi-text-paragraph" aria-hidden="true"></i>
+                            <span th:text="#{reading.title}">خواندن متن برای جستجو</span>
+                            <span th:if="${r == null}" class="badge" th:text="#{reading.none}">در صف نیست</span>
+                            <span th:if="${r != null}" class="badge"
+                                  th:classappend="${r.state() == 'FAILED'} ? 'history-gone' : (${r.state() == 'DONE'} ? 'badge-success' : '')"
+                                  th:text="#{'contentExtraction.state.' + ${r.state()}}">خوانده شد</span>
+                            <span th:if="${r != null and r.partial()}" class="badge" th:text="#{reading.partial}">بخشی</span>
+                        </div>
+                        <p th:if="${r != null and r.state() == 'EXCLUDED'}" class="field-hint" id="reading-excluded"
+                           th:text="#{reading.excluded.hint}">خواندن متن در پوشهٔ این فایل خاموش است.</p>
+                        <p th:if="${r == null}" class="field-hint"
+                           th:text="${contentSearchEnabled} ? #{reading.none.hint} : #{reading.none.searchOff}">…</p>
+                        <dl th:if="${r != null}" class="revision-reading-facts">
+                            <div th:if="${finished and r.pages() != null}">
+                                <dt th:text="#{reading.pages}">صفحه</dt>
+                                <dd class="technical" th:text="${r.pages()}">12</dd>
+                            </div>
+                            <div th:if="${finished and r.ocrPages() != null and r.ocrPages() > 0}">
+                                <dt th:text="#{reading.ocrPages}">صفحهٔ OCR</dt>
+                                <dd class="technical" th:text="${r.ocrPages()}">3</dd>
+                            </div>
+                            <div th:if="${finished and r.characters() != null}">
+                                <dt th:text="#{reading.characters}">نویسه</dt>
+                                <dd class="technical" th:text="${r.characters()}">4210</dd>
+                            </div>
+                            <div th:if="${finished and r.lane() != null}">
+                                <dt th:text="#{contentExtraction.column.lane}">مسیر</dt>
+                                <dd class="technical" dir="ltr" th:text="${r.lane()}">OCR</dd>
+                            </div>
+                            <div th:if="${finished and r.detectedType() != null}">
+                                <dt th:text="#{reading.detectedType}">نوع تشخیص‌داده‌شده</dt>
+                                <dd class="technical break-words" dir="ltr" th:text="${r.detectedType()}">application/pdf</dd>
+                            </div>
+                            <div th:if="${r.attempts() > 0}">
+                                <dt th:text="#{contentExtraction.column.attempts}">تلاش</dt>
+                                <dd class="technical" th:text="${r.attempts()}">1</dd>
+                            </div>
+                            <div th:if="${finished and r.readAt() != null}">
+                                <dt th:text="#{reading.readAt}">زمان خواندن</dt>
+                                <dd class="technical" dir="ltr" th:text="${@jalali.format(r.readAt())}">۱۴۰۵/۰۷/۲۲</dd>
+                            </div>
+                            <div th:if="${r.state() == 'PENDING'}">
+                                <dt th:text="#{reading.turnAt}">نوبت خواندن از</dt>
+                                <dd class="technical" dir="ltr" th:text="${@jalali.format(r.nextAttemptAt())}">۱۴۰۵/۰۷/۲۲</dd>
+                            </div>
+                        </dl>
+                        <p th:if="${r != null and r.reason() != null}" class="revision-reading-reason">
+                            <span th:text="#{contentExtraction.column.reason}">علت</span>:
+                            <span dir="auto" th:text="${r.reason()}">…</span>
+                        </p>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <form th:if="${r != null and r.state() == 'FAILED'}"
+                                  sec:authorize="hasAuthority('RETRY_CONTENT_EXTRACTION') || hasAuthority('ADMIN')"
+                                  th:action="@{/settings/content-extraction/{id}/retry(id=${fd.getId()},file=${file.getId()})}"
+                                  method="post" class="inline">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                                    <span th:text="#{contentExtraction.retry}">دوباره بخوان</span>
+                                </button>
+                            </form>
+                            <a class="btn btn-sm btn-outline-secondary" th:href="@{/settings/content-extraction}"
+                               th:text="#{reading.statusPage}">وضعیت خواندن همهٔ فایل‌ها</a>
+                            <a class="btn btn-sm btn-outline-secondary" th:if="${file.getFolderId() != null}"
+                               th:href="@{/files/folders/{id}/content-reading(id=${file.getFolderId()})}"
+                               th:text="#{reading.folderSetting}">تنظیم خواندن متن این پوشه</a>
+                        </div>
                     </div>
                     <div sec:authorize="hasAuthority('DOWNLOAD_FILE') || hasAuthority('ADMIN')">
                         <div class="revision-actions">

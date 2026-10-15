@@ -790,10 +790,12 @@ restored or a copied installation makes its S3 keys work there too.
 
 ### Upgrading from 2.15.0 to 2.16.0 — the advanced search, and reports on the files
 
-A jar swap with **three migrations**: `V3.13`, a new, empty table (`storage_snapshot`); `V3.14`, which cuts
+A jar swap with **four migrations**: `V3.13`, a new, empty table (`storage_snapshot`); `V3.14`, which cuts
 off the document text Tika's error answers left in the reasons of failed readings (issue 120); `V3.15`, a
 column on `upload_policy` for a key's own policy - no row is added, so **every key uploads exactly as
-before** until it is given a policy of its own on its page (roadmap 12.7). Nothing else that exists
+before** until it is given a policy of its own on its page (roadmap 12.7); `V3.16`, three empty columns on
+`folder` for whether its files are read for the search, and one more reading state (`EXCLUDED`) - no row is
+changed, so **every folder is read as before** until somebody switches one off. Nothing else that exists
 changes.
 
 * **The advanced search** (roadmap 12.8): the search page and API v1's `content-search` take a folder,
@@ -822,6 +824,24 @@ changes.
 * **After the start, read the failed readings again**: `/settings/content-extraction`, «همه را دوباره بخوان» -
   those that failed for these reasons are then read; what OCR cannot read (handwriting, a coarse scan) fails
   again, now said so.
+* **Who is signed in** at `/settings/online-users`, under two new permissions in the group «کاربران آنلاین»:
+  **`ONLINE_USERS_PAGE`** (the page) and **`END_USER_SESSION`** (ending a session, or all of a person's) - the
+  administrators have both at the next start. Ending a session sends that browser to the login page on its
+  next request; the account stays as it was. Each session's address is the one the proxy reports
+  (`X-Forwarded-For`, as the downloads take it). Every session ends with the restart of the upgrade itself,
+  as with every release - everyone signs in again.
+* **An ended session now lands on the login page**, with «نشست شما پایان یافته است» - a disabled account's
+  sessions too, which got a line of English text before.
+* **Each version's reading on the file's page**, beside its external id, for whoever holds
+  `CONTENT_EXTRACTION_PAGE` - nothing to set.
+* **Reading a folder's files can be switched off** - for a folder and every folder below it, at
+  `/files/folders/{id}/content-reading` (the explorer's folder details link to it) - under a new permission,
+  **`SET_FOLDER_CONTENT_READING`** (group «خواندن متن فایل‌های یک پوشه»), with write access to the folder;
+  ADMIN has it at the next start. Switched off, what was read stays read and found; what is uploaded from
+  then on, and what was still waiting, is held back (`EXCLUDED` on the status page). Switched on again,
+  what was held back is queued and read. A folder below one switched off can be switched on again. The
+  status page lists every folder with a setting of its own. **A candidate from the first days**: the
+  personal folders, if what they hold (identity documents) should not be searchable by their contents.
 
 Rolling back to 2.15.0 is the jar swap; `storage_snapshot` stays, unread, and is filled again where it
 left off when 2.16.0 returns. `V3.14` changed reasons only; 2.15.0 reads them as they are.

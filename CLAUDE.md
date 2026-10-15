@@ -158,6 +158,15 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   [issue 97](docs/issues.md#97-what-an-api-key-did-was-recorded-as-its-creators-doing-with-nothing-to-say-a-key-did-it--s2)):
   `ActingApiKey.currentId()`. The audit trail takes it by itself; a new way to create a file or a
   revision sets `createdByApiKey` as `FileService` does.
+* **A session's id is never shown or logged** (2.16.0, `/settings/online-users`): it is the cookie that signs
+  its holder in. A page names a session by `ActiveUserSessions.handleOf` (a digest), and ends it through
+  `ActiveUserSessions`; an administrator's is ended by an administrator only.
+* **Whether a folder's files are read for the search is `ContentReadingSql.reads`** (2.16.0, `V3.16`): the
+  nearest `folder.content_reading` above, itself included, or yes - never worked out anywhere else. The
+  columns are not mapped on `Folder` (a save would write back a stale value); a revision queued in a folder
+  switched off is `EXCLUDED`, and anything that changes where a file sits or what a folder inherits calls
+  `ContentQueue.settle` after writing, which takes the settings' advisory lock exclusively - queueing takes it
+  shared. A new way to move a file or a folder settles too, or its revisions stay held back.
 * **Every change to a file records a `file_history` event** (2.5.0): `fileHistoryService.record`
   in the transaction of the change, as `FileService` does - and a search term goes through
   `SearchTerms.escapeLike` with `ESCAPE '\'` on its `LIKE` (issue 96).

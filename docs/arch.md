@@ -315,7 +315,31 @@ Tika (deploy/tika, a host of its own) and searched page by page (roadmap Phase 1
   their trails - a folder chosen outside the grants is no results, and the page shows no name for it.
 * **Never logged**: no text, no snippet, no metadata; the parameters `q`, `name`, `metadata` and
   `folderMetadata` are masked by `GlobalGeneralLogging`. The status page (`/settings/content-extraction`) shows reasons, never text,
-  and failures only of files the reader may open. `/actuator/health` has `contentExtraction`, always
+  and failures only of files the reader may open. The file's page shows each version's reading beside
+  its external id (2.16.0) - the state, the pages and those read by OCR, the characters, the lane, the
+  type Tika saw, the attempts and the reason; a pending one only its turn - to whoever holds
+  `CONTENT_EXTRACTION_PAGE` (one statement for every version, asked only then), with the retry of a
+  failed one for `RETRY_CONTENT_EXTRACTION`.
+* **A folder whose files are not read** (2.16.0, `V3.16`): `folder.content_reading` - `NULL` follows the
+  folder above (every folder, as migrated), `TRUE` / `FALSE` its own; the nearest folder above with a value,
+  itself included, decides, or the folder reads (`ContentReadingSql.reads`, over the few folders with a
+  value - `ix_folder_content_reading` - compared on the materialised path). The columns are not mapped on
+  `Folder`: written in SQL only (`FolderContentReadingRepository`), so a save of a folder never writes back
+  a value read before. A revision queued in a folder that does not read is `EXCLUDED` (`ContentQueue.enqueue`,
+  the backfill alike), and the worker asks again after its claim (`excludeIfNotRead`). **Switched off**,
+  nothing read changes - its text stays and is found; what was waiting is held back with what comes after; a
+  reading under way finishes. **Switched on again**, or a file or a folder moved where it reads, what was held
+  back is queued behind new uploads (`ContentQueue.settle`, after the change is written - a folder's move
+  arrives as `FolderMoved`). The setting and the queue never race: `settle` holds the advisory lock
+  `ContentReadingSql.LOCK` exclusively, queueing holds it shared, so an upload in its transaction while its
+  folder is switched on is waited for and queued (`FolderReadingConcurrencyTest` fails without the lock).
+  The page `/files/folders/{id}/content-reading` (`FolderReadingController`, `FolderReadingService`) shows
+  what decides, the revisions held back and the folders below with their own setting, to whoever may read the
+  folder with `CONTENT_EXTRACTION_PAGE` or `SET_FOLDER_CONTENT_READING`; the choice - follow, on, off - to
+  whoever holds the latter and may write in the folder; each change in `action_history`. The status page lists
+  every folder with a setting of its own the reader may read; the explorer's folder details say whether it
+  reads (`contentRead`). Measured at 20,000 folders and 100,000 revisions (`FolderReadingScaleTest`): 2.5 s to
+  switch off, 2.7 s on again (the uploads wait that long at most), 7 ms an upload's decision. `/actuator/health` has `contentExtraction`, always
   `UP`, a `warning` when reading cannot run, Tika is lost or an upload has waited a day.
 
 ### Reports on the files (2.16.0)
@@ -691,7 +715,11 @@ document, so a browser navigation still lands on a page.
 | GET | `/files/content-search` (`q`, `name`, `folder`, `metadata`, `folderMetadata`, `type`, `from`, `to`, `sort`, `all=1` for every version, `page`) - the search, in contents and beyond (2.16.0); a 404 while `filemanagement.content-search.enabled` is off | `SEARCH_FILE_CONTENTS` |
 | GET | `/files/content-search/folders` (`q`) - the folders the search's chooser offers: those the person may walk into, with their trails, as JSON | `SEARCH_FILE_CONTENTS` |
 | GET | `/settings/content-extraction` - the status of reading contents | `CONTENT_EXTRACTION_PAGE` |
-| POST | `/settings/content-extraction/{fileDetailsId}/retry`, `/settings/content-extraction/retry-failed` | `RETRY_CONTENT_EXTRACTION` |
+| POST | `/settings/content-extraction/{fileDetailsId}/retry` (`file` - sent from the file's page, which it answers with: `?readingQueued` / `?readingNotQueued`), `/settings/content-extraction/retry-failed` | `RETRY_CONTENT_EXTRACTION` |
+| GET | `/files/folders/{folderId}/content-reading` - whether a folder's files are read for the search, and what decides it (2.16.0) | `SET_FOLDER_CONTENT_READING` or `CONTENT_EXTRACTION_PAGE` (and read access to the folder) |
+| POST | `/files/folders/{folderId}/content-reading` (`choice` - `INHERIT`, `ON`, `OFF`) | `SET_FOLDER_CONTENT_READING` (and write access to the folder) |
+| GET | `/settings/online-users` - who is signed in, each person's sessions (2.16.0) | `ONLINE_USERS_PAGE` |
+| POST | `/settings/online-users/end` (`session` - a session's handle), `/settings/online-users/end-all` (`userId`) | `END_USER_SESSION` |
 | GET | `/reports`, `/reports/{slug}` (`folder`, `months`, `days`) - the reports on the files (2.16.0), over the reader's folders | `REPORTS_PAGE` |
 | GET | `/reports/{slug}/csv` (`table`, and the report's own) - one of its tables as CSV | `REPORTS_PAGE` |
 
@@ -702,7 +730,7 @@ document, so a browser navigation still lands on a page.
 
 | Method | Path |
 |---|---|
-| GET | `/resource/folders/children?folderId=&page=&size=&folderPage=&folderSize=&filter=&folderAround=` - files and child folders each paged (2.11.0, roadmap 12.4: a page of folders with the level's total in `folderPage`; `filter` narrows both by name; `folderAround` opens the folders' page that holds that child), or `?fileId=` for the folder a file is in at the page that lists it - "show in the explorer"; a 400 if both are given (each file entry names its latest revision - of the latest version, the format uploaded last - as `latestFileDetailsId`, for the explorer's download), `/resource/folders/{id}` (one folder's details: trail, group, direct and total counts, audit), `/resource/folders/search?query=&folderId=` (folders by id / name / label as `folders`, at most 20; files paged as `hits`) (`REST_GET_FOLDER_CONTENT` / `REST_SEARCH_FOLDER_CONTENT`, or `FILE_EXPLORER_PAGE`) |
+| GET | `/resource/folders/children?folderId=&page=&size=&folderPage=&folderSize=&filter=&folderAround=` - files and child folders each paged (2.11.0, roadmap 12.4: a page of folders with the level's total in `folderPage`; `filter` narrows both by name; `folderAround` opens the folders' page that holds that child), or `?fileId=` for the folder a file is in at the page that lists it - "show in the explorer"; a 400 if both are given (each file entry names its latest revision - of the latest version, the format uploaded last - as `latestFileDetailsId`, for the explorer's download), `/resource/folders/{id}` (one folder's details: trail, group, direct and total counts, audit), `/resource/folders/search?query=&folderId=` (folders by id / name / label as `folders`, at most 20, the reader's folder access in the statement - the number typed first, the name typed exactly next (2.16.0, issue 123); files paged as `hits`) (`REST_GET_FOLDER_CONTENT` / `REST_SEARCH_FOLDER_CONTENT`, or `FILE_EXPLORER_PAGE`) |
 | GET | `/resource/folders/tag-groups` (`REST_GET_TAG_GROUPS` or `REST_CREATE_FOLDER`) |
 | POST | `/resource/folders` `{parentId, name, displayName, tagGroupId | newTagGroupName}` → 201 (`REST_CREATE_FOLDER`; under the root a group is needed, deeper none is taken; 400 past the depth limit) |
 | PUT | `/resource/folders/{id}` `{name, displayName, tagGroupId?}` (`REST_RENAME_FOLDER`; the group only at the top level) |
@@ -1024,6 +1052,23 @@ which stops the next sign-in but not a session that already exists - so
 its own because `SecurityConfig` would close a bean cycle). The count of ended sessions is part
 of the `action_history` row. The switch is on the user's page and on the users list, both behind
 `REST_CHANGE_USER_ENABLED`.
+
+**Who is signed in** (2.16.0): the registry is a `TrackedSessionRegistry`, which remembers of each
+session when, from which address and with which browser it signed in - taken off the signing-in request
+(bound by Spring Boot's `RequestContextFilter` before the security filters; the address the proxy
+reported, as everywhere) and forgotten with the session. `/settings/online-users` (`OnlineUserController`,
+`ONLINE_USERS_PAGE`, over `OnlineUserService`) lists each person signed in on this instance with their
+sessions - the latest used first, a session used in the last five minutes marked active, the accounts in
+one statement - and `END_USER_SESSION` ends one session, or all of a person's (their own others, when
+it is the person asking). **A session is named by its handle, never its id** - the id is the cookie
+that signs its holder in; the handle is the first 20 hex of its SHA-256 (`ActiveUserSessions.handleOf`).
+Nobody ends the session they are using from here; an administrator's sessions are ended only by an
+administrator (`requireAdministratorFor`, issue 91); each end is in `action_history` (`END SESSION` /
+`END SESSIONS`) and the log. Only the browser's sessions are there - an API key or v1's password keeps
+none - and a browser closed without signing out stays until the session times out. An ended session's
+next request is sent to `/login?expired`, which says why (a script's gets a 401) - the expired-session
+strategy in `SecurityConfig`, which a disabled account's sessions take too; Spring's own answer was a
+line of English text. Ending a session leaves the account as it was: disabling it is what keeps someone out.
 
 ### Run-time settings
 
@@ -1450,6 +1495,9 @@ generates the unique ones, so a test overrides only what it is actually about.
 | `EndpointGuardTest`, `ForeignKeyIndexTest`, `PageQueryCountTest`, `identity/security/LoginLockoutTest`, `SecurityHeadersTest` | every handler guarded but the seven open on purpose; every foreign key indexed; the busy pages a fixed number of statements; wrong passwords locking a name on the form and HTTP Basic alike; the protective headers (2.7.4, issues 105-108) |
 | `storage/CopyableStoreContractTest` (both stores), `storage/copy/StorageCopyTest`, `StorageCopyCommandTest` | a copy that leaves the verified object or nothing; every scenario of the cut-over and the way back on real rows and SeaweedFS - passes, damaged and missing sources, a wrong object, rows deleted meanwhile, the prune's guards, a stop and a resume; the command's refusals (2.8.0) |
 | `identity/security/LoginAttemptsTest`, `identity/web/SignInLockPageTest` | what the lock keeps per name - addresses, refusals, expiry - and the locked sign-ins page: its permissions, ADMIN unlocked by ADMIN only, each unlock recorded, one statement a page (2.7.5) |
+| `identity/web/OnlineUsersPageTest`, `identity/security/SignInOriginTest`, `TrackedSessionRegistryTest`, `identity/domain/BrowserNamesTest` | who is signed in (2.16.0): each session with its origin and browser and never its id; one ended, or all of a person's, the next request sent to `/login?expired` (a script a 401); the session asking kept; an administrator's ended by an administrator only; each end recorded; a real form sign-in on a real port registered with its address and browser |
+| `content/FolderContentReadingTest`, `FolderReadingConcurrencyTest`, `FolderReadingPageTest`, `FolderReadingScaleTest` (scale) | a folder's reading switched off and on (2.16.0): what was read stays found, what waits and what comes is held back, queued again when it reads - by a setting, a file's move, a folder's move; the nearest setting decides; the backfill and the worker ask the same; who may see and change it; an upload and a switch racing in two committed transactions, each way; 100,000 revisions settled |
+| `folder/domain/ExplorerFolderSearchTest`, `content/ReadingOnTheFilePageTest` | the explorer's folder hits with access in the statement among 20,000 folders (issue 123); each version's reading on the file page, for `CONTENT_EXTRACTION_PAGE` only, and a retry that answers with the page (2.16.0) |
 | `NavbarSectionTest` | a menu section is shown to whoever may open any link in it (2.7.5) |
 | `shared/web/ActuatorTest`, `ReadinessProbeTest` | the probes themselves: readiness `503 DOWN` with the storage root gone, the store hung, the database stopped - each within seconds - and liveness `UP` throughout (2.7.3, issue 104) |
 | `file/web/S3HungStoreTest`, `FilesystemUnavailableTest` | a store paused, not stopped: every call a 503 within its limit, readiness DOWN at once, pages untouched, recovery without a restart; a storage root that cannot be written is the same 503 (2.7.1) |

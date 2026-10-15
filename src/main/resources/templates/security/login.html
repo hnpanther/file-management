@@ -29,6 +29,9 @@
             <div th:if="${param.logout}" class="alert alert-success" role="status" th:text="#{login.loggedOut}">
                 با موفقیت از سامانه خارج شدید.
             </div>
+            <div th:if="${param.expired}" class="alert alert-warning" role="alert" id="session-ended" th:text="#{login.sessionEnded}">
+                نشست شما پایان یافته است؛ دوباره وارد شوید.
+            </div>
 
             <form id="login-form" class="auth-form" th:action="@{/login}" method="post">
                 <div class="form-group">

@@ -200,13 +200,14 @@ class SearchIndexTest extends DatabaseSupport {
                 .allSatisfy(plan -> assertThat(plan).contains("ix_file_history_occurred_at"));
         assertThat(planOfEach(() -> fileHistorySearch.find(none.byApiKey(7), page)))
                 .allSatisfy(plan -> assertThat(plan).contains("fk_file_history_api_key"));
+        // Bitmap scans only for one event and for a name, as for every other search here: with plain
+        // index scans allowed, the planner may walk ix_file_history_occurred_at in order and filter
+        // each row - on a table of a few dozen rows left by the other tests the cheaper plan,
+        // depending on its statistics, and a test that passed or failed with them (issue 124). What
+        // is asked is whether the event's index, and the trigram index, can serve the search.
         assertThat(planOfEach(() -> fileHistorySearch.find(new FileHistoryQuery(null,
-                com.hnp.filemanagement.file.domain.FileEvent.FILE_DELETED, null, null, null, null, null), page)))
+                com.hnp.filemanagement.file.domain.FileEvent.FILE_DELETED, null, null, null, null, null), page), true))
                 .allSatisfy(plan -> assertThat(plan).contains("ix_file_history_event"));
-        // Bitmap scans only, as for every other search here: with plain index scans allowed, the
-        // planner may walk ix_file_history_occurred_at in order and filter each row - on a table of
-        // a few rows the cheaper plan, depending on its statistics, and a test that passed or
-        // failed with them. What is asked is whether the trigram index can serve the search.
         assertThat(planOfEach(() -> fileHistorySearch.find(new FileHistoryQuery(TERM, null, null, null, null, null, null), page), true))
                 .allSatisfy(plan -> assertThat(plan).contains("ix_file_history_search_name_trgm"));
     }
