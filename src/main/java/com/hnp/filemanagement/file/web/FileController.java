@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.web;
 
+import com.hnp.filemanagement.content.ContentExtractionService;
 import com.hnp.filemanagement.file.domain.FileDownloadService;
 import com.hnp.filemanagement.file.domain.DownloadChannel;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
@@ -64,13 +65,15 @@ public class FileController {
     private final UploadPolicyService uploadPolicyService;
     private final UiMessages messages;
     private final FileHistoryService fileHistoryService;
+    private final ContentExtractionService contentExtractionService;
 
     private final int defaultPageSize;
 
     public FileController(GlobalGeneralLogging globalGeneralLogging, FileService fileService,
                           UploadPolicyService uploadPolicyService, FileManagementProperties properties,
                           UiMessages messages, FileHistoryService fileHistoryService,
-                          FileDownloadService fileDownloadService, DownloadAudit downloadAudit) {
+                          FileDownloadService fileDownloadService, DownloadAudit downloadAudit,
+                          ContentExtractionService contentExtractionService) {
         this.globalGeneralLogging = globalGeneralLogging;
         this.fileService = fileService;
         this.uploadPolicyService = uploadPolicyService;
@@ -79,6 +82,7 @@ public class FileController {
         this.fileHistoryService = fileHistoryService;
         this.fileDownloadService = fileDownloadService;
         this.downloadAudit = downloadAudit;
+        this.contentExtractionService = contentExtractionService;
     }
 
     /** Whether this person holds the permission, ADMIN counting as every permission. */
@@ -329,6 +333,13 @@ public class FileController {
         // And who downloaded it (2.7.0), likewise only for whoever may read the downloads.
         if (holds(userDetails, "FILE_DOWNLOADS_PAGE")) {
             model.addAttribute("downloads", fileDownloadService.ofFile(fileInfoId, principalId));
+        }
+        // How each revision's contents were read (2.16.0) - for whoever looks after the reading, as the
+        // status page is; one statement for every revision, asked only then.
+        if (holds(userDetails, "CONTENT_EXTRACTION_PAGE")) {
+            model.addAttribute("readings", contentExtractionService.readingsOf(
+                    fileInfoDTO.getFileDetailsDTOS().stream().map(FileDetailsDTO::getId).toList()));
+            model.addAttribute("contentSearchEnabled", contentExtractionService.searchEnabled());
         }
         return "file-management/files/file-info-page.html";
     }

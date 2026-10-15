@@ -34,6 +34,9 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.web.session.SessionInformationExpiredEvent;
+import java.io.IOException;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
@@ -158,8 +161,10 @@ public class SecurityConfig {
                                 .permitAll()
                 )
                 // Registered, not limited: -1 is "as many as you like", and registering is what
-                // lets a disabled account's sessions be expired (ActiveUserSessions).
-                .sessionManagement(session -> session.maximumSessions(-1).sessionRegistry(sessionRegistry))
+                // lets a disabled account's sessions be expired, and one ended from the page of who is
+                // signed in (ActiveUserSessions). Its next request is sent to sign in again, saying why.
+                .sessionManagement(session -> session.maximumSessions(-1).sessionRegistry(sessionRegistry)
+                        .expiredSessionStrategy(SecurityConfig::sessionEnded))
                 .requestCache(cache -> cache.requestCache(pageOnlyRequestCache()))
                 // No full URL in the Referer of a request that leaves the site (2.7.4): a share
                 // link's token is in its path. Spring Security sends the other protective headers
@@ -196,6 +201,21 @@ public class SecurityConfig {
         handler.setExceptionMappings(Map.of(LockedException.class.getName(), "/login?locked"));
         handler.setDefaultFailureUrl("/login?error");
         return handler;
+    }
+
+    /**
+     * What the next request of an ended session gets - the session itself already signed out by then
+     * ({@code ConcurrentSessionFilter}): a page, the login page with a word on why; a script, a 401 it
+     * can read, as when a session times out. Spring's own answer was a line of English text.
+     */
+    private static void sessionEnded(SessionInformationExpiredEvent event) throws IOException {
+        HttpServletRequest request = event.getRequest();
+        HttpServletResponse response = event.getResponse();
+        if (isScriptCall(request)) {
+            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+        } else {
+            response.sendRedirect(request.getContextPath() + "/login?expired");
+        }
     }
 
     private static boolean isScriptCall(HttpServletRequest request) {

@@ -572,6 +572,11 @@ public class FileService {
         fileInfo.setFolder(target);
         fileInfo.setUpdatedBy(userRepository.getReferenceById(principalId));
         tagMirrorService.retag(fileInfo);
+        // Whether its revisions are read for the search follows its new folder (2.16.0): one held back in
+        // a folder switched off is queued here if this one reads, and one waiting is held back if it does
+        // not. Written first, so the queue sees the file where it now is.
+        fileInfoRepository.flush();
+        contentQueue.settle(target.getPath(), fileInfoId);
 
         actionHistoryService.saveActionHistory(EntityEnum.FileInfo, fileInfoId, ActionEnum.UPDATE_VALUES, principalId,
                 "MOVE FILE_INFO", "MOVE file id=" + fileInfoId + " from folder id=" + from + " to folder id=" + targetFolderId);

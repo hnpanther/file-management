@@ -2,6 +2,9 @@ package com.hnp.filemanagement;
 
 import com.hnp.filemanagement.folder.domain.TagGroupService;
 import com.hnp.filemanagement.identity.domain.ApiKeyService;
+import com.hnp.filemanagement.identity.domain.OnlineUserService;
+import com.hnp.filemanagement.identity.security.UserDetailsImpl;
+import org.springframework.security.core.session.SessionRegistry;
 import com.hnp.filemanagement.identity.domain.UserService;
 import com.hnp.filemanagement.identity.bootstrap.DataInitializer;
 import com.hnp.filemanagement.identity.domain.ApiKeyDTO;
@@ -64,6 +67,10 @@ class ListQueryCountTest extends DatabaseSupport {
     private FolderRepository folderRepository;
     @Autowired
     private EntityManager entityManager;
+    @Autowired
+    private OnlineUserService onlineUserService;
+    @Autowired
+    private SessionRegistry sessionRegistry;
 
     private Statistics statistics;
 
@@ -137,6 +144,31 @@ class ListQueryCountTest extends DatabaseSupport {
         List<ApiKeyDTO> keys = statements(2, () -> apiKeyService.getAll());
 
         assertThat(keys).hasSizeGreaterThanOrEqualTo(ROWS).allMatch(key -> key.getCreatedBy() != null);
+    }
+
+    @Test
+    @DisplayName("the online users page is one query for every person signed in, whatever the sessions")
+    void theOnlineUsers() {
+        List<String> sessions = new java.util.ArrayList<>();
+        for (int i = 0; i < ROWS; i++) {
+            User account = userRepository.save(TestData.user());
+            for (int s = 0; s < 2; s++) {
+                String id = "count-" + account.getId() + "-" + s;
+                UserDetailsImpl principal = new UserDetailsImpl();
+                principal.setId(account.getId());
+                principal.setUsername(account.getUsername());
+                principal.setPermissions(List.of());
+                sessionRegistry.registerNewSession(id, principal);
+                sessions.add(id);
+            }
+        }
+        try {
+            OnlineUserService.OnlinePage page = statements(1, () -> onlineUserService.page(null));
+            assertThat(page.sessions()).isGreaterThanOrEqualTo(ROWS * 2);
+            assertThat(page.users()).filteredOn(OnlineUserService.OnlineUser::known).hasSizeGreaterThanOrEqualTo(ROWS);
+        } finally {
+            sessions.forEach(sessionRegistry::removeSessionInformation);
+        }
     }
 
     /** Runs {@code call} on an empty persistence context and asserts how many statements it prepared. */

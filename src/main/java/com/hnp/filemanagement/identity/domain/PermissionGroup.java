@@ -62,6 +62,9 @@ public enum PermissionGroup {
     /** The status of reading contents, and queuing a failed reading again. */
     CONTENT_EXTRACTION(CONTENT_EXTRACTION_PAGE, RETRY_CONTENT_EXTRACTION),
 
+    /** Whether the files of a folder and of those below it are read for the search in contents (2.16.0). */
+    FOLDER_CONTENT_READING(SET_FOLDER_CONTENT_READING),
+
     /** The reports on the files - counted over the folders the person may read (roadmap 12.9). */
     REPORTS(REPORTS_PAGE),
 
@@ -88,6 +91,9 @@ public enum PermissionGroup {
 
     /** The sign-ins locked by wrong passwords: seeing them, with where the attempts came from, and unlocking one. */
     SIGN_IN_LOCKS(LOCKED_SIGN_INS_PAGE, UNLOCK_SIGN_IN),
+
+    /** Who is signed in, with their sessions - and ending one, or all of a person's (2.16.0). */
+    ONLINE_USERS(ONLINE_USERS_PAGE, END_USER_SESSION),
 
     /** The role pages: list, create, copy, edit. */
     ROLES_ADMIN(GET_ALL_ROLE_PAGE, CREATE_ROLE_PAGE, SAVE_NEW_ROLE, COPY_ROLE, UPDATE_ROLE_PAGE, SAVE_UPDATED_ROLE,

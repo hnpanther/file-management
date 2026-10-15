@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- The folders with a setting of their own: this page's, and the status page's. -->
+<th:block th:fragment="own-choices(choices)">
+    <div th:unless="${#lists.isEmpty(choices)}" class="table-responsive">
+        <table class="table history-table" id="own-choices">
+            <thead>
+            <tr>
+                <th scope="col" th:text="#{folderReading.column.folder}">پوشه</th>
+                <th scope="col" th:text="#{folderReading.column.state}">خواندن متن</th>
+                <th scope="col" th:text="#{folderReading.column.setBy}">تنظیم‌کننده</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="c : ${choices}" th:attr="data-folder-id=${c.folderId()}">
+                <td>
+                    <a th:href="@{/files/folders/{id}/content-reading(id=${c.folderId()})}"
+                       th:text="${#lists.isEmpty(c.trail()) ? #messages.msg('explorer.root') : #strings.listJoin(c.trail(), ' ◂ ')}">پوشه</a>
+                </td>
+                <td>
+                    <span class="badge" th:classappend="${c.reads()} ? 'badge-success' : 'history-gone'"
+                          th:text="${c.reads()} ? #{folderReading.reads} : #{folderReading.notRead}">خاموش</span>
+                </td>
+                <td class="text-xs">
+                    <span th:text="${c.setBy() == null ? '—' : c.setBy()}">Admin</span>
+                    <span class="technical" dir="ltr" th:if="${c.setAt() != null}" th:text="${@jalali.format(c.setAt())}"></span>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</th:block>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{onlineUsers.pageTitle}">کاربران آنلاین | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  Who is signed in (2.16.0): OnlineUserController, over OnlineUserService. What this instance's session
+  registry holds - each person signed in with their sessions, the latest used first - and a button to
+  end one session or all of a person's. A session is named by its handle, a digest of its id; the id,
+  the cookie that signs its holder in, is never on the page.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{uploadPolicy.kicker}">تنظیمات</div>
+        <h1 th:text="#{onlineUsers.heading}">کاربران آنلاین</h1>
+        <p class="page-description"
+           th:text="#{onlineUsers.description(${online.users().size()}, ${online.sessions()}, ${online.activeUsers()}, ${online.activeMinutes()})}">
+            ۳ نفر با ۴ نشست وارد سامانه‌اند.
+        </p>
+    </header>
+
+    <div th:if="${showMessage && valid}" class="alert alert-success mb-5" role="status"
+         id="success_message" th:text="${message}"></div>
+    <div th:if="${showMessage && !valid}" class="alert alert-warning mb-5" role="alert"
+         id="warning_message" th:text="${message}"></div>
+
+    <section class="card" aria-labelledby="online-title">
+        <div class="card-body">
+            <h2 id="online-title" class="sr-only" th:text="#{onlineUsers.heading}">کاربران آنلاین</h2>
+            <p class="field-hint mb-4">
+                <i class="bi bi-info-circle" aria-hidden="true"></i>
+                <span th:text="#{onlineUsers.memoryHint}">این فهرست از حافظهٔ همین سرور خوانده می‌شود.</span>
+            </p>
+
+            <div th:if="${#lists.isEmpty(online.users())}" class="empty-state empty-state-panel" role="status">
+                <strong th:text="#{onlineUsers.empty}">کسی وارد سامانه نیست.</strong>
+            </div>
+
+            <div th:unless="${#lists.isEmpty(online.users())}" class="table-responsive">
+                <table class="table history-table" id="online-users">
+                    <thead>
+                    <tr>
+                        <th scope="col" th:text="#{onlineUsers.column.user}">کاربر</th>
+                        <th scope="col" th:text="#{onlineUsers.column.signedInAt}">ورود</th>
+                        <th scope="col" th:text="#{onlineUsers.column.lastRequest}">آخرین فعالیت</th>
+                        <th scope="col" th:text="#{onlineUsers.column.address}">نشانی IP</th>
+                        <th scope="col" th:text="#{onlineUsers.column.browser}">مرورگر</th>
+                        <th scope="col" sec:authorize="hasAuthority('END_USER_SESSION') || hasAuthority('ADMIN')"
+                            th:text="#{apiKey.column.actions}">عملیات</th>
+                    </tr>
+                    </thead>
+                    <tbody th:each="u : ${online.users()}" th:attr="data-user-id=${u.userId()}">
+                    <tr th:each="s, it : ${u.sessions()}" th:attr="data-session=${s.handle()}">
+                        <td th:if="${it.first}" th:rowspan="${u.sessions().size()}" class="align-top">
+                            <div class="flex flex-wrap items-center gap-1">
+                                <span class="online-dot" th:classappend="${u.active()} ? 'is-active'" aria-hidden="true"></span>
+                                <span class="technical font-semibold" dir="ltr" th:text="${u.username()}">user</span>
+                                <span th:if="${u.administrator()}" class="badge">
+                                    <i class="bi bi-shield-lock" aria-hidden="true"></i>
+                                    <span th:text="#{lockedSignIns.administrator}">مدیر</span>
+                                </span>
+                                <span th:if="${u.known() and !u.enabled()}" class="badge history-gone"
+                                      th:text="#{lockedSignIns.disabled}">غیرفعال</span>
+                                <span th:unless="${u.known()}" class="badge history-gone"
+                                      th:text="#{onlineUsers.deleted}">حساب حذف شده</span>
+                            </div>
+                            <div th:if="${u.fullName() != null}" class="text-xs text-ink-500" th:text="${u.fullName()}">نام</div>
+                            <div class="text-xs text-ink-500" th:if="${u.sessions().size() > 1}"
+                                 th:text="#{onlineUsers.sessionCount(${u.sessions().size()})}">۲ نشست</div>
+                            <form sec:authorize="hasAuthority('END_USER_SESSION') || hasAuthority('ADMIN')"
+                                  th:if="${u.sessions().size() > 1 or !u.holdsCurrent()}"
+                                  th:action="@{/settings/online-users/end-all}" method="post" class="mt-2">
+                                <input type="hidden" name="userId" th:value="${u.userId()}">
+                                <button type="submit" class="btn btn-sm btn-danger-outline"
+                                        th:attr="onclick=|return confirm('${#messages.msg('onlineUsers.confirmAll')}')|">
+                                    <i class="bi bi-box-arrow-left" aria-hidden="true"></i>
+                                    <span th:text="${u.holdsCurrent()} ? #{onlineUsers.endOthers} : #{onlineUsers.endAll}">خروج از همهٔ نشست‌ها</span>
+                                </button>
+                            </form>
+                        </td>
+                        <td class="history-when technical" dir="ltr"
+                            th:text="${s.signedInAt() == null} ? '—' : ${@jalali.format(s.signedInAt())}">۱۴۰۵/۰۷/۲۳ ۰۸:۱۰</td>
+                        <td>
+                            <span class="history-when technical" dir="ltr" th:text="${@jalali.format(s.lastRequest())}">۱۴۰۵/۰۷/۲۳ ۰۹:۴۰</span>
+                            <span th:if="${s.active()}" class="badge badge-success" th:text="#{onlineUsers.activeNow}">فعال</span>
+                            <span th:if="${s.current()}" class="badge" th:text="#{onlineUsers.thisSession}">همین نشست</span>
+                        </td>
+                        <td class="technical" dir="ltr" th:text="${s.address() == null} ? '—' : ${s.address()}">10.0.0.5</td>
+                        <td>
+                            <span th:if="${s.browser() != null}" th:text="${s.browser()}" th:title="${s.userAgent()}">Chrome 141 · Windows</span>
+                            <span th:if="${s.browser() == null}">—</span>
+                        </td>
+                        <td sec:authorize="hasAuthority('END_USER_SESSION') || hasAuthority('ADMIN')">
+                            <form th:unless="${s.current()}" th:action="@{/settings/online-users/end}" method="post" class="inline">
+                                <input type="hidden" name="session" th:value="${s.handle()}">
+                                <button type="submit" class="btn btn-sm btn-danger-outline"
+                                        th:attr="onclick=|return confirm('${#messages.msg('onlineUsers.confirm')}')|">
+                                    <i class="bi bi-box-arrow-left" aria-hidden="true"></i>
+                                    <span th:text="#{onlineUsers.end}">پایان نشست</span>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

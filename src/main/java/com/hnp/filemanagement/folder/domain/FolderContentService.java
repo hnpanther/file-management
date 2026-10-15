@@ -10,7 +10,9 @@ import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.folder.persistence.ChildCount;
 import com.hnp.filemanagement.file.persistence.FileDetailsRepository;
 import com.hnp.filemanagement.file.persistence.FileInfoRepository;
+import com.hnp.filemanagement.folder.persistence.FolderContentReadingRepository;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
+import com.hnp.filemanagement.folder.persistence.FolderSearchRepository;
 import com.hnp.filemanagement.shared.web.PageRequests;
 import com.hnp.filemanagement.shared.util.SearchKey;
 import com.hnp.filemanagement.shared.util.SearchTerms;
@@ -73,6 +75,8 @@ public class FolderContentService {
     private final FolderService folderService;
     private final FolderQuotaService folderQuotaService;
     private final FolderLevelService folderLevelService;
+    private final FolderSearchRepository folderSearchRepository;
+    private final FolderContentReadingRepository contentReadingRepository;
 
     public FolderContentService(FolderRepository folderRepository,
                                 FileInfoRepository fileInfoRepository,
@@ -80,7 +84,9 @@ public class FolderContentService {
                                 FolderAccessService folderAccessService,
                                 FolderService folderService,
                                 FolderQuotaService folderQuotaService,
-                                FolderLevelService folderLevelService) {
+                                FolderLevelService folderLevelService,
+                                FolderSearchRepository folderSearchRepository,
+                                FolderContentReadingRepository contentReadingRepository) {
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
@@ -88,6 +94,8 @@ public class FolderContentService {
         this.folderService = folderService;
         this.folderQuotaService = folderQuotaService;
         this.folderLevelService = folderLevelService;
+        this.folderSearchRepository = folderSearchRepository;
+        this.contentReadingRepository = contentReadingRepository;
     }
 
     /**
@@ -233,32 +241,36 @@ public class FolderContentService {
                     pageInfoOf(null, pageRequest));
         }
 
-        Page<FileInfo> found = matches(id, key, (scope == null ? rootFolder() : scope).getPath(),
-                folderAccessService.readScope(access, principalId), pageRequest);
+        String prefix = (scope == null ? rootFolder() : scope).getPath();
+        FolderReadScope readScope = folderAccessService.readScope(access, principalId);
+        Page<FileInfo> found = matches(id, key, prefix, readScope, pageRequest);
 
         return new FolderSearchDTO(term, scope == null ? null : refOf(scope),
-                folderHitsOf(id, key, scope, access), hitsOf(found.getContent()),
+                folderHitsOf(id, term, prefix, readScope), hitsOf(found.getContent()),
                 pageInfoOf(found, pageRequest));
     }
 
     /**
      * The folders a term names - by id, or by a fragment of the name or the label - inside the
-     * scope, that this person may at least walk into. A short list, never paged: the query reads
-     * a little more than it shows so that a folder hidden by access does not leave a gap.
+     * scope, that this person may at least walk into: the one typed by number first, then one named
+     * exactly, then the shallowest. A short list, never paged, with access <em>in</em> the statement
+     * ({@link FolderSearchRepository#visibleMatches}, the content search's chooser's): it read five
+     * times what it showed and dropped in Java what the reader may not walk into, so a reader's folder
+     * among a hundred of the same word, all someone else's, went unfound (issue 123).
      */
-    private List<FolderSearchDTO.FolderHit> folderHitsOf(Integer id, String key, Folder scope, FolderAccess access) {
-        String prefix = (scope == null ? rootFolder() : scope).getPath();
-        List<Folder> visible = folderRepository
-                .searchFolders(id, nothingIfEmpty(key), prefix,
-                        PageRequest.of(0, FolderSearchDTO.MAX_FOLDER_HITS * 5))
+    private List<FolderSearchDTO.FolderHit> folderHitsOf(Integer id, String term, String prefix, FolderReadScope readScope) {
+        List<Integer> ids = folderSearchRepository
+                .visibleMatches(readScope, id, term, prefix, FolderSearchDTO.MAX_FOLDER_HITS)
                 .stream()
-                .filter(folder -> access.visible(folder.getPath()))
-                .limit(FolderSearchDTO.MAX_FOLDER_HITS)
+                .map(FolderSearchRepository.Match::id)
                 .toList();
-        if (visible.isEmpty()) {
+        if (ids.isEmpty()) {
             return List.of();
         }
-        List<Integer> ids = visible.stream().map(Folder::getId).toList();
+        Map<Integer, Folder> byId = folderRepository.findAllWithTagGroupByIdIn(ids).stream()
+                .collect(Collectors.toMap(Folder::getId, Function.identity()));
+        // The statement's order, which a fetch by ids does not keep; a folder deleted in between is gone.
+        List<Folder> visible = ids.stream().map(byId::get).filter(Objects::nonNull).toList();
         Map<Integer, Long> folderCounts = countsOf(folderRepository.countChildFoldersByParent(ids));
         Map<Integer, Long> fileCounts = countsOf(fileInfoRepository.countFilesByFolder(ids));
         Map<Integer, List<FolderRef>> breadcrumbs = breadcrumbsFor(visible);
@@ -303,7 +315,8 @@ public class FolderContentService {
                 folder.getCreatedAt(),
                 folder.getCreatedBy() == null ? null : folder.getCreatedBy().getUsername(),
                 folder.getUpdatedAt(),
-                folder.getUpdatedBy() == null ? null : folder.getUpdatedBy().getUsername());
+                folder.getUpdatedBy() == null ? null : folder.getUpdatedBy().getUsername(),
+                contentReadingRepository.of(folderId).map(FolderContentReadingRepository.Setting::reads).orElse(true));
     }
 
     /**

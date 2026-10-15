@@ -11,7 +11,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -66,6 +69,24 @@ public class ContentExtractionService {
                 FAILURES_PAGE_SIZE);
         boolean hasNext = rows.size() > FAILURES_PAGE_SIZE;
         return new Failures(hasNext ? rows.subList(0, FAILURES_PAGE_SIZE) : rows, number, hasNext);
+    }
+
+    /**
+     * How each of one file's revisions stands, by revision id, for the file's page (2.16.0) - which has
+     * already refused a reader who may not open the file. One statement, whatever the revisions.
+     */
+    @Transactional(readOnly = true)
+    public Map<Integer, FileContentRepository.Reading> readingsOf(Collection<Integer> fileDetailsIds) {
+        Map<Integer, FileContentRepository.Reading> readings = new HashMap<>();
+        for (FileContentRepository.Reading reading : repository.readingsOf(fileDetailsIds)) {
+            readings.put(reading.fileDetailsId(), reading);
+        }
+        return readings;
+    }
+
+    /** Whether the content search is switched on - a revision with no reading says why it has none. */
+    public boolean searchEnabled() {
+        return properties.enabled();
     }
 
     /** A failed reading queued again, its attempts forgotten - only of a file the person may open. */

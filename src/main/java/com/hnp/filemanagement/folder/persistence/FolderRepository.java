@@ -69,8 +69,9 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     /**
      * Folders found by id, or by a fragment of the name or the label - their folded keys, against
      * a term folded by {@code SearchKey.forSearch} (issue 86) - inside one subtree (the
-     * root's own path covers everything). The root itself is never a hit. Folder access is applied
-     * by the caller on the rows' paths, so the page is a little wider than what is shown.
+     * root's own path covers everything). The root itself is never a hit. No folder access: for
+     * the access tree of the role and key pages, which an administrator edits. A reader's search
+     * is {@code FolderSearchRepository.visibleMatches}, access in the statement (issue 123).
      */
     @Query("""
             SELECT f FROM Folder f
@@ -84,6 +85,10 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
             """)
     List<Folder> searchFolders(@Param("id") Integer id, @Param("term") String term,
                                @Param("pathPrefix") String pathPrefix, Pageable pageable);
+
+    /** These folders, each with its tag group - the rows a search found, in one statement. */
+    @Query("SELECT f FROM Folder f LEFT JOIN FETCH f.tagGroup WHERE f.id IN :ids")
+    List<Folder> findAllWithTagGroupByIdIn(@Param("ids") Collection<Integer> ids);
 
     /** One folder with its parent, tag group and audit users loaded - the details pane. */
     @Query("""

@@ -70,6 +70,12 @@ public enum PermissionEnum {
     //@PostMapping("{fileDetailsId}/retry"), @PostMapping("retry-failed") - a failed reading queued again
     RETRY_CONTENT_EXTRACTION,
 
+    // FolderReadingController @RequestMapping("/files/folders/{folderId}/content-reading") (2.16.0) ==========
+    //@PostMapping - whether the files of a folder, and of the folders below it, are read for the search in
+    //contents: follow the folder above, on, or off (and in the folder, write access); the page itself is
+    //shown with CONTENT_EXTRACTION_PAGE as well
+    SET_FOLDER_CONTENT_READING,
+
     // ReportController @RequestMapping("/reports") (roadmap 12.9 - 2.16.0) =================================
     //@GetMapping, @GetMapping("{slug}"), @GetMapping("{slug}/csv") - the reports on the files: totals, folders,
     //growth, kinds, the largest, versions, uploaders, downloads, cold and duplicate files, quotas, coverage,
@@ -140,6 +146,15 @@ public enum PermissionEnum {
     LOCKED_SIGN_INS_PAGE,
     //@PostMapping("/unlock") - lift one name's lock early; an account holding ADMIN asks ADMIN
     UNLOCK_SIGN_IN,
+
+    // ------------------------------------------------------------------ OnlineUserController - /settings/online-users
+
+    //@GetMapping - who is signed in: each person's sessions, when and where each signed in, the browser,
+    //the last request (2.16.0)
+    ONLINE_USERS_PAGE,
+    //@PostMapping("/end"), @PostMapping("/end-all") - end one session, or all of a person's; an account
+    //holding ADMIN asks ADMIN
+    END_USER_SESSION,
 
     // ===================================================================================================
 

@@ -44,7 +44,7 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 files stored before it being read - a few days of OCR on the Tika host. (2.5.0 until then; MySQL
 decommissioned 2026-09-30.)
 
-**Next: deploy 2.16.0** (the advanced search, the reports, the content-reading fixes and a key's own upload policy, three migrations - deployment.md), and
+**Next: deploy 2.16.0** (the advanced search, the reports, the content-reading fixes, a key's own upload policy, who is signed in, each version's reading on its page and a folder's reading switched off, four migrations - deployment.md), and
 set `FILEMANAGEMENT_REPORTS_CAPACITY_GB` there. Alongside, while the backfill reads: watch `/settings/content-extraction` and the Tika host, and
 once it is done measure the tables and look at the failures - what decides whether 11.4 (the lexicon
 gate) is wanted.
@@ -60,7 +60,16 @@ again that cannot end (a 330-page report: 30 minutes and failed, now 10 seconds 
 Tesseract refuses is decoded here, and no reason keeps a document's text (`V3.14`). The search's
 folder chooser finds a reader's folder among thousands of the same word (access in the statement,
 issue 123), the folder named exactly first, two people of one name told apart. And **an upload policy of
-a key's own** (12.7, `V3.15`): a key may be kept to its own kinds and sizes; every other key, as before. And **the advanced search** (12.8) - the words inside the files, a folder and those
+a key's own** (12.7, `V3.15`): a key may be kept to its own kinds and sizes; every other key, as before. And **who is
+signed in** (`/settings/online-users`): each person's sessions - when, from where, which browser, the last
+request - one ended or all of a person's, the next request sent to sign in again; an administrator's by an
+administrator only. The explorer's folder search finds a reader's folder among thousands as the chooser does
+(issue 123), and **each version's reading** shows on the file's page beside its external id, for whoever looks
+after the reading. And **reading a folder's files switched off** (`V3.16`, `SET_FOLDER_CONTENT_READING`): for
+a folder and those below it, the nearest setting above deciding; what was read stays found, what comes after
+is held back (`EXCLUDED`), and queued as soon as the folder reads again - by a setting or a move; one advisory
+lock between the switch and the uploads, so none is left held back in a folder that reads. Measured at
+100,000 revisions: 2.5 s to switch off, 2.7 s on again, 7 ms an upload's decision. And **the advanced search** (12.8) - the words inside the files, a folder and those
 below it, a fragment of the name, the file's metadata and its folders' above it, kinds, days and the
 order, each optional and all together, on the search page (a folder chooser by name, two metadata
 forms, "search in this folder" in the explorer) and on API v1; the reader's grants in the query, a

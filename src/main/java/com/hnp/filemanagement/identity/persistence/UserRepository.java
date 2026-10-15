@@ -135,4 +135,16 @@ public interface UserRepository extends JpaRepository<User, Integer> {
             """)
     List<SignInAccount> findSignInAccounts(@Param("upperNames") Collection<String> upperNames,
                                            @Param("roleName") String roleName);
+
+    /**
+     * The accounts these ids belong to, each once, with whether it holds the named role - for the page of
+     * who is signed in (2.16.0): one statement for every session listed.
+     */
+    @Query("""
+            SELECT new com.hnp.filemanagement.identity.persistence.OnlineAccount(u.id, u.username, u.firstName, u.lastName,
+                   u.enabled, r.id)
+            FROM User u LEFT JOIN u.roles r ON UPPER(r.roleName) = UPPER(:roleName)
+            WHERE u.id IN :ids
+            """)
+    List<OnlineAccount> findOnlineAccounts(@Param("ids") Collection<Integer> ids, @Param("roleName") String roleName);
 }

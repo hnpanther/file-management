@@ -239,6 +239,13 @@ public class ContentWorker implements SmartLifecycle {
                 return;
             }
             FileContentRepository.Target target = found.get();
+            // Its folder switched off since it was queued (2.16.0): held back, not read - queued again
+            // when the folder reads again. Asked here, after the claim, so nothing waiting is read past it.
+            if (repository.excludeIfNotRead(fileDetailsId)) {
+                settled = true;
+                logger.info("content extraction: file details id={} not read - its folder is switched off", fileDetailsId);
+                return;
+            }
             ContentReader.Result result;
             try {
                 result = reader.read(target, bytesOf(target));

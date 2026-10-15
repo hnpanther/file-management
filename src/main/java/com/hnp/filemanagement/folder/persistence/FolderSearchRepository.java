@@ -11,11 +11,12 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 /**
- * Folders found by what a person types - for a chooser (the content search's, 2.16.0) - with the reader's
- * folder access <em>in</em> the statement: a folder the reader may at least walk into (readable, or on the
- * way to something readable), never a page of folders filtered afterwards in Java. That one read five
- * times what it showed and dropped the rest: for a reader of a few personal folders among thousands of
- * the same word, the first rows were all someone else's and the chooser said "no folder by that name".
+ * Folders found by what a person types - for the content search's chooser and the explorer's search
+ * (2.16.0) - with the reader's folder access <em>in</em> the statement: a folder the reader may at least
+ * walk into (readable, or on the way to something readable), never a page of folders filtered afterwards
+ * in Java. That read five times what it showed and dropped the rest: for a reader of a few personal
+ * folders among thousands of the same word, the first rows were all someone else's and the search said
+ * "no folder by that name" (issue 123).
  *
  * <p>The best first: the folder whose id was typed, then one whose name or label is the term exactly,
  * then the shallowest, by name. The name and the label are matched through their folded keys and the

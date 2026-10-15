@@ -31,7 +31,8 @@ import java.util.List;
  * @param query   the term as it was searched, echoed back so a late response can be matched to the
  *                box that is now on screen
  * @param scope   the folder the search was confined to, or null when it covered everything reachable
- * @param folders the folders that match, outermost first - at most {@code MAX_FOLDER_HITS}
+ * @param folders the folders that match and the reader may walk into - the one typed by number, then
+ *                one named exactly, then the outermost - at most {@code MAX_FOLDER_HITS}
  * @param hits    one page of file matches
  * @param page    which page of {@link #hits} this is
  */

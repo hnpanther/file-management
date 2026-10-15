@@ -26,6 +26,8 @@ import java.util.List;
  * @param createdBy    who created it, or null (a migration)
  * @param updatedAt    when it was last renamed or moved, or null
  * @param updatedBy    who did that, or null
+ * @param contentRead  whether the files here are read for the search in contents (2.16.0) - the nearest
+ *                     setting above it, itself included, or yes
  */
 public record FolderDetailsDTO(
         FolderRef folder,
@@ -41,5 +43,6 @@ public record FolderDetailsDTO(
         Instant createdAt,
         String createdBy,
         Instant updatedAt,
-        String updatedBy) {
+        String updatedBy,
+        boolean contentRead) {
 }
