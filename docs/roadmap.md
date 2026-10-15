@@ -224,10 +224,14 @@ What the releases since the cut-over brought, newest first:
    scans (Persian and English) and of real drawings (DWG and DXF with Persian text), how many
    scanned pages there are, and a Linux host for Tika - separate from the object store's
    ([deployment.md](deployment.md#the-hosts-and-what-each-needs)).
-5. **Phase 8 - IMS** (controlled documents, forms on `jsonb`), when it is wanted.
-6. **Issues 18 and 19** - one REST surface and coarse permission verbs - one release of their own,
+5. **Phase 13 - what a store of documents is expected to have** ([the assessment](#phase-13--before-ims-what-a-store-of-documents-is-expected-to-have-assessed-2026-10-15),
+   2026-10-15): a recycle bin first, a backup proven by a restore, then notifications and check-out - which
+   Phase 8 stands on - Office documents seen in the browser, a virus scan, a report of access, monitoring.
+6. **Phase 8 - IMS** (controlled documents, forms on `jsonb`), when it is wanted - after 13.3 and 13.4, with
+   13.5 (retention) as part of its controlled documents.
+7. **Issues 18 and 19** - one REST surface and coarse permission verbs - one release of their own,
    whenever the permission model is taken up; both rename permissions and migrate their rows.
-7. **Deferred by decision**: CI (step 3 below). And the operational leftovers: the credentials
+8. **Deferred by decision**: CI (step 3 below). And the operational leftovers: the credentials
    still in the git history rotated ([issue 11](issues.md#11-credentials-and-infrastructure-details-are-committed--s1)),
    and the `Admin` password changed on every installation that still has the first one.
 
@@ -4434,6 +4438,103 @@ reverse) - written then, not now.
 **Tests, with the move**: every layout re-keyed through the copy and every object read back at its new
 key; the copy's rerun computes the same keys; a refused revision keeps its key; the switch and its
 reverse restore every key; downloads, the history and the S3 surface the same before and after.
+
+---
+
+## Phase 13 — Before IMS: what a store of documents is expected to have (assessed 2026-10-15)
+
+An assessment, asked before Phase 8 is begun, of what this application lacks that a document store in
+daily use is expected to have - from what is in the code today and from what systems of its kind are
+usually asked for once they hold an organisation's records. Nothing here is decided; each step is sized
+to ship on its own, and the order below is a proposal. Three of them (13.3, 13.4, 13.5) are what Phase 8
+needs underneath it, and are cheaper built first than inside it.
+
+| Step | What | Why now | Schema | Size |
+|---|---|---|---|---|
+| 13.1 | **A recycle bin**: a delete hides, a restore brings back, a purge after N days removes the bytes | today a delete removes the bytes at once; a wrong click is a restore from the backup | a deletion record (below) | 5-8 days |
+| 13.2 | **A backup proven by a restore**, and a periodic check of every revision against its SHA-256 | a backup never restored is a hope; a silent corruption is found only when the file is wanted | none | 2-3 days, with Phase 4 |
+| 13.3 | **Notifications**: an inbox in the application, e-mail optional | a workflow without "this waits for you" does not move (Phase 8) | `notification` | 4-6 days |
+| 13.4 | **Check-out**: a file taken for editing by one person, a new version refused to the others until it is returned | two people uploading the next version at once each overwrite the other's work; controlled documents require it | `file_info.checked_out_by/_at` | 2-3 days |
+| 13.5 | **Retention and legal hold**: a document type kept N years and not deletable before; a hold that stops any delete; a disposal list when the time is up | ISO 9001 §7.5 / ISO 27001 records; personal data not kept longer than needed | `retention_rule`, `legal_hold` | 5-7 days |
+| 13.6 | **A virus scan of every upload** (ClamAV), as the content reading runs: a queue, its own worker, nothing waiting on it; a file found infected quarantined and its download closed | files arrive from many people and from the ERP, and go out to everyone else | `file_scan` (one row a revision) | 4-5 days |
+| 13.7 | **A report of who may reach what**: per person, per role, per key - each folder and the verb, and where it comes from | every access review and audit asks it; today it is read off the role pages one by one | none | 2-3 days |
+| 13.8 | **Monitoring**: metrics out (Micrometer → Prometheus or what the operators use) and alerts - the disk, the reading queue and Tika, the error rate, a failed backup | today a problem is seen when somebody opens a page | none | 2-3 days |
+| 13.9 | **Word, Excel and PowerPoint seen in the browser**: converted to PDF by LibreOffice (Gotenberg) in the background, kept beside the revision, shown by the PDF viewer already there | asked for; the one common kind still downloaded to be read | a derived object per revision | 5-7 days |
+| 13.10 | **Two-factor sign-in** (TOTP) for the accounts signed in here rather than through Active Directory - `Admin` above all; and the rotation of the credentials still in the git history ([issue 11](issues.md#11-credentials-and-infrastructure-details-are-committed--s1)) | the accounts that can change everything have a password alone | `app_user.totp_secret` (encrypted) | 3-4 days |
+| 13.11 | **Day-to-day**: several files uploaded at once, several downloaded as one ZIP, a warning at upload when the same bytes are already stored (the SHA-256 is there), "my recent files" and favourites | small things a person meets every day | `favourite` | 1-2 days each |
+| 13.12 | **A watermark and "view only"** for confidential folders: the viewer's name and the time on a preview, the download closed | only when asked; most installations never need it | a folder setting | 3-4 days |
+| 13.13 | **A search that forgives OCR's errors** (a letter misread: «مزابای» for «مزایای») - 11.4 / 11.6 | decided on production's failures once the backfill has read everything | none | measured first |
+
+**The proposed order**: 13.1 (the most risk removed for the least work), 13.2 with the rest of Phase 4,
+then 13.3 and 13.4 (Phase 8 stands on them), 13.9 and 13.6 (both the queue-and-worker shape the
+content reading already has), 13.7 and 13.8; then Phase 8 - controlled documents first, with 13.5 as
+part of them. 13.10 - 13.13 as asked.
+
+### 13.1 A recycle bin
+
+**What happens now.** "Delete the file" and "delete the folder with everything in it" remove the rows and
+the bytes in one go (`FileService.deleteCompleteFileById`, `FolderTreeDeleteService.deleteTree`); the history keeps a record
+that it happened, nothing to bring back. The only way back is the backup, and with it the loss of
+everything since.
+
+**What it becomes.** A delete moves the file (or a folder with everything below it) to the bin: gone from
+every list, search, report, the S3 listing and every API, its share links dead, its bytes kept. A page
+lists what is in the bin - to whoever may write in the folder it came from; everything to ADMIN - with
+restore and, under a permission of its own, purge. A scheduled job purges what has been there longer than
+`filemanagement.trash.retention-days` (30), through the same path the delete takes today. A revision
+deleted alone (a version or a format) goes the same way.
+
+**The schema - a record of the deletion, not a flag on every row.** A `deleted_at` on `file_info` would have
+to be remembered in every one of the hundred queries that read files - the lists, the explorer, the search
+in contents, the reports, the S3 listing, the v1 and v2 APIs, the quotas - and one forgotten is a deleted
+file shown, or worse, downloaded. Instead:
+
+```sql
+file_deletion (id, file_info_id UNIQUE, folder_id /* where it was */, file_name /* as it was */,
+               deleted_at, deleted_by, deleted_by_api_key, purge_after)
+```
+
+and the file itself **moved into a hidden system folder** (`kind TRASH`, one, under the root, in no grant
+and never listed): every query that filters by folder access already leaves it out, the unique name per
+folder no longer holds a deleted file against a new one, and a restore is a move back. What every
+query must still say is the one thing folder access cannot - that an **administrator** (unrestricted) does
+not see the bin either: one condition, `folder.kind <> 'TRASH'`, in the queries an unrestricted reader runs,
+each with a case in a test that deletes a file and asks every surface for it.
+
+**The question asked with it (2026-10-15): a file deleted, then the same file uploaded again.**
+
+* **Under the same name, in the same folder.** The upload succeeds and is **a new file** - version 1, new
+  external ids - because the deleted one is no longer in that folder (it is in the bin), so the name is free.
+  The deleted file stays in the bin, untouched, with all its versions, until it is purged or restored.
+  This is what the S3 surface does too: a `PUT` to a key whose file was deleted makes a new object, as on
+  S3 a `PUT` after a delete marker does.
+* **The upload page says so.** Asked by name in the folder and by SHA-256, the form warns before sending:
+  "a file of this name (or these very bytes) was deleted from this folder on … - restore it instead?" -
+  restoring keeps its history, its versions and its external ids, which an ERP may still hold. Without an
+  answer the upload goes on as above; nothing is decided for the person.
+* **Restoring when the name is taken again.** The restore asks: restore under another name (proposed:
+  `name (restored)`), restore into another folder, or **make the deleted file's versions the earlier
+  versions of the new one** is *not* offered - two histories are not merged silently; the person can move
+  what they need by hand. Never an overwrite.
+* **External ids.** A deleted file's external id answers as not found (404) on v1 and v2 - the same as a file
+  the key may not read, so a deletion tells an integration nothing more than that - and answers again
+  after a restore. A new upload under the same name has new ids: an integration that stored the old id does
+  not silently get the new file.
+* **Quotas.** What is in the bin still occupies the disk: it counts against the quota of the folder it came
+  from until purged, and the quota page says how much of the usage is in the bin. Otherwise deleting would
+  be a way round a quota.
+* **The search in contents** keeps the deleted file's text until the purge (a restore needs no reading
+  again) but never returns it: the bin folder is in no grant, and an unrestricted reader's query leaves it
+  out.
+* **Records.** `file_history` gains `FILE_TRASHED`, `FILE_RESTORED` and `FILE_PURGED`; the purge is the
+  only event after which nothing can be brought back.
+
+**Tests**: a file deleted is found by no surface (lists, explorer, both searches, the reports, S3, v1, v2,
+a share link, a download by any id) for any reader, ADMIN included; restored, by all of them again, with
+its versions, metadata, history and ids; the same name uploaded after a delete is a new file and both
+coexist; a restore onto a taken name refused unless renamed; the purge removes the bytes through
+`StorageWriter`'s delete path and is resumable; quotas count the bin; a folder tree deleted and restored
+whole.
 
 ---
 
