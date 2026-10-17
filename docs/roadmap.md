@@ -206,6 +206,18 @@ What the releases since the cut-over brought, newest first:
   ([3.3](#33-release-a--what-to-neutralise-on-mysql-first--done-170)); 1.8.0 is steps 2 and 4 of
   the table below.
 
+**The order from here (decided 2026-10-17)** - one large change in production at a time, so that whatever goes
+wrong has one cause:
+
+1. **2.17.0 to production, and the classes set up** for the ERP's contracts (deployment.md) - the rules applied to
+   one company first, then to all of `PartyCompany`; class grants given to one test account first, then to the
+   real roles. Then **a week of use** before anything else large.
+2. **2.17.1, small** (a day or two): what that week shows, and the follow-ups of Phase 14 met while setting the
+   classes up ([below](#follow-ups-met-while-setting-the-classes-up-for-2171)) - rows added to a class's template
+   without saving between, a clearer refusal of a template cycle, a template folder without a class.
+3. **2.18.0 - the recycle bin** ([13.1](#131-a-recycle-bin)), with what folder classes add to its design. Until then
+   a delete removes the bytes at once, and a wrong click is a restore from the backup - the largest risk still open.
+
 **What comes next**, in the order proposed:
 
 1. **Deploy 2.5.1, 2.6.0 and 2.7.0**, on the filesystem backend as today: one migration (`V3.6`,
@@ -4544,8 +4556,17 @@ each with a case in a test that deletes a file and asks every surface for it.
 * **Records.** `file_history` gains `FILE_TRASHED`, `FILE_RESTORED` and `FILE_PURGED`; the purge is the
   only event after which nothing can be brought back.
 
+**What folder classes add (2.17.0, noted 2026-10-17).** A folder moved to the bin keeps its class, and a class
+grant reaches every folder of its class wherever it is - so the bin being "in no grant" is no longer enough: a class
+grant would find a classed folder, or a file below one, inside it. The bin's folder must be left out of what class
+grants cover - in `GrantedFolderPath`'s class row (its scope can never be the bin), in
+`FolderRepository.findGrantsThroughRoles` (no folder below the bin), and in the signposts
+(`ReadScopeSql.grantedWithSignposts`) - or the bin's subtree given a class path no grant matches. Its tests ask a
+class-granted reader too. A restore puts a folder back under its old parent: the class path is rewritten by SQL as a
+move's is, and the class rules of the parent it returns to are asked (a refused name refuses the restore, as a move).
+
 **Tests**: a file deleted is found by no surface (lists, explorer, both searches, the reports, S3, v1, v2,
-a share link, a download by any id) for any reader, ADMIN included; restored, by all of them again, with
+a share link, a download by any id) for any reader, ADMIN and a reader with a class grant included; restored, by all of them again, with
 its versions, metadata, history and ids; the same name uploaded after a delete is a new file and both
 coexist; a restore onto a taken name refused unless renamed; the purge removes the bytes through
 `StorageWriter`'s delete path and is resumable; quotas count the bin; a folder tree deleted and restored
@@ -4629,6 +4650,21 @@ time, re-runnable. A folder that has a class keeps it.
 * **The role grants and the class grants are one statement** (`FolderRepository.findGrantsThroughRoles`), so a
   request still resolves its access in two, as `LargeTreeTest` pins - the class grants as the paths they cover,
   kept sorted in `FolderAccess` (each check a lookup among five thousand).
+
+### Follow-ups met while setting the classes up (for 2.17.1)
+
+Found by the owner on the first use of the classes page (2026-10-17); none changes what a class does:
+
+* **Rows added to a template without saving between.** The form offers a class's own template folders and three
+  empty rows; a fourth means saving and editing again. An "add a row" button, unbounded (the server's cap stays 50).
+* **A clearer refusal of a template cycle.** The message names the class; it should name the template folder that
+  closes the cycle, and say what to do - make that folder's class first, lower down. The usual cause: a class made
+  before the classes of its template, its own name the only one in the list, and chosen.
+* **A hint above the form**: classes are made from the bottom up - a template names classes that already exist.
+* **A template folder without a class** (decide when doing it - it is a convenience, not a need): today each template
+  folder must name a class, so a folder made only for order (a contract's `Misc`) needs an empty class of its own.
+  Allowing none makes the folder unclassified - reached only through grants above it; `FolderClassRules`,
+  `makeTemplate`, `FolderClassAssignment.compute` and the cycle check each learn a template folder of no class.
 
 **Not in 2.17.0**, each a step of its own when asked: a page of everything of one class ("all contracts"),
 the class as a condition of the advanced search, a queue of folders left without a class, class grants for
