@@ -159,7 +159,7 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
             WHERE EXISTS (SELECT 1 FROM GrantedFolderPath gr
-                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%'))
+                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%') AND LOCATE(gr.classKey, t.classPath) > 0)
               AND f.id IN (SELECT g.id FROM FileInfo g
                            WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
@@ -176,7 +176,7 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT COUNT(f) FROM FileInfo f
             JOIN f.folder t
             WHERE EXISTS (SELECT 1 FROM GrantedFolderPath gr
-                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%'))
+                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%') AND LOCATE(gr.classKey, t.classPath) > 0)
               AND f.id IN (SELECT g.id FROM FileInfo g
                            WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
@@ -197,13 +197,13 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
             WHERE EXISTS (SELECT 1 FROM GrantedFolderPath gr
-                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%'))
+                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%') AND LOCATE(gr.classKey, t.classPath) > 0)
             """,
             countQuery = """
             SELECT COUNT(f) FROM FileInfo f
             JOIN f.folder t
             WHERE EXISTS (SELECT 1 FROM GrantedFolderPath gr
-                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%'))
+                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%') AND LOCATE(gr.classKey, t.classPath) > 0)
             """)
     Page<FileInfo> findPageReadable(@Param("userId") int userId, @Param("apiKeyId") int apiKeyId, Pageable pageable);
 
@@ -360,7 +360,7 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             JOIN FETCH f.folder d
             WHERE d.path LIKE CONCAT(:pathPrefix, '%')
               AND EXISTS (SELECT 1 FROM GrantedFolderPath gr
-                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND d.path LIKE CONCAT(gr.path, '%'))
+                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND d.path LIKE CONCAT(gr.path, '%') AND LOCATE(gr.classKey, d.classPath) > 0)
               AND ((:id IS NOT NULL AND f.id = :id)
                OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
                OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\')

@@ -23,7 +23,7 @@ final class ReadableFolders {
 
     /**
      * {@code EXISTS (SELECT 1 FROM Folder d, GrantedFolderPath g WHERE d.id = :folderId AND g.userId = ...
-     * AND g.apiKeyId = ... AND d.path LIKE g.path || '%')}. A row whose folder no longer exists is
+     * AND g.apiKeyId = ... AND d.path LIKE g.path || '%' AND strpos(d.class_path, g.class_key) > 0)}. A row whose folder no longer exists is
      * outside every grant, as it was outside every set of readable ids.
      */
     static Predicate contains(CriteriaBuilder cb, CommonAbstractCriteria query, Expression<Integer> folderId,
@@ -35,7 +35,9 @@ final class ReadableFolders {
                 cb.equal(folder.get("id"), folderId),
                 cb.equal(grant.get("userId"), scope.userId()),
                 cb.equal(grant.get("apiKeyId"), scope.apiKeyId()),
-                cb.like(folder.get("path"), cb.concat(grant.<String>get("path"), "%")));
+                cb.like(folder.get("path"), cb.concat(grant.<String>get("path"), "%")),
+                // A class grant's class (roadmap Phase 14); a folder grant's key is empty, and matches every folder.
+                cb.greaterThan(cb.locate(folder.get("classPath"), grant.<String>get("classKey")), 0));
         return cb.exists(granted);
     }
 }

@@ -8,6 +8,7 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 | Question | Read |
 |---|---|
 | How does this application work? | [docs/arch.md](docs/arch.md) |
+| Who may do what - permissions, folder grants, class grants, keys? | [docs/access.md](docs/access.md) |
 | What does the database look like right now? | [docs/schema.md](docs/schema.md) — generated; regenerate it with every migration |
 | Is this thing I found already known? | [docs/issues.md](docs/issues.md) — **check before "fixing"** |
 | What is it becoming? | [docs/target-architecture.md](docs/target-architecture.md) |
@@ -106,6 +107,14 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   `FolderService.rewriteKeyPath`, `UserHomeService`), and a test asserts
   `findRowsWhoseKeyPathDisagrees` empty after it; a folder inserted in SQL writes it too. Compare S3
   keys in Java with `S3Keys.compare`, never `String.compareTo` (UTF-16 is not byte order).
+* **A folder class is access** (2.17.0, Phase 14): a role granted a class reaches every folder of it and
+  below, within its scope. Every grant check goes through `GrantedFolderPath` (a class grant is one row: its
+  scope's path and `class_key`) and `ReadScopeSql` - a new access predicate adds `class_path LIKE '%' ||
+  class_key || '%'` beside the path test, or a class grant reaches nothing there. `folder.class_path` is derived
+  like `key_path` but written **only by SQL** after creation (`updatable = false`, `rewriteClassPaths` from the
+  database's values) - a new way to move a folder or change a class rewrites it so, and a test asserts
+  `findRowsWhoseClassPathDisagrees` empty. A folder's class comes from its parent's (`FolderClassRules`) in
+  `FolderService.create` - a new way to make a folder goes through it, or it skips the template and the rule.
 * **An S3 handler takes only the query parameters it understands** (`S3Controller.asksWhatIsNotServed`,
   issue 116): a sub-resource it ignored ran as the plain operation - `DELETE …?tagging` deleted the
   file. A new S3 operation names its parameters there; anything else stays a 501.

@@ -1,10 +1,14 @@
 package com.hnp.filemanagement.content;
 
 import com.hnp.filemanagement.folder.domain.Folder;
+import com.hnp.filemanagement.folder.domain.FolderClassAssignment;
+import com.hnp.filemanagement.folder.domain.FolderClassService;
+import com.hnp.filemanagement.folder.domain.RoleClassGrantService;
 import com.hnp.filemanagement.folder.domain.FolderPermission;
 import com.hnp.filemanagement.folder.domain.UserFolderGrant;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import com.hnp.filemanagement.folder.persistence.TagGroupRepository;
+import com.hnp.filemanagement.identity.domain.Role;
 import com.hnp.filemanagement.identity.domain.User;
 import com.hnp.filemanagement.identity.persistence.RoleRepository;
 import com.hnp.filemanagement.identity.persistence.UserRepository;
@@ -46,6 +50,12 @@ class ContentSearchScaleTest extends DatabaseSupport {
 
     @Autowired
     private ContentSearchService search;
+    @Autowired
+    private FolderClassService folderClassService;
+    @Autowired
+    private FolderClassAssignment folderClassAssignment;
+    @Autowired
+    private RoleClassGrantService roleClassGrantService;
     @Autowired
     private UserRepository userRepository;
     @Autowired
@@ -144,6 +154,24 @@ class ContentSearchScaleTest extends DatabaseSupport {
         assertThat(granted.items()).hasSize(20).allSatisfy(result ->
                 assertThat(folders.subList(0, 5).stream().map(Folder::getId)).contains(result.hit().folderId()));
         timed("a rare word, a reader of half the folders", () -> search.search(run + " نادرپپپپ", false, 0, 20, readerId));
+
+        // The same half, reached by a class grant (roadmap Phase 14): the class test in the statement, timed as the rest.
+        int classId = folderClassService.create(new FolderClassService.Definition("scale" + TestData.nextSequence(), "scale",
+                false, "NONE", null, List.of()), adminId);
+        for (int i = 0; i < 5; i++) {
+            folderClassAssignment.set(folders.get(i).getId(), classId, adminId);
+        }
+        Role byClass = roleRepository.save(TestData.role("ByClass" + TestData.nextSequence()));
+        roleClassGrantService.replace(byClass.getId(), List.of(new RoleClassGrantService.Requested(classId, "READ", "")), adminId);
+        User classReader = TestData.user();
+        classReader.getRoles().add(byClass);
+        int classReaderId = userRepository.save(classReader).getId();
+        entityManager.flush();
+        var byClassGranted = timed("a word on every page, a reader of half the folders by class",
+                () -> search.search(run + " شرکت", false, 0, 20, classReaderId));
+        assertThat(byClassGranted.items()).hasSize(20).allSatisfy(result ->
+                assertThat(folders.subList(0, 5).stream().map(Folder::getId)).contains(result.hit().folderId()));
+        timed("a rare word, a reader of half the folders by class", () -> search.search(run + " نادرپپپپ", false, 0, 20, classReaderId));
     }
 
     private <T> T timed(String what, Supplier<T> call) {

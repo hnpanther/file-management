@@ -188,7 +188,7 @@
                 </a>
             </section>
 
-            <section sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('GET_ALL_API_KEY_PAGE') || hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('CONTENT_KIND_PAGE') || hasAuthority('TAG_GROUP_PAGE') || hasAuthority('GENERAL_SETTINGS_PAGE') || hasAuthority('LOCKED_SIGN_INS_PAGE') || hasAuthority('ONLINE_USERS_PAGE') || hasAuthority('CONTENT_EXTRACTION_PAGE') || hasAuthority('ADMIN')"
+            <section sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('GET_ALL_API_KEY_PAGE') || hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('CONTENT_KIND_PAGE') || hasAuthority('TAG_GROUP_PAGE') || hasAuthority('FOLDER_CLASSES_PAGE') || hasAuthority('GENERAL_SETTINGS_PAGE') || hasAuthority('LOCKED_SIGN_INS_PAGE') || hasAuthority('ONLINE_USERS_PAGE') || hasAuthority('CONTENT_EXTRACTION_PAGE') || hasAuthority('ADMIN')"
                      class="flex flex-col gap-0.5">
                 <h3 class="app-nav-heading" th:text="#{nav.section.access}">کاربران و دسترسی‌ها</h3>
                 <a sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('ADMIN')"
@@ -230,6 +230,11 @@
                    th:href="@{/settings/tag-groups}" class="app-nav-link">
                     <i class="bi bi-tags app-nav-icon" aria-hidden="true"></i>
                     <span th:text="#{nav.access.tagGroups}">برچسب‌های عمومی</span>
+                </a>
+                <a sec:authorize="hasAuthority('FOLDER_CLASSES_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/settings/folder-classes}" class="app-nav-link">
+                    <i class="bi bi-diagram-3 app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.access.folderClasses}">طبقه‌های پوشه</span>
                 </a>
                 <a sec:authorize="hasAuthority('GENERAL_SETTINGS_PAGE') || hasAuthority('ADMIN')"
                    th:href="@{/settings/general}" class="app-nav-link">

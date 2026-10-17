@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{roleClassGrant.pageTitle}">دسترسی بر اساس طبقه</title>
+</head>
+<!--
+  A role's class grants (roadmap Phase 14): RoleClassGrantController, over RoleClassGrantService. Each row a class,
+  read or write, and a scope - a folder's path of names from the top, or empty for everywhere. The rows posted are
+  the role's grants from then on; an empty row is none. A fixed role is shown and not changed.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{roleClassGrant.kicker}">دسترسی بر اساس طبقه</div>
+        <h1 class="break-words" dir="auto" th:text="${role.roleName}">نقش</h1>
+        <p class="page-description" th:text="#{roleClassGrant.description}">…</p>
+        <div class="flex flex-wrap gap-2 mt-2">
+            <a th:href="@{/roles/{id}(id=${role.id},tab='folders')}" class="btn btn-sm btn-outline-secondary"
+               th:text="#{roleClassGrant.back}">بازگشت به نقش</a>
+        </div>
+    </header>
+
+    <div th:if="${saved != null}" class="alert alert-success mb-5" role="status" id="success_message" th:text="${saved}"></div>
+    <div th:if="${refused != null}" class="alert alert-warning mb-5" role="alert" id="warning_message" th:text="${refused}"></div>
+    <div th:if="${fixedRole}" class="alert alert-warning mb-5" role="status" th:text="#{roleClassGrant.fixed}">این نقش ثابت است.</div>
+
+    <section class="card" aria-labelledby="grants-title">
+        <div class="card-body">
+            <h2 id="grants-title" class="text-base font-semibold" th:text="#{roleClassGrant.heading}">طبقه‌هایی که این نقش می‌بیند</h2>
+            <div th:if="${#lists.isEmpty(classes)}" class="empty-state" th:text="#{roleClassGrant.noClasses}">هنوز طبقه‌ای تعریف نشده است.</div>
+            <form th:unless="${#lists.isEmpty(classes)}" method="post" th:action="@{/roles/{id}/class-grants(id=${role.id})}" id="classGrantsForm">
+                <div class="overflow-x-auto">
+                    <table class="table" id="class-grants">
+                        <thead>
+                        <tr>
+                            <th th:text="#{roleClassGrant.column.class}">طبقه</th>
+                            <th th:text="#{roleClassGrant.column.permission}">سطح</th>
+                            <th th:text="#{roleClassGrant.column.scope}">محدوده</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="row : ${rows}">
+                            <td>
+                                <select name="classId" class="form-control" th:disabled="${fixedRole}">
+                                    <option value="" th:text="#{roleClassGrant.none}">—</option>
+                                    <option th:each="c : ${classes}" th:value="${c.id()}" th:text="${c.title()}"
+                                            th:selected="${row.classId() != null and row.classId() == c.id()}">طبقه</option>
+                                </select>
+                            </td>
+                            <td>
+                                <select name="permission" class="form-control" th:disabled="${fixedRole}">
+                                    <option value="READ" th:selected="${row.permission() == 'READ'}" th:text="#{roleClassGrant.read}">خواندن</option>
+                                    <option value="WRITE" th:selected="${row.permission() == 'WRITE'}" th:text="#{roleClassGrant.write}">خواندن و نوشتن</option>
+                                </select>
+                            </td>
+                            <td>
+                                <input name="scope" type="text" class="form-control technical" dir="ltr" maxlength="1000"
+                                       th:value="${row.scope()}" th:placeholder="#{roleClassGrant.everywhere}" th:disabled="${fixedRole}">
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="field-hint" th:text="#{roleClassGrant.scopeHint}">محدوده: مسیر پوشه با نام‌ها، مثلاً ERP/PartyCompany؛ خالی یعنی همه‌جا.</p>
+                <div class="form-actions" th:unless="${fixedRole}"
+                     sec:authorize="hasAuthority('SAVE_UPDATED_ROLE') || hasAuthority('ADMIN')">
+                    <button type="submit" class="btn btn-primary" id="save-class-grants">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

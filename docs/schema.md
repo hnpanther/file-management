@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.16`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.17`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -513,10 +513,13 @@ _As of migration `V3.16`. Types and defaults are PostgreSQL's own; every table i
 | `content_reading` | `boolean` | yes |  |  |
 | `content_reading_set_at` | `timestamptz(0)` | yes |  |  |
 | `content_reading_set_by` | `integer` | yes |  |  |
+| `class_id` | `integer` | yes |  |  |
+| `class_path` | `varchar(1000)` | no | `/` |  |
 
 * **primary key** `id`
 * **unique** `uq_folder_owner_user` (`owner_user_id`)
 * **unique** `uq_folder_sibling_name` (`parent_id`, `upper(name)`)
+* **foreign key** `fk_folder_class` `class_id` → `folder_class` (`id`)
 * **foreign key** `fk_folder_content_reading_set_by` `content_reading_set_by` → `app_user` (`id`), on delete set null
 * **foreign key** `fk_folder_created_by_user` `created_by` → `app_user` (`id`)
 * **foreign key** `fk_folder_owner_user` `owner_user_id` → `app_user` (`id`)
@@ -527,6 +530,7 @@ _As of migration `V3.16`. Types and defaults are PostgreSQL's own; every table i
 * **index** `fk_folder_tag_group` (`tag_group_id`)
 * **index** `fk_folder_updated_by_user` (`updated_by`)
 * **index** `ix_folder_bucket_key_path` (`split_part(path, '/', 3)`, `key_path`, in byte order (`COLLATE "C"`))
+* **index** `ix_folder_class_path` (`class_id`, `path`, for prefix `LIKE` (`varchar_pattern_ops`), only where `(class_id IS NOT NULL)`)
 * **index** `ix_folder_content_reading` (`path`, only where `(content_reading IS NOT NULL)`)
 * **index** `ix_folder_content_reading_set_by` (`content_reading_set_by`, only where `(content_reading_set_by IS NOT NULL)`)
 * **index** `ix_folder_metadata` (`metadata`, GIN for containment `@>` (`jsonb_path_ops`))
@@ -536,6 +540,47 @@ _As of migration `V3.16`. Types and defaults are PostgreSQL's own; every table i
 * **index** `ix_folder_search_display_name_trgm` (`replace(search_display_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 * **index** `ix_folder_search_name_trgm` (`replace(search_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 * **index** `ix_folder_undescribed` (`parent_id`, `created_at`, `id`, only where `(metadata IS NULL)`)
+
+### `folder_class`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `integer` | no |  | identity |
+| `name` | `varchar(100)` | no |  |  |
+| `title` | `varchar(200)` | no |  |  |
+| `container_only` | `boolean` | no | `false` |  |
+| `other_children` | `varchar(10)` | no | `NONE` |  |
+| `other_children_class_id` | `integer` | yes |  |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+| `created_by` | `integer` | yes |  |  |
+| `updated_at` | `timestamptz(0)` | yes |  |  |
+| `updated_by` | `integer` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_folder_class_name` (`upper(name)`)
+* **foreign key** `fk_folder_class_created_by` `created_by` → `app_user` (`id`)
+* **foreign key** `fk_folder_class_other_class` `other_children_class_id` → `folder_class` (`id`)
+* **foreign key** `fk_folder_class_updated_by` `updated_by` → `app_user` (`id`)
+* **index** `ix_folder_class_created_by` (`created_by`)
+* **index** `ix_folder_class_other_class` (`other_children_class_id`, only where `(other_children_class_id IS NOT NULL)`)
+* **index** `ix_folder_class_updated_by` (`updated_by`)
+
+### `folder_class_child`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `integer` | no |  | identity |
+| `class_id` | `integer` | no |  |  |
+| `name` | `varchar(100)` | no |  |  |
+| `display_name` | `varchar(200)` | no |  |  |
+| `child_class_id` | `integer` | no |  |  |
+| `position` | `integer` | no |  |  |
+
+* **primary key** `id`
+* **unique** `uq_folder_class_child_name` (`class_id`, `upper(name)`)
+* **foreign key** `fk_folder_class_child_child_class` `child_class_id` → `folder_class` (`id`)
+* **foreign key** `fk_folder_class_child_class` `class_id` → `folder_class` (`id`), on delete cascade
+* **index** `ix_folder_class_child_child_class` (`child_class_id`)
 
 ### `folder_metadata_change`
 
@@ -592,6 +637,24 @@ _As of migration `V3.16`. Types and defaults are PostgreSQL's own; every table i
 
 * **primary key** `id`
 * **unique** `uq_role_role_name` (`upper(role_name)`)
+
+### `role_class_grant`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `integer` | no |  | identity |
+| `role_id` | `integer` | no |  |  |
+| `class_id` | `integer` | no |  |  |
+| `permission` | `varchar(10)` | no |  |  |
+| `scope_folder_id` | `integer` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_role_class_grant` (`role_id`, `class_id`, `COALESCE(scope_folder_id, 0)`)
+* **foreign key** `fk_role_class_grant_class` `class_id` → `folder_class` (`id`)
+* **foreign key** `fk_role_class_grant_role` `role_id` → `role` (`id`), on delete cascade
+* **foreign key** `fk_role_class_grant_scope` `scope_folder_id` → `folder` (`id`), on delete cascade
+* **index** `ix_role_class_grant_class` (`class_id`)
+* **index** `ix_role_class_grant_scope` (`scope_folder_id`, only where `(scope_folder_id IS NOT NULL)`)
 
 ### `role_folder`
 

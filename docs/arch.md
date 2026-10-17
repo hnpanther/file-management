@@ -570,9 +570,11 @@ none of the three.
 | **New version / new format of a file** (`createNewFileDetails`) | — | one new key under the file's id directory, in the current layout, **whatever its first version's**: a file stored flat under `files/{id}` or under the old `{category}/{sub}` layout then holds revisions in two directories, each recorded on its own row | one file written; nothing else moves | — |
 | **Delete one version or format** (`deleteFileDetails`) | — | that row's key gone | that file removed; when it was the last format of its version, the `v{n}` directory too, read off the key by `StorageLayout.versionDirectoryOf` | — |
 | **Delete a file** (`deleteCompleteFileById`, or deleting its last version) | — | every key of the file gone | read off **every** revision's key by its shape (`StorageLayout.fileDirectoryOf` - never by counting parents): under an id-based layout the file's own id directory (`files/{shard}/{id}/` or `files/{id}/`) removed whole, the shard directory left; under the old layout the file's `…/{title}/` directory removed and the shared `{category}/{sub}/` left, possibly empty; a key of no known shape, or one under another file's id, refuses the delete before any row goes; a directory already gone is nothing to remove, not a refusal | rows cascade |
-| **Create a folder** (`FolderService.create`) | one row: `parent_id`, `depth = parent + 1`, `path = parent.path + id + "/"`, `key_path = parent.key_path + name + "/"` (`""` for a top-level folder, a bucket - `Folder.onCreate`, V3.9) | — | **nothing** — a folder has no directory until its first upload | — |
+| **Create a folder** (`FolderService.create`; by hand, v1, or S3 making the folders of a key) | one row: `parent_id`, `depth = parent + 1`, `path = parent.path + id + "/"`, `key_path = parent.key_path + name + "/"` (`""` for a top-level folder, a bucket - `Folder.onCreate`, V3.9); `class_id` from the parent's class (`FolderClassRules`, 2.17.0) and `class_path = parent.class_path + class + "/"`; and **the rows of its class's template**, made with it the same way (`FolderService.makeTemplate`) - or nothing at all when the parent's class refuses the name | — | **nothing** — a folder has no directory until its first upload | — |
 | **Rename a folder** (`rename`: name, label, or at the top level the group) | that row's `name` / `display_name` / `tag_group_id`; `path` and `depth` unchanged (they are ids); when the name changed, `key_path` **rewritten for the whole subtree** in one statement (`FolderRepository.rewriteKeyPathsBelow`) - a top-level folder's name is in no key, so its rename rewrites none | **nothing** | **nothing** — a file stored under the old layout keeps its old directory name; one stored under `files/` never had a folder name in it | re-derived for every file beneath, when the name or the group changed |
-| **Move a folder** (`move`) | the folder's `parent_id`; `depth`, `path` and `key_path` **rewritten for the whole subtree** (`/1/5/412/…` → `/1/9/412/…`) in one transaction; `tag_group_id` set to the former top-level folder's group when the target is the root, cleared when a top-level folder goes below another | **nothing** | **nothing** | re-derived for every file beneath (the chain of names changed, and possibly the group) |
+| **Move a folder** (`move`) | the folder's `parent_id`; `depth`, `path` and `key_path` **rewritten for the whole subtree** (`/1/5/412/…` → `/1/9/412/…`) in one transaction, and `class_path` by a statement from the database's values (`FolderRepository.rewriteClassPaths`) - the folder keeps its class; `tag_group_id` set to the former top-level folder's group when the target is the root, cleared when a top-level folder goes below another | **nothing** | **nothing** | re-derived for every file beneath (the chain of names changed, and possibly the group) |
+| **Set a folder's class** (`FolderClassAssignment.set`, 2.17.0) | that row's `class_id`; `class_path` **rewritten for the folder and its subtree** in one statement; the template's rows its new class holds, where missing | **nothing** | **nothing** | — |
+| **Apply the classes below a folder** (`FolderClassAssignment.run`, 2.17.0) | `class_id` of each folder below without one that the rules class, then `class_path` repaired in one statement; each classed folder's missing template rows, a folder per transaction | **nothing** | **nothing** | — |
 | **Move a file** (`FileService.moveFile`) | — (the file's `folder_id` changes) | **nothing** | **nothing** — the file's directory is its own id, wherever it is filed | re-derived for the file |
 | **Delete a folder** (`delete`; empty only) | that row gone; its grants cascade | — | **nothing** — a folder never had a directory of its own since `V2.9` | — |
 | **Delete a folder with everything in it** (`FolderTreeDeleteService.deleteTree`; `?recursive=true`) | every row of the subtree gone, deepest first; grants cascade | every key of every file beneath gone | each file's own directory removed, exactly as a single whole-file delete would, and **last** — after every row, best-effort (a directory that cannot be removed is logged and left, never a rollback); the shard directories and the old layout's shared `{category}/{sub}/` stay | rows cascade with the files |
@@ -929,13 +931,18 @@ carries `@PreAuthorize("hasAuthority('X') || hasAuthority('ADMIN')")`.
 
 ### Folder access — the second question
 
+> The whole model as an administrator sets it up - every source of a grant, folder classes and class grants
+> (2.17.0), what each operation needs - is [access.md](access.md); this section is how it came to be.
+
 Since Phase 6 there is a second, independent question: not "may this user list folders" but "may this
 user see *this* folder". Both must pass.
 
 * `folder` is the tree — `Home` and folders beneath it to any depth — written only by
   `FolderService` (section 4).
 * A grant is a row in `role_folder` or `user_folder` naming a folder and a verb, and it covers
-  everything beneath that folder. `folder.path` is a materialised path of ids with a leading and
+  everything beneath that folder - or, since 2.17.0, a row in `role_class_grant` naming a class, a verb and
+  optionally a scope folder, covering every folder of the class within the scope and what is beneath each
+  ([access.md](access.md#folder-classes-and-class-grants)). `folder.path` is a materialised path of ids with a leading and
   trailing slash (`/1/5/26/`), so "is this inside that grant?" is a prefix test and an indexed range
   scan.
 * **The verb is `READ` or `WRITE`, and `WRITE` implies `READ`** (roadmap 9.1). One ordered column

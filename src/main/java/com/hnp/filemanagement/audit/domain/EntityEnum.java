@@ -39,7 +39,9 @@ public enum EntityEnum {
     Folder("folder"),
     TagGroup("tag_group"),
     AppSetting("app_setting"),
-    FileShareLink("file_share_link")
+    FileShareLink("file_share_link"),
+    FolderClass("folder_class"),
+    RoleClassGrant("role_class_grant")
     ;
 
 

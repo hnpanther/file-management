@@ -10,6 +10,8 @@ import com.hnp.filemanagement.file.domain.FileUploadDTO;
 import com.hnp.filemanagement.file.persistence.FileDetailsRepository;
 import com.hnp.filemanagement.file.persistence.FileInfoRepository;
 import com.hnp.filemanagement.folder.domain.Folder;
+import com.hnp.filemanagement.folder.domain.FolderClass;
+import com.hnp.filemanagement.folder.domain.FolderClassRules;
 import com.hnp.filemanagement.folder.domain.FolderAccess;
 import com.hnp.filemanagement.folder.domain.FolderAccessService;
 import com.hnp.filemanagement.folder.domain.FolderService;
@@ -243,6 +245,19 @@ public class S3ObjectService {
         }
         if (!access.canWrite(current.getPath())) {
             throw new AccessDeniedException("no write access to " + key);
+        }
+        // What the classes would say (roadmap Phase 14): a folder to be made that its parent's class refuses, or
+        // a new file in a folder whose class keeps files out (a new version is not one) - told now, not after the parts. The completion asks again.
+        FolderClass targetClass = current.getFolderClass();
+        for (String name : parsed.folders().subList(existing, parsed.folders().size())) {
+            targetClass = FolderClassRules.classFor(targetClass, name);
+        }
+        boolean newFile = existing < parsed.folders().size() || fileInfoRepository.findByFolderIdAndSearchNameWithDetails(
+                current.getId(), SearchKey.of(FileNames.withoutExtension(parsed.objectName()), SearchKey.NAME_LENGTH)).isEmpty();
+        if (newFile && targetClass != null && targetClass.isContainerOnly()) {
+            throw new InvalidDataException("the folder named by " + key + " is of a container class (id="
+                    + targetClass.getId() + ")", "upload.invalid.folderIsContainer",
+                    parsed.folders().isEmpty() ? bucket : parsed.folders().getLast(), targetClass.getTitle());
         }
     }
 
@@ -575,8 +590,12 @@ public class S3ObjectService {
             throw new AccessDeniedException("no write access where the folders would be created");
         }
         for (String name : missing) {
-            int id = folderService.create(current.getId(), name, name, null, null, principalId).id();
-            current = folderRepository.findById(id).orElseThrow();
+            // A folder made just above may already hold this one: its class's template makes folders as it is
+            // made (roadmap Phase 14) - .../<contract>/Documents/x.pdf finds the Documents the contract made.
+            Optional<Folder> made = folderRepository.findByParentIdAndNameIgnoreCase(current.getId(), name);
+            current = made.isPresent() ? made.get()
+                    : folderRepository.findById(folderService.create(current.getId(), name, name, null, null, principalId).id())
+                    .orElseThrow();
         }
         return current;
     }

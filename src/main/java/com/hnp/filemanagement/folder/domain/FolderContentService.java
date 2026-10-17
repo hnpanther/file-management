@@ -187,7 +187,7 @@ public class FolderContentService {
         return new FolderContentDTO(
                 refOf(folder),
                 readable,
-                FolderService.canHoldFiles(folder) && access.canWrite(folder.getPath()),
+                FolderService.acceptsFiles(folder) && access.canWrite(folder.getPath()),
                 access.canWrite(folder.getPath()),
                 folderService.canHoldFolders(folder),
                 breadcrumbOf(folder),
@@ -316,7 +316,9 @@ public class FolderContentService {
                 folder.getCreatedBy() == null ? null : folder.getCreatedBy().getUsername(),
                 folder.getUpdatedAt(),
                 folder.getUpdatedBy() == null ? null : folder.getUpdatedBy().getUsername(),
-                contentReadingRepository.of(folderId).map(FolderContentReadingRepository.Setting::reads).orElse(true));
+                contentReadingRepository.of(folderId).map(FolderContentReadingRepository.Setting::reads).orElse(true),
+                // Its class (roadmap Phase 14): read only when it has one - none costs no statement.
+                folder.getFolderClass() == null ? null : folder.getFolderClass().getTitle());
     }
 
     /**

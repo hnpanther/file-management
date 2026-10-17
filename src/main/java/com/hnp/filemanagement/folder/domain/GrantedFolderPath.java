@@ -24,8 +24,16 @@ import org.hibernate.annotations.Synchronize;
  * <pre>
  *     EXISTS (SELECT 1 FROM GrantedFolderPath g
  *             WHERE g.userId = :userId AND g.apiKeyId = :apiKeyId
- *               AND folder.path LIKE CONCAT(g.path, '%'))
+ *               AND folder.path LIKE CONCAT(g.path, '%')
+ *               AND LOCATE(g.classKey, folder.classPath) > 0)
  * </pre>
+ *
+ * <p><b>A class grant is one row too</b> (roadmap Phase 14): its scope folder's path - {@code /}, everything,
+ * without one - and its class as {@code classKey}, {@code /9/}, which a folder's {@code class_path} holds when
+ * it is of the class or beneath a folder of it. A folder grant's {@code classKey} is empty, and an empty
+ * string is found at position 1 of every class path - so one predicate serves both, and a role granted a class of
+ * thousands of folders is one row to test, not thousands. Only a person's roles hold class grants: a key's
+ * rows are its folder grants alone.
  *
  * <p>A person's rows carry {@code apiKeyId = 0} and a key's {@code userId = 0} - no row has either
  * id 0 - so the same predicate serves both with two plain integers ({@code null} is a type
@@ -39,23 +47,28 @@ import org.hibernate.annotations.Synchronize;
 @Immutable
 @Getter
 @Subselect(GrantedFolderPath.SQL)
-@Synchronize({"user_folder", "role_folder", "user_role", "api_key_folder", "folder"})
+@Synchronize({"user_folder", "role_folder", "user_role", "api_key_folder", "folder", "role_class_grant"})
 public class GrantedFolderPath {
 
     /**
      * The view, as SQL - shared with the one list that asks it natively (the S3 surface's listing,
      * {@code S3ListingRepository}), so the two can never disagree about who is granted what. Its
-     * columns: {@code id}, {@code user_id}, {@code api_key_id}, {@code path}.
+     * columns: {@code id}, {@code user_id}, {@code api_key_id}, {@code path}, {@code class_key} (empty for a
+     * folder grant) and {@code class_id} (0 for a folder grant).
      */
     public static final String SQL = """
-        SELECT 'u' || uf.user_id || '-' || uf.folder_id AS id, uf.user_id AS user_id, 0 AS api_key_id, f.path AS path
+        SELECT 'u' || uf.user_id || '-' || uf.folder_id AS id, uf.user_id AS user_id, 0 AS api_key_id, f.path AS path,
+               CAST('' AS VARCHAR(20)) AS class_key, 0 AS class_id
         FROM user_folder uf JOIN folder f ON f.id = uf.folder_id
         UNION ALL
-        SELECT 'r' || ur.user_id || '-' || rf.role_id || '-' || rf.folder_id, ur.user_id, 0, f.path
+        SELECT 'r' || ur.user_id || '-' || rf.role_id || '-' || rf.folder_id, ur.user_id, 0, f.path, '', 0
         FROM user_role ur JOIN role_folder rf ON rf.role_id = ur.role_id JOIN folder f ON f.id = rf.folder_id
         UNION ALL
-        SELECT 'k' || akf.api_key_id || '-' || akf.folder_id, 0, akf.api_key_id, f.path
+        SELECT 'k' || akf.api_key_id || '-' || akf.folder_id, 0, akf.api_key_id, f.path, '', 0
         FROM api_key_folder akf JOIN folder f ON f.id = akf.folder_id
+        UNION ALL
+        SELECT 'c' || ur.user_id || '-' || g.id, ur.user_id, 0, COALESCE(s.path, '/'), '/' || g.class_id || '/', g.class_id
+        FROM user_role ur JOIN role_class_grant g ON g.role_id = ur.role_id LEFT JOIN folder s ON s.id = g.scope_folder_id
         """;
 
     @Id
@@ -69,6 +82,14 @@ public class GrantedFolderPath {
 
     @Column(name = "path")
     private String path;
+
+    /** {@code /9/} for a grant on class 9, empty for a folder grant (roadmap Phase 14). */
+    @Column(name = "class_key")
+    private String classKey;
+
+    /** The class a class grant is on, 0 for a folder grant. */
+    @Column(name = "class_id")
+    private int classId;
 
     protected GrantedFolderPath() {
     }

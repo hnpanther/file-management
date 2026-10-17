@@ -621,6 +621,16 @@
                                th:text="#{explorer.details.contentReading.change}">تنظیم</a>
                         </p>
 
+                        <!-- Its class (roadmap Phase 14); its page for whoever may see it. -->
+                        <p class="explorer-detail-term" th:text="#{explorer.details.folderClass}">طبقه</p>
+                        <p class="explorer-detail-value" id="folder-class">
+                            <span x-text="selectedFolder.classTitle || EX.noFolderClass"></span>
+                            <a sec:authorize="hasAuthority('SET_FOLDER_CLASS') || hasAuthority('FOLDER_CLASSES_PAGE') || hasAuthority('ADMIN')"
+                               th:data-base="@{/files/folders/}" class="ms-2 text-brand-700 underline"
+                               :href="$el.dataset.base + selectedFolder.folder.id + '/class'"
+                               th:text="#{explorer.details.folderClass.change}">تنظیم</a>
+                        </p>
+
                         <template x-if="selectedFolder.createdAt">
                             <div>
                                 <p class="explorer-detail-term" th:text="#{explorer.details.created}">تاریخ ایجاد</p>
@@ -746,7 +756,8 @@
         filesUrl:          [[@{/resource/files}]],
         keepTagGroup:      [[#{explorer.manage.keepTagGroup}]],
         contentReadOn:     [[#{folderReading.reads}]],
-        contentReadOff:    [[#{folderReading.notRead}]]
+        contentReadOff:    [[#{folderReading.notRead}]],
+        noFolderClass:     [[#{folderClass.folder.none}]]
     };
 
     const INITIAL_FOLDER_ID = /*[[${initialFolderId}]]*/ null;

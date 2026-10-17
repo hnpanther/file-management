@@ -788,6 +788,58 @@ database restored without it has S3 keys nobody can use. Lost or changed, every 
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
 
+### Upgrading from 2.16.1 to 2.17.0 — folder classes
+
+A jar swap with **one migration**, `V3.17`: three new tables (`folder_class`, `folder_class_child`,
+`role_class_grant`) and two columns on `folder` - `class_id`, empty, and `class_path`, `'/'` for every folder.
+**No folder has a class after it, so every folder, grant, upload and listing behaves exactly as before**
+until somebody defines a class and gives it to a folder. The one-off page of 2.16.1
+(`/settings/contract-documents`) is gone, as it said it would be.
+
+* **Four new permissions** (roadmap Phase 14), the administrators' at the next start and anybody else's when a
+  role is given them on the role page: `FOLDER_CLASSES_PAGE`, `SAVE_FOLDER_CLASS`, `DELETE_FOLDER_CLASS`
+  ("تعریف طبقه‌های پوشه") and `SET_FOLDER_CLASS` ("طبقه دادن به پوشه‌ها"). Giving a folder a class gives it to
+  every role granted that class: keep `SET_FOLDER_CLASS` to the administrators unless decided otherwise.
+* **`filemanagement.folders.max-depth`**: a class's template makes folders as its folder is made, and is refused
+  past the limit. The ERP's tree reaches `ERP/PartyCompany/<company>/Contract/<number>/ContractState/<n>/` -
+  depth 7 - so the setting is at least 7 there already; nothing to change.
+* **A rollback to 2.16.1** is possible: it does not know the new tables and columns, ignores the class grants
+  (whoever reached a folder only through one loses it - the safe direction) and makes or moves folders without
+  keeping `class_path`; on the way back to 2.17.0 `ClassPathRepair` sets it right at the start, logging how many.
+
+**Setting the classes up for the ERP's contracts** - on the running service, as an administrator, in this order
+(the order matters: a template names classes that must exist first):
+
+1. **Settings → طبقه‌های پوشه** (`/settings/folder-classes`): define, bottom up -
+
+   | Class | Container only | Template | Other subfolders |
+   |---|---|---|---|
+   | اسناد قرارداد (`documents`) | no | — | without a class |
+   | صورت وضعیت (`statement`) | no | — | without a class |
+   | ظرف صورت وضعیت‌ها (`statements`) | yes | — | take صورت وضعیت |
+   | قرارداد (`contract`) | yes | `Documents` → اسناد قرارداد, `ContractState` → ظرف صورت وضعیت‌ها | refused |
+   | ظرف قراردادها (`contracts`) | yes | — | take قرارداد |
+   | شرکت (`company`) | yes | `Contract` → ظرف قراردادها | without a class |
+   | ظرف شرکت‌ها (`companies`) | yes | — | take شرکت |
+
+   Template names are what n8n writes in the keys (`Documents`, `ContractState`, `Contract`), compared
+   without case.
+2. **The explorer → `ERP/PartyCompany` → طبقه → تنظیم**: give it **ظرف شرکت‌ها**.
+3. On the same page, **«اعمال قاعده‌ها روی پوشه‌های زیر این پوشه» → پیش‌نمایش**: nothing is written. It counts the
+   folders below, those that will take each class, the template folders that will be made (`ContractState` and
+   `Documents` where a contract lacks them), and lists the folders that do not fit (a subfolder of a contract
+   other than `Documents` and `ContractState`). Settle those by hand if they matter - move them into `Documents`,
+   or leave them without a class: nobody reaches them through a class.
+4. **اجرا**: the classes are set in one transaction, then each folder's missing template folders in one of its
+   own, in the background; the page shows the progress. Run the preview again: nothing left to do. It may be
+   run again any time - it never changes a class a folder has.
+5. **The roles** (role page → «دسترسی بر اساس طبقهٔ پوشه»): the contracts department **read** on اسناد قرارداد,
+   finance **read** on صورت وضعیت or on ظرف صورت وضعیت‌ها, each everywhere or within a scope such as
+   `ERP/PartyCompany/1234`. Check with one person of each: the explorer shows them the companies and the
+   contracts as the way down, and inside a contract only their folder.
+6. From then on a file sent by n8n directly to a contract (`.../<number>/x.pdf`) is refused - n8n writes to
+   `.../<number>/Documents/` since 2.16.1 - and so is a folder the contract's class does not name.
+
 ### Upgrading from 2.16.0 to 2.16.1 — the contracts' own files moved into `Documents`, once
 
 A jar swap, **no migration**. It brings one page, for one job, done once by an administrator and taken

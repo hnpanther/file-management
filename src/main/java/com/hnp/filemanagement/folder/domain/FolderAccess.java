@@ -2,12 +2,14 @@ package com.hnp.filemanagement.folder.domain;
 
 import com.hnp.filemanagement.folder.persistence.GrantedPath;
 
-import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.NavigableSet;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * What one person may reach in the folder tree, resolved once and then asked many times
@@ -25,17 +27,29 @@ import java.util.Set;
  * remember to check the write list as well. There is no way to express "may write but may not read",
  * which is the point of {@link FolderPermission} being ordered.
  *
- * @param unrestricted  true for an administrator: the folder check is skipped entirely and no grant
- *                      rows are needed or read
- * @param readablePaths every granted path, reduced so that no path in the list is covered by a
- *                      shorter one
- * @param writablePaths the subset of those granted with {@code WRITE}, reduced the same way
+ * <p><b>Thousands of paths, each check a lookup</b> (roadmap Phase 14). A class grant covers every folder of
+ * its class - one per contract - so a reader may hold thousands of paths. Reduced, no path is beneath
+ * another, and kept sorted: the one that could cover a path is the greatest at or before it, and those
+ * beneath a path follow it - so {@link #canRead}, {@link #isOnPathTo} and {@link #visibleChildIdsUnder}
+ * are a lookup in a sorted set, not a scan of every grant.
  */
-public record FolderAccess(boolean unrestricted, List<String> readablePaths, List<String> writablePaths) {
+public final class FolderAccess {
 
-    public FolderAccess {
-        readablePaths = List.copyOf(readablePaths);
-        writablePaths = List.copyOf(writablePaths);
+    private final boolean unrestricted;
+    private final NavigableSet<String> readable;
+    private final NavigableSet<String> writable;
+    private final boolean classGrants;
+
+    public FolderAccess(boolean unrestricted, List<String> readablePaths, List<String> writablePaths) {
+        this(unrestricted, readablePaths, writablePaths, false);
+    }
+
+    private FolderAccess(boolean unrestricted, Collection<String> readablePaths, Collection<String> writablePaths,
+                         boolean classGrants) {
+        this.unrestricted = unrestricted;
+        this.readable = Collections.unmodifiableNavigableSet(reduce(readablePaths));
+        this.writable = Collections.unmodifiableNavigableSet(reduce(writablePaths));
+        this.classGrants = classGrants;
     }
 
     /** Everything is reachable — an administrator, or enforcement switched off. */
@@ -60,24 +74,53 @@ public record FolderAccess(boolean unrestricted, List<String> readablePaths, Lis
      * so reducing the write list against the read list would silently widen the grant.
      */
     public static FolderAccess of(Collection<GrantedPath> grants) {
-        List<String> readable = reduce(grants.stream().map(GrantedPath::path).toList());
-        List<String> writable = reduce(grants.stream()
-                .filter(grant -> grant.permission() == FolderPermission.WRITE)
-                .map(GrantedPath::path)
-                .toList());
-        return new FolderAccess(false, readable, writable);
+        return of(grants, false);
     }
 
-    private static List<String> reduce(List<String> paths) {
-        List<String> sorted = paths.stream().distinct().sorted().toList();
-        List<String> reduced = new ArrayList<>();
-        for (String path : sorted) {
-            boolean coveredByShorterGrant = reduced.stream().anyMatch(path::startsWith);
-            if (!coveredByShorterGrant) {
+    /** {@link #of(Collection)}, saying whether a role of the person holds a class grant (roadmap Phase 14). */
+    public static FolderAccess of(Collection<GrantedPath> grants, boolean classGrants) {
+        List<String> readable = grants.stream().map(GrantedPath::path).toList();
+        List<String> writable = grants.stream()
+                .filter(grant -> grant.permission() == FolderPermission.WRITE)
+                .map(GrantedPath::path)
+                .toList();
+        return new FolderAccess(false, readable, writable, classGrants);
+    }
+
+    /** Whether a role of the person holds a class grant - whatever folders it covers today (roadmap Phase 14). */
+    public boolean hasClassGrants() {
+        return classGrants;
+    }
+
+    /**
+     * Sorted, then each path kept unless the last one kept is a prefix of it: in sorted order whatever a
+     * path covers follows it at once, so the last one kept is the only one that could - n log n, not n².
+     */
+    private static NavigableSet<String> reduce(Collection<String> paths) {
+        NavigableSet<String> reduced = new TreeSet<>();
+        String lastKept = null;
+        for (String path : new TreeSet<>(paths)) {
+            if (lastKept == null || !path.startsWith(lastKept)) {
                 reduced.add(path);
+                lastKept = path;
             }
         }
         return reduced;
+    }
+
+    /** True for an administrator, or with enforcement off: nothing is checked and no grant is read. */
+    public boolean unrestricted() {
+        return unrestricted;
+    }
+
+    /** Every granted path, reduced so that no path in the list is covered by a shorter one, sorted. */
+    public List<String> readablePaths() {
+        return List.copyOf(readable);
+    }
+
+    /** The paths granted with {@code WRITE}, reduced the same way, sorted. */
+    public List<String> writablePaths() {
+        return List.copyOf(writable);
     }
 
     /**
@@ -85,7 +128,7 @@ public record FolderAccess(boolean unrestricted, List<String> readablePaths, Lis
      * beneath one.
      */
     public boolean canRead(String path) {
-        return unrestricted || readablePaths.stream().anyMatch(path::startsWith);
+        return unrestricted || covered(readable, path);
     }
 
     /**
@@ -97,7 +140,17 @@ public record FolderAccess(boolean unrestricted, List<String> readablePaths, Lis
      * leaf on a tree whose leaves are where documents actually go.
      */
     public boolean canWrite(String path) {
-        return unrestricted || writablePaths.stream().anyMatch(path::startsWith);
+        return unrestricted || covered(writable, path);
+    }
+
+    /**
+     * Whether a path of this reduced set is a prefix of {@code path}. Only the greatest one at or before it
+     * can be: every string between a prefix of {@code path} and {@code path} itself starts with that prefix,
+     * and no path of the set starts with another.
+     */
+    private static boolean covered(NavigableSet<String> paths, String path) {
+        String floor = paths.floor(path);
+        return floor != null && path.startsWith(floor);
     }
 
     /**
@@ -110,13 +163,15 @@ public record FolderAccess(boolean unrestricted, List<String> readablePaths, Lis
      * children it reveals are the ones that lead to, or lie inside, a grant. Its own files and its
      * other branches stay hidden, which is what keeps this from being a way around the grant.
      *
-     * <p>Only the readable list is consulted, and that is complete: every write grant is in it too.
+     * <p>Only the readable list is consulted, and that is complete: every write grant is in it too. The
+     * paths beneath this one follow it in sorted order, so the first after it says.
      */
     public boolean isOnPathTo(String path) {
         if (unrestricted) {
             return true;
         }
-        return readablePaths.stream().anyMatch(granted -> granted.startsWith(path) && !granted.equals(path));
+        String next = readable.higher(path);
+        return next != null && next.startsWith(path);
     }
 
     /**
@@ -135,11 +190,12 @@ public record FolderAccess(boolean unrestricted, List<String> readablePaths, Lis
             return Optional.empty();
         }
         Set<Integer> ids = new LinkedHashSet<>();
-        for (String granted : readablePaths) {
-            if (granted.startsWith(parentPath) && granted.length() > parentPath.length()) {
-                String rest = granted.substring(parentPath.length());
-                ids.add(Integer.valueOf(rest.substring(0, rest.indexOf('/'))));
+        for (String granted : readable.tailSet(parentPath, false)) {
+            if (!granted.startsWith(parentPath)) {
+                break;
             }
+            String rest = granted.substring(parentPath.length());
+            ids.add(Integer.valueOf(rest.substring(0, rest.indexOf('/'))));
         }
         return Optional.of(ids);
     }
@@ -151,6 +207,6 @@ public record FolderAccess(boolean unrestricted, List<String> readablePaths, Lis
 
     /** True when this person can reach nothing at all — every list is empty and every open is denied. */
     public boolean isEmpty() {
-        return !unrestricted && readablePaths.isEmpty();
+        return !unrestricted && readable.isEmpty();
     }
 }

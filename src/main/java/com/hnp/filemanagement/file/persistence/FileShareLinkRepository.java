@@ -81,7 +81,7 @@ public interface FileShareLinkRepository extends JpaRepository<FileShareLink, In
             JOIN FETCH l.createdBy
             JOIN fi.folder t
             WHERE EXISTS (SELECT 1 FROM GrantedFolderPath gr
-                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%'))
+                          WHERE gr.userId = :userId AND gr.apiKeyId = :apiKeyId AND t.path LIKE CONCAT(gr.path, '%') AND LOCATE(gr.classKey, t.classPath) > 0)
             ORDER BY l.id DESC
             """)
     Slice<FileShareLink> findPageReadable(@Param("userId") int userId, @Param("apiKeyId") int apiKeyId, Pageable pageable);

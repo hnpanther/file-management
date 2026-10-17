@@ -139,6 +139,22 @@ public enum PermissionEnum {
     //@PostMapping("/{id}/delete") - delete an unused group
     DELETE_TAG_GROUP,
 
+    // ------------------------------------------------------------------ FolderClassController - /settings/folder-classes (roadmap Phase 14)
+
+    //@GetMapping, @GetMapping("new"), @GetMapping("{id}") - the folder classes: each with its template, its rule for
+    //other children, whether it is container only, and how many folders carry it
+    FOLDER_CLASSES_PAGE,
+    //@PostMapping, @PostMapping("{id}") - define a class, or change one; applies to what is made from then on
+    SAVE_FOLDER_CLASS,
+    //@PostMapping("{id}/delete") - delete a class no folder, grant or other class uses
+    DELETE_FOLDER_CLASS,
+
+    // FolderClassAssignController @RequestMapping("/files/folders/{folderId}/class") (roadmap Phase 14) ==========
+    //@PostMapping - give a folder a class, or take it away (and write access on the folder); @PostMapping("apply/preview"),
+    //@PostMapping("apply") - the classes' rules applied to the folders below it. The page is shown with
+    //FOLDER_CLASSES_PAGE as well. Giving a folder a class gives it to every role granted that class.
+    SET_FOLDER_CLASS,
+
     // ------------------------------------------------------------------ SignInLockController - /settings/locked-sign-ins
 
     //@GetMapping - the usernames locked by wrong passwords, or with failures counted, and the

@@ -310,6 +310,12 @@ public class FileService {
                     + "; a document is filed into a folder beneath it",
                     "upload.invalid.folderCannotHoldFiles", folder.getDisplayName());
         }
+        if (FolderService.isContainer(folder)) {
+            // Its class keeps files in its subfolders (roadmap Phase 14) - on the web, v1, v2, S3 and a move alike.
+            throw new InvalidDataException("folder id=" + folder.getId() + " is of a container class (id="
+                    + folder.getFolderClass().getId() + "); a document is filed into a folder beneath it",
+                    "upload.invalid.folderIsContainer", folder.getDisplayName(), folder.getFolderClass().getTitle());
+        }
     }
 
     /**
