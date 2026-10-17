@@ -788,6 +788,56 @@ database restored without it has S3 keys nobody can use. Lost or changed, every 
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
 
+### Upgrading from 2.16.0 to 2.16.1 — the contracts' own files moved into `Documents`, once
+
+A jar swap, **no migration**. It brings one page, for one job, done once by an administrator and taken
+out again in the release after: **`/settings/contract-documents`** (the role `ADMIN` alone - no
+permission of its own, nothing to give a role).
+
+**Why.** n8n files the ERP's contracts in the bucket `ERP` as `PartyCompany/<PartyCompanyId>/Contract/<ContractNumber>/<file>`,
+the statements beside them in `<ContractNumber>/ContractState/...`. A grant on a contract folder covers
+everything beneath it, so access could not give a contract's documents without its statements. Since
+2026-10-17 n8n writes a contract's own files to `<ContractNumber>/Documents/<file>`; this page moves
+what it wrote before the same way, so that every contract holds folders only.
+
+**What it does**, under the folder named in its form (`ERP/PartyCompany`): for each
+`<company>/Contract/<contract>/` (names compared without case) with files directly in it,
+
+* uses the contract's `Documents` folder when it is there, or makes it;
+* moves each of those files into it - the ordinary move: **no byte and no stored key moves**, the
+  external ids, versions and metadata stay, a `FILE_MOVED` event in each file's history, the content
+  search's queue settled;
+* **leaves a file whose name `Documents` already holds** where it is, and lists it - nothing is
+  overwritten;
+* touches nothing else: `ContractState` and everything below a contract, files in a company's other
+  folders, contracts without files of their own.
+
+The S3 key of a moved file changes (`.../<ContractNumber>/x.pdf` becomes `.../<ContractNumber>/Documents/x.pdf`);
+the ERP does not read the files back, so nothing it holds breaks. Folders deeper than
+`filemanagement.folders.max-depth` are not made by this: `Documents` sits where `ContractState` does,
+already allowed.
+
+**The steps:**
+
+1. Take the database backup (as for every upgrade), then swap the jar.
+2. Confirm n8n writes contract files to `.../<ContractNumber>/Documents/` - otherwise what it sends during
+   and after the run lands in the contract again (a second run would collect it).
+3. Open `/settings/contract-documents`, keep `ERP/PartyCompany`, **Preview**: nothing is written. It
+   counts the contracts, those with files of their own - split into those whose `Documents` is there
+   (only moved) and those whose `Documents` is made first - the files that will move, and the files
+   that will stay, listed with their contract.
+4. Settle the listed ones by hand if they matter (rename one of the two, or delete the duplicate).
+5. **Start**: the browser asks once more, with the counts. The run goes on in the background, one
+   contract at a time, each in a transaction of its own - the page refreshes itself every five seconds
+   with how many contracts are done, files moved, `Documents` made, files left and contracts that failed
+   (the reason is in the log, `contract documents move`). Uploads go on meanwhile.
+6. **Preview again**: "files that will move" should be 0. Anything a failure or a restart left is
+   moved by running it again - a run only finds what is still there; the progress is held in memory
+   and lost with a restart, nothing else is.
+
+On a copy of the data first, if there is one: it times the run and shows the listed files before
+production does. Measured in the tests only (a handful of contracts), not yet at production's thousands.
+
 ### Upgrading from 2.15.0 to 2.16.0 — the advanced search, and reports on the files
 
 A jar swap with **four migrations**: `V3.13`, a new, empty table (`storage_snapshot`); `V3.14`, which cuts
