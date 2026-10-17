@@ -40,15 +40,23 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: production runs 2.15.0** (2026-10-10), searching the contents of files switched on and the
-files stored before it being read - a few days of OCR on the Tika host. (2.5.0 until then; MySQL
-decommissioned 2026-09-30.)
+**Now: production runs 2.16.0** (deployed 2026-10-17), the content backfill still reading the files
+stored before 2.15.0. (2.15.0 from 2026-10-10; MySQL decommissioned 2026-09-30.)
 
-**Next: deploy 2.16.0** (the advanced search, the reports, the content-reading fixes, a key's own upload policy, who is signed in, each version's reading on its page and a folder's reading switched off, four migrations - deployment.md), and
-set `FILEMANAGEMENT_REPORTS_CAPACITY_GB` there. Alongside, while the backfill reads: watch `/settings/content-extraction` and the Tika host, and
-once it is done measure the tables and look at the failures - what decides whether 11.4 (the lexicon
-gate) is wanted.
+**Next: deploy 2.16.1 and run its one-off move** ([deployment.md](deployment.md#upgrading-from-2160-to-2161--the-contracts-own-files-moved-into-documents-once)):
+the files n8n filed directly in each ERP contract folder (`PartyCompany/<id>/Contract/<number>/`) moved into
+the contract's `Documents` - where n8n writes them since 2026-10-17 - so that a contract's documents and its
+statements (`ContractState/`) are two folders and can be given to two departments. The page
+(`/settings/contract-documents`, `ADMIN` only) and its code are **removed in the release after**. It is the
+first step of folder classes - a type on each folder, templates that make a contract's folders, and access
+granted by type across every company - agreed with the owner on 2026-10-17 and still to be written here.
+Alongside: watch `/settings/content-extraction` and the Tika host, and once the backfill is done measure the
+tables and look at the failures - what decides whether 11.4 (the lexicon gate) is wanted.
 
+2.16.1 is written: **the one-off move of the contracts' own files into `Documents`** - a preview (contracts
+whose `Documents` is there, those where it is made first, the files that move, and those that stay because
+`Documents` already holds their name), then a run in the background, one contract per transaction, through the
+ordinary file move (history, no byte moved), re-runnable until nothing is left.
 2.16.0 is written: **reports on the files** (12.9) - thirteen of them at `/reports` (`REPORTS_PAGE`):
 totals and each top-level folder, the folders a level at a time, growth by Jalali month with a
 projection of when the disk is full, kinds, the largest, versions, uploaders, downloads, cold and
