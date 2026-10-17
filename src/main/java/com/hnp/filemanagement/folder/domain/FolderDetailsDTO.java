@@ -44,5 +44,6 @@ public record FolderDetailsDTO(
         String createdBy,
         Instant updatedAt,
         String updatedBy,
-        boolean contentRead) {
+        boolean contentRead,
+        String classTitle) {
 }

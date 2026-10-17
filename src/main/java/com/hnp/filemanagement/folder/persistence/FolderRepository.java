@@ -272,6 +272,62 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     int repairKeyPaths();
 
     /**
+     * The folders whose {@code class_path} (roadmap Phase 14, V3.17) is not their parent's and their own class
+     * after it - none, wherever only 2.17.0 and later have written. What a test asserts empty after anything
+     * that makes or moves a folder or changes a class.
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT f.id FROM folder f
+            LEFT JOIN folder p ON p.id = f.parent_id
+            WHERE f.class_path <> COALESCE(p.class_path, '/') || COALESCE(f.class_id || '/', '')
+            ORDER BY f.id
+            """)
+    List<Integer> findRowsWhoseClassPathDisagrees();
+
+    /**
+     * Sets every folder's class path to what the classes above it and its own make it, where it is not - in
+     * one statement, touching no row that is right. What a start runs ({@code ClassPathRepair}): a release
+     * before 2.17.0, run on this database after it - a rollback - makes and moves folders without keeping it.
+     *
+     * @return the number of folders set
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query(nativeQuery = true, value = """
+            WITH RECURSIVE classed (id, class_path) AS (
+                SELECT f.id, CAST('/' || COALESCE(f.class_id || '/', '') AS VARCHAR(1000))
+                FROM folder f
+                WHERE f.parent_id IS NULL
+                UNION ALL
+                SELECT c.id, CAST(k.class_path || COALESCE(c.class_id || '/', '') AS VARCHAR(1000))
+                FROM folder c
+                JOIN classed k ON c.parent_id = k.id
+            )
+            UPDATE folder f SET class_path = classed.class_path
+            FROM classed
+            WHERE f.id = classed.id AND f.class_path <> classed.class_path
+            """)
+    int repairClassPaths();
+
+    /**
+     * Rewrites the class path of a folder ({@code pathPrefix}, its own path) and of everything beneath it, from
+     * the old prefix - its class path before, as the database holds it - to the new: a change of its class, or a
+     * move. The only way a class path changes after a folder is made ({@code Folder#classPath}).
+     */
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true)
+    @Query(nativeQuery = true, value = """
+            UPDATE folder
+            SET class_path = :newPrefix || substr(class_path, :oldLength + 1)
+            WHERE path LIKE :pathPrefix || '%'
+            """)
+    int rewriteClassPaths(@Param("pathPrefix") String pathPrefix, @Param("newPrefix") String newPrefix,
+                          @Param("oldLength") int oldLength);
+
+    /** A folder's class path as the database holds it - not as an entity read earlier remembers it. */
+    @Query(nativeQuery = true, value = "SELECT class_path FROM folder WHERE id = :id")
+    String classPathOf(@Param("id") int id);
+
+    /**
      * Rewrites the key path of every folder strictly beneath one ({@code pathPrefix}, its own path),
      * from the old prefix - its key path before - to the new: a rename or a move of it, in one
      * statement for any width of subtree. The folder's own row is the caller's to set; a statement
@@ -314,13 +370,42 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
             """)
     List<GrantedPath> findGrantsDirectly(@Param("userId") int userId);
 
-    /** The same, through any of this person's roles. */
-    @Query("""
-            SELECT new com.hnp.filemanagement.folder.persistence.GrantedPath(g.folder.path, g.permission)
-            FROM User u JOIN u.roles r JOIN RoleFolderGrant g ON g.role = r
-            WHERE u.id = :userId
+
+    /**
+     * The same, through any of this person's roles - their folder grants, and what their class grants cover
+     * (roadmap Phase 14) as the paths a folder grant would name: each folder of the class within the grant's
+     * scope (everywhere without one), and the scope folder itself when it lies beneath a folder of the class. A
+     * folder is beneath one of these exactly when its class path holds the class and it lies within the scope -
+     * the test the SQL asks ({@code GrantedFolderPath}). And a row of no path ({@code CLASS_GRANT}) for each class grant
+     * held, whatever it covers: the statements of a reader without one stay as they were ({@code FolderReadScope}).
+     * One statement, as before class grants: a request resolves its access in two.
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT f.path AS path, rf.permission AS permission, 'FOLDER' AS kind
+            FROM user_role ur
+            JOIN role_folder rf ON rf.role_id = ur.role_id
+            JOIN folder f ON f.id = rf.folder_id
+            WHERE ur.user_id = :userId
+            UNION ALL
+            SELECT CAST(NULL AS VARCHAR(1000)), g.permission, 'CLASS_GRANT'
+            FROM user_role ur
+            JOIN role_class_grant g ON g.role_id = ur.role_id
+            WHERE ur.user_id = :userId
+            UNION ALL
+            SELECT d.path, g.permission, 'CLASS'
+            FROM user_role ur
+            JOIN role_class_grant g ON g.role_id = ur.role_id
+            JOIN folder d ON d.class_id = g.class_id
+            LEFT JOIN folder s ON s.id = g.scope_folder_id
+            WHERE ur.user_id = :userId AND (s.id IS NULL OR d.path LIKE s.path || '%')
+            UNION ALL
+            SELECT s.path, g.permission, 'CLASS'
+            FROM user_role ur
+            JOIN role_class_grant g ON g.role_id = ur.role_id
+            JOIN folder s ON s.id = g.scope_folder_id
+            WHERE ur.user_id = :userId AND s.class_path LIKE '%/' || g.class_id || '/%'
             """)
-    List<GrantedPath> findGrantsThroughRoles(@Param("userId") int userId);
+    List<RoleGrantedPath> findGrantsThroughRoles(@Param("userId") int userId);
 
     /** The folders granted to one API key, with what each one allows (roadmap 9.2). */
     @Query("""

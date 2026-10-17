@@ -68,6 +68,12 @@ public enum PermissionGroup {
     /** The reports on the files - counted over the folders the person may read (roadmap 12.9). */
     REPORTS(REPORTS_PAGE),
 
+    /** The folder classes themselves - defined, changed, deleted (roadmap Phase 14). */
+    FOLDER_CLASSES_ADMIN(FOLDER_CLASSES_PAGE, SAVE_FOLDER_CLASS, DELETE_FOLDER_CLASS),
+
+    /** A folder's class set, and the classes' rules applied below a folder, where the person may write (roadmap Phase 14). */
+    FOLDER_CLASS_SET(SET_FOLDER_CLASS),
+
     /** Deleting a file, or one of its versions. */
     FILE_DELETE(REST_DELETE_FILE_INFO, REST_DELETE_FILE_DETAILS),
 

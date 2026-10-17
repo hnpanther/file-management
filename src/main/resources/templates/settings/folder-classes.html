@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{folderClass.pageTitle}">طبقه‌های پوشه | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The folder classes (roadmap Phase 14): FolderClassController, over FolderClassService. The form defines a
+  class or changes the one chosen - its template rows, its own and three empty ones - and the list shows each
+  with its template, its rule for other children and how many folders carry it.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{uploadPolicy.kicker}">تنظیمات</div>
+        <h1 th:text="#{folderClass.heading}">طبقه‌های پوشه</h1>
+        <p class="page-description" th:text="#{folderClass.description}">
+            طبقه، نوع یک پوشه است.
+        </p>
+    </header>
+
+    <div th:if="${saved != null}" class="alert alert-success mb-5" role="status" id="success_message" th:text="${saved}"></div>
+    <div th:if="${refused != null}" class="alert alert-warning mb-5" role="alert" id="warning_message" th:text="${refused}"></div>
+
+    <section class="card mb-5" aria-labelledby="form-title"
+             sec:authorize="hasAuthority('SAVE_FOLDER_CLASS') || hasAuthority('ADMIN')">
+        <div class="card-body">
+            <h2 id="form-title" class="mb-1 text-base font-semibold"
+                th:text="${form.id() == null} ? #{folderClass.add.title} : #{folderClass.edit.title}">افزودن طبقه</h2>
+            <p class="mb-4 text-sm text-ink-500" th:text="#{folderClass.add.hint}">تغییر یک طبقه فقط روی پوشه‌هایی اثر دارد که از این پس ساخته می‌شوند.</p>
+            <form th:action="${form.id() == null} ? @{/settings/folder-classes} : @{/settings/folder-classes/{id}(id=${form.id()})}"
+                  method="post" id="folderClassForm">
+                <div class="grid gap-5 lg:grid-cols-3">
+                    <div class="form-group">
+                        <label for="name" th:text="#{folderClass.field.name}">شناسه (انگلیسی)</label>
+                        <input id="name" name="name" th:value="${form.name()}" class="form-control technical" dir="ltr"
+                               type="text" required maxlength="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="title" th:text="#{folderClass.field.title}">عنوان</label>
+                        <input id="title" name="title" th:value="${form.title()}" class="form-control" type="text" required maxlength="200">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" name="containerOnly" value="true" th:checked="${form.containerOnly()}">
+                            <span th:text="#{folderClass.field.containerOnly}">فقط ظرف (فایل مستقیم نمی‌پذیرد)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <h3 class="mt-4 mb-2 text-sm font-semibold" th:text="#{folderClass.field.template}">زیرپوشه‌هایی که خودکار ساخته می‌شوند</h3>
+                <p class="field-hint" th:text="#{folderClass.field.templateHint}">نام همان چیزی است که در مسیر نوشته می‌شود.</p>
+                <div class="overflow-x-auto">
+                    <table class="table" id="folder-class-template">
+                        <thead>
+                        <tr>
+                            <th th:text="#{folderClass.column.childName}">نام پوشه</th>
+                            <th th:text="#{folderClass.column.childDisplayName}">نام نمایشی</th>
+                            <th th:text="#{folderClass.column.childClass}">طبقه</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="row : ${form.template()}">
+                            <td><input name="childName" th:value="${row.name()}" class="form-control technical" dir="ltr" type="text" maxlength="100"></td>
+                            <td><input name="childDisplayName" th:value="${row.displayName()}" class="form-control" type="text" maxlength="200"></td>
+                            <td>
+                                <select name="childClassId" class="form-control">
+                                    <option value="" th:text="#{folderClass.choose}">انتخاب کنید</option>
+                                    <option th:each="c : ${classes}" th:value="${c.id()}" th:text="${c.title()}"
+                                            th:selected="${row.classId() != null and row.classId() == c.id()}">طبقه</option>
+                                </select>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="field-hint" th:text="#{folderClass.field.templateNewClass}">برای طبقه‌ای که هنوز نیست، اول آن را بسازید.</p>
+
+                <h3 class="mt-4 mb-2 text-sm font-semibold" th:text="#{folderClass.field.otherChildren}">زیرپوشه با نام دیگر</h3>
+                <div class="grid gap-5 lg:grid-cols-3">
+                    <div class="form-group">
+                        <select name="otherChildren" id="otherChildren" class="form-control">
+                            <option value="NONE" th:selected="${form.otherChildren() == 'NONE'}" th:text="#{folderClass.other.NONE}">بدون طبقه ساخته شود</option>
+                            <option value="CLASS" th:selected="${form.otherChildren() == 'CLASS'}" th:text="#{folderClass.other.CLASS}">این طبقه را بگیرد</option>
+                            <option value="REFUSE" th:selected="${form.otherChildren() == 'REFUSE'}" th:text="#{folderClass.other.REFUSE}">ساخته نشود</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <select name="otherChildrenClassId" id="otherChildrenClassId" class="form-control">
+                            <option value="" th:text="#{folderClass.choose}">انتخاب کنید</option>
+                            <option th:each="c : ${classes}" th:value="${c.id()}" th:text="${c.title()}"
+                                    th:selected="${form.otherChildrenClassId() != null and form.otherChildrenClassId() == c.id()}">طبقه</option>
+                        </select>
+                        <p class="field-hint" th:text="#{folderClass.field.otherClassHint}">فقط وقتی «این طبقه را بگیرد» انتخاب شده است.</p>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
+                    </button>
+                    <a th:if="${form.id() != null}" th:href="@{/settings/folder-classes}" class="btn btn-outline-secondary"
+                       th:text="#{explorer.manage.cancel}">انصراف</a>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="list-title">
+        <div class="card-body">
+            <h2 id="list-title" class="text-base font-semibold" th:text="#{folderClass.list.title}">طبقه‌ها</h2>
+            <div th:if="${#lists.isEmpty(classes)}" class="empty-state" th:text="#{folderClass.list.empty}">هنوز طبقه‌ای تعریف نشده است.</div>
+            <div th:unless="${#lists.isEmpty(classes)}" class="overflow-x-auto">
+                <table class="table" id="folder-classes">
+                    <thead>
+                    <tr>
+                        <th th:text="#{folderClass.field.title}">عنوان</th>
+                        <th th:text="#{folderClass.field.name}">شناسه</th>
+                        <th th:text="#{folderClass.column.containerOnly}">فقط ظرف</th>
+                        <th th:text="#{folderClass.field.template}">زیرپوشه‌های خودکار</th>
+                        <th th:text="#{folderClass.field.otherChildren}">زیرپوشه با نام دیگر</th>
+                        <th th:text="#{folderClass.column.folders}">پوشه‌ها</th>
+                        <th th:text="#{apiKey.column.actions}">عملیات</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="c : ${classes}">
+                        <td class="font-semibold" th:text="${c.title()}"></td>
+                        <td class="technical" dir="ltr" th:text="${c.name()}"></td>
+                        <td th:text="${c.containerOnly()} ? #{folderClass.yes} : #{folderClass.no}"></td>
+                        <td>
+                            <div th:each="t : ${c.template()}">
+                                <span class="technical" dir="ltr" th:text="${t.name()}"></span>
+                                <span th:text="|← ${t.classTitle()}|"></span>
+                            </div>
+                        </td>
+                        <td>
+                            <span th:text="#{'folderClass.other.' + ${c.otherChildren().name()}}"></span>
+                            <span th:if="${c.otherChildrenClassTitle() != null}" th:text="|: ${c.otherChildrenClassTitle()}|"></span>
+                        </td>
+                        <td class="text-nowrap" th:text="${c.folders()}">0</td>
+                        <td>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <a sec:authorize="hasAuthority('SAVE_FOLDER_CLASS') || hasAuthority('ADMIN')"
+                                   th:href="@{/settings/folder-classes/{id}(id=${c.id()})}" class="btn btn-outline-secondary btn-sm">
+                                    <i class="bi bi-pencil" aria-hidden="true"></i>
+                                    <span th:text="#{action.edit}">ویرایش</span>
+                                </a>
+                                <form th:if="${c.folders() == 0}" sec:authorize="hasAuthority('DELETE_FOLDER_CLASS') || hasAuthority('ADMIN')"
+                                      th:action="@{/settings/folder-classes/{id}/delete(id=${c.id()})}" method="post" class="inline">
+                                    <button type="submit" class="btn btn-danger btn-sm"
+                                            th:attr="onclick=|return confirm('${#messages.msg('folderClass.deleteConfirm')}')|">
+                                        <i class="bi bi-trash" aria-hidden="true"></i>
+                                        <span th:text="#{action.delete}">حذف</span>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

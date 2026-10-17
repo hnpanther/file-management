@@ -119,6 +119,20 @@ public class FolderService {
         return folder.getKind() != FolderKind.ROOT && folder.getKind() != FolderKind.PROFILES;
     }
 
+    /**
+     * Whether a new file may be filed directly into this folder - an upload by any way, or a move in: one that
+     * can hold files ({@link #canHoldFiles}) and whose class is not container only (roadmap Phase 14). Files
+     * already in a container stay listed and take new versions; only new ones are refused.
+     */
+    public static boolean acceptsFiles(Folder folder) {
+        return canHoldFiles(folder) && !isContainer(folder);
+    }
+
+    /** Whether the folder's class keeps files out of it (roadmap Phase 14). */
+    public static boolean isContainer(Folder folder) {
+        return folder.getFolderClass() != null && folder.getFolderClass().isContainerOnly();
+    }
+
     /** The kinds nobody renames, moves or deletes by hand: the root, the Profiles folder, a home. */
     static boolean isSystemFolder(Folder folder) {
         return folder.getKind() == FolderKind.ROOT || folder.getKind() == FolderKind.PROFILES
@@ -239,6 +253,8 @@ public class FolderService {
         } else if (tagGroupId != null || (newTagGroupName != null && !newTagGroupName.isBlank())) {
             throw new InvalidDataException("only a top-level folder carries a tag group");
         }
+        // Its class, from its parent's (roadmap Phase 14) - or a refusal, before anything is written.
+        FolderClass folderClass = FolderClassRules.classFor(parent.getFolderClass(), directoryName);
 
         Folder folder = new Folder();
         folder.setParent(parent);
@@ -247,6 +263,7 @@ public class FolderService {
         folder.setDepth(parent.getDepth() + 1);
         folder.setKind(FolderKind.FOLDER);
         folder.setTagGroup(group);
+        folder.setFolderClass(folderClass);
         folder.setEnabled(1);
         folder.setState(STATE_ACTIVE);
         folder.setCreatedBy(userRepository.getReferenceById(principalId));
@@ -257,8 +274,57 @@ public class FolderService {
         saved.setPath(parent.childPath(saved.getId()));
 
         actionHistoryService.saveActionHistory(EntityEnum.Folder, saved.getId(), ActionEnum.CREATE, principalId,
-                "CREATE FOLDER", "CREATE folder " + directoryName + " under folder id=" + parentId);
+                "CREATE FOLDER", "CREATE folder " + directoryName + " under folder id=" + parentId
+                        + (folderClass == null ? "" : " of class id=" + folderClass.getId()));
+        makeTemplate(saved, principalId);
         return toDto(saved);
+    }
+
+    /**
+     * The folders a folder's class makes in it (roadmap Phase 14), each with its class - and theirs in them -
+     * where a folder of that name is not there already. Made as part of what made the folder, under the same
+     * checks of name and depth but not of access: whoever may make a folder may make what its class says it
+     * holds. A class whose template would nest past the depth limit refuses the folder that would hold it.
+     *
+     * @return the folders made, for {@code FolderClassAssignment}'s count
+     */
+    int makeTemplate(Folder folder, int principalId) {
+        FolderClass folderClass = folder.getFolderClass();
+        if (folderClass == null || folderClass.getChildren().isEmpty()) {
+            return 0;
+        }
+        int made = 0;
+        for (FolderClassChild template : folderClass.getChildren()) {
+            boolean there = !folderRepository.findByParentIdAndSearchName(folder.getId(),
+                    SearchKey.of(template.getName(), SearchKey.NAME_LENGTH)).isEmpty();
+            if (there) {
+                continue;
+            }
+            if (!canHoldFolders(folder)) {
+                throw new InvalidDataException("the template of folder class id=" + folderClass.getId()
+                        + " would put a folder past the depth limit (" + maxDepth + ") below folder id=" + folder.getId(),
+                        "folderClass.templateTooDeep", folderClass.getTitle(), maxDepth);
+            }
+            Folder child = new Folder();
+            child.setParent(folder);
+            child.setName(template.getName());
+            child.setDisplayName(template.getDisplayName());
+            child.setDepth(folder.getDepth() + 1);
+            child.setKind(FolderKind.FOLDER);
+            child.setFolderClass(template.getChildClass());
+            child.setEnabled(1);
+            child.setState(STATE_ACTIVE);
+            child.setCreatedBy(userRepository.getReferenceById(principalId));
+            child.setPath("");
+            Folder saved = folderRepository.save(child);
+            saved.setPath(folder.childPath(saved.getId()));
+            actionHistoryService.saveActionHistory(EntityEnum.Folder, saved.getId(), ActionEnum.CREATE, principalId,
+                    "CREATE FOLDER", "CREATE folder " + template.getName() + " under folder id=" + folder.getId()
+                            + " of class id=" + template.getChildClass().getId() + " (template of class id="
+                            + folderClass.getId() + ")");
+            made += 1 + makeTemplate(saved, principalId);
+        }
+        return made;
     }
 
     /**
@@ -293,6 +359,9 @@ public class FolderService {
         requireFreeAmongSiblings(folder.getParent(), directoryName, folder.getId());
 
         boolean nameChanged = !folder.getName().equals(directoryName);
+        if (nameChanged) {
+            FolderClassRules.requireAllowedUnder(folder.getParent().getFolderClass(), directoryName);
+        }
         boolean groupChanged = false;
         if (tagGroupId != null) {
             if (!topLevel) {
@@ -348,6 +417,7 @@ public class FolderService {
             throw new InvalidDataException("\"" + RESERVED_TOP_LEVEL_NAME + "\" is reserved at the top level");
         }
         requireFreeAmongSiblings(newParent, folder.getName(), folder.getId());
+        FolderClassRules.requireAllowedUnder(newParent.getFolderClass(), folder.getName());
 
         if (!canHoldFolders(newParent)) {
             throw new InvalidDataException("folder id=" + newParent.getId() + " (" + newParent.getKind()
@@ -374,6 +444,11 @@ public class FolderService {
         // becomes a top-level one, from it when a top-level one goes below another.
         String oldKeyPrefix = folder.getKeyPath();
         String newKeyPrefix = newParent.childKeyPath(folder.getName());
+        // And the classes above them (roadmap Phase 14): the folder keeps its own, under the new parent's - read from
+        // the database and rewritten by a statement after the paths, never through the entities (Folder#classPath).
+        String oldClassPrefix = folderRepository.classPathOf(folder.getId());
+        String newClassPrefix = folderRepository.classPathOf(newParent.getId())
+                + (folder.getFolderClass() == null ? "" : folder.getFolderClass().getId() + "/");
         List<Folder> subtree = folderRepository.findSubtree(oldPrefix);
         for (Folder each : subtree) {
             each.setPath(newPrefix + each.getPath().substring(oldPrefix.length()));
@@ -388,6 +463,7 @@ public class FolderService {
             }
         }
         folderRepository.saveAllAndFlush(subtree);
+        folderRepository.rewriteClassPaths(newPrefix, newClassPrefix, oldClassPrefix.length());
 
         tagMirrorService.retagFilesUnder(folder);
         // Whether the subtree's files are read for the search follows the folders above it (2.16.0): the
@@ -439,7 +515,7 @@ public class FolderService {
         }
     }
 
-    private static String requireDirectoryName(String name, boolean topLevel) {
+    static String requireDirectoryName(String name, boolean topLevel) {
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty() || trimmed.length() > 100 || !ValidationUtil.checkCorrectDirectoryName(trimmed)) {
             throw new InvalidDataException("a folder name is 1-100 characters, not '.' or '..', with no separator, control or '<>:\"|?*' character and no trailing dot or space: " + name);

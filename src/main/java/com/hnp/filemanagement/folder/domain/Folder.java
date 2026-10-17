@@ -125,6 +125,28 @@ public class Folder extends AbstractEntity {
     private TagGroup tagGroup;
 
     /**
+     * The folder's class (roadmap Phase 14, V3.17), or null - which every folder has until somebody gives it
+     * one. Set when the folder is made, from its parent's class ({@code FolderClassification}), and changed by
+     * {@code FolderClassAssignment} only, which rewrites {@link #classPath} below it.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "class_id")
+    private FolderClass folderClass;
+
+    /**
+     * Derived, like {@link #path} and {@link #keyPath}: the ids of the classes of the folders above this one and
+     * of its own, each followed by {@code /}, after a leading {@code /} - {@code /} for none. What a class grant
+     * looks for ({@code GrantedFolderPath}): {@code /9/} in it is a folder of class 9 or beneath one. Written on
+     * creation ({@link #onCreate}); after that <b>only by SQL</b> - {@code FolderRepository.rewriteClassPaths},
+     * from the values in the database, for a move or a change of class - and never by an entity's flush
+     * ({@code updatable = false}): a folder read before a statement rewrote its subtree would otherwise write the
+     * old value back, and access is read off it. {@code FolderRepository.findRowsWhoseClassPathDisagrees} is
+     * the check that it held.
+     */
+    @Column(name = "class_path", nullable = false, length = 1000, updatable = false)
+    private String classPath = "/";
+
+    /**
      * A cap on the total size of every revision of every file anywhere beneath this folder, in
      * bytes; null means none ({@code V2.11}). Enforced by {@code FolderQuotaService} on every
      * upload and every move in. Usually on a {@code USER_HOME}, allowed on any folder.
@@ -177,6 +199,19 @@ public class Folder extends AbstractEntity {
     @PrePersist
     void onCreate() {
         keyPath = parent == null ? "" : parent.childKeyPath(name);
+        classPath = parent == null ? ownClassPart("/") : parent.childClassPath(folderClass);
+    }
+
+    /**
+     * The class path a child of this folder carries with this class (null for none): this one's, and the
+     * class's id after it.
+     */
+    public String childClassPath(FolderClass childClass) {
+        return childClass == null ? classPath : classPath + childClass.getId() + "/";
+    }
+
+    private String ownClassPart(String above) {
+        return folderClass == null ? above : above + folderClass.getId() + "/";
     }
 
     public void setName(String name) {

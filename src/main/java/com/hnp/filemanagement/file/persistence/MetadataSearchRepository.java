@@ -1,7 +1,7 @@
 package com.hnp.filemanagement.file.persistence;
 
 import com.hnp.filemanagement.folder.domain.FolderReadScope;
-import com.hnp.filemanagement.folder.domain.GrantedFolderPath;
+import com.hnp.filemanagement.folder.domain.ReadScopeSql;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -139,22 +139,18 @@ public class MetadataSearchRepository {
                 LIMIT :limit OFFSET :offset""".formatted(readable(scope, "fo"));
     }
 
-    /** The reader's granted paths, read once for the statement (as the S3 listing reads them). */
+    /** The reader's granted paths and classes, read once for the statement ({@link ReadScopeSql}, issue 119). */
     private static String granted(FolderReadScope scope) {
-        return scope.unrestricted() ? "" : "WITH granted AS MATERIALIZED (SELECT g.path FROM (" + GrantedFolderPath.SQL
-                + ") g WHERE g.user_id = :userId AND g.api_key_id = :apiKeyId)\n";
+        return ReadScopeSql.granted(scope);
     }
 
     /** Whether the folder {@code alias} is readable in the scope - off the grants read once ({@link #granted}). */
     private static String readable(FolderReadScope scope, String alias) {
-        return scope.unrestricted() ? "TRUE"
-                : "EXISTS (SELECT 1 FROM granted WHERE " + alias + ".path LIKE granted.path || '%')";
+        return ReadScopeSql.readable(scope, alias);
     }
 
     static MapSqlParameterSource scoped(FolderReadScope scope) {
-        return new MapSqlParameterSource()
-                .addValue("userId", scope.userId())
-                .addValue("apiKeyId", scope.apiKeyId());
+        return ReadScopeSql.parameters(scope);
     }
 
     private static FileHit fileHit(ResultSet rs, int rowNumber) throws SQLException {

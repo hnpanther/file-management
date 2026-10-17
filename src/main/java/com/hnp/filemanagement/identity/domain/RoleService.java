@@ -8,6 +8,7 @@ import com.hnp.filemanagement.audit.domain.ActionEnum;
 import com.hnp.filemanagement.audit.domain.EntityEnum;
 import com.hnp.filemanagement.folder.domain.Folder;
 import com.hnp.filemanagement.folder.domain.FolderPermission;
+import com.hnp.filemanagement.folder.domain.RoleClassGrantService;
 import com.hnp.filemanagement.folder.domain.RoleFolderGrant;
 import com.hnp.filemanagement.shared.exception.DuplicateResourceException;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
@@ -64,19 +65,22 @@ public class RoleService {
     private final ActionHistoryService actionHistoryService;
     private final UploadPolicyService uploadPolicyService;
     private final FolderGrantTreeService folderGrantTreeService;
+    private final RoleClassGrantService roleClassGrantService;
 
     public RoleService(RoleRepository roleRepository,
                        PermissionRepository permissionRepository,
                        FolderRepository folderRepository,
                        ActionHistoryService actionHistoryService,
                        UploadPolicyService uploadPolicyService,
-                       FolderGrantTreeService folderGrantTreeService) {
+                       FolderGrantTreeService folderGrantTreeService,
+                       RoleClassGrantService roleClassGrantService) {
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
         this.folderRepository = folderRepository;
         this.actionHistoryService = actionHistoryService;
         this.uploadPolicyService = uploadPolicyService;
         this.folderGrantTreeService = folderGrantTreeService;
+        this.roleClassGrantService = roleClassGrantService;
     }
 
     /** Creates a role with these permissions, and answers its id. */
@@ -129,6 +133,7 @@ public class RoleService {
                 .map(grant -> new RoleFolderGrant(copy, grant.getFolder(), grant.getPermission()))
                 .toList());
         uploadPolicyService.copyRolePolicy(sourceRoleId, copy.getId(), principalId);
+        roleClassGrantService.copy(sourceRoleId, copy);
 
         actionHistoryService.saveActionHistory(EntityEnum.Role, copy.getId(), ActionEnum.CREATE, principalId,
                 "COPY ROLE", "COPY ROLE from id=" + sourceRoleId + " (" + source.getRoleName() + ") as " + name);

@@ -157,6 +157,13 @@
         -->
         <section class="card-body" role="tabpanel" id="panel-folders" aria-labelledby="tab-folders"
                  x-show="tab === 'folders'" x-cloak>
+            <!-- Grants by folder class (roadmap Phase 14): every folder of a class, on a page of their own. -->
+            <p class="mb-4 text-sm">
+                <a th:href="@{/roles/{id}/class-grants(id=${role.id})}" class="btn btn-sm btn-outline-secondary" id="class-grants-link">
+                    <i class="bi bi-diagram-3" aria-hidden="true"></i>
+                    <span th:text="#{roleClassGrant.link}">دسترسی بر اساس طبقهٔ پوشه</span>
+                </a>
+            </p>
             <form method="post" th:action="@{/roles/{id}/folders(id=${role.id})}" id="foldersForm">
                 <p class="mb-4 text-sm text-ink-500" th:text="#{role.folders.hint}">
                     هر دسترسی‌ای که برای یک پوشه تعیین کنید، برای همهٔ زیرشاخه‌هایش هم اعمال می‌شود.

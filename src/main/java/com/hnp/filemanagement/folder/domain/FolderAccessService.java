@@ -5,6 +5,7 @@ import com.hnp.filemanagement.file.domain.FileInfo;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import com.hnp.filemanagement.folder.persistence.GrantedPath;
+import com.hnp.filemanagement.folder.persistence.RoleGrantedPath;
 import com.hnp.filemanagement.identity.persistence.RoleRepository;
 import com.hnp.filemanagement.shared.config.FileManagementProperties;
 import org.springframework.security.access.AccessDeniedException;
@@ -85,8 +86,17 @@ public class FolderAccessService {
         }
 
         List<GrantedPath> granted = new ArrayList<>(folderRepository.findGrantsDirectly(principalId));
-        granted.addAll(folderRepository.findGrantsThroughRoles(principalId));
-        return FolderAccess.of(granted);
+        // The roles' folder grants, and their class grants (roadmap Phase 14) as the paths they cover: the same
+        // folders the SQL reaches through class_path (GrantedFolderPath), and the ones the explorer shows the way to.
+        boolean classGrants = false;
+        for (RoleGrantedPath grant : folderRepository.findGrantsThroughRoles(principalId)) {
+            if ("CLASS_GRANT".equals(grant.getKind())) {
+                classGrants = true;
+            } else {
+                granted.add(new GrantedPath(grant.getPath(), FolderPermission.valueOf(grant.getPermission())));
+            }
+        }
+        return FolderAccess.of(granted, classGrants);
     }
 
     /**
@@ -161,7 +171,7 @@ public class FolderAccessService {
         Integer apiKeyId = currentApiKeyId();
         return apiKeyId != null
                 ? FolderReadScope.ofApiKey(apiKeyId, access.isEmpty())
-                : FolderReadScope.ofUser(principalId, access.isEmpty());
+                : FolderReadScope.ofUser(principalId, access.isEmpty(), access.hasClassGrants());
     }
 
     // ------------------------------------------------------------------ by the file's own folder (roadmap 7.2 step 3)

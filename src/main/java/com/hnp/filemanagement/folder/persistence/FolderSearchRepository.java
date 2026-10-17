@@ -47,9 +47,8 @@ public class FolderSearchRepository {
             return List.of();
         }
         String key = SearchKey.forSearch(typed);
-        String visible = scope.unrestricted() ? "TRUE"
-                : "EXISTS (SELECT 1 FROM granted g WHERE f.path LIKE g.path || '%' OR g.path LIKE f.path || '%')";
-        String sql = ReadScopeSql.granted(scope) + """
+        String visible = ReadScopeSql.visible(scope, "f");
+        String sql = ReadScopeSql.grantedWithSignposts(scope) + """
                 SELECT f.id, f.path, f.name, f.display_name,
                        EXISTS (SELECT 1 FROM folder s
                                WHERE s.parent_id = f.parent_id AND s.id <> f.id

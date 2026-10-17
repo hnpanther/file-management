@@ -2279,6 +2279,10 @@ missed would let one surface answer differently from the others. Nothing is wron
 **To do, when either file is next touched**: call `ReadScopeSql` and delete the copy; the existing
 tests of each (`MetadataSearchTest`, `S3ListingTest`) hold the behaviour.
 
+> **Fixed in 2.17.0**, when class grants changed how a grant covers a folder (roadmap Phase 14): both read
+> `ReadScopeSql.granted` / `readable` now, and the explorer's folder search `ReadScopeSql.visible` - one
+> statement of the grants, one condition, for every native query.
+
 ### 120. A failed reading's reason could carry the document's own text — **S2**
 
 Found 2026-10-14, looking into seven readings that failed in production. Tika 4.1 answers a document it
@@ -2358,3 +2362,27 @@ way, and at production's size the event index is the plan. To do: ask the event'
 only too (`planOfEach(..., true)`), as the name's - a test-only change.
 
 **Fixed in 2.16.0**: the event's case is asked with bitmap scans only, as the name's.
+
+## Found while building 2.17.0 (2026-10-17)
+
+### 125. A statement whose estimate is high is compiled by PostgreSQL's JIT, which can cost more than running it — **S3**
+
+`jit` is on by default in PostgreSQL 18, and a statement whose estimated cost passes `jit_above_cost`
+(100,000) is compiled to machine code before it runs - optimised and inlined past 500,000. Building 2.17.0,
+the explorer's folder search for a reader with a class grant, at five thousand contracts, ran in ten
+milliseconds and took six hundred: 590 of them JIT (`EXPLAIN (ANALYZE)` in `FolderClassScaleTest` while it
+was written). The estimate was inflated by correlated subqueries over a CTE the planner thought held a
+hundred rows (it held one). 2.17.0 rewrote that condition so its estimate is small
+(`ReadScopeSql.grantedWithSignposts`, a set built once); it now takes 25-55 ms. The same release met the estimate's
+other face: a second `LIKE` in the readable condition made a reader's folders look so few that the content search
+was planned from them (34 s for 0.3) - fixed by leaving the class test out for readers without a class grant and
+writing it as `strpos(...) > 0` for the others. Estimates of these conditions decide plans; a change to one is
+measured with `-Pscale`.
+
+Nothing here says whether other statements pay the same - the reports and the content search at a
+million revisions are the candidates (0.2-2.1 s measured, never broken down). **To do, when measured**:
+run the scale tests with `EXPLAIN (ANALYZE)` on their slowest statements, look for a `JIT:` block whose
+`Total` is a large part of the time, and decide between `jit = off` for the application's connections
+(`options=-c jit=off` in the JDBC URL - common for OLTP, a change to every statement, so its own release)
+and rewriting the statements concerned. Not changed in 2.17.0: a setting for every statement is not part of
+a feature's release.

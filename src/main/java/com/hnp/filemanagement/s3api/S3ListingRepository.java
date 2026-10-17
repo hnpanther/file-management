@@ -1,7 +1,7 @@
 package com.hnp.filemanagement.s3api;
 
 import com.hnp.filemanagement.folder.domain.FolderReadScope;
-import com.hnp.filemanagement.folder.domain.GrantedFolderPath;
+import com.hnp.filemanagement.folder.domain.ReadScopeSql;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -239,7 +239,7 @@ public class S3ListingRepository {
 
     /** Whether the folder {@code fo} is readable in the scope: the same view of the grants the JPQL lists ask ({@link #granted}). */
     private static String readable(FolderReadScope scope) {
-        return scope.unrestricted() ? "TRUE" : "EXISTS (SELECT 1 FROM granted WHERE fo.path LIKE granted.path || '%')";
+        return ReadScopeSql.readable(scope, "fo");
     }
 
     /**
@@ -248,14 +248,11 @@ public class S3ListingRepository {
      * walks them all to find it.
      */
     private static String granted(FolderReadScope scope) {
-        return scope.unrestricted() ? "" : "WITH granted AS MATERIALIZED (SELECT g.path FROM (" + GrantedFolderPath.SQL
-                + ") g WHERE g.user_id = :userId AND g.api_key_id = :apiKeyId) ";
+        return ReadScopeSql.granted(scope);
     }
 
     private static MapSqlParameterSource scoped(FolderReadScope scope) {
-        return new MapSqlParameterSource()
-                .addValue("userId", scope.userId())
-                .addValue("apiKeyId", scope.apiKeyId());
+        return ReadScopeSql.parameters(scope);
     }
 
     private static Row row(ResultSet rs, int rowNumber) throws SQLException {

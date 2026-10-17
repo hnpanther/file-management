@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <meta th:if="${progress != null and progress.running()}" http-equiv="refresh" content="5">
+    <title th:text="#{folderClass.folder.pageTitle}">طبقهٔ پوشه</title>
+</head>
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<!--
+  A folder's class (roadmap Phase 14): FolderClassAssignController, over FolderClassAssignment. The class it has,
+  the choice - for whoever holds SET_FOLDER_CLASS and may write in it - and the classes' rules applied below it:
+  the counts first, then a run in the background, its progress refreshed every five seconds while it runs.
+-->
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{folderClass.folder.kicker}">طبقهٔ پوشه</div>
+        <h1 class="break-words" dir="auto" th:text="${folderClass.title()}">پوشه</h1>
+        <p class="technical" dir="ltr" th:text="${folderClass.keyPath()}">PartyCompany/</p>
+        <div class="flex flex-wrap gap-2 mt-2">
+            <a th:href="@{/files/explorer(folder=${folderClass.folderId()})}" class="btn btn-sm btn-outline-secondary"
+               th:text="#{metadata.folder.openInExplorer}">باز کردن در فایل اکسپلورر</a>
+            <a sec:authorize="hasAuthority('FOLDER_CLASSES_PAGE') || hasAuthority('ADMIN')"
+               th:href="@{/settings/folder-classes}" class="btn btn-sm btn-outline-secondary"
+               th:text="#{folderClass.heading}">طبقه‌های پوشه</a>
+        </div>
+    </header>
+
+    <div th:if="${changed != null}" class="alert alert-success mb-5" role="status" id="class-changed" th:text="${changed}"></div>
+    <div th:if="${refused != null}" class="alert alert-warning mb-5" role="alert" id="class-refused" th:text="${refused}"></div>
+
+    <section class="card mb-5" aria-labelledby="class-title">
+        <div class="card-body">
+            <h2 id="class-title" class="mb-3" th:text="#{folderClass.folder.now}">طبقهٔ این پوشه</h2>
+            <p id="class-state">
+                <span th:if="${folderClass.classId() == null}" class="badge history-gone" th:text="#{folderClass.folder.none}">بدون طبقه</span>
+                <span th:if="${folderClass.classId() != null}" class="badge badge-success" th:text="${folderClass.classTitle()}">قرارداد</span>
+            </p>
+            <form th:if="${mayChange and folderClass.settable()}" method="post" id="class-form" class="mt-4"
+                  th:action="@{/files/folders/{id}/class(id=${folderClass.folderId()})}">
+                <div class="form-group">
+                    <label for="classId" th:text="#{folderClass.folder.choose}">طبقه</label>
+                    <select id="classId" name="classId" class="form-control">
+                        <option value="" th:text="#{folderClass.folder.none}">بدون طبقه</option>
+                        <option th:each="c : ${folderClass.classes()}" th:value="${c.id()}" th:text="${c.title()}"
+                                th:selected="${folderClass.classId() != null and folderClass.classId() == c.id()}">طبقه</option>
+                    </select>
+                    <p class="field-hint" th:text="#{folderClass.folder.hint}">طبقه دادن به پوشه، آن را به نقش‌هایی که این طبقه را دارند می‌دهد.</p>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary"
+                            th:attr="onclick=|return confirm('${#messages.msg('folderClass.folder.confirm')}')|">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section th:if="${mayChange and folderClass.settable()}" class="card mb-5" aria-labelledby="apply-title">
+        <div class="card-body">
+            <h2 id="apply-title" class="mb-1" th:text="#{folderClass.apply.heading}">اعمال قاعده‌ها روی پوشه‌های زیر این پوشه</h2>
+            <p class="field-hint" th:text="#{folderClass.apply.hint}">…</p>
+            <form method="post" th:action="@{/files/folders/{id}/class/apply/preview(id=${folderClass.folderId()})}">
+                <button type="submit" class="btn btn-outline-secondary">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <span th:text="#{folderClass.apply.preview}">پیش‌نمایش</span>
+                </button>
+            </form>
+
+            <div th:if="${plan != null}" class="mt-4" id="class-plan">
+                <table class="table history-table">
+                    <tbody>
+                    <tr>
+                        <th scope="row" th:text="#{folderClass.plan.folders}">پوشه‌های زیر این پوشه</th>
+                        <td th:text="${plan.folders()}">0</td>
+                    </tr>
+                    <tr>
+                        <th scope="row" th:text="#{folderClass.plan.classedAlready}">پوشه‌هایی که طبقه دارند و همان می‌ماند</th>
+                        <td th:text="${plan.classedAlready()}">0</td>
+                    </tr>
+                    <tr th:each="entry : ${plan.toClassify()}">
+                        <th scope="row" th:text="#{folderClass.plan.toClassify(${entry.key})}">طبقه می‌گیرند: قرارداد</th>
+                        <td th:text="${entry.value}">0</td>
+                    </tr>
+                    <tr>
+                        <th scope="row" th:text="#{folderClass.plan.templateFolders}">زیرپوشه‌های خودکاری که ساخته می‌شوند</th>
+                        <td th:text="${plan.templateFoldersToMake()}">0</td>
+                    </tr>
+                    <tr>
+                        <th scope="row" th:text="#{folderClass.plan.refused}">پوشه‌هایی که با قاعده‌ها جور نیستند</th>
+                        <td th:text="${plan.refusedCount()}">0</td>
+                    </tr>
+                    </tbody>
+                </table>
+                <div th:unless="${#lists.isEmpty(plan.refused())}" class="mt-3">
+                    <h3 class="h6" th:text="#{folderClass.plan.refusedHeading}">این پوشه‌ها بدون طبقه می‌مانند</h3>
+                    <table class="table history-table" id="class-plan-refused">
+                        <thead>
+                        <tr>
+                            <th scope="col" th:text="#{folderClass.column.folder}">پوشه</th>
+                            <th scope="col" th:text="#{folderClass.column.parentClass}">طبقهٔ پوشهٔ بالا</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="r : ${plan.refused()}">
+                            <td class="technical" dir="ltr" th:text="${r.keyPath()}">PartyCompany/1/x/</td>
+                            <td th:text="${r.classTitle()}">شرکت</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <form th:if="${(plan.toClassifyTotal() > 0 or plan.templateFoldersToMake() > 0) and (progress == null or !progress.running())}"
+                      method="post" class="mt-3" th:action="@{/files/folders/{id}/class/apply(id=${folderClass.folderId()})}">
+                    <button type="submit" class="btn btn-danger"
+                            th:attr="onclick=|return confirm('${#messages.msg('folderClass.apply.confirm', plan.toClassifyTotal(), plan.templateFoldersToMake())}')|">
+                        <i class="bi bi-play" aria-hidden="true"></i>
+                        <span th:text="#{folderClass.apply.run}">اجرا</span>
+                    </button>
+                </form>
+                <p th:if="${plan.toClassifyTotal() == 0 and plan.templateFoldersToMake() == 0}" class="field-hint"
+                   th:text="#{folderClass.apply.nothing}">چیزی برای انجام نیست.</p>
+            </div>
+        </div>
+    </section>
+
+    <section th:if="${progress != null}" class="card mb-5" aria-labelledby="progress-title">
+        <div class="card-body">
+            <h2 id="progress-title" class="h5" th:text="#{folderClass.progress.heading}">آخرین اجرا</h2>
+            <p>
+                <span th:if="${progress.running()}" class="badge" th:text="#{folderClass.progress.running}">در حال اجرا</span>
+                <span th:if="${progress.finishedAt() != null}" class="badge" th:text="#{folderClass.progress.finished}">تمام شد</span>
+                <span th:if="${progress.stopped()}" class="badge history-gone" th:text="#{folderClass.progress.stopped}">متوقف شد</span>
+            </p>
+            <table class="table history-table" id="class-progress">
+                <tbody>
+                <tr>
+                    <th scope="row" th:text="#{folderClass.progress.startedAt}">شروع</th>
+                    <td class="technical" dir="ltr" th:text="${@jalali.format(progress.startedAt())}">۱۴۰۵/۰۷/۲۵</td>
+                </tr>
+                <tr th:if="${progress.finishedAt() != null}">
+                    <th scope="row" th:text="#{folderClass.progress.finishedAt}">پایان</th>
+                    <td class="technical" dir="ltr" th:text="${@jalali.format(progress.finishedAt())}">۱۴۰۵/۰۷/۲۵</td>
+                </tr>
+                <tr>
+                    <th scope="row" th:text="#{folderClass.progress.classified}">پوشه‌هایی که طبقه گرفتند</th>
+                    <td th:text="${progress.classified()}">0</td>
+                </tr>
+                <tr>
+                    <th scope="row" th:text="#{folderClass.progress.completed}">پوشه‌هایی که زیرپوشه‌های خودکارشان کامل شد</th>
+                    <td th:text="#{folderClass.progress.ofTotal(${progress.foldersCompleted()}, ${progress.foldersToComplete()})}">0 از 0</td>
+                </tr>
+                <tr>
+                    <th scope="row" th:text="#{folderClass.progress.made}">زیرپوشهٔ ساخته‌شده</th>
+                    <td th:text="${progress.templateFoldersMade()}">0</td>
+                </tr>
+                <tr>
+                    <th scope="row" th:text="#{folderClass.progress.failed}">ناموفق</th>
+                    <td th:text="${progress.failedCount()}">0</td>
+                </tr>
+                </tbody>
+            </table>
+            <table th:unless="${#lists.isEmpty(progress.failed())}" class="table history-table" id="class-progress-failed">
+                <thead>
+                <tr>
+                    <th scope="col" th:text="#{folderClass.column.folderId}">شناسهٔ پوشه</th>
+                    <th scope="col" th:text="#{folderClass.column.reason}">علت</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="f : ${progress.failed()}">
+                    <td class="technical" dir="ltr" th:text="${f.folderId()}">12</td>
+                    <td class="technical" dir="ltr" th:text="${f.reason()}">Exception</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

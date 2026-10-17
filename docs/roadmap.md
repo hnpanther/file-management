@@ -40,19 +40,26 @@ automated verification at all (issues 36–38). Doing it first is what made the 
 
 ## Where things stand, and what comes next
 
-**Now: production runs 2.16.0** (deployed 2026-10-17), the content backfill still reading the files
-stored before 2.15.0. (2.15.0 from 2026-10-10; MySQL decommissioned 2026-09-30.)
+**Now: production runs 2.16.1** (2026-10-17), and its one-off move has run: every ERP contract's own
+files are in its `Documents`, and n8n writes them there. (2.16.0 from 2026-10-17, 2.15.0 from 2026-10-10;
+MySQL decommissioned 2026-09-30.)
 
-**Next: deploy 2.16.1 and run its one-off move** ([deployment.md](deployment.md#upgrading-from-2160-to-2161--the-contracts-own-files-moved-into-documents-once)):
-the files n8n filed directly in each ERP contract folder (`PartyCompany/<id>/Contract/<number>/`) moved into
-the contract's `Documents` - where n8n writes them since 2026-10-17 - so that a contract's documents and its
-statements (`ContractState/`) are two folders and can be given to two departments. The page
-(`/settings/contract-documents`, `ADMIN` only) and its code are **removed in the release after**. It is the
-first step of folder classes - a type on each folder, templates that make a contract's folders, and access
-granted by type across every company - agreed with the owner on 2026-10-17 and still to be written here.
-Alongside: watch `/settings/content-extraction` and the Tika host, and once the backfill is done measure the
-tables and look at the failures - what decides whether 11.4 (the lexicon gate) is wanted.
+**Next: deploy 2.17.0 - folder classes** ([Phase 14](#phase-14--folder-classes-a-type-on-each-folder-and-access-by-type-2170-agreed-2026-10-17),
+[deployment.md](deployment.md#upgrading-from-2161-to-2170--folder-classes)): one migration (`V3.17`) that gives no
+folder a class, so nothing changes at the upgrade; then, on the running service, the classes defined, PartyCompany
+given its class and the rules applied below it, the roles given their class grants - the steps are in the
+deployment guide. The one-off page of 2.16.1 is gone. Alongside: watch `/settings/content-extraction` and the Tika
+host, and once the backfill is done measure the tables and look at the failures - what decides whether 11.4 (the
+lexicon gate) is wanted.
 
+2.17.0 is written: **folder classes** (Phase 14, `V3.17`) - a class on a folder, with a template of the folders made
+in it, a rule for its other subfolders and whether it takes files directly; a new folder's class from its parent's,
+by hand, v1 or S3 alike; class grants on roles (read or write, everywhere or within a scope folder) read by every
+list, search, report, listing and download through one more row of `GrantedFolderPath` and a `class_path` on every
+folder; the rules applied to what exists, previewed first; three pages (`/settings/folder-classes`, a folder's class,
+a role's class grants) under four permissions. Measured at five thousand contracts: a class-granted reader's access
+140 ms, the file list 150-280 ms, the explorer 70-150 ms, its folder search 25-55 ms (12 s before its condition was
+rewritten - issue 125 is what it taught). Issue 119 fixed with it.
 2.16.1 is written: **the one-off move of the contracts' own files into `Documents`** - a preview (contracts
 whose `Documents` is there, those where it is made first, the files that move, and those that stay because
 `Documents` already holds their name), then a run in the background, one contract per transaction, through the
@@ -4543,6 +4550,89 @@ its versions, metadata, history and ids; the same name uploaded after a delete i
 coexist; a restore onto a taken name refused unless renamed; the purge removes the bytes through
 `StorageWriter`'s delete path and is resumable; quotas count the bin; a folder tree deleted and restored
 whole.
+
+---
+
+## Phase 14 — Folder classes: a type on each folder, and access by type (2.17.0, agreed 2026-10-17)
+
+**The need.** The ERP files each company's contracts through n8n as
+`ERP/PartyCompany/<company>/Contract/<number>/`, a contract's own documents in `Documents/` and its
+statements in `ContractState/<n>/` (the files moved there once by 2.16.1). The contracts department is to
+read every contract's `Documents` and nothing else; finance every `ContractState`. A folder grant covers
+one folder and what is beneath it, so that is one grant per contract, by hand, for ever - thousands. The
+tree has one axis (company, then contract); the department works across it. What it lacks is the second
+axis, the **type** of a folder - and a grant on a type.
+
+**The model, as agreed step by step with the owner (2026-10-17).**
+
+* A **class** (`folder_class`) is a folder's type: a name, a title, and three settings that are the class's,
+  never a folder's - so two hundred companies are set once:
+  * **container only** - files are refused directly in a folder of the class (on the web, v1, v2, S3,
+    multipart, a move); its subfolders hold them. Files already there stay, and take new versions.
+  * **its template** (`folder_class_child`): names, each with a label and a class. When a folder of the
+    class is made - by a person, v1 or n8n through S3 - these are made in it at once, each with its class,
+    and theirs in them.
+  * **any other child**: a subfolder whose name is not in the template is made *without a class*, made
+    *with a given class* (the containers: whatever is made under `Contract` is a contract), or *refused*.
+* A folder carries **at most one class** (`folder.class_id`). **Nothing has a class until somebody gives it
+  one**: after the upgrade every folder behaves exactly as before.
+* A new folder's class comes **from its parent's class, never from its name alone**: a name in the parent
+  class's template takes that child's class (compared as siblings' names are - folded); any other name
+  follows the parent class's rule. A folder whose parent has no class has none. So
+  `PartyCompany/<company>/Contract/<number>/Documents/x.pdf` sent by n8n for a company that does not exist
+  yet makes the company (class `Company`, from `PartyCompany`'s rule), its `Contract` (from the company's
+  template), the contract (from the container's rule), its `Documents` and `ContractState` (from the
+  contract's template) - all in the upload's transaction, all or none.
+* **A class grant** (`role_class_grant`): a role, a class, `READ` or `WRITE`, and optionally a **scope
+  folder**. It covers a folder that lies within the scope (everywhere without one) and that has the class,
+  or lies beneath a folder that has it. Grants **add up and never take away**: a person reaches what any
+  folder grant or class grant gives. Roles only - not a person directly, not an API key (a key keeps its
+  own folder grants); the fixed roles refuse them as they refuse everything.
+* What changes a class is an administrator's by default: the classes themselves (`FOLDER_CLASSES_PAGE`,
+  `SAVE_FOLDER_CLASS`, `DELETE_FOLDER_CLASS`), a folder's class and applying the rules to what exists
+  (`SET_FOLDER_CLASS`, with write access on the folder) - giving a folder a class gives it to whoever
+  holds a grant on that class. A class grant is a role edit (`SAVE_UPDATED_ROLE`).
+
+**How access stays one answer everywhere, and fast.** Every list, search, report and listing asks "is this
+folder under one of the reader's grants?" through `GrantedFolderPath`. A class grant is one row there too -
+its scope's path (`/` without one) and its class. A folder carries **`class_path`**, the classes of the
+folders above it and its own (`/3/9/`), derived like `key_path`: written at creation, rewritten for a
+subtree by a move or a change of class, checked by `findRowsWhoseClassPathDisagrees`, and repaired at
+start if a rollback left it behind. So the test stays one condition per grant row - `path LIKE g.path || '%'
+AND class_path LIKE '%' || g.class_key || '%'` (`class_key` is empty for a folder grant) - and a role with
+one class grant is one row, not one per contract: thousands of contracts cost a reader nothing per row.
+In Java, `FolderAccess` takes a class grant as the paths it covers (the folders of the class within the
+scope, and the scope itself when it lies beneath one) - the same set, needed to show the folders on the way
+to them in the explorer - kept sorted, so each check is a lookup, not a scan. `FolderAccessConsistencyTest`
+asks both, over a generated tree, for every folder.
+
+**Rolling it out on what exists.** "Apply to what is below" on a folder: each folder below a classed one
+that has no class gets the one the rules give it, and each classed folder gets the template folders it is
+missing - shown first as counts (and what does not fit the rules), then run in the background a folder at a
+time, re-runnable. A folder that has a class keeps it.
+
+**As built (2.17.0), three decisions the plan above did not make.**
+
+* **`class_path` is written by SQL only** after a folder is made (`updatable = false`): a move or a change of class
+  rewrites it with one statement from the database's own values (`FolderRepository.rewriteClassPaths`). The random
+  trees of `FolderClassAccessTest` found why - a folder read before a statement rewrote its subtree wrote the old
+  value back on its next flush, and access is read off it. `ClassPathRepair` sets it right at every start, for what
+  a rollback to 2.16.x made or moved meanwhile.
+* **The folders on the way to a class grant are one set per statement** (`ReadScopeSql.grantedWithSignposts`): the
+  ids on the paths of the folders of the class - a path names every folder above it. Asked folder by folder, the
+  explorer's search took 12 s at five thousand contracts, then 0.6 s of which 0.59 was JIT (issue 125); now 25-55 ms.
+* **A reader without a class grant runs the statements of 2.16** (`FolderReadScope.classes`): the grants read without
+  class rows and the condition without the class test. Written as a second `LIKE`, that test made PostgreSQL think a
+  reader's folders a two-hundredth of what they were, and plan the content search for a reader of half the folders
+  from them - 34 s where it took 0.3 (`ContentSearchScaleTest`). For a reader with one it is `strpos(class_path,
+  class_key) > 0`, estimated sanely: the same search by class 38-294 ms.
+* **The role grants and the class grants are one statement** (`FolderRepository.findGrantsThroughRoles`), so a
+  request still resolves its access in two, as `LargeTreeTest` pins - the class grants as the paths they cover,
+  kept sorted in `FolderAccess` (each check a lookup among five thousand).
+
+**Not in 2.17.0**, each a step of its own when asked: a page of everything of one class ("all contracts"),
+the class as a condition of the advanced search, a queue of folders left without a class, class grants for
+API keys, the access report (13.7). The tag mirror (`tag`, `file_tag`) is untouched.
 
 ---
 
