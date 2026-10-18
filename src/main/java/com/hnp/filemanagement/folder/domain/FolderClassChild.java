@@ -33,8 +33,9 @@ public class FolderClassChild extends AbstractEntity {
     @Column(name = "display_name", nullable = false, length = 200)
     private String displayName;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "child_class_id", nullable = false)
+    /** The class the folder is made with - or null (V3.18): a folder made for order alone, of no class. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "child_class_id")
     private FolderClass childClass;
 
     @Column(name = "position", nullable = false)

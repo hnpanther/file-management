@@ -101,6 +101,9 @@ public enum PermissionGroup {
     /** Who is signed in, with their sessions - and ending one, or all of a person's (2.16.0). */
     ONLINE_USERS(ONLINE_USERS_PAGE, END_USER_SESSION),
 
+    /** The history of signing in and out (2.17.1). */
+    SIGN_IN_HISTORY(SIGN_IN_HISTORY_PAGE),
+
     /** The role pages: list, create, copy, edit. */
     ROLES_ADMIN(GET_ALL_ROLE_PAGE, CREATE_ROLE_PAGE, SAVE_NEW_ROLE, COPY_ROLE, UPDATE_ROLE_PAGE, SAVE_UPDATED_ROLE,
             REST_GET_FOLDER_GRANT_TREE),

@@ -68,6 +68,6 @@ class S3ConcurrencyTest {
         return new FileManagementProperties("./target/unused", null, null, null, null, null,
                 new FileManagementProperties.Storage(FileManagementProperties.Storage.Backend.S3, s3,
                         null, null, null, null, null, null),
-                null, null, null, null);
+                null, null, null, null, null);
     }
 }

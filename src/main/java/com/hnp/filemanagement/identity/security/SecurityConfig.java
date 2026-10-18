@@ -19,6 +19,9 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
 import java.util.Map;
 import org.springframework.security.web.authentication.ExceptionMappingAuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
+import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
+import com.hnp.filemanagement.identity.signin.SignInAudit;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.core.session.SessionRegistry;
@@ -90,7 +93,8 @@ public class SecurityConfig {
      * this one manager, so the sign-in form and the API's HTTP Basic share one count of failures.
      */
     @Bean
-    public AuthenticationManager authenticationManager(HttpSecurity httpSecurity, LoginAttempts loginAttempts) throws Exception {
+    public AuthenticationManager authenticationManager(HttpSecurity httpSecurity, LoginAttempts loginAttempts,
+                                                       SignInAudit signInAudit) throws Exception {
         AuthenticationManagerBuilder authenticationManagerBuilder = httpSecurity.getSharedObject(AuthenticationManagerBuilder.class);
 
         if(activeDirectoryEnabled) {
@@ -100,7 +104,7 @@ public class SecurityConfig {
             authenticationManagerBuilder.authenticationProvider(daoAuthenticationProvider());
         }
 
-        return new LockoutAuthenticationManager(authenticationManagerBuilder.build(), loginAttempts);
+        return new LockoutAuthenticationManager(authenticationManagerBuilder.build(), loginAttempts, signInAudit);
     }
 
     /**
@@ -111,7 +115,7 @@ public class SecurityConfig {
     @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity, AuthenticationManager authenticationManager,
                                                    PublicFilesAuthorizationManager publicFilesAccess,
-                                                   SessionRegistry sessionRegistry) throws Exception {
+                                                   SessionRegistry sessionRegistry, SignInAudit signInAudit) throws Exception {
         return httpSecurity
                 .authorizeHttpRequests(
                         auth -> {
@@ -145,8 +149,9 @@ public class SecurityConfig {
                 .formLogin(form -> form
                         .loginPage("/login")
                         // "/" decides where a signed-in user actually belongs; see HomeController.
-                        // Not alwaysUse, so a saved request still wins over the default target.
-                        .defaultSuccessUrl("/")
+                        // Not alwaysUse, so a saved request still wins over the default target - and the
+                        // sign-in recorded first (2.17.1).
+                        .successHandler(signedIn(signInAudit))
                         // A locked name says so (issue 105); every other failure is the same "wrong
                         // username or password", whether or not the name exists.
                         .failureHandler(loginFailureHandler())
@@ -155,6 +160,9 @@ public class SecurityConfig {
                         logout -> logout
                                 .logoutRequestMatcher(PathPatternRequestMatcher.pathPattern("/logout"))
                                 .logoutSuccessUrl("/login?logout")
+                                // Recorded before the session goes (2.17.1).
+                                .addLogoutHandler((request, response, authentication) ->
+                                        signInAudit.signedOut(request, authentication))
                                 .invalidateHttpSession(true)
                                 .clearAuthentication(true)
                                 .deleteCookies("JSESSIONID")
@@ -196,6 +204,20 @@ public class SecurityConfig {
      * dump the person on raw JSON), and it is answered {@code 401} rather than redirected when the
      * session has ended (a redirect would hand the script the login page with a {@code 200}).
      */
+    /**
+     * What a sign-in on the form does when it succeeds: recorded (2.17.1), then where it always went - the request
+     * it was asked for if one was saved ({@link #pageOnlyRequestCache}), else {@code /}.
+     */
+    private AuthenticationSuccessHandler signedIn(SignInAudit signInAudit) {
+        SavedRequestAwareAuthenticationSuccessHandler next = new SavedRequestAwareAuthenticationSuccessHandler();
+        next.setDefaultTargetUrl("/");
+        next.setRequestCache(pageOnlyRequestCache());
+        return (request, response, authentication) -> {
+            signInAudit.signedIn(request, authentication);
+            next.onAuthenticationSuccess(request, response, authentication);
+        };
+    }
+
     private static AuthenticationFailureHandler loginFailureHandler() {
         ExceptionMappingAuthenticationFailureHandler handler = new ExceptionMappingAuthenticationFailureHandler();
         handler.setExceptionMappings(Map.of(LockedException.class.getName(), "/login?locked"));

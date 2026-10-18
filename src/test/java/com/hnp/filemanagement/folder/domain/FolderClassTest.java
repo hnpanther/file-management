@@ -335,7 +335,15 @@ class FolderClassTest extends DatabaseSupport {
                 List.of(new TemplateFolder("Docs", "", classes.documents()), new TemplateFolder("docs", "", classes.documents()))), adminId))
                 .isInstanceOf(InvalidDataException.class);
         assertThatThrownBy(() -> classService.create(ClassFixture.definition("t" + TestData.nextSequence(), "t", false, "NONE", null,
-                List.of(new TemplateFolder("Docs", "", null))), adminId)).isInstanceOf(InvalidDataException.class);
+                List.of(new TemplateFolder("Docs", "", 999_999))), adminId)).isInstanceOf(InvalidDataException.class);
+
+        // the class itself in its own template: refused, the folder and its class named in the refusal
+        int self = classService.create(ClassFixture.definition("s" + TestData.nextSequence(), "خود", false, "NONE", null,
+                List.of()), adminId);
+        assertThatThrownBy(() -> classService.update(self, ClassFixture.definition(classService.one(self).name(), "خود", false,
+                "NONE", null, List.of(new TemplateFolder("Documents", "", self))), adminId))
+                .isInstanceOf(InvalidDataException.class)
+                .satisfies(e -> assertThat(((InvalidDataException) e).getMessageArguments()).containsExactly("خود", "Documents", "خود"));
 
         // documents -> (new) wrapper -> documents: a cycle, refused, and the class left as it was
         int wrapper = classService.create(ClassFixture.definition("w" + TestData.nextSequence(), "w", false, "NONE", null,
@@ -345,6 +353,30 @@ class FolderClassTest extends DatabaseSupport {
                 List.of(new TemplateFolder("Outer", "", wrapper))), adminId))
                 .isInstanceOf(InvalidDataException.class)
                 .satisfies(e -> assertThat(((InvalidDataException) e).getMessageCode()).contains("folderClass.invalid.templateCycle"));
+    }
+
+    @Test
+    @DisplayName("a template folder of no class is made with the others, and has no class - nor do the folders made in it")
+    void templateFolderWithoutAClass() {
+        int deal = classService.create(ClassFixture.definition("deal" + TestData.nextSequence(), "معامله", true, "REFUSE", null,
+                List.of(new TemplateFolder("Documents", "اسناد", classes.documents()), new TemplateFolder("Misc", "متفرقه", null))),
+                adminId);
+        assertThat(classService.one(deal).template()).extracting(FolderClassService.TemplateView::classId)
+                .containsExactly(classes.documents(), null);
+        int folder = folderService.create(root.bucketId(), "Deal", "Deal", null, null, adminId).id();
+        assignment.set(folder, deal, adminId);
+        flush();
+
+        int misc = folderRepository.findByParentIdAndNameIgnoreCase(folder, "Misc").orElseThrow().getId();
+        assertThat(classOf(misc)).isNull();
+        assertThat(classPathOf(misc)).isEqualTo("/" + deal + "/");
+        int inside = folderService.create(misc, "Notes", "Notes", null, null, adminId).id();
+        flush();
+        assertThat(classOf(inside)).isNull();
+        // a name in the template is allowed under a refusing class even with no class to take
+        assertThat(folderRepository.findByParentIdOrderByNameAsc(folder)).hasSize(2);
+        assertThat(assignment.preview(root.bucketId(), adminId).templateFoldersToMake()).isZero();
+        assertThat(folderRepository.findRowsWhoseClassPathDisagrees()).isEmpty();
     }
 
     @Test

@@ -71,7 +71,8 @@ public class FolderClassService {
                             long folders) {
     }
 
-    public record TemplateView(String name, String displayName, int classId, String classTitle) {
+    /** A template folder as the page shows it; {@code classId} and {@code classTitle} null for one of no class. */
+    public record TemplateView(String name, String displayName, Integer classId, String classTitle) {
     }
 
     public List<ClassView> all() {
@@ -224,10 +225,9 @@ public class FolderClassService {
                 throw new InvalidDataException("a template folder's label is at most 200 characters",
                         "folderClass.invalid.templateLabel", name);
             }
-            if (folder.classId() == null) {
-                throw new InvalidDataException("a template folder takes a class", "folderClass.invalid.templateClass", name);
-            }
-            FolderClass childClass = folder.classId().equals(folderClass.getId()) ? folderClass
+            // No class is allowed (2.17.1): a folder made for order alone, reached through the grants above it.
+            FolderClass childClass = folder.classId() == null ? null
+                    : folder.classId().equals(folderClass.getId()) ? folderClass
                     : folderClassRepository.findById(folder.classId()).orElseThrow(() -> new InvalidDataException(
                     "folder class id=" + folder.classId() + " does not exist", "folderClass.invalid.templateClass", name));
             FolderClassChild child = new FolderClassChild();
@@ -248,26 +248,43 @@ public class FolderClassService {
     /**
      * Refuses a template through which a folder of this class would, folder by folder, make another folder of
      * this class: each would make the next until the depth limit refused the last, and with it every upload that
-     * made the first.
+     * made the first. The refusal names the template folder that closes the cycle and its class - the usual cause
+     * is a class made before the classes of its template, its own name the only one there was to choose.
      */
     private void requireNoTemplateCycle(FolderClass start) {
         Map<Integer, List<Integer>> edges = new HashMap<>();
         for (FolderClass each : folderClassRepository.findAllWithTemplates()) {
-            edges.put(each.getId(), each.getChildren().stream().map(child -> child.getChildClass().getId()).toList());
+            edges.put(each.getId(), classesOf(each));
         }
-        edges.put(start.getId(), start.getChildren().stream().map(child -> child.getChildClass().getId()).toList());
-        Deque<Integer> toVisit = new ArrayDeque<>(edges.getOrDefault(start.getId(), List.of()));
+        edges.put(start.getId(), classesOf(start));
+        for (FolderClassChild child : start.getChildren()) {
+            if (child.getChildClass() != null && reaches(child.getChildClass().getId(), start.getId(), edges)) {
+                throw new InvalidDataException("folder class id=" + start.getId() + " would make itself through its template",
+                        "folderClass.invalid.templateCycle", start.getTitle(), child.getName(), child.getChildClass().getTitle());
+            }
+        }
+    }
+
+    /** The classes a class's template makes, a template folder of no class left out. */
+    private static List<Integer> classesOf(FolderClass folderClass) {
+        return folderClass.getChildren().stream().filter(child -> child.getChildClass() != null)
+                .map(child -> child.getChildClass().getId()).toList();
+    }
+
+    /** Whether a folder of class {@code from} makes, at some depth, a folder of class {@code target}. */
+    private static boolean reaches(int from, int target, Map<Integer, List<Integer>> edges) {
+        Deque<Integer> toVisit = new ArrayDeque<>(List.of(from));
         Set<Integer> seen = new HashSet<>();
         while (!toVisit.isEmpty()) {
             int next = toVisit.pop();
-            if (next == start.getId()) {
-                throw new InvalidDataException("folder class id=" + start.getId() + " would make itself through its template",
-                        "folderClass.invalid.templateCycle", start.getTitle());
+            if (next == target) {
+                return true;
             }
             if (seen.add(next)) {
                 toVisit.addAll(edges.getOrDefault(next, List.of()));
             }
         }
+        return false;
     }
 
     private static ClassView view(FolderClass c, long folders) {
@@ -275,6 +292,7 @@ public class FolderClassService {
         return new ClassView(c.getId(), c.getName(), c.getTitle(), c.isContainerOnly(), c.getOtherChildren(),
                 other == null ? null : other.getId(), other == null ? null : other.getTitle(),
                 c.getChildren().stream().map(ch -> new TemplateView(ch.getName(), ch.getDisplayName(),
-                        ch.getChildClass().getId(), ch.getChildClass().getTitle())).toList(), folders);
+                        ch.getChildClass() == null ? null : ch.getChildClass().getId(),
+                        ch.getChildClass() == null ? null : ch.getChildClass().getTitle())).toList(), folders);
     }
 }
