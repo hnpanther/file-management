@@ -2397,3 +2397,22 @@ the access log. OWASP's guidance (and ASVS V7) asks for every authentication dec
 **To do, when keys are next worked on**: record a refusal from each filter - the key's id (never its secret), the
 channel (`KEY`, `S3`), the address and why (unknown, revoked, expired, a bad signature) - through `SignInAudit`, with
 `sign_in_event.channel` widened by a migration. A success stays unrecorded: every call is one.
+
+### 127. Two pages list everything they hold, with no pager: the online users, and a file's revisions — **S3**
+
+Found in a review of every list the templates draw (2026-10-18). Every list that grows with use is paged - the
+explorer, the file lists, both searches, the histories, the downloads, the users, the share links, the locked
+sign-ins, the sign-in history, the reading failures, the metadata queue - or capped with a link to the paged page (a
+file page's latest events and downloads; a class's preview and failures; the reading exceptions). Two are not:
+
+* **The online users** (`/settings/online-users`, `OnlineUserService.page`): every signed-in account and every one of
+  its sessions, in one table - read from the sessions in memory, so no query grows, but at a few hundred people
+  signed in the page is a few hundred rows (and `findOnlineAccounts` an `IN` of as many ids). Fine at this
+  organisation's size today; not at a thousand.
+* **A file's revisions** (the file page, `file-info-page.html`, `FileInfoDTO.getFileDetailsDTOS`): every revision is
+  a card. A file that an integration uploads again and again - the ERP's same contract document, a daily export -
+  reaches hundreds of versions, and the page draws them all, with their metadata and readings.
+
+**To do**: the online users paged (a page of accounts, newest request first, the counts above unchanged) with a
+search by name; a file's revisions the newest 20 with "older revisions" paged below, the current one always shown.
+Each with a case in `ListQueryCountTest` or its own size test.
