@@ -407,7 +407,8 @@ class UserServiceTest extends DatabaseSupport {
         Page<UserDTO> page = underTest.getUserPage("   ", 100, 0);
 
         assertThat(page.getContent()).extracting(UserDTO::getId).contains(subjectId, principalId);
-        assertThat(page.getTotalElements()).isEqualTo(page.getContent().size());
+        // All of them, or the page full: the test database is shared, and the classes that commit leave accounts in it.
+        assertThat(page.getContent()).hasSize((int) Math.min(page.getTotalElements(), 100));
     }
 
     // ---------------------------------------------------------------- helpers

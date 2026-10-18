@@ -310,8 +310,9 @@ Until the access report (roadmap 13.7) exists:
 2. **A new list filters in SQL**, with `ReadScopeSql` or the `GrantedFolderPath` predicate - including the class test -
    never by reading rows and filtering in Java, never with an `IN` of folder ids.
 3. **A new way to make a folder goes through `FolderService.create`** (the class, its template, the refusal); **a new
-   way to move one or change a class rewrites `class_path` by SQL**, and its test asserts
-   `findRowsWhoseClassPathDisagrees` empty.
+   way to move one or change a class rewrites `class_path` by SQL** under `FolderClassLock` held exclusively (making
+   a folder holds it shared), and its test asserts `findRowsWhoseClassPathDisagrees` empty. A nightly check
+   (`ClassPathCheck`) sets right and reports any row that disagrees.
 4. **A change to how a grant covers a folder** changes `GrantedFolderPath`, `ReadScopeSql`, the JPQL predicate and
    `FolderAccess` together - and `FolderClassAccessTest`'s random trees, which compare the Java answer, the SQL answer
    and an oracle written from the definitions, must still agree. Measure it with `-Pscale`: estimates decide plans.

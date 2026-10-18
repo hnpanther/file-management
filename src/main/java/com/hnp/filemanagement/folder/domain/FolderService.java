@@ -13,6 +13,7 @@ import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import com.hnp.filemanagement.folder.persistence.TagGroupRepository;
 import com.hnp.filemanagement.identity.persistence.UserRepository;
 import com.hnp.filemanagement.shared.util.SearchKey;
+import jakarta.persistence.EntityManager;
 import com.hnp.filemanagement.shared.validation.ValidationUtil;
 import com.hnp.filemanagement.shared.config.FileManagementProperties;
 import org.springframework.context.ApplicationEventPublisher;
@@ -83,14 +84,19 @@ public class FolderService {
     private final int maxDepth;
 
     private final ApplicationEventPublisher events;
+    private final FolderClassLock folderClassLock;
+    private final EntityManager entityManager;
 
     public FolderService(FolderRepository folderRepository, FileInfoRepository fileInfoRepository,
                          TagGroupRepository tagGroupRepository, UserRepository userRepository,
                          FolderAccessService folderAccessService, TagMirrorService tagMirrorService,
                          ActionHistoryService actionHistoryService, FolderQuotaService folderQuotaService,
-                         FileManagementProperties properties, ApplicationEventPublisher events) {
+                         FileManagementProperties properties, ApplicationEventPublisher events,
+                         FolderClassLock folderClassLock, EntityManager entityManager) {
         int maxDepth = properties.folders().maxDepth();
         this.events = events;
+        this.folderClassLock = folderClassLock;
+        this.entityManager = entityManager;
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.tagGroupRepository = tagGroupRepository;
@@ -237,7 +243,13 @@ public class FolderService {
     @Transactional
     public FolderDTO create(int parentId, String name, String displayName, Integer tagGroupId,
                             String newTagGroupName, int principalId) {
+        // Shared with every other folder being made; a rewrite of class paths waits for it, and it for one (FolderClassLock).
+        folderClassLock.shared();
         Folder parent = folderAccessService.requireFolder(parentId);
+        // Its class and class path as committed now, not as this transaction may have read them before the lock -
+        // after writing what this transaction holds of it (a parent made just before: its path is set after its insert).
+        entityManager.flush();
+        entityManager.refresh(parent);
         FolderAccess access = folderAccessService.accessFor(principalId);
         folderAccessService.requireWriteAccess(access, parent);
         requireRoomBelow(parent);
@@ -289,6 +301,7 @@ public class FolderService {
      * @return the folders made, for {@code FolderClassAssignment}'s count
      */
     int makeTemplate(Folder folder, int principalId) {
+        folderClassLock.shared();
         FolderClass folderClass = folder.getFolderClass();
         if (folderClass == null || folderClass.getChildren().isEmpty()) {
             return 0;
@@ -397,6 +410,8 @@ public class FolderService {
      */
     @Transactional
     public FolderDTO move(int folderId, int newParentId, int principalId) {
+        // A move rewrites the class paths (and paths) of a subtree: no folder is made meanwhile (FolderClassLock).
+        folderClassLock.exclusive();
         Folder folder = requireExisting(folderId);
         if (isSystemFolder(folder)) {
             throw new InvalidDataException("a " + folder.getKind() + " folder cannot be moved: id=" + folderId);

@@ -142,7 +142,9 @@ class UserRepositoryTest extends DatabaseSupport {
 
         var page = underTest.search(null, "", PageRequest.of(0, 100));
 
-        assertThat(page.getTotalElements()).isEqualTo(page.getContent().size());
+        // The count agrees with the page: all of them, or the page full. Not "fewer than a hundred accounts" - the
+        // test database is shared, and the classes that commit (signing in, the S3 surface) leave accounts in it.
+        assertThat(page.getContent()).hasSize((int) Math.min(page.getTotalElements(), 100));
         assertThat(page.getTotalElements()).isGreaterThanOrEqualTo(2);
         // Null text is what PostgreSQL cannot type here (issue 87): it finds nothing.
         assertThat(underTest.search(null, null, PageRequest.of(0, 100)).getTotalElements()).isZero();
