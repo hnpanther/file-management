@@ -188,7 +188,7 @@
                 </a>
             </section>
 
-            <section sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('GET_ALL_API_KEY_PAGE') || hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('CONTENT_KIND_PAGE') || hasAuthority('TAG_GROUP_PAGE') || hasAuthority('FOLDER_CLASSES_PAGE') || hasAuthority('GENERAL_SETTINGS_PAGE') || hasAuthority('LOCKED_SIGN_INS_PAGE') || hasAuthority('ONLINE_USERS_PAGE') || hasAuthority('CONTENT_EXTRACTION_PAGE') || hasAuthority('ADMIN')"
+            <section sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('GET_ALL_ROLE_PAGE') || hasAuthority('GET_ALL_API_KEY_PAGE') || hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('CONTENT_KIND_PAGE') || hasAuthority('TAG_GROUP_PAGE') || hasAuthority('FOLDER_CLASSES_PAGE') || hasAuthority('GENERAL_SETTINGS_PAGE') || hasAuthority('LOCKED_SIGN_INS_PAGE') || hasAuthority('ONLINE_USERS_PAGE') || hasAuthority('SIGN_IN_HISTORY_PAGE') || hasAuthority('CONTENT_EXTRACTION_PAGE') || hasAuthority('ADMIN')"
                      class="flex flex-col gap-0.5">
                 <h3 class="app-nav-heading" th:text="#{nav.section.access}">کاربران و دسترسی‌ها</h3>
                 <a sec:authorize="hasAuthority('GET_ALL_USER_PAGE') || hasAuthority('ADMIN')"
@@ -215,6 +215,11 @@
                    th:href="@{/settings/online-users}" class="app-nav-link">
                     <i class="bi bi-person-check app-nav-icon" aria-hidden="true"></i>
                     <span th:text="#{nav.access.onlineUsers}">کاربران آنلاین</span>
+                </a>
+                <a sec:authorize="hasAuthority('SIGN_IN_HISTORY_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/settings/sign-ins}" class="app-nav-link">
+                    <i class="bi bi-clock-history app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.access.signIns}">تاریخچهٔ ورود و خروج</span>
                 </a>
                 <a sec:authorize="hasAuthority('UPLOAD_POLICY_PAGE') || hasAuthority('ADMIN')"
                    th:href="@{/settings/upload}" class="app-nav-link">

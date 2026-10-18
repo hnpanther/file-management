@@ -27,7 +27,7 @@ class LoginAttemptsTest {
         clock = new MutableClock(Instant.parse("2026-10-03T08:00:00Z"), ZoneId.of("Asia/Tehran"));
         FileManagementProperties properties = new FileManagementProperties("./target/unused", null, null, null, null,
                 null, null, null, null,
-                new FileManagementProperties.Auth(null, new FileManagementProperties.Lockout(3, 10)), null);
+                new FileManagementProperties.Auth(null, new FileManagementProperties.Lockout(3, 10)), null, null);
         attempts = new LoginAttempts(clock, properties);
     }
 

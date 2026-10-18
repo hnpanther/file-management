@@ -44,6 +44,7 @@ import java.util.List;
  * @param bootstrap    what the first start creates
  * @param auth         Active Directory, off by default
  * @param downloads    the record of who downloaded which file (2.7.0)
+ * @param signIns      the history of signing in and out (2.17.1)
  */
 @Validated
 @ConfigurationProperties(prefix = "filemanagement")
@@ -58,7 +59,8 @@ public record FileManagementProperties(
         @Valid ShareLinks shareLinks,
         @Valid Bootstrap bootstrap,
         @Valid Auth auth,
-        @Valid Downloads downloads) {
+        @Valid Downloads downloads,
+        @Valid SignIns signIns) {
 
     /** The zone of every installation so far, whose times before 2.2.0 were written in it. */
     public static final ZoneId DEFAULT_TIME_ZONE = ZoneId.of("Asia/Tehran");
@@ -74,17 +76,18 @@ public record FileManagementProperties(
         bootstrap = bootstrap == null ? new Bootstrap(null) : bootstrap;
         auth = auth == null ? new Auth(null, null) : auth;
         downloads = downloads == null ? new Downloads(null, null) : downloads;
+        signIns = signIns == null ? new SignIns(null, null) : signIns;
     }
 
     /** The tree with nothing set but the storage root: every other value its documented default. */
     public static FileManagementProperties defaults(String baseDir) {
-        return new FileManagementProperties(baseDir, null, null, null, null, null, null, null, null, null, null);
+        return new FileManagementProperties(baseDir, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /** The same tree with different directory settings - what a test varies. */
     public FileManagementProperties withActiveDirectory(ActiveDirectory activedirectory) {
         return new FileManagementProperties(baseDir, timeZone, defaults, folderAccess, folders, profiles,
-                storage, shareLinks, bootstrap, new Auth(new Ldap(activedirectory), auth.lockout()), downloads);
+                storage, shareLinks, bootstrap, new Auth(new Ldap(activedirectory), auth.lockout()), downloads, signIns);
     }
 
     /**
@@ -98,6 +101,20 @@ public record FileManagementProperties(
      */
     public record Downloads(Boolean enabled, @Min(0) Integer retentionDays) {
         public Downloads {
+            enabled = enabled == null || enabled;
+            retentionDays = retentionDays == null ? 365 : retentionDays;
+        }
+    }
+
+    /**
+     * The history of signing in and out (2.17.1): every sign-in, refusal, sign-out and ended or expired session,
+     * written off the request ({@code SignInRecorder}).
+     *
+     * @param enabled       false records nothing and starts no writer; what is recorded stays
+     * @param retentionDays how long a record is kept; older ones are removed every night. 0 keeps them for ever
+     */
+    public record SignIns(Boolean enabled, @Min(0) Integer retentionDays) {
+        public SignIns {
             enabled = enabled == null || enabled;
             retentionDays = retentionDays == null ? 365 : retentionDays;
         }

@@ -81,8 +81,12 @@ public class LoginAttempts {
         return state != null && state.lockedAt(Instant.now(clock));
     }
 
-    /** A wrong password for this name, from this address; the one that reaches the limit locks it. */
-    public void failed(String username, String address) {
+    /**
+     * A wrong password for this name, from this address; the one that reaches the limit locks it.
+     *
+     * @return whether this one locked it
+     */
+    public boolean failed(String username, String address) {
         Instant now = Instant.now(clock);
         Entry state = states.compute(key(username), (name, previous) -> {
             boolean afresh = previous == null || previous.lastFailure().plus(lock).isBefore(now);
@@ -98,6 +102,7 @@ public class LoginAttempts {
         if (states.size() > REMEMBERED) {
             forgetExpired(now);
         }
+        return state.failures() == maxFailures;
     }
 
     /**

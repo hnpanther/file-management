@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.17`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.19`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -573,7 +573,7 @@ _As of migration `V3.17`. Types and defaults are PostgreSQL's own; every table i
 | `class_id` | `integer` | no |  |  |
 | `name` | `varchar(100)` | no |  |  |
 | `display_name` | `varchar(200)` | no |  |  |
-| `child_class_id` | `integer` | no |  |  |
+| `child_class_id` | `integer` | yes |  |  |
 | `position` | `integer` | no |  |  |
 
 * **primary key** `id`
@@ -706,6 +706,27 @@ _As of migration `V3.17`. Types and defaults are PostgreSQL's own; every table i
 * **index** `fk_s3_multipart_upload_api_key` (`api_key_id`, `bucket`, `object_key`, `id`)
 * **index** `fk_s3_multipart_upload_user` (`user_id`)
 * **index** `ix_s3_multipart_upload_created_at` (`created_at`)
+
+### `sign_in_event`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `bigint` | no |  | identity |
+| `occurred_at` | `timestamptz(3)` | no |  |  |
+| `event` | `varchar(20)` | no |  |  |
+| `channel` | `varchar(10)` | no |  |  |
+| `username` | `varchar(150)` | yes |  |  |
+| `user_id` | `integer` | yes |  |  |
+| `address` | `varchar(45)` | yes |  |  |
+| `user_agent` | `varchar(300)` | yes |  |  |
+| `reason` | `varchar(20)` | yes |  |  |
+| `session_handle` | `varchar(64)` | yes |  |  |
+
+* **primary key** `id`
+* **foreign key** `fk_sign_in_event_user` `user_id` → `app_user` (`id`), on delete set null
+* **index** `ix_sign_in_event_time` (`occurred_at`, `id`)
+* **index** `ix_sign_in_event_user` (`user_id`, `occurred_at`, only where `(user_id IS NOT NULL)`)
+* **index** `ix_sign_in_event_username` (`upper(username)`, `occurred_at`, for prefix `LIKE` (`varchar_pattern_ops`))
 
 ### `storage_snapshot`
 

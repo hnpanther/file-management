@@ -167,6 +167,11 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   [issue 97](docs/issues.md#97-what-an-api-key-did-was-recorded-as-its-creators-doing-with-nothing-to-say-a-key-did-it--s2)):
   `ActingApiKey.currentId()`. The audit trail takes it by itself; a new way to create a file or a
   revision sets `createdByApiKey` as `FileService` does.
+* **Every authentication decision is a `sign_in_event`** (2.17.1): through `SignInAudit` - the form's success
+  handler, `LockoutAuthenticationManager` for every refusal (form and HTTP Basic), the sign-out handler,
+  `ActiveUserSessions` for an ended session, a destroyed session that timed out. A new way to sign in or to end a
+  session records too. Written by `SignInRecorder` off the request, never in its transaction; never a password,
+  never a session's id (`handleOf`).
 * **A session's id is never shown or logged** (2.16.0, `/settings/online-users`): it is the cookie that signs
   its holder in. A page names a session by `ActiveUserSessions.handleOf` (a digest), and ends it through
   `ActiveUserSessions`; an administrator's is ended by an administrator only.

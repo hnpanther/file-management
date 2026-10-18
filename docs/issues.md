@@ -2386,3 +2386,14 @@ run the scale tests with `EXPLAIN (ANALYZE)` on their slowest statements, look f
 (`options=-c jit=off` in the JDBC URL - common for OLTP, a change to every statement, so its own release)
 and rewriting the statements concerned. Not changed in 2.17.0: a setting for every statement is not part of
 a feature's release.
+
+### 126. An API key presented and refused is not recorded as an authentication decision — **S3**
+
+2.17.1 records every sign-in decision of a person (`sign_in_event`): the form's, and the v1 API's password. A refused
+API key is not: `ApiKeyAuthenticationFilter` and `S3AuthenticationFilter` leave the request unauthenticated and the
+chain answers 401, with no row - so a key tried after its revocation, or a stream of made-up keys, shows nowhere but
+the access log. OWASP's guidance (and ASVS V7) asks for every authentication decision.
+
+**To do, when keys are next worked on**: record a refusal from each filter - the key's id (never its secret), the
+channel (`KEY`, `S3`), the address and why (unknown, revoked, expired, a bad signature) - through `SignInAudit`, with
+`sign_in_event.channel` widened by a migration. A success stays unrecorded: every call is one.

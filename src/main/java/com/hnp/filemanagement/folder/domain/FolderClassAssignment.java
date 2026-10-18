@@ -335,7 +335,7 @@ public class FolderClassAssignment {
             int missing = 0;
             for (FolderClassChild template : classes.get(classId).getChildren()) {
                 if (!present.contains(SearchKey.of(template.getName(), SearchKey.NAME_LENGTH))) {
-                    missing += 1 + templateSize(template.getChildClass().getId(), classes, sizes);
+                    missing += 1 + templateSize(template.getChildClass(), classes, sizes);
                 }
             }
             if (missing > 0) {
@@ -347,14 +347,18 @@ public class FolderClassAssignment {
     }
 
     /** The folders a new folder of this class makes, all the way down - templates have no cycle. */
-    private static int templateSize(int classId, Map<Integer, FolderClass> classes, Map<Integer, Integer> sizes) {
+    private static int templateSize(FolderClass folderClass, Map<Integer, FolderClass> classes, Map<Integer, Integer> sizes) {
+        if (folderClass == null) {
+            return 0;
+        }
+        int classId = folderClass.getId();
         Integer known = sizes.get(classId);
         if (known != null) {
             return known;
         }
         int size = 0;
         for (FolderClassChild template : classes.get(classId).getChildren()) {
-            size += 1 + templateSize(template.getChildClass().getId(), classes, sizes);
+            size += 1 + templateSize(template.getChildClass(), classes, sizes);
         }
         sizes.put(classId, size);
         return size;

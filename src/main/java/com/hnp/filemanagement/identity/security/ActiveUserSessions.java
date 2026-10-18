@@ -1,5 +1,7 @@
 package com.hnp.filemanagement.identity.security;
 
+import com.hnp.filemanagement.identity.signin.SignInAudit;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.session.SessionInformation;
@@ -48,9 +50,11 @@ public class ActiveUserSessions {
     }
 
     private final TrackedSessionRegistry sessionRegistry;
+    private final SignInAudit signInAudit;
 
-    public ActiveUserSessions(TrackedSessionRegistry sessionRegistry) {
+    public ActiveUserSessions(TrackedSessionRegistry sessionRegistry, SignInAudit signInAudit) {
         this.sessionRegistry = sessionRegistry;
+        this.signInAudit = signInAudit;
     }
 
     /** Every session not yet ended, of every person signed in on this instance. */
@@ -93,6 +97,7 @@ public class ActiveUserSessions {
             for (SessionInformation session : sessionRegistry.getAllSessions(principal, false)) {
                 if (handleOf(session.getSessionId()).equals(handle)) {
                     session.expireNow();
+                    signInAudit.sessionEnded(usernameOf(principal), session.getSessionId());
                     return true;
                 }
             }
@@ -128,6 +133,7 @@ public class ActiveUserSessions {
             for (SessionInformation session : sessionRegistry.getAllSessions(principal, false)) {
                 if (!session.getSessionId().equals(keptSessionId)) {
                     session.expireNow();
+                    signInAudit.sessionEnded(details.getUsername(), session.getSessionId());
                     expired++;
                 }
             }
@@ -136,6 +142,10 @@ public class ActiveUserSessions {
     }
 
     /** A session's name on a page: a digest of its id, which cannot be turned back into the id. */
+    private static String usernameOf(Object principal) {
+        return principal instanceof UserDetailsImpl details ? details.getUsername() : String.valueOf(principal);
+    }
+
     public static String handleOf(String sessionId) {
         if (sessionId == null) {
             return null;

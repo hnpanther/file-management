@@ -210,7 +210,7 @@ class DownloadRecorderTest {
 
     private DownloadRecorder recorder(boolean enabled) {
         FileManagementProperties properties = new FileManagementProperties("./target/unused", null, null, null, null,
-                null, null, null, null, null, new FileManagementProperties.Downloads(enabled, 30));
+                null, null, null, null, null, new FileManagementProperties.Downloads(enabled, 30), null);
         return new DownloadRecorder(jdbcTemplate, clock, properties);
     }
 

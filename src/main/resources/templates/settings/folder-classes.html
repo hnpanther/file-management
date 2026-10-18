@@ -32,7 +32,11 @@
         <div class="card-body">
             <h2 id="form-title" class="mb-1 text-base font-semibold"
                 th:text="${form.id() == null} ? #{folderClass.add.title} : #{folderClass.edit.title}">افزودن طبقه</h2>
-            <p class="mb-4 text-sm text-ink-500" th:text="#{folderClass.add.hint}">تغییر یک طبقه فقط روی پوشه‌هایی اثر دارد که از این پس ساخته می‌شوند.</p>
+            <p class="mb-2 text-sm text-ink-500" th:text="#{folderClass.add.hint}">تغییر یک طبقه فقط روی پوشه‌هایی اثر دارد که از این پس ساخته می‌شوند.</p>
+            <p class="field-hint mb-4" id="folder-class-bottom-up">
+                <i class="bi bi-info-circle" aria-hidden="true"></i>
+                <span th:text="#{folderClass.bottomUp}">طبقه‌ها را از پایین به بالا بسازید.</span>
+            </p>
             <form th:action="${form.id() == null} ? @{/settings/folder-classes} : @{/settings/folder-classes/{id}(id=${form.id()})}"
                   method="post" id="folderClassForm">
                 <div class="grid gap-5 lg:grid-cols-3">
@@ -69,9 +73,11 @@
                             <td><input name="childName" th:value="${row.name()}" class="form-control technical" dir="ltr" type="text" maxlength="100"></td>
                             <td><input name="childDisplayName" th:value="${row.displayName()}" class="form-control" type="text" maxlength="200"></td>
                             <td>
+                                <!-- Not the class itself: a folder of it in its own template would make folders without end. -->
                                 <select name="childClassId" class="form-control">
-                                    <option value="" th:text="#{folderClass.choose}">انتخاب کنید</option>
-                                    <option th:each="c : ${classes}" th:value="${c.id()}" th:text="${c.title()}"
+                                    <option value="" th:text="#{folderClass.noClass}">بدون طبقه</option>
+                                    <option th:each="c : ${classes}" th:if="${form.id() == null or c.id() != form.id()}"
+                                            th:value="${c.id()}" th:text="${c.title()}"
                                             th:selected="${row.classId() != null and row.classId() == c.id()}">طبقه</option>
                                 </select>
                             </td>
@@ -79,6 +85,25 @@
                         </tbody>
                     </table>
                 </div>
+                <!-- One more row, as many times as wanted: a copy of an empty one, from the template below. -->
+                <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="add-template-row"
+                        onclick="addTemplateRow()">
+                    <i class="bi bi-plus" aria-hidden="true"></i>
+                    <span th:text="#{folderClass.field.addRow}">ردیف دیگر</span>
+                </button>
+                <template id="template-row">
+                    <tr>
+                        <td><input name="childName" class="form-control technical" dir="ltr" type="text" maxlength="100"></td>
+                        <td><input name="childDisplayName" class="form-control" type="text" maxlength="200"></td>
+                        <td>
+                            <select name="childClassId" class="form-control">
+                                <option value="" th:text="#{folderClass.noClass}">بدون طبقه</option>
+                                <option th:each="c : ${classes}" th:if="${form.id() == null or c.id() != form.id()}"
+                                        th:value="${c.id()}" th:text="${c.title()}">طبقه</option>
+                            </select>
+                        </td>
+                    </tr>
+                </template>
                 <p class="field-hint" th:text="#{folderClass.field.templateNewClass}">برای طبقه‌ای که هنوز نیست، اول آن را بسازید.</p>
 
                 <h3 class="mt-4 mb-2 text-sm font-semibold" th:text="#{folderClass.field.otherChildren}">زیرپوشه با نام دیگر</h3>
@@ -137,7 +162,7 @@
                         <td>
                             <div th:each="t : ${c.template()}">
                                 <span class="technical" dir="ltr" th:text="${t.name()}"></span>
-                                <span th:text="|← ${t.classTitle()}|"></span>
+                                <span th:text="|← ${t.classTitle() != null ? t.classTitle() : #messages.msg('folderClass.noClass')}|"></span>
                             </div>
                         </td>
                         <td>
@@ -171,5 +196,12 @@
 </main>
 
 <th:block th:replace="~{fragments.html :: scripts}"></th:block>
+<script>
+    function addTemplateRow() {
+        const row = document.getElementById('template-row').content.firstElementChild.cloneNode(true);
+        document.querySelector('#folder-class-template tbody').appendChild(row);
+        row.querySelector('input').focus();
+    }
+</script>
 </body>
 </html>

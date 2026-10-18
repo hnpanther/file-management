@@ -52,6 +52,16 @@ deployment guide. The one-off page of 2.16.1 is gone. Alongside: watch `/setting
 host, and once the backfill is done measure the tables and look at the failures - what decides whether 11.4 (the
 lexicon gate) is wanted.
 
+2.17.1 is written: **the classes page made easier, and the history of signing in and out.** A class's template takes
+rows without saving between ("ردیف دیگر"), a folder of no class (a contract's `Misc`, `V3.18`), never the class itself
+in its own list; the page says to make classes bottom up, and a cycle is refused naming the template folder that closes
+it. And **`/settings/sign-ins`** (`SIGN_IN_HISTORY_PAGE`, `V3.19`): every sign-in on the form, every refusal - the
+form's and the v1 API password's, with why (a wrong password, the one that locked the name, refused while locked,
+disabled, the directory down) - every sign-out, every session ended by an administrator or timed out; who, when,
+the address, the browser, a session's handle (never its id), never a password. Written off the request as the
+downloads are, kept a year (`filemanagement.sign-ins.*`), read newest first a page at a time: 3-4 ms a page at
+300,000 events. The order below is unchanged: a week of 2.17.x in use, then the recycle bin.
+
 2.17.0 is written: **folder classes** (Phase 14, `V3.17`) - a class on a folder, with a template of the folders made
 in it, a rule for its other subfolders and whether it takes files directly; a new folder's class from its parent's,
 by hand, v1 or S3 alike; class grants on roles (read or write, everywhere or within a scope folder) read by every
@@ -4651,9 +4661,11 @@ time, re-runnable. A folder that has a class keeps it.
   request still resolves its access in two, as `LargeTreeTest` pins - the class grants as the paths they cover,
   kept sorted in `FolderAccess` (each check a lookup among five thousand).
 
-### Follow-ups met while setting the classes up (for 2.17.1)
+### Follow-ups met while setting the classes up (for 2.17.1) — **done (2.17.1)**
 
-Found by the owner on the first use of the classes page (2026-10-17); none changes what a class does:
+Found by the owner on the first use of the classes page (2026-10-17); none changes what a class does. All four are in
+2.17.1 - the template folder without a class included (`V3.18`), and the class itself left out of its own template's
+list, which is what produced the cycle in the first place:
 
 * **Rows added to a template without saving between.** The form offers a class's own template folders and three
   empty rows; a fourth means saving and editing again. An "add a row" button, unbounded (the server's cap stays 50).

@@ -788,6 +788,30 @@ database restored without it has S3 keys nobody can use. Lost or changed, every 
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
 
+### Upgrading from 2.17.0 to 2.17.1 — the classes page made easier, and the history of signing in and out
+
+A jar swap with **two migrations**: `V3.18` lets a class's template folder have no class (no row changes), and
+`V3.19` adds an empty table, `sign_in_event`. Nothing that exists changes.
+
+* **The classes page**: a template takes as many rows as wanted ("ردیف دیگر"), a template folder may be "بدون طبقه",
+  the class being edited is not offered in its own template, and the page says to make classes bottom up.
+* **The history of signing in and out** at **`/settings/sign-ins`**, under a new permission, `SIGN_IN_HISTORY_PAGE`
+  ("تاریخچهٔ ورود و خروج") - the administrators' at the next start, anybody else's when a role is given it. It
+  records from the start on: every sign-in on the form, every refusal on the form and of the v1 API's password,
+  every sign-out, every session ended from the online-users page or by disabling an account, every session that
+  timed out. Never a password, never a session's id.
+* **Two settings, neither needed**:
+
+  | Setting | Default | |
+  |---|---|---|
+  | `FILEMANAGEMENT_SIGN_INS_ENABLED` | `true` | false records nothing; what is recorded stays |
+  | `FILEMANAGEMENT_SIGN_INS_RETENTION_DAYS` | `365` | older records are removed every night at 03:50; `0` keeps them for ever |
+
+  The address and the browser are personal data: keep them no longer than the purpose needs - a year is what
+  most audit policies ask of authentication records.
+* The address is the client's when the reverse proxy sends `X-Forwarded-For` (as the download records need
+  already, [2.6.0 → 2.7.0](#upgrading-from-260-to-270--who-downloaded-what-and-one-setting-renamed)).
+
 ### Upgrading from 2.16.1 to 2.17.0 — folder classes
 
 A jar swap with **one migration**, `V3.17`: three new tables (`folder_class`, `folder_class_child`,

@@ -320,7 +320,8 @@ public class FolderService {
             saved.setPath(folder.childPath(saved.getId()));
             actionHistoryService.saveActionHistory(EntityEnum.Folder, saved.getId(), ActionEnum.CREATE, principalId,
                     "CREATE FOLDER", "CREATE folder " + template.getName() + " under folder id=" + folder.getId()
-                            + " of class id=" + template.getChildClass().getId() + " (template of class id="
+                            + (template.getChildClass() == null ? " of no class" : " of class id=" + template.getChildClass().getId())
+                            + " (template of class id="
                             + folderClass.getId() + ")");
             made += 1 + makeTemplate(saved, principalId);
         }

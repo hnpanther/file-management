@@ -175,7 +175,7 @@ class FileDownloadServiceTest extends DatabaseSupport {
 
     private DownloadRetention retention(int days, Instant now) {
         FileManagementProperties properties = new FileManagementProperties("./target/unused", null, null, null, null,
-                null, null, null, null, null, new FileManagementProperties.Downloads(true, days));
+                null, null, null, null, null, new FileManagementProperties.Downloads(true, days), null);
         return new DownloadRetention(jdbcTemplate, new MutableClock(now, ZoneId.of("Asia/Tehran")), properties);
     }
 

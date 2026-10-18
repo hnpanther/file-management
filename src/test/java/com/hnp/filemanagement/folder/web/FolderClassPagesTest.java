@@ -82,7 +82,18 @@ class FolderClassPagesTest extends DatabaseSupport {
                 .andExpect(status().isForbidden());
         String page = mockMvc.perform(get("/settings/folder-classes").with(user(principal(admin, PermissionEnum.FOLDER_CLASSES_PAGE))))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        assertThat(page).contains("folder-classes").contains("Documents").contains("ContractState").doesNotContain("??");
+        assertThat(page).contains("folder-classes").contains("Documents").contains("ContractState").doesNotContain("??")
+                .doesNotContain("add-template-row");
+        String form = mockMvc.perform(get("/settings/folder-classes").with(user(principal(admin,
+                        PermissionEnum.FOLDER_CLASSES_PAGE, PermissionEnum.SAVE_FOLDER_CLASS))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(form).contains("add-template-row").contains("folder-class-bottom-up");
+
+        // the edit page of a class offers it in no template row of its own - only as the class of other subfolders
+        String edit = mockMvc.perform(get("/settings/folder-classes/" + classes.contract())
+                        .with(user(principal(admin, PermissionEnum.FOLDER_CLASSES_PAGE, PermissionEnum.SAVE_FOLDER_CLASS))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(edit.split("value=\"" + classes.contract() + "\"", -1)).hasSize(2);
 
         String name = "letters" + TestData.nextSequence();
         mockMvc.perform(post("/settings/folder-classes").with(csrf()).with(user(principal(admin, PermissionEnum.FOLDER_CLASSES_PAGE)))
@@ -91,12 +102,14 @@ class FolderClassPagesTest extends DatabaseSupport {
         mockMvc.perform(post("/settings/folder-classes").with(csrf()).with(user(principal(admin, PermissionEnum.SAVE_FOLDER_CLASS)))
                         .param("name", name).param("title", "مکاتبات").param("containerOnly", "true")
                         .param("otherChildren", "NONE")
-                        .param("childName", "In", "").param("childDisplayName", "ورودی", "")
-                        .param("childClassId", String.valueOf(classes.documents()), ""))
+                        .param("childName", "In", "Misc", "").param("childDisplayName", "ورودی", "", "")
+                        .param("childClassId", String.valueOf(classes.documents()), "", ""))
                 .andExpect(redirectedUrl("/settings/folder-classes"));
         assertThat(jdbc.queryForObject("SELECT container_only FROM folder_class WHERE name = ?", Boolean.class, name)).isTrue();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM folder_class_child ch JOIN folder_class c ON c.id = ch.class_id WHERE c.name = ?",
-                Integer.class, name)).isEqualTo(1);
+                Integer.class, name)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM folder_class_child ch JOIN folder_class c ON c.id = ch.class_id"
+                + " WHERE c.name = ? AND ch.child_class_id IS NULL", Integer.class, name)).as("Misc, of no class").isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM action_history WHERE action_description = 'CREATE FOLDER_CLASS'",
                 Integer.class)).isPositive();
 

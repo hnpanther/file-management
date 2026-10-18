@@ -172,6 +172,12 @@ public enum PermissionEnum {
     //holding ADMIN asks ADMIN
     END_USER_SESSION,
 
+    // ------------------------------------------------------------------ SignInHistoryController - /settings/sign-ins
+
+    //@GetMapping - the history of signing in and out (2.17.1): every sign-in, refusal (the form, and the v1 API's
+    //password), sign-out and ended or expired session - who, when, from which address and browser, and why a refusal
+    SIGN_IN_HISTORY_PAGE,
+
     // ===================================================================================================
 
     // UserController @RequestMapping("/users")===========================================================
