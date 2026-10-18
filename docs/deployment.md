@@ -788,6 +788,14 @@ database restored without it has S3 keys nobody can use. Lost or changed, every 
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
 
+### Upgrading from 2.17.1 to 2.17.2 — folders made while a class changes
+
+A jar swap, **no migration**. A change of a folder's class, a move and the rules applied below a folder now hold one
+lock that making a folder holds too (shared, so uploads still make folders side by side): a folder made by n8n at
+the moment an administrator changes a class above it is made with the change, never with the class path from before
+it. Every night at 04:10 a check sets right any class path that disagrees with the classes above it and logs a
+warning if it set one - none is expected. Nothing to configure.
+
 ### Upgrading from 2.17.0 to 2.17.1 — the classes page made easier, and the history of signing in and out
 
 A jar swap with **two migrations**: `V3.18` lets a class's template folder have no class (no row changes), and

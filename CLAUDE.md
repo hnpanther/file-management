@@ -115,6 +115,9 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   database's values) - a new way to move a folder or change a class rewrites it so, and a test asserts
   `findRowsWhoseClassPathDisagrees` empty. A folder's class comes from its parent's (`FolderClassRules`) in
   `FolderService.create` - a new way to make a folder goes through it, or it skips the template and the rule.
+  Making a folder holds `FolderClassLock` shared and reads its parent after; rewriting class paths (a class set, a
+  move, the rules applied) holds it exclusively - a new way to do either takes it, or a folder made meanwhile keeps
+  a class path from before (`FolderClassLockTest`).
 * **An S3 handler takes only the query parameters it understands** (`S3Controller.asksWhatIsNotServed`,
   issue 116): a sub-resource it ignored ran as the plain operation - `DELETE …?tagging` deleted the
   file. A new S3 operation names its parameters there; anything else stays a 501.

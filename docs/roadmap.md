@@ -52,6 +52,14 @@ deployment guide. The one-off page of 2.16.1 is gone. Alongside: watch `/setting
 host, and once the backfill is done measure the tables and look at the failures - what decides whether 11.4 (the
 lexicon gate) is wanted.
 
+2.17.2 is written: **a review before production.** A folder made while a class is changed above it - n8n
+uploading while an administrator classes the tree - could keep its parent's class path as read before the change,
+and with it access a class should no longer give: class changes, moves and the rules applied now hold one advisory
+lock (`FolderClassLock`) that folder creation holds shared, and creation reads its parent after taking it
+(`FolderClassLockTest` fails without it). A nightly check sets right any class path that disagrees, and says so
+(`ClassPathCheck`, 04:10). And two tests that assumed fewer than a hundred accounts in the shared test database
+corrected - the classes that commit (signing in, the S3 surface) leave more, and run in one JVM they failed.
+
 2.17.1 is written: **the classes page made easier, and the history of signing in and out.** A class's template takes
 rows without saving between ("ردیف دیگر"), a folder of no class (a contract's `Misc`, `V3.18`), never the class itself
 in its own list; the page says to make classes bottom up, and a cycle is refused naming the template folder that closes

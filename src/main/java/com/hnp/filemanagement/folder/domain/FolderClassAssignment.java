@@ -70,6 +70,8 @@ public class FolderClassAssignment {
     private final TransactionTemplate transactions;
     private final Clock clock;
 
+    private final FolderClassLock folderClassLock;
+
     private final AtomicBoolean running = new AtomicBoolean();
     private volatile Run last;
 
@@ -77,7 +79,9 @@ public class FolderClassAssignment {
                                  FolderService folderService, FolderClassService folderClassService,
                                  FolderAccessService folderAccessService,
                                  UserRepository userRepository, ActionHistoryService actionHistoryService,
-                                 NamedParameterJdbcTemplate jdbc, TransactionTemplate transactions, Clock clock) {
+                                 NamedParameterJdbcTemplate jdbc, TransactionTemplate transactions, Clock clock,
+                                 FolderClassLock folderClassLock) {
+        this.folderClassLock = folderClassLock;
         this.folderRepository = folderRepository;
         this.folderClassRepository = folderClassRepository;
         this.folderService = folderService;
@@ -120,6 +124,8 @@ public class FolderClassAssignment {
      */
     @Transactional
     public Assigned set(int folderId, Integer classId, int principalId) {
+        // No folder is made while class paths are rewritten (FolderClassLock).
+        folderClassLock.exclusive();
         Folder folder = requireFolder(folderId);
         if (FolderService.isSystemFolder(folder)) {
             throw new InvalidDataException("a " + folder.getKind() + " folder takes no class: id=" + folderId,
@@ -223,6 +229,7 @@ public class FolderClassAssignment {
     /** The run itself, in the calling thread. */
     Progress run(int folderId, int principalId) {
         Run run = transactions.execute(status -> {
+            folderClassLock.exclusive();
             Folder root = requireFolder(folderId);
             Computed computed = compute(root);
             Run started = new Run(folderId, root.getKeyPath(), Instant.now(clock));
