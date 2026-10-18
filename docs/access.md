@@ -267,7 +267,7 @@ Two ways out deliberately bypass folder access, each narrow:
 
 ## Checking what someone reaches
 
-Until the access report (roadmap 13.7) exists:
+Until the access report (roadmap 13.7, planned in full there) exists:
 
 * Sign in as a test account holding the same roles and look - the explorer, the file list, the search show exactly
   what the account reaches.
