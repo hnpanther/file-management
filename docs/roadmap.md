@@ -4502,93 +4502,288 @@ needs underneath it, and are cheaper built first than inside it.
 | 13.4 | **Check-out**: a file taken for editing by one person, a new version refused to the others until it is returned | two people uploading the next version at once each overwrite the other's work; controlled documents require it | `file_info.checked_out_by/_at` | 2-3 days |
 | 13.5 | **Retention and legal hold**: a document type kept N years and not deletable before; a hold that stops any delete; a disposal list when the time is up | ISO 9001 §7.5 / ISO 27001 records; personal data not kept longer than needed | `retention_rule`, `legal_hold` | 5-7 days |
 | 13.6 | **A virus scan of every upload** (ClamAV), as the content reading runs: a queue, its own worker, nothing waiting on it; a file found infected quarantined and its download closed | files arrive from many people and from the ERP, and go out to everyone else | `file_scan` (one row a revision) | 4-5 days |
-| 13.7 | **A report of who may reach what**: per person, per role, per key - each folder and the verb, and where it comes from | every access review and audit asks it; today it is read off the role pages one by one | none | 2-3 days |
+| 13.7 | **A report of who may reach what**: per folder, person, role and key - the verb and where it comes from; findings; a review signed off (planned in full below) | every access review and audit asks it; today it is read off the role pages one by one | `access_review` | 4-5 days |
 | 13.8 | **Monitoring**: metrics out (Micrometer → Prometheus or what the operators use) and alerts - the disk, the reading queue and Tika, the error rate, a failed backup | today a problem is seen when somebody opens a page | none | 2-3 days |
 | 13.9 | **Word, Excel and PowerPoint seen in the browser**: converted to PDF by LibreOffice (Gotenberg) in the background, kept beside the revision, shown by the PDF viewer already there | asked for; the one common kind still downloaded to be read | a derived object per revision | 5-7 days |
 | 13.10 | **Two-factor sign-in** (TOTP) for the accounts signed in here rather than through Active Directory - `Admin` above all; and the rotation of the credentials still in the git history ([issue 11](issues.md#11-credentials-and-infrastructure-details-are-committed--s1)) | the accounts that can change everything have a password alone | `app_user.totp_secret` (encrypted) | 3-4 days |
 | 13.11 | **Day-to-day**: several files uploaded at once, several downloaded as one ZIP, a warning at upload when the same bytes are already stored (the SHA-256 is there), "my recent files" and favourites | small things a person meets every day | `favourite` | 1-2 days each |
 | 13.12 | **A watermark and "view only"** for confidential folders: the viewer's name and the time on a preview, the download closed | only when asked; most installations never need it | a folder setting | 3-4 days |
 | 13.13 | **A search that forgives OCR's errors** (a letter misread: «مزابای» for «مزایای») - 11.4 / 11.6 | decided on production's failures once the backfill has read everything | none | measured first |
+| 13.14 | **A password policy** for local accounts (below) | any password is accepted today | two columns on `app_user` | 1-2 days |
+| 13.15 | **A recovery plan**: RPO and RTO agreed, a copy off the server, a restore rehearsed (below) | the backup is one half; knowing how long the way back takes is the other | none | with 13.2 |
+| 13.16 | **The audit trail out** to the organisation's log system (below) | the records survive the server, and are read beside the network's | none | 2-3 days |
+| 13.17 | **Encryption at rest**, the operators' (below) | a disk taken is a disk read | none | the operators' |
 
 **The proposed order**: 13.1 (the most risk removed for the least work), 13.2 with the rest of Phase 4,
 then 13.3 and 13.4 (Phase 8 stands on them), 13.9 and 13.6 (both the queue-and-worker shape the
 content reading already has), 13.7 and 13.8; then Phase 8 - controlled documents first, with 13.5 as
-part of them. 13.10 - 13.13 as asked.
+part of them. 13.10 - 13.13 as asked; 13.14 and 13.15 soon after 13.1 (small, and much risk removed for their
+size); 13.16 and 13.17 with the operators.
 
-### 13.1 A recycle bin
+### 13.1 A recycle bin — planned in full for 2.18.0 (2026-10-18)
 
-**What happens now.** "Delete the file" and "delete the folder with everything in it" remove the rows and
-the bytes in one go (`FileService.deleteCompleteFileById`, `FolderTreeDeleteService.deleteTree`); the history keeps a record
-that it happened, nothing to bring back. The only way back is the backup, and with it the loss of
-everything since.
+**Today.** Every delete removes the rows and then the bytes: a file (`FileService.deleteCompleteFileById`), one
+revision (`deleteFileDetails` - the last one takes the file with it), an empty folder (`FolderService.delete`), a
+folder with everything in it (`FolderTreeDeleteService.deleteTree`). The file history keeps that it happened, nothing
+to bring back. The only way back is the backup, and with it the loss of everything since.
 
-**What it becomes.** A delete moves the file (or a folder with everything below it) to the bin: gone from
-every list, search, report, the S3 listing and every API, its share links dead, its bytes kept. A page
-lists what is in the bin - to whoever may write in the folder it came from; everything to ADMIN - with
-restore and, under a permission of its own, purge. A scheduled job purges what has been there longer than
-`filemanagement.trash.retention-days` (30), through the same path the delete takes today. A revision
-deleted alone (a version or a format) goes the same way.
+**What it becomes.** A delete - by any of the ways below - puts what was deleted in **the bin**: gone from every
+list, search, report, listing and API, for everybody, administrators included; its bytes, versions, metadata, history,
+external ids and read text kept. It is **restored** from the bin - to where it was, or elsewhere - or **purged**: by
+hand, or by itself after `filemanagement.trash.retention-days` (30). Only a purge removes bytes, and nothing comes back
+after one.
 
-**The schema - a record of the deletion, not a flag on every row.** A `deleted_at` on `file_info` would have
-to be remembered in every one of the hundred queries that read files - the lists, the explorer, the search
-in contents, the reports, the S3 listing, the v1 and v2 APIs, the quotas - and one forgotten is a deleted
-file shown, or worse, downloaded. Instead:
+#### Every way something is deleted, and what it becomes
 
-```sql
-file_deletion (id, file_info_id UNIQUE, folder_id /* where it was */, file_name /* as it was */,
-               deleted_at, deleted_by, deleted_by_api_key, purge_after)
-```
+| Way | Entry point | Becomes |
+|---|---|---|
+| Explorer / file page: delete a file | `FileResource.deleteFileInfo` → `deleteCompleteFileById` | a **file** entry |
+| File page: delete a version or a format | `FileResource.deleteFileDetails` | a **revision** entry; the last revision of a file → a **file** entry |
+| v1: delete a revision | `FileApi.deleteFileDetails(ById)` | as above |
+| old v2: delete an object | `ObjectStoreApi.deleteObject` → `deleteFileDetails` | as above |
+| S3: `DeleteObject` | `S3ObjectService.delete` | a **file** entry - as S3 answers a delete with a delete marker |
+| S3: `DeleteObject?versionId=` | `S3ObjectService.delete(…, versionId)` | a **revision** entry |
+| S3: `DeleteObjects` | `S3Controller.deleteObjects` | one entry per key, each as above |
+| Explorer / S3 `key/`: delete an empty folder | `FolderService.delete` | a **folder** entry (it keeps its metadata, class, grants and settings) |
+| Explorer: delete a folder with everything | `FolderTreeDeleteService.deleteTree` | **one folder entry for the whole tree** - restored as one |
 
-and the file itself **moved into a hidden system folder** (`kind TRASH`, one, under the root, in no grant
-and never listed): every query that filters by folder access already leaves it out, the unique name per
-folder no longer holds a deleted file against a new one, and a restore is a move back. What every
-query must still say is the one thing folder access cannot - that an **administrator** (unrestricted) does
-not see the bin either: one condition, `folder.kind <> 'TRASH'`, in the queries an unrestricted reader runs,
-each with a case in a test that deletes a file and asks every surface for it.
+Nothing else deletes a file. A user's personal folder, `Profiles` and the root are deleted by nobody, as now.
 
-**The question asked with it (2026-10-15): a file deleted, then the same file uploaded again.**
+#### The model: a bin folder, and a record of each deletion - not a flag on every row
 
-* **Under the same name, in the same folder.** The upload succeeds and is **a new file** - version 1, new
-  external ids - because the deleted one is no longer in that folder (it is in the bin), so the name is free.
-  The deleted file stays in the bin, untouched, with all its versions, until it is purged or restored.
-  This is what the S3 surface does too: a `PUT` to a key whose file was deleted makes a new object, as on
-  S3 a `PUT` after a delete marker does.
-* **The upload page says so.** Asked by name in the folder and by SHA-256, the form warns before sending:
-  "a file of this name (or these very bytes) was deleted from this folder on … - restore it instead?" -
-  restoring keeps its history, its versions and its external ids, which an ERP may still hold. Without an
-  answer the upload goes on as above; nothing is decided for the person.
-* **Restoring when the name is taken again.** The restore asks: restore under another name (proposed:
-  `name (restored)`), restore into another folder, or **make the deleted file's versions the earlier
-  versions of the new one** is *not* offered - two histories are not merged silently; the person can move
-  what they need by hand. Never an overwrite.
-* **External ids.** A deleted file's external id answers as not found (404) on v1 and v2 - the same as a file
-  the key may not read, so a deletion tells an integration nothing more than that - and answers again
-  after a restore. A new upload under the same name has new ids: an integration that stored the old id does
-  not silently get the new file.
-* **Quotas.** What is in the bin still occupies the disk: it counts against the quota of the folder it came
-  from until purged, and the quota page says how much of the usage is in the bin. Otherwise deleting would
-  be a way round a quota.
-* **The search in contents** keeps the deleted file's text until the purge (a restore needs no reading
-  again) but never returns it: the bin folder is in no grant, and an unrestricted reader's query leaves it
-  out.
-* **Records.** `file_history` gains `FILE_TRASHED`, `FILE_RESTORED` and `FILE_PURGED`; the purge is the
-  only event after which nothing can be brought back.
+A `deleted_at` on `file_info` would have to be remembered in every query that reads files - lists, explorer, both
+searches, the reports, the S3 listing, v1, v2, quotas, the public page, share links - and one forgotten is a deleted
+file shown, or downloaded. Instead:
 
-**What folder classes add (2.17.0, noted 2026-10-17).** A folder moved to the bin keeps its class, and a class
-grant reaches every folder of its class wherever it is - so the bin being "in no grant" is no longer enough: a class
-grant would find a classed folder, or a file below one, inside it. The bin's folder must be left out of what class
-grants cover - in `GrantedFolderPath`'s class row (its scope can never be the bin), in
-`FolderRepository.findGrantsThroughRoles` (no folder below the bin), and in the signposts
-(`ReadScopeSql.grantedWithSignposts`) - or the bin's subtree given a class path no grant matches. Its tests ask a
-class-granted reader too. A restore puts a folder back under its old parent: the class path is rewritten by SQL as a
-move's is, and the class rules of the parent it returns to are asked (a refused name refuses the restore, as a move).
+* **One system folder, `TRASH`** (a new `FolderKind`, made by the migration under the root, like `Profiles`): what is
+  deleted is **moved** into it - a file into it, a folder (with its subtree) under it. It is a system folder: not
+  renamed, moved, deleted, classed, granted, listed or chosen as a destination; nothing is uploaded to it.
+* **A record of each deletion** - `trash_entry`:
 
-**Tests**: a file deleted is found by no surface (lists, explorer, both searches, the reports, S3, v1, v2,
-a share link, a download by any id) for any reader, ADMIN and a reader with a class grant included; restored, by all of them again, with
-its versions, metadata, history and ids; the same name uploaded after a delete is a new file and both
-coexist; a restore onto a taken name refused unless renamed; the purge removes the bytes through
-`StorageWriter`'s delete path and is resumable; quotas count the bin; a folder tree deleted and restored
-whole.
+  ```sql
+  trash_entry (id, kind 'FILE' | 'REVISION' | 'FOLDER',
+               file_info_id, file_details_id, folder_id,          -- what is in the bin; one set, as kind says
+               origin_folder_id, origin_path, origin_title,       -- where it was: the folder's id (it may go),
+                                                                  --   its path and readable trail at the time
+               original_name,                                     -- the name it had there
+               deleted_at, deleted_by, deleted_by_api_key, purge_after,
+               bytes, files)                                      -- what it holds, for the page and the quotas
+  ```
+
+* **A revision deleted alone** cannot be moved by moving its file. It is moved to **a holder**: a file of its own in the
+  bin (`file_details.file_info_id` changed to it), named by the entry's id, keeping the revision's external id, read
+  text and metadata. While a file has a revision in the bin, its version numbers do not come back down
+  (`lastVersion` is the greatest of its own and its binned revisions'), so a restored revision's number is never taken.
+* **Why this shape**: a restricted reader never reaches the bin - **no grant covers anything under `TRASH`**
+  (`GrantedFolderPath` drops a grant row whose folder or scope lies there; `findGrantsThroughRoles` too) - so every
+  list filtered by access leaves it out with no change of its own. What still has to say it is the **unrestricted**
+  reader's query (an administrator, or enforcement off): one condition, the bin's path prefix excluded, in each,
+  enumerated below and each tested.
+
+#### Where the bin must be left out - the full list
+
+| Surface | Where | How |
+|---|---|---|
+| Grants of every kind | `GrantedFolderPath.SQL` (four branches), `FolderRepository.findGrantsDirectly/ThroughRoles/OfApiKey` | a grant whose folder (or scope) lies under `TRASH` covers nothing; a class expansion skips folders under it |
+| Unrestricted native SQL | `ReadScopeSql.readable` / `visible` (reports, content search, metadata search, folder search, S3 listing, folder reading) | `TRUE` becomes `alias.path NOT LIKE '<trash path>%'` - a literal, the bin's path known at start |
+| Unrestricted JPQL lists | `FileInfoRepository` (5), `FileShareLinkRepository`, `ReadableFolders` | the same condition beside `:unrestricted` |
+| Explorer levels and tree | `FolderLevelService`, `FileTreeService`, `FolderContentService` | the root's level never lists `TRASH` |
+| A file or folder asked for by id | file page, both downloads, v1 by external id, S3 `GET`/`HEAD`, a folder's page | in the bin: answered as not found (404) - the same as a file the reader may not read, so a deletion tells an integration nothing more |
+| Public files | the public page and download | a public file in the bin is not shown or served |
+| Share links | `ShareLinkService` | revoked at the delete, recorded as such; not revived by a restore |
+| Content search | its queue and results | the text is kept (a restore needs no reading again) but never answered - the scope leaves the bin out; the worker skips revisions in the bin |
+| Reports, storage snapshot | `ReportRepository`, `StorageSnapshotJob` | the bin is no top-level folder of a report; the totals report adds "in the bin" (files, bytes) |
+| Metadata queue, chooser, grant trees | undescribed folders, the search's folder chooser, the role and key grant trees, the move destinations | the bin offered nowhere |
+
+#### Restoring
+
+* **Who**: whoever may write in the folder it came from - as access stands now, folder grants and class grants alike,
+  and whoever holds `ADMIN`. The bin page lists exactly those entries.
+* **To where it was**, by default: the origin folder, under the original name, the entry's own version numbers and
+  external ids. Recorded `FILE_RESTORED` (or a folder's), with who and from which entry.
+* **When that cannot be**, the restore asks, and never decides alone, never overwrites, never merges:
+  * the origin folder is gone (purged) - choose another folder;
+  * the origin folder is in the bin itself - restore it first (the page says which entry), or choose another folder;
+  * the name is taken there now (a file uploaded under it since - a new file, with new ids) - restore under another
+    name (proposed: `name (restored)`) or into another folder;
+  * the folder's class refuses it - a file into a container-only folder, a folder whose name the parent's class
+    refuses - choose a subfolder or another folder;
+  * the quota above the destination has no room - refused, saying how much;
+  * the reader may not write there - refused.
+* **A revision** goes back to its file, under its own number. If its file is in the bin, the file is restored first;
+  if its file was purged, the revision is restored as a new file of its own, in a folder chosen.
+* **A folder** goes back with its subtree, its metadata, class, grants and settings as they were; its class path is
+  rewritten for where it lands, as a move's is.
+* **Ids**: the file's and every revision's external id answer again on v1 and v2 once restored; S3 finds the key again.
+
+#### Purging
+
+* **By hand**, on the bin page, by whoever holds `PURGE_TRASH` - an entry, or every entry older than a date (a preview
+  of how many and how many bytes first).
+* **By itself**, every night: every entry past its `purge_after` (`deleted_at` + `retention-days`; `0` never purges by
+  itself). A batch of entries per transaction, resumable; a failure leaves the entry for tomorrow and is logged.
+* **What a purge does**: what a delete does today - the rows, then the bytes after the commit through the same paths
+  (`StorageLayout` directories, best-effort, the sweeper as the safety net) - and records `FILE_PURGED` /
+  `FOLDER_PURGED`. The download records and the history stay; the read text and the metadata go with the rows.
+
+#### Quotas
+
+What is in the bin still occupies the disk: an entry counts against **the quota of the folder it came from** (its
+`origin_path`) until it is purged - otherwise deleting would be a way round a quota - and the quota's page says how
+much of the usage is in the bin. `FolderQuotaService.usageOf` adds the entries whose origin lies below the quota
+folder (an index on `origin_path`).
+
+#### What else changes, and what does not
+
+* **The same name after a delete**: an upload - by any way, S3 `PUT` included - under the name of a deleted file makes
+  **a new file** (version 1, new ids): the deleted one is no longer in that folder. The upload page warns when a file
+  of that name was deleted from this folder in the retention period, and offers its restore; it never decides.
+* **Folder classes**: a folder in the bin keeps its class, but nothing under `TRASH` is covered by any grant - a
+  class grant included - and the signposts skip it. Restoring rewrites its class path under the destination, asks the
+  destination's class rules, and takes `FolderClassLock` as a move does.
+* **History and audit**: `FILE_TRASHED`, `FILE_RESTORED`, `FILE_PURGED`, `REVISION_TRASHED/RESTORED/PURGED`,
+  `FOLDER_TRASHED/RESTORED/PURGED` in `file_history` (a folder's for each file it held); every action in
+  `action_history`; the download records untouched.
+* **The storage copy, the backups**: a file in the bin still has its bytes and its rows - the copy copies it, a backup
+  holds it, a restore of the database brings the bin back with it. Nothing to change.
+* **Deleting a tree is now a move**: no bytes removed, so `filemanagement.folders.max-delete-files` bounds the purge's
+  batches, not the delete.
+* **Rollback to 2.17.x**: the older code shows `TRASH` as an ordinary top-level folder, to administrators only (it
+  holds no grant), and deletes at once again. Nothing is lost; back on 2.18.0 the bin is the bin.
+
+#### Permissions and settings
+
+* `TRASH_PAGE` - the bin page: the entries one may restore, and restoring them. With the delete permissions in the
+  role page's file group, as deleting without being able to undo is the worse half.
+* `PURGE_TRASH` - purging by hand; the administrators' by default.
+* `filemanagement.trash.retention-days` (`30`; `0` never purges by itself).
+
+#### The page (`/files/trash`)
+
+Newest first, a page at a time: what (a file, a revision, a folder and how many files and bytes it holds), where it
+was (its trail), who deleted it and when (a person, or a key), when it is purged by itself. Filtered by who deleted,
+the kind, the folder it came from. Per entry: restore (with a destination chooser when it is asked), purge. A folder
+entry opens to show what it holds, a file or a subfolder of it restorable alone into a folder chosen.
+
+#### Steps (one release, 2.18.0)
+
+1. `V3.20`: the `TRASH` folder, `trash_entry` (indexes: `deleted_at`, `purge_after`, `origin_path`
+   `varchar_pattern_ops`, `deleted_by`), `FolderKind.TRASH` everywhere system folders are named.
+2. The exclusion: `GrantedFolderPath`, the grant queries, `ReadScopeSql`, the JPQL lists, the explorer, by-id reads -
+   and **`TrashExclusionTest` first**: a file, a revision and a folder tree in the bin, asked of every surface by an
+   administrator, a folder-granted reader, a class-granted reader and an API key - nothing found, nothing served.
+3. Deleting into the bin, every way of the table above, each recording its entry and its history.
+4. Restoring, with every case of "when that cannot be" refused by its message; the destination chooser.
+5. Purging, by hand and nightly, resumable; the bytes after the commit.
+6. Quotas counting the bin; the upload page's warning.
+7. The page, its permissions, its messages.
+8. Tests: everything above, the races (a delete during an upload into the same folder, a restore during a move of its
+   destination - `FolderClassLock`), and a scale case (`TrashScaleTest`: a bin of 100,000 files, a tree of 20,000
+   deleted and restored, every list's statements and time unchanged for a reader with and without grants).
+
+**Size**: 6-9 days. Nothing else in the same release.
+
+### 13.7 The access report: who may reach what, and why — planned in full (2026-10-18)
+
+**Today.** Access is the union of four sources - a person's own grant, their roles' folder grants, their roles'
+class grants, and (for an integration) a key's own grants - plus the permissions their roles hold, plus two ways
+round it (public files, share links). Each is right where it is set, and nowhere is it added up: "who can open
+contract 98-001?" is answered by opening every role, and "what can Ali reach?" by signing in as a copy of him
+([access.md](access.md#checking-what-someone-reaches)). Every access review an auditor asks for (ISO 27001 A.5.15 -
+A.5.18: access granted by need, and reviewed) starts there.
+
+**What it becomes.** One page, `/settings/access`, that answers the five questions an audit asks - each answer
+**with its reason**: not only "Ali writes in `PartyCompany/1234/Contract`" but "through the role «قراردادها», a class
+grant on «قرارداد», within `PartyCompany`". It reads the grants as they are stored - nothing is expanded into a table,
+nothing copied, so it is never out of date.
+
+#### The five questions
+
+| # | Question | Asked from | Answers |
+|---|---|---|---|
+| 1 | **Who may reach this folder?** | a folder's page ("who has access" button), or the report with a folder chosen | every person and every key that reaches it, the verb, and each reason: own grant on X, role R's grant on X (an ancestor or itself), role R's class grant on C within S. With folder access off: "everyone holding the permission" in a banner, not a list of every account |
+| 2 | **What may this person reach, and do?** | a user's page, or the report with a person chosen | their roles; the permissions they hold and the role each comes from; every grant that applies to them, its verb, its source, and how many folders it reaches (a class grant: how many folders of the class within its scope); ADMIN said once, at the top - "everything, no grant read" |
+| 3 | **What does this role give, and to whom?** | the role page, or the report | its permissions, folder grants, class grants, upload policy; its holders (paged) |
+| 4 | **What may this key reach?** | the key's page, or the report | its grants, verbs, capabilities (create folders, delete files, delete folders), upload policy, kind, expiry, last use, who made it |
+| 5 | **What is open outside folder access?** | the report | public files (count, by folder); live share links - the revision, who made it, expiry, password or not, downloads left - newest first |
+
+#### Findings - what a review should look at first
+
+A tab of its own, each line a count and a link to the rows behind it:
+
+* holders of `ADMIN`, and of each permission that changes access (`SAVE_ROLE`, the grant pages, `SET_FOLDER_CLASS`,
+  the user pages);
+* accounts disabled or locked that still hold roles with grants (harmless while disabled - and a grant back the
+  day they are enabled);
+* accounts with grants that have not signed in for N days (`sign_in_event`, 2.17.1; N from the page, 90 proposed);
+* keys never used, unused for N days, expired or past their renewal, and keys made by an account now disabled;
+* grants on the root or on a bucket - "everything below" - listed by role and key;
+* roles that nobody holds, and roles whose grants are all `WRITE` (often a copy made in a hurry);
+* share links with no expiry or no password, and public files in folders no role reads (exposed by the flag alone);
+* `filemanagement.folder-access.enabled` off - at the top of every tab: "access is by permission alone".
+
+#### A review signed off
+
+ISO 27001 asks not only that access be reviewed but that the review be on record. On a role, a key, or the report
+as a whole: **"reviewed"** - by whom, when, a note - kept in `access_review` (`subject_kind`, `subject_id`,
+`reviewed_by`, `reviewed_at`, `note`). The findings tab says which roles and keys have not been reviewed in N days
+(180 proposed). Nothing is changed by a review; a grant is still changed on its own page.
+
+#### How it is computed - and what it never does
+
+* **Question 1 needs no scan.** A folder's ancestors are its materialised path (at most `max-depth` ids), so the
+  grants that cover it are the grant rows on those ids (`user_folder`, `role_folder`, `api_key_folder`), plus the
+  class grants whose class is in its `class_path` and whose scope is one of those ancestors (or none). Roles then
+  become people through `user_role`, paged. One statement, the same predicates `GrantedFolderPath` uses - a test
+  asserts the report and `FolderAccess` agree for every folder of a random tree (as `FolderClassAccessTest` does).
+* **Question 2 lists grants, not folders.** A grant on `PartyCompany` reaches 40,000 folders; the report says the
+  grant and the count (one indexed count per grant: `path LIKE`, or `class_path` and `path LIKE` for a class grant),
+  and "show the folders" opens a paged list through `readScope` - never every folder read into memory.
+* **The report reads every grant, so it shows the names of folders the reader may not open.** That is its purpose,
+  and why its permission is an auditor's, not a manager's: `ACCESS_REPORT_PAGE`, administrators' by default.
+  Every report asked is recorded in `action_history` (whose access, or which folder, was looked at) - an access
+  review is itself access.
+* **A CSV of each question**, cells through `ReportController.quoted`; the person's name and username only, never
+  their national code, phone or e-mail.
+
+#### Steps (one release)
+
+1. Question 1 (`AccessReport.whoReaches`) and its agreement test against `FolderAccess` - the hard part, and the
+   most asked.
+2. Questions 2 - 4: one query per question, the counts per grant.
+3. Question 5 and the findings.
+4. The page, the buttons on a folder's, user's, role's and key's pages, the CSV, `ACCESS_REPORT_PAGE`.
+5. `access_review` (`V3.x`) and the "not reviewed" finding.
+6. Tests: each question for a person with own, role, class and scoped class grants; ADMIN; folder access off; a key;
+   a disabled account; the agreement test; a scale case (20,000 folders under one grant, 1,000 accounts, 50 roles -
+   each question under 200 ms).
+
+**Size**: 4-5 days (it was 2-3 days before the class grants and the sign-in history gave it more to say).
+
+### 13.14 - 13.17 Further, found in the review of 2026-10-18
+
+What a standard deployment of a document store also has, and this one does not yet - each small, none blocking:
+
+* **13.14 A password policy for local accounts** - today any password is accepted (no length, no reuse check;
+  Active Directory accounts follow the domain's). A minimum length (12), refused if it is the username or among a
+  list of common passwords, the last N not reused, and an administrator able to make a person change theirs at the
+  next sign-in. `app_user.password_changed_at`, `must_change_password`; 1-2 days.
+* **13.15 A recovery plan written and rehearsed** - the RPO (how much may be lost: the time between backups) and the
+  RTO (how long until it serves again) agreed with the owner, written in [deployment.md](deployment.md); a copy of
+  the backups off the server (another building, or an object store elsewhere); a restore onto a clean machine
+  rehearsed once a year and timed. With 13.2; no code.
+* **13.16 The audit trail out** - sign-ins, downloads, permission and grant changes, deletions sent as they happen to
+  the organisation's log system (syslog / a SIEM), as one JSON line per event, so they survive the server and can be
+  correlated with the rest of the network. A setting, off by default; the events are already recorded off the
+  request - this adds a writer. 2-3 days.
+* **13.17 Encryption at rest** - the database's disk and the file store's: BitLocker (or LUKS) under both, or the
+  object store's server-side encryption once on S3 (Phase 4). The operators', not the code's; written in
+  [deployment.md](deployment.md) as a requirement with how to check it. The S3 keys' secrets are encrypted already.
+
+Already recorded elsewhere, and part of the same picture: CI ([issue 38](issues.md#38-no-ci--s1)), the credentials in
+the git history (13.10, [issue 11](issues.md#11-credentials-and-infrastructure-details-are-committed--s1)), an API
+key refused is not a sign-in event ([issue 126](issues.md#126-an-api-key-presented-and-refused-is-not-recorded-as-an-authentication-decision--s3)),
+the JIT's cost ([issue 125](issues.md#125-a-statement-whose-estimate-is-high-is-compiled-by-postgresqls-jit-which-can-cost-more-than-running-it--s3)).
 
 ---
 
