@@ -4663,7 +4663,10 @@ folder (an index on `origin_path`).
 Newest first, a page at a time: what (a file, a revision, a folder and how many files and bytes it holds), where it
 was (its trail), who deleted it and when (a person, or a key), when it is purged by itself. Filtered by who deleted,
 the kind, the folder it came from. Per entry: restore (with a destination chooser when it is asked), purge. A folder
-entry opens to show what it holds, a file or a subfolder of it restorable alone into a folder chosen.
+entry opens to show what it holds - level by level, each level paged through `FolderLevelService` as the explorer is
+(a tree in the bin may hold 20,000 folders) - a file or a subfolder of it restorable alone into a folder chosen. The
+list itself is keyset-paged on `(deleted_at, id)`, as the sign-in history is: a bin of 100,000 entries opens as fast
+as one of ten.
 
 #### Steps (one release, 2.18.0)
 
@@ -4701,15 +4704,15 @@ nothing copied, so it is never out of date.
 
 | # | Question | Asked from | Answers |
 |---|---|---|---|
-| 1 | **Who may reach this folder?** | a folder's page ("who has access" button), or the report with a folder chosen | every person and every key that reaches it, the verb, and each reason: own grant on X, role R's grant on X (an ancestor or itself), role R's class grant on C within S. With folder access off: "everyone holding the permission" in a banner, not a list of every account |
+| 1 | **Who may reach this folder?** | a folder's page ("who has access" button), or the report with a folder chosen | every person and every key that reaches it, a page at a time, the verb, and each reason: own grant on X, role R's grant on X (an ancestor or itself), role R's class grant on C within S. With folder access off: "everyone holding the permission" in a banner, not a list of every account |
 | 2 | **What may this person reach, and do?** | a user's page, or the report with a person chosen | their roles; the permissions they hold and the role each comes from; every grant that applies to them, its verb, its source, and how many folders it reaches (a class grant: how many folders of the class within its scope); ADMIN said once, at the top - "everything, no grant read" |
 | 3 | **What does this role give, and to whom?** | the role page, or the report | its permissions, folder grants, class grants, upload policy; its holders (paged) |
 | 4 | **What may this key reach?** | the key's page, or the report | its grants, verbs, capabilities (create folders, delete files, delete folders), upload policy, kind, expiry, last use, who made it |
-| 5 | **What is open outside folder access?** | the report | public files (count, by folder); live share links - the revision, who made it, expiry, password or not, downloads left - newest first |
+| 5 | **What is open outside folder access?** | the report | public files (count, by folder); live share links - the revision, who made it, expiry, password or not, downloads left - newest first, paged |
 
 #### Findings - what a review should look at first
 
-A tab of its own, each line a count and a link to the rows behind it:
+A tab of its own, each line a count and a link to the rows behind it (paged):
 
 * holders of `ADMIN`, and of each permission that changes access (`SAVE_ROLE`, the grant pages, `SET_FOLDER_CLASS`,
   the user pages);
@@ -4743,7 +4746,11 @@ as a whole: **"reviewed"** - by whom, when, a note - kept in `access_review` (`s
   and why its permission is an auditor's, not a manager's: `ACCESS_REPORT_PAGE`, administrators' by default.
   Every report asked is recorded in `action_history` (whose access, or which folder, was looked at) - an access
   review is itself access.
-* **A CSV of each question**, cells through `ReportController.quoted`; the person's name and username only, never
+* **Every list on the page is paged** - the holders of a role, the people reaching a folder, a grant's folders, the
+  share links, each finding's rows: a role may have a thousand holders and a grant forty thousand folders. Sizes
+  through `PageRequests`; the counts asked once, never by reading the rows.
+* **A CSV of each question**, cells through `ReportController.quoted`, written as it is read (a stream), never
+  built whole in memory; the person's name and username only, never
   their national code, phone or e-mail.
 
 #### Steps (one release)
@@ -4895,6 +4902,8 @@ Nothing in this roadmap is finished until, for every phase:
 * the smoke test proves the context starts;
 * no secret is committed;
 * `/actuator/health` reflects the real state of the database and the blob store;
-* the phase's entries in [issues.md](issues.md) are struck off, and any newly discovered ones added.
+* the phase's entries in [issues.md](issues.md) are struck off, and any newly discovered ones added;
+* every list a page draws that grows with use is paged, or capped with a link to the paged page - a size from a URL
+  through `PageRequests`, never a list read whole to be cut in Java (issue 127 holds the two that are not yet).
 
 ---
