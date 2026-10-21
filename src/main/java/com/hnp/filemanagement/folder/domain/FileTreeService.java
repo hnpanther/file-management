@@ -112,6 +112,7 @@ public class FileTreeService {
 
     private Folder requireVisibleFolder(FolderAccess access, int folderId) {
         Folder folder = folderAccessService.requireFolder(folderId);
+        FolderAccessService.requireOutsideBin(folder);
         if (!access.visible(folder.getPath())) {
             throw new AccessDeniedException("no folder access to folder id=" + folderId);
         }

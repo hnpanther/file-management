@@ -87,15 +87,17 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     Optional<FileInfo> findByFolderIdAndFileNameWithDetails(@Param("folderId") int folderId, @Param("name") String name);
 
     /**
-     * The file list page with no search: one query, one row per file, its folder attached. The
+     * The file list page with no search, for a reader of everything - everything but the recycle bin (roadmap
+     * 13.1), as every list for that reader leaves it out by its path: one query, one row per file, its folder attached. The
      * folders above it are loaded for the page as a batch by {@code FolderService.ancestryOf},
      * since a chain of any depth cannot be fetch-joined.
      */
     @Query(value = """
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
+            WHERE t.path NOT LIKE '/0/%'
             """,
-            countQuery = "SELECT COUNT(f) FROM FileInfo f")
+            countQuery = "SELECT COUNT(f) FROM FileInfo f WHERE f.folder.path NOT LIKE '/0/%'")
     Page<FileInfo> findPageWithFolder(Pageable pageable);
 
     /**
@@ -116,7 +118,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     @Query(value = """
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder t
-            WHERE f.id IN (SELECT g.id FROM FileInfo g
+            WHERE t.path NOT LIKE '/0/%'
+              AND f.id IN (SELECT g.id FROM FileInfo g
                            WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
                            SELECT g.id FROM FileInfo g
@@ -130,7 +133,8 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
             """,
             countQuery = """
             SELECT COUNT(f) FROM FileInfo f
-            WHERE f.id IN (SELECT g.id FROM FileInfo g
+            WHERE f.folder.path NOT LIKE '/0/%'
+              AND f.id IN (SELECT g.id FROM FileInfo g
                            WHERE REPLACE(g.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                            UNION
                            SELECT g.id FROM FileInfo g
@@ -217,9 +221,10 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     @Query("""
             SELECT f FROM FileInfo f
             JOIN FETCH f.folder d
-            WHERE (:id IS NOT NULL AND f.id = :id)
+            WHERE d.path NOT LIKE '/0/%'
+              AND ((:id IS NOT NULL AND f.id = :id)
                OR REPLACE(f.searchName, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
-               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\'
+               OR REPLACE(f.searchDescription, ' ', '') LIKE CONCAT('%', :term, '%') ESCAPE '\\')
             ORDER BY f.fileName ASC, f.id ASC
             """)
     List<FileInfo> searchForTree(@Param("id") Integer id, @Param("term") String term, Pageable pageable);
@@ -285,6 +290,13 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
     @Query("SELECT f.id FROM FileInfo f WHERE f.externalId = :externalId")
     Optional<Integer> findIdByExternalId(@Param("externalId") String externalId);
 
+
+    /**
+     * Every file beneath a folder with its folder and its tags, in one statement - what a rename, a move or a restore
+     * re-tags ({@code TagMirrorService.retagFilesUnder}).
+     */
+    @Query("SELECT DISTINCT f FROM FileInfo f JOIN FETCH f.folder d LEFT JOIN FETCH f.tags WHERE d.path LIKE CONCAT(:pathPrefix, '%')")
+    List<FileInfo> findBySubtreeWithFolderAndTags(@Param("pathPrefix") String pathPrefix);
 
     /** Every file beneath a folder, by its materialised path - what a rename re-tags. */
     @Query("SELECT f FROM FileInfo f JOIN f.folder d WHERE d.path LIKE CONCAT(:pathPrefix, '%')")
@@ -379,14 +391,15 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
      *
      * <p>Names are compared through {@code UPPER} on both sides, as {@code TagMirrorService} looks
      * a tag up (issue 86). The SQL is otherwise SQL-92 - {@code CONCAT}, subselects, no
-     * MySQL-only syntax - so the same text runs on PostgreSQL (roadmap 3.3).
+     * MySQL-only syntax - so the same text runs on PostgreSQL (roadmap 3.3). Not the files in the recycle bin
+     * (roadmap 13.1): their tags are left as they were in the tree, and a restore derives them again.
      */
     @Query(value = """
             SELECT fi.id
             FROM file_info fi
                 JOIN folder t ON t.id = fi.folder_id
                 JOIN folder top ON top.depth = 1 AND t.path LIKE CONCAT(top.path, '%')
-            WHERE top.tag_group_id IS NULL
+            WHERE t.path NOT LIKE '/0/%' AND (top.tag_group_id IS NULL
                OR (SELECT COUNT(*) FROM file_tag ft WHERE ft.file_info_id = fi.id)
                   <> (SELECT COUNT(DISTINCT tg.id) FROM tag tg
                       WHERE tg.group_id = top.tag_group_id
@@ -394,11 +407,31 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Integer> {
                OR EXISTS (SELECT 1 FROM file_tag ft JOIN tag tg ON tg.id = ft.tag_id
                           WHERE ft.file_info_id = fi.id
                             AND (tg.group_id <> top.tag_group_id
-                                 OR UPPER(tg.name) NOT IN (SELECT UPPER(a.name) FROM folder a WHERE a.depth > 0 AND t.path LIKE CONCAT(a.path, '%'))))
+                                 OR UPPER(tg.name) NOT IN (SELECT UPPER(a.name) FROM folder a WHERE a.depth > 0 AND t.path LIKE CONCAT(a.path, '%')))))
             """, nativeQuery = true)
     List<Integer> findIdsWhoseTagsDisagreeWithTheFolders();
 
-    /** Which of these files still exist - one query for a page of download records (2.7.0). */
-    @Query("SELECT f.id FROM FileInfo f WHERE f.id IN :ids")
+    /**
+     * Locks a file's row for the rest of the transaction and answers its folder's path as committed now - what a
+     * delete or a restore asks first (roadmap 13.1), so that two of them on one file are one after the other and the
+     * second sees where the first left it, whatever this transaction read before. A statement, not a refresh with a
+     * lock: Hibernate 7 fails refreshing a file whose revisions are loaded.
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT f.path FROM file_info fi JOIN folder f ON f.id = fi.folder_id
+            WHERE fi.id = :id
+            FOR UPDATE OF fi
+            """)
+    Optional<String> lockAndReadFolderPath(@Param("id") int id);
+
+    /** These files, each with its folder - what a folder's delete records in each file's history, in one statement. */
+    @Query("SELECT f FROM FileInfo f JOIN FETCH f.folder WHERE f.id IN :ids")
+    List<FileInfo> findAllWithFolderByIdIn(@Param("ids") Collection<Integer> ids);
+
+    /**
+     * Which of these files still exist - one query for a page of download records (2.7.0), or of the history: a file
+     * in the recycle bin (roadmap 13.1) is not linked either, its page answering nobody.
+     */
+    @Query("SELECT f.id FROM FileInfo f WHERE f.id IN :ids AND f.folder.path NOT LIKE '/0/%'")
     List<Integer> findExistingIds(@Param("ids") Collection<Integer> ids);
 }

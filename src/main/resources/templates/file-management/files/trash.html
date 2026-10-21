@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{trash.pageTitle}">سطل زباله | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  The recycle bin (2.18.0, roadmap 13.1): TrashController, over TrashListing. What was deleted from the folders the
+  person may write in, newest first, fifty at a time - "older" from the last row, nothing counted but the heading's
+  total. Each entry restored to where it was (a button), elsewhere or under another name (the restore form), or
+  purged; and every entry older than an age purged, after a preview of how many and how much.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{trash.kicker}">فایل‌ها</div>
+        <h1 th:text="#{trash.heading}">سطل زباله</h1>
+        <p class="page-description" th:text="#{trash.description}">آنچه حذف شده است.</p>
+    </header>
+
+    <div th:if="${saved != null}" class="alert alert-success mb-5" role="status" id="success_message" th:text="${saved}"></div>
+    <div th:if="${refused != null}" class="alert alert-warning mb-5" role="alert" id="warning_message" th:text="${refused}"></div>
+
+    <section class="card mb-5" aria-labelledby="trash-summary">
+        <div class="card-body">
+            <p id="trash-summary" class="mb-1">
+                <i class="bi bi-trash3 text-ink-400" aria-hidden="true"></i>
+                <strong th:text="#{trash.summary(${@reportFormat.count(summary.entries())}, ${@reportFormat.bytes(summary.bytes())})}">۰ مورد</strong>
+            </p>
+            <p class="field-hint mb-0" th:if="${retentionDays > 0}" th:text="#{trash.retention(${retentionDays})}">۳۰ روز</p>
+            <p class="field-hint mb-0" th:if="${retentionDays == 0}" th:text="#{trash.retention.never}">هرگز</p>
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="trash-title">
+        <div class="card-body">
+            <h2 id="trash-title" class="sr-only" th:text="#{trash.heading}">سطل زباله</h2>
+            <form method="get" th:action="@{/files/trash}" class="grid gap-5 lg:grid-cols-4 mb-4" id="trash-filter">
+                <div class="form-group">
+                    <label for="kind" th:text="#{trash.filter.kind}">نوع</label>
+                    <select id="kind" name="kind" class="form-control">
+                        <option th:each="k : ${kinds}" th:value="${k.name()}" th:selected="${k.name() == kind}"
+                                th:text="#{'trash.filter.' + ${k.name()}}">همه</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="name" th:text="#{trash.filter.name}">نام</label>
+                    <input id="name" name="name" type="search" class="form-control" maxlength="100" th:value="${name}">
+                </div>
+                <div class="form-group flex items-end">
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="mine" value="true" th:checked="${mine}">
+                        <span th:text="#{trash.filter.mine}">فقط حذف‌شده‌های من</span>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-outline-secondary">
+                        <i class="bi bi-funnel" aria-hidden="true"></i>
+                        <span th:text="#{trash.filter.apply}">نمایش</span>
+                    </button>
+                </div>
+            </form>
+
+            <div th:if="${#lists.isEmpty(bin.rows())}" class="empty-state empty-state-panel" role="status">
+                <strong th:text="#{trash.empty}">سطل زباله خالی است.</strong>
+            </div>
+
+            <div th:unless="${#lists.isEmpty(bin.rows())}" class="table-responsive">
+                <table class="table history-table" id="trash">
+                    <thead>
+                    <tr>
+                        <th scope="col" th:text="#{trash.column.what}">مورد</th>
+                        <th scope="col" th:text="#{trash.column.where}">محل قبلی</th>
+                        <th scope="col" th:text="#{trash.column.deleted}">حذف</th>
+                        <th scope="col" th:text="#{trash.column.size}">حجم</th>
+                        <th scope="col" th:text="#{trash.column.purgeAt}">پاک‌شدن خودکار</th>
+                        <th scope="col" th:text="#{trash.column.actions}">عملیات</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="e : ${bin.rows()}" th:attr="data-entry-id=${e.id()}">
+                        <td>
+                            <i class="bi text-ink-400" aria-hidden="true"
+                               th:classappend="${e.kind().name() == 'FOLDER'} ? 'bi-folder2' : (${e.kind().name() == 'REVISION'} ? 'bi-layers' : 'bi-file-earmark')"></i>
+                            <strong th:text="${e.name()}">قرارداد</strong>
+                            <span class="badge" th:text="#{'trash.kind.' + ${e.kind().name()}}">فایل</span>
+                            <div th:if="${e.kind().name() == 'FOLDER'}" class="field-hint"
+                                 th:text="#{trash.holds(${e.folders() - 1}, ${e.files()})}">۰ پوشه، ۰ فایل</div>
+                        </td>
+                        <td>
+                            <span th:text="${e.originTitle() == null or e.originTitle().isEmpty() ? '/' : e.originTitle()}">ERP / ...</span>
+                            <div th:unless="${e.originAvailable()}" class="field-hint" th:text="#{trash.originGone}">پوشهٔ قبلی دیگر نیست</div>
+                        </td>
+                        <td>
+                            <div class="history-when technical" dir="ltr" th:text="${@jalali.format(e.deletedAt())}">۱۴۰۵/۰۷/۲۸ ۱۰:۲۰</div>
+                            <div class="field-hint" th:text="${e.deletedByName() ?: e.deletedBy()}">علی</div>
+                            <div th:if="${e.apiKeyTitle() != null}" class="field-hint" th:text="#{trash.byKey(${e.apiKeyTitle()})}">کلید</div>
+                        </td>
+                        <td class="technical" dir="ltr" th:text="${@reportFormat.bytes(e.bytes())}">1 MB</td>
+                        <td class="history-when technical" dir="ltr"
+                            th:text="${e.purgeAt() == null ? #messages.msg('trash.never') : @jalali.format(e.purgeAt())}">۱۴۰۵/۰۸/۲۸</td>
+                        <td class="whitespace-nowrap">
+                            <form sec:authorize="hasAuthority('RESTORE_FROM_TRASH') || hasAuthority('ADMIN')"
+                                  th:if="${e.originAvailable()}" method="post" class="inline"
+                                  th:action="@{/files/trash/{id}/restore(id=${e.id()})}">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary trash-restore">
+                                    <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+                                    <span th:text="#{trash.restore}">بازگرداندن</span>
+                                </button>
+                            </form>
+                            <a sec:authorize="hasAuthority('RESTORE_FROM_TRASH') || hasAuthority('ADMIN')"
+                               class="btn btn-sm btn-outline-secondary" th:href="@{/files/trash/{id}/restore(id=${e.id()})}"
+                               th:text="#{trash.restoreElsewhere}">بازگرداندن به جای دیگر…</a>
+                            <form sec:authorize="hasAuthority('PURGE_TRASH') || hasAuthority('ADMIN')" method="post" class="inline"
+                                  th:action="@{/files/trash/{id}/purge(id=${e.id()})}"
+                                  th:attr="onsubmit=|return confirm('${#messages.msg('trash.purge.confirm')}')|">
+                                <button type="submit" class="btn btn-sm btn-outline-danger trash-purge">
+                                    <i class="bi bi-x-octagon" aria-hidden="true"></i>
+                                    <span th:text="#{trash.purge}">پاک‌کردن برای همیشه</span>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <nav th:if="${bin.hasOlder() or param.before != null}" class="mt-3" th:aria-label="#{trash.heading}">
+                <ul class="pagination mb-0">
+                    <li th:if="${param.before != null}" class="page-item">
+                        <a class="page-link" th:href="@{/files/trash(kind=${kind},name=${name},mine=${mine ? true : null})}"
+                           th:text="#{trash.newest}">جدیدترین</a>
+                    </li>
+                    <li th:if="${bin.hasOlder()}" class="page-item">
+                        <a class="page-link" id="trash-older"
+                           th:href="@{/files/trash(kind=${kind},name=${name},mine=${mine ? true : null},before=${bin.olderCursor()})}"
+                           th:text="#{trash.older}">قدیمی‌تر</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </section>
+
+    <section sec:authorize="hasAuthority('PURGE_TRASH') || hasAuthority('ADMIN')" class="card mt-5" aria-labelledby="purge-older-title">
+        <div class="card-body">
+            <h2 id="purge-older-title" class="h6" th:text="#{trash.purgeOlder.heading}">پاک‌کردن موارد قدیمی</h2>
+            <form method="get" th:action="@{/files/trash}" class="flex flex-wrap items-end gap-3" id="purge-older-preview">
+                <div class="form-group">
+                    <label for="olderThan" th:text="#{trash.purgeOlder.label}">بیش از</label>
+                    <select id="olderThan" name="olderThan" class="form-control">
+                        <option th:each="a : ${ages}" th:value="${a}" th:selected="${olderThan != null and a == olderThan}"
+                                th:text="#{trash.purgeOlder.days(${a})}">۳۰ روز</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-outline-secondary" th:text="#{trash.purgeOlder.preview}">پیش‌نمایش</button>
+            </form>
+            <div th:if="${olderPreview != null}" class="mt-3" id="purge-older-found">
+                <p th:if="${olderPreview.entries() > 0}"
+                   th:text="#{trash.purgeOlder.found(${@reportFormat.count(olderPreview.entries())}, ${@reportFormat.bytes(olderPreview.bytes())}, ${olderThan})}">۳ مورد</p>
+                <p th:if="${olderPreview.entries() == 0}" th:text="#{trash.purgeOlder.none(${olderThan})}">موردی نیست</p>
+                <form th:if="${olderPreview.entries() > 0}" method="post" th:action="@{/files/trash/purge-older}"
+                      th:attr="onsubmit=|return confirm('${#messages.msg('trash.purgeOlder.confirmQuestion')}')|">
+                    <input type="hidden" name="olderThan" th:value="${olderThan}">
+                    <button type="submit" class="btn btn-outline-danger" th:text="#{trash.purgeOlder.confirm}">پاک‌کردن</button>
+                </form>
+            </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.domain;
 
+import static com.hnp.filemanagement.support.BinAssert.*;
 import com.hnp.filemanagement.file.persistence.FileHistoryQuery;
 import com.hnp.filemanagement.file.persistence.FileHistoryRepository;
 import com.hnp.filemanagement.folder.domain.Folder;
@@ -156,7 +157,8 @@ class FileHistoryServiceTest extends DatabaseSupport {
         entityManager.flush();
         entityManager.clear();
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM file_info WHERE id = ?", Integer.class, fileId)).isZero();
+        // In the recycle bin since 2.18.0: not a link either - its page answers nobody.
+        fileInBin(jdbcTemplate, fileId);
         List<FileHistoryEntry> history = underTest.ofFile(v1.getFileInfoExternalId());
         assertThat(history).extracting(FileHistoryEntry::event).containsExactly(
                 FileEvent.FILE_DELETED, FileEvent.REVISION_DELETED, FileEvent.VERSION_ADDED, FileEvent.FILE_UPLOADED);

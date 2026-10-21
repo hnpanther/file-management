@@ -56,6 +56,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ShareLinkServiceTest extends DatabaseSupport {
 
     @Autowired
+    private com.hnp.filemanagement.trash.TrashPurge trashPurge;
+    @Autowired
+    private com.hnp.filemanagement.trash.TrashEntryRepository trashEntries;
+    @Autowired
+    private com.hnp.filemanagement.trash.TrashRestore trashRestore;
+    @Autowired
     private ShareLinkService underTest;
     @Autowired
     private FileService fileService;
@@ -233,7 +239,7 @@ class ShareLinkServiceTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("deleting the revision takes its links with it, and so does deleting the whole file")
+    @DisplayName("a link to a file in the recycle bin answers nothing, and again once it is restored; a purge takes it")
     void theRevisionTakesTheLink() {
         FileDetailsDTO second = upload("second.txt", chain.tagId());
         ShareLinkDTO link = underTest.create(revision.getId(), 5, null, null, adminId);
@@ -243,14 +249,24 @@ class ShareLinkServiceTest extends DatabaseSupport {
         fileService.deleteFileDetails(revision.getFileInfoId(), revision.getId(), adminId);
         entityManager.flush();
         entityManager.clear();
-        assertThat(shareLinkRepository.findById(link.id())).isEmpty();
+        assertThat(shareLinkRepository.findById(link.id())).as("kept, not revoked").isPresent();
         assertThat(underTest.usable(link.token())).isEmpty();
+        assertThatThrownBy(() -> underTest.download(link.token(), null)).isInstanceOf(ResourceNotFoundException.class);
         assertThat(underTest.usable(toSecond.token())).as("another file's link is untouched").isPresent();
+
+        trashRestore.restore(trashEntries.findByFileInfoId(revision.getFileInfoId()).orElseThrow().getId(), null, null, adminId);
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(underTest.usable(link.token())).as("restored, it answers again").isPresent();
 
         fileService.deleteCompleteFileById(second.getFileInfoId(), adminId);
         entityManager.flush();
         entityManager.clear();
-        assertThat(shareLinkRepository.findById(toSecond.id())).isEmpty();
+        assertThat(underTest.usable(toSecond.token())).isEmpty();
+        trashPurge.purge(trashEntries.findByFileInfoId(second.getFileInfoId()).orElseThrow().getId(), adminId);
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(shareLinkRepository.findById(toSecond.id())).as("a purge takes it with the revision").isEmpty();
     }
 
     // ---------------------------------------------------------------- helpers

@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.web;
 
+import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.file.domain.FileDetailsDTO;
 import com.hnp.filemanagement.file.domain.FileDownloadDTO;
 import com.hnp.filemanagement.file.domain.FileInfoDTO;
@@ -95,6 +96,10 @@ class S3ScenariosTest extends DatabaseSupport {
         registry.add("filemanagement.folder-access.enabled", () -> "false");
     }
 
+    @Autowired
+    private com.hnp.filemanagement.trash.TrashPurge trashPurge;
+    @Autowired
+    private com.hnp.filemanagement.trash.TrashEntryRepository trashEntries;
     @Autowired
     private MockMvc mockMvc;
     @Autowired
@@ -196,7 +201,8 @@ class S3ScenariosTest extends DatabaseSupport {
 
         fileService.deleteCompleteFileById(a.getFileInfoId(), userId);
         assertThat(read(fileService.downloadFile(b.getId(), userId))).isEqualTo(withSignature(name + "b.txt", bytes("identical")));
-        assertThat(objects()).containsExactlyInAnyOrder(storageKeyOf(b), storageKeyOf(c));
+        // In the recycle bin, its object stays until purged (roadmap 13.1); each file's object is its own.
+        assertThat(objects()).containsExactlyInAnyOrder(storageKeyOf(a), storageKeyOf(b), storageKeyOf(c));
     }
 
     @Test
@@ -233,7 +239,9 @@ class S3ScenariosTest extends DatabaseSupport {
             assertThat(objects()).as("and only its bytes are in the bucket").containsExactly(storageKeyOf(stored.getFirst()));
 
             fileService.deleteCompleteFileById(stored.getFirst().getFileInfoId(), userId);
-            assertThat(objects()).isEmpty();
+            assertThat(objects()).as("in the recycle bin, kept").hasSize(1);
+            trashPurge.purge(trashEntries.findByFileInfoId(stored.getFirst().getFileInfoId()).orElseThrow().getId(), userId);
+            assertThat(objects()).as("purged, gone").isEmpty();
         } finally {
             pool.shutdownNow();
         }
@@ -280,7 +288,7 @@ class S3ScenariosTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("deleting a format, a version, then the file removes exactly their objects, and the rest still downloads")
+    @DisplayName("deleting a format, a version, then the file moves each to the recycle bin and no object; the rest still downloads")
     void deletingRevisions() throws Exception {
         String name = "del" + TestData.nextSequence();
         FileDetailsDTO v1pdf = upload(chain.tagId(), name + ".pdf", bytes("v1 pdf"));
@@ -293,18 +301,20 @@ class S3ScenariosTest extends DatabaseSupport {
         String v2pdfKey = fileDetailsRepository.findById(v2pdf).orElseThrow().getStorageKey();
 
         fileService.deleteFileDetails(v1docx, userId);
-        assertThat(objects()).hasSize(2).doesNotContain(v1docxKey);
+        assertThat(objects()).hasSize(3).contains(v1docxKey);
+        assertThatThrownBy(() -> fileService.downloadFile(v1docx, userId)).isInstanceOf(ResourceNotFoundException.class);
 
         fileService.deleteFileDetails(v2pdf, userId);
-        assertThat(objects()).containsExactly(storageKeyOf(v1pdf)).doesNotContain(v2pdfKey);
+        assertThat(objects()).hasSize(3).contains(v2pdfKey);
         assertThat(read(fileService.downloadFile(v1pdf.getId(), userId))).isEqualTo(withSignature(name + ".pdf", bytes("v1 pdf")));
 
         fileService.deleteFileDetails(v1pdf.getId(), userId);
-        assertThat(objects()).as("the last revision takes the file with it").isEmpty();
+        assertThat(objects()).as("the last revision takes the file with it - to the bin").hasSize(3);
+        assertThatThrownBy(() -> fileService.downloadFile(v1pdf.getId(), userId)).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
-    @DisplayName("deleting a folder tree removes the objects of every file beneath it, and none beside it")
+    @DisplayName("deleting a folder tree moves every file beneath it to the recycle bin, and removes no object")
     void aTreeDelete() {
         Folder inside = FolderFixture.tag(folderRepository, chain.subCategory(), owner, "In" + TestData.nextSequence());
         FolderFixture.Chain beside = FolderFixture.chain(folderRepository, tagGroupRepository, owner);
@@ -316,7 +326,8 @@ class S3ScenariosTest extends DatabaseSupport {
 
         folderTreeDeleteService.deleteTree(chain.subCategoryId(), userId);
 
-        assertThat(objects()).containsExactly(storageKeyOf(kept));
+        assertThat(objects()).hasSize(3).contains(storageKeyOf(kept));
+        assertThat(read(fileService.downloadFile(kept.getId(), userId))).isEqualTo(withSignature(name + "3.txt", bytes("three")));
     }
 
     // ---------------------------------------------------------------- moves and renames
@@ -401,7 +412,7 @@ class S3ScenariosTest extends DatabaseSupport {
                 .andExpect(status().isOk()).andExpect(header().longValue(HttpHeaders.CONTENT_LENGTH, 6));
         mockMvc.perform(delete(bucket + "/" + name + "/v2/" + name + ".txt").header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
                 .andExpect(status().isNoContent());
-        assertThat(objects()).hasSize(1);
+        assertThat(objects()).as("in the recycle bin, kept until purged").hasSize(2);
         mockMvc.perform(get(bucket + "/" + name + "/v2/" + name + ".txt").header(HttpHeaders.AUTHORIZATION, "Bearer " + credential))
                 .andExpect(status().isNotFound());
     }

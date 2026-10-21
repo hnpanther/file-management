@@ -3,6 +3,7 @@ package com.hnp.filemanagement.folder.domain;
 import com.hnp.filemanagement.identity.security.ActingApiKey;
 import com.hnp.filemanagement.file.domain.FileInfo;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
+import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import com.hnp.filemanagement.folder.persistence.GrantedPath;
 import com.hnp.filemanagement.folder.persistence.RoleGrantedPath;
@@ -181,6 +182,7 @@ public class FolderAccessService {
      * page, answered from {@code file_info.folder_id}, which every file has (Phase 7 step 4).
      */
     public void requireReadAccess(FolderAccess access, FileInfo file) {
+        requireOutsideBin(file);
         if (!holdsOn(access, file, FolderPermission.READ)) {
             throw new AccessDeniedException("no folder access to file id=" + file.getId());
         }
@@ -193,22 +195,39 @@ public class FolderAccessService {
 
     /** Refuses unless documents may be filed into this folder - the check for a new file (roadmap 7.2 step 3, reader 5). */
     public void requireWriteAccess(FolderAccess access, Folder folder) {
-        if (!access.unrestricted() && !access.canWrite(folder.getPath())) {
+        requireOutsideBin(folder);
+        if (!access.canWrite(folder.getPath())) {
             throw new AccessDeniedException("no write access to folder id=" + folder.getId());
         }
     }
 
     /** The same question about writing into the folder this file already sits in: a new version or format. */
     public void requireWriteAccess(FolderAccess access, FileInfo file) {
+        requireOutsideBin(file);
         if (!holdsOn(access, file, FolderPermission.WRITE)) {
             throw new AccessDeniedException("no write access to the folder of file id=" + file.getId());
         }
     }
 
-    private boolean holdsOn(FolderAccess access, FileInfo file, FolderPermission required) {
-        if (access.unrestricted()) {
-            return true;
+    /**
+     * A file in the recycle bin (roadmap 13.1) is not there for anybody, an administrator included, and an integration
+     * that names it by its id is answered as for an id nobody has: a 404, not a refusal that would say it exists.
+     * Only the bin's own services reach it.
+     */
+    public static void requireOutsideBin(FileInfo file) {
+        if (Bin.holds(file.getFolder())) {
+            throw new ResourceNotFoundException("file not found, id=" + file.getId() + " (in the recycle bin)");
         }
+    }
+
+    /** {@link #requireOutsideBin(FileInfo)} for a folder: the bin itself, and every folder in it. */
+    public static void requireOutsideBin(Folder folder) {
+        if (Bin.holds(folder)) {
+            throw new ResourceNotFoundException("folder not found, id=" + folder.getId() + " (in the recycle bin)");
+        }
+    }
+
+    private boolean holdsOn(FolderAccess access, FileInfo file, FolderPermission required) {
         Folder folder = file.getFolder();
         return required == FolderPermission.WRITE
                 ? access.canWrite(folder.getPath())

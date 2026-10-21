@@ -10,8 +10,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -65,23 +68,60 @@ public class TagMirrorService {
      * carry it.
      */
     public void retagFilesUnder(Folder folder) {
-        List<FileInfo> files = fileInfoRepository.findBySubtree(folder.getPath());
-        for (FileInfo file : files) {
-            retag(file);
+        // The files with their folders and tags, the folders of every chain and the group's tags, each read once - a
+        // statement per thousand folders - and each folder's set worked out once: a subtree of twenty thousand files
+        // (a move, a restore from the recycle bin) is a handful of statements, not several a file, each of which
+        // would flush everything the transaction holds.
+        List<FileInfo> files = fileInfoRepository.findBySubtreeWithFolderAndTags(folder.getPath());
+        if (files.isEmpty()) {
+            return;
         }
+        Set<Integer> ids = new LinkedHashSet<>();
+        for (FileInfo file : files) {
+            ids.addAll(FolderService.idsIn(file.getFolder().getPath()));
+        }
+        List<Integer> all = new ArrayList<>(ids);
+        Map<Integer, Folder> byId = new HashMap<>();
+        for (int from = 0; from < all.size(); from += BATCH) {
+            for (Folder each : folderRepository.findAllById(all.subList(from, Math.min(all.size(), from + BATCH)))) {
+                byId.put(each.getId(), each);
+            }
+        }
+        Map<Integer, Map<String, Tag>> tagsByGroup = new HashMap<>();
+        Map<Integer, Set<Tag>> byFolder = new HashMap<>();
+        for (FileInfo file : files) {
+            Folder at = file.getFolder();
+            Set<Tag> derived = byFolder.computeIfAbsent(at.getId(),
+                    id -> tagsFor(at, FolderService.chainFrom(at.getPath(), byId), tagsByGroup));
+            file.getTags().retainAll(derived);
+            file.getTags().addAll(derived);
+        }
+    }
+
+    /** The ids one statement names at most. */
+    private static final int BATCH = 1000;
+
+    /** {@link #tagsFor(Folder)} from a chain read already, the group's tags read once into {@code tagsByGroup}. */
+    private Set<Tag> tagsFor(Folder folder, List<Folder> chain, Map<Integer, Map<String, Tag>> tagsByGroup) {
+        TagGroup group = requireGroup(folder, chain);
+        Map<String, Tag> known = tagsByGroup.computeIfAbsent(group.getId(), id -> {
+            Map<String, Tag> byName = new HashMap<>();
+            for (Tag tag : tagRepository.findAllByGroupId(id)) {
+                byName.putIfAbsent(tag.getName().toUpperCase(Locale.ROOT), tag);
+            }
+            return byName;
+        });
+        Set<Tag> tags = new LinkedHashSet<>();
+        for (Folder each : chain) {
+            tags.add(known.computeIfAbsent(each.getName().toUpperCase(Locale.ROOT), name -> newTag(group, each)));
+        }
+        return tags;
     }
 
     /** The tags a file in this folder carries: one per folder on the chain, deduplicated by name. */
     public Set<Tag> tagsFor(Folder folder) {
         List<Folder> chain = chainOf(folder);
-        if (chain.isEmpty()) {
-            throw new BusinessException("folder id=" + folder.getId() + " is the root; a file cannot be filed there");
-        }
-        TagGroup group = chain.getFirst().getTagGroup();
-        if (group == null) {
-            throw new BusinessException("top-level folder id=" + chain.getFirst().getId()
-                    + " has no tag group; the tags of the files beneath it cannot be derived");
-        }
+        TagGroup group = requireGroup(folder, chain);
 
         // Order matters for a name two levels share: the first to claim it sets the title, and
         // that is the higher level, as in the migration's backfill.
@@ -90,6 +130,18 @@ public class TagMirrorService {
             tags.add(tagOf(group, each));
         }
         return tags;
+    }
+
+    private static TagGroup requireGroup(Folder folder, List<Folder> chain) {
+        if (chain.isEmpty()) {
+            throw new BusinessException("folder id=" + folder.getId() + " is the root; a file cannot be filed there");
+        }
+        TagGroup group = chain.getFirst().getTagGroup();
+        if (group == null) {
+            throw new BusinessException("top-level folder id=" + chain.getFirst().getId()
+                    + " has no tag group; the tags of the files beneath it cannot be derived");
+        }
+        return group;
     }
 
     /** The folders on this one's path, outermost first, itself last; the root left out. */
@@ -103,15 +155,18 @@ public class TagMirrorService {
     // ------------------------------------------------------------------ get-or-create
 
     private Tag tagOf(TagGroup group, Folder folder) {
-        return tagRepository.findByGroupIdAndNameIgnoreCase(group.getId(), folder.getName()).orElseGet(() -> {
-            Tag tag = new Tag();
-            tag.setGroup(group);
-            tag.setName(folder.getName());
-            tag.setTitle(folder.getDisplayName());
-            tag.setEnabled(1);
-            User creator = folder.getCreatedBy();
-            tag.setCreatedBy(creator);
-            return tagRepository.save(tag);
-        });
+        return tagRepository.findByGroupIdAndNameIgnoreCase(group.getId(), folder.getName())
+                .orElseGet(() -> newTag(group, folder));
+    }
+
+    private Tag newTag(TagGroup group, Folder folder) {
+        Tag tag = new Tag();
+        tag.setGroup(group);
+        tag.setName(folder.getName());
+        tag.setTitle(folder.getDisplayName());
+        tag.setEnabled(1);
+        User creator = folder.getCreatedBy();
+        tag.setCreatedBy(creator);
+        return tagRepository.save(tag);
     }
 }

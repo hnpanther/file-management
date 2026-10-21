@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.folder.web;
 
+import static com.hnp.filemanagement.support.BinAssert.*;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
 import com.hnp.filemanagement.folder.domain.Folder;
 import com.hnp.filemanagement.folder.domain.FolderPermission;
@@ -56,6 +57,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
 class FolderManagementTest extends DatabaseSupport {
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate binJdbc;
     @Autowired
     private MockMvc mockMvc;
     @Autowired
@@ -126,7 +129,7 @@ class FolderManagementTest extends DatabaseSupport {
                 .andExpect(jsonPath("$.outcome").value("DELETED"))
                 .andExpect(jsonPath("$.resource").value("folder"))
                 .andExpect(jsonPath("$.id").value(id));
-        assertThat(folderRepository.findById(id)).isEmpty();
+        folderInBin(binJdbc, id);
     }
 
     @Test
@@ -314,10 +317,10 @@ class FolderManagementTest extends DatabaseSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outcome").value("DELETED"))
                 .andExpect(jsonPath("$.id").value(chain.subCategoryId()));
-        assertThat(folderRepository.findById(chain.subCategoryId())).isEmpty();
-        assertThat(folderRepository.findById(chain.tagId())).isEmpty();
-        assertThat(folderRepository.findById(deeper.getId())).isEmpty();
-        assertThat(fileInfoRepository.findById(fileId)).isEmpty();
+        folderInBin(binJdbc, chain.subCategoryId());
+        folderInBin(binJdbc, chain.tagId());
+        folderInBin(binJdbc, deeper.getId());
+        fileInBin(binJdbc, fileId);
         assertThat(folderRepository.findById(chain.categoryId())).isPresent();
 
         // A folder's details name what a tree delete would remove.

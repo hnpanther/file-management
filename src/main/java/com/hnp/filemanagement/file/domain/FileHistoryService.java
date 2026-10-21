@@ -20,6 +20,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -148,6 +149,21 @@ public class FileHistoryService {
         Map<Integer, String> titles = transactionTitles();
         return titles.computeIfAbsent(folder.getId(),
                 id -> FileMapper.folderTitleOf(folderService.ancestryOf(folder)));
+    }
+
+    /**
+     * Works out the titles of these folders together - one statement for any number - into what {@link #titleOf}
+     * answers for the rest of the transaction: what a run of records over many folders asks first (a folder's delete,
+     * restore or purge in the recycle bin). One by one, each title would be a statement, and each statement a flush
+     * of everything the transaction holds.
+     */
+    public void titlesOf(Collection<Folder> folders) {
+        Map<Integer, String> titles = transactionTitles();
+        List<Folder> missing = folders.stream().filter(folder -> !titles.containsKey(folder.getId())).distinct().toList();
+        if (missing.isEmpty()) {
+            return;
+        }
+        folderService.ancestryOf(missing).forEach((id, chain) -> titles.put(id, FileMapper.folderTitleOf(chain)));
     }
 
     @SuppressWarnings("unchecked")

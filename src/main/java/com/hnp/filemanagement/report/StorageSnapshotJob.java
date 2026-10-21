@@ -32,7 +32,9 @@ public class StorageSnapshotJob {
     /**
      * Each top-level folder (depth 1) - and the root, for files directly in it if there are any -
      * with what is beneath it: its files, its revisions, their bytes and those of each file's latest
-     * version. One pass over the revisions, grouped by the second id on each folder's path.
+     * version. One pass over the revisions, grouped by the second id on each folder's path. Nothing in the
+     * recycle bin (roadmap 13.1): it is outside the tree, and its holders - at depth 1 beneath it - are no
+     * top-level folders.
      */
     static final String TAKE = """
             INSERT INTO storage_snapshot (day, folder_id, folder_name, folder_path, files, revisions, bytes,
@@ -47,8 +49,9 @@ public class StorageSnapshotJob {
                        FROM file_details d
                        JOIN file_info fi ON fi.id = d.file_info_id
                        JOIN folder fo ON fo.id = fi.folder_id
+                       WHERE fo.path NOT LIKE '/0/%'
                        GROUP BY 1) a ON a.top_id = top.id
-            WHERE top.depth = 1 OR (top.kind = 'ROOT' AND a.top_id IS NOT NULL)
+            WHERE top.path NOT LIKE '/0/%' AND (top.depth = 1 OR (top.kind = 'ROOT' AND a.top_id IS NOT NULL))
             ON CONFLICT (day, folder_id) DO UPDATE SET
                 folder_name = EXCLUDED.folder_name, folder_path = EXCLUDED.folder_path, files = EXCLUDED.files,
                 revisions = EXCLUDED.revisions, bytes = EXCLUDED.bytes, latest_bytes = EXCLUDED.latest_bytes,

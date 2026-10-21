@@ -15,6 +15,9 @@ public interface TagRepository extends JpaRepository<Tag, Integer> {
      */
     Optional<Tag> findByGroupIdAndNameIgnoreCase(int groupId, String name);
 
+    /** Every tag of a group - what re-tagging a subtree reads once, rather than one tag a folder. */
+    List<Tag> findAllByGroupId(Integer groupId);
+
     /** How many tags a group holds - what stands in the way of deleting it. */
     long countByGroupId(int groupId);
 

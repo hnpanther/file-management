@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.web;
 
+import static com.hnp.filemanagement.support.BinAssert.*;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
 import com.hnp.filemanagement.file.domain.FileDetails;
 import com.hnp.filemanagement.file.domain.FileInfo;
@@ -59,6 +60,8 @@ class FileApiExternalIdTest extends DatabaseSupport {
 
     private static final String UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate binJdbc;
     @Autowired
     private MockMvc mockMvc;
     @Autowired
@@ -232,8 +235,8 @@ class FileApiExternalIdTest extends DatabaseSupport {
 
         entityManager.flush();
         entityManager.clear();
-        assertThat(fileInfoRepository.findById(JsonPath.read(first, "$.fileId"))).isEmpty();
-        assertThat(fileInfoRepository.findById(JsonPath.read(second, "$.fileId"))).isEmpty();
+        fileInBin(binJdbc, JsonPath.read(first, "$.fileId"));
+        fileInBin(binJdbc, JsonPath.read(second, "$.fileId"));
     }
 
     @Test

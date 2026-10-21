@@ -65,6 +65,10 @@ class StorageCopyTest extends DatabaseSupport {
     private static final int PART = 5 * 1024 * 1024;
 
     @Autowired
+    private com.hnp.filemanagement.trash.TrashPurge trashPurge;
+    @Autowired
+    private com.hnp.filemanagement.trash.TrashEntryRepository trashEntries;
+    @Autowired
     private FileService fileService;
     @Autowired
     private JdbcTemplate jdbc;
@@ -212,7 +216,7 @@ class StorageCopyTest extends DatabaseSupport {
         FileDetailsDTO deleted = upload("deleted.txt", 100);
         assertThat(run(Direction.TO_S3, Mode.COPY).count(Outcome.COPIED)).isEqualTo(2);
         String deletedKey = storageKeyOf(deleted);
-        fileService.deleteCompleteFileById(deleted.getFileInfoId(), ownerId);
+        deleteForGood(deleted.getFileInfoId());
         String inFlight = "files/s999/999999/inflight-" + UUID.randomUUID() + "/v1/inflight.txt";
         bucket.put(StorageKey.of(inFlight), new java.io.ByteArrayInputStream(new byte[]{1, 2, 3}));
         jdbc.update("INSERT INTO file_storage_write (storage_key, created_at) VALUES (?, now())", inFlight);
@@ -312,13 +316,19 @@ class StorageCopyTest extends DatabaseSupport {
         assertThat(resumed.count(Outcome.COPIED)).isEqualTo(stored.size() - stoppedRun.count(Outcome.COPIED));
     }
 
+    /** Deleted and purged: in the recycle bin a file keeps its rows and its bytes (roadmap 13.1); a purge takes both. */
+    private void deleteForGood(int fileInfoId) {
+        fileService.deleteCompleteFileById(fileInfoId, ownerId);
+        trashPurge.purge(trashEntries.findByFileInfoId(fileInfoId).orElseThrow().getId(), ownerId);
+    }
+
     @Test
     @DisplayName("a file deleted after the rows were read is gone, not a problem")
     void aRowDeletedMeanwhile() {
         FileDetailsDTO revision = upload("soon-gone.txt", 100);
         // Deleted by the service between the copy reading the row and looking at the stores.
         HookedStore deletesFirst = new HookedStore(bucket,
-                () -> fileService.deleteCompleteFileById(revision.getFileInfoId(), ownerId), Integer.MAX_VALUE, () -> { });
+                () -> deleteForGood(revision.getFileInfoId()), Integer.MAX_VALUE, () -> { });
         StorageCopy copy = new StorageCopy(jdbc, filesystem, deletesFirst,
                 settings(Direction.TO_S3, Mode.COPY, 1, false, false, 100), Clock.systemUTC());
 

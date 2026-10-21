@@ -788,6 +788,54 @@ database restored without it has S3 keys nobody can use. Lost or changed, every 
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
 
+### Upgrading from 2.17.2 to 2.18.0 — the recycle bin
+
+A jar swap with **one migration**, `V3.20`: a folder of its own for the bin - id 0, `/0/`, outside the tree - and an
+empty table, `trash_entry`. Nothing that exists changes. **Take the database backup first**, as for every
+migration.
+
+What changes for people:
+
+* **Every delete goes to the bin** - a file, one revision, an empty folder, a folder with everything in it; from the
+  explorer, the file page, v1, v2 and the S3 surface alike. Nothing is removed: the rows, the bytes, the versions,
+  the ids, the metadata, the history, the grants and the read text stay. What was deleted is found by nobody - not
+  in a list, a search, a report, the explorer, the S3 listing, by its id on v1 or v2 (a 404), on the public files
+  page, or through a share link - an administrator included.
+* **Sidebar → Files → سطل زباله** (`/files/trash`, `TRASH_PAGE`): what was deleted from the folders the person may
+  write in, newest first. **Restore** puts it back where it was; **restore elsewhere** chooses another folder or
+  another name - asked when the folder it came from is gone or in the bin itself, or when its name is taken there
+  now. A revision goes back to its own file only, under its own number, or as the file's next version when its
+  number was taken meanwhile. Share links that have not expired answer again.
+* **Purge** (`PURGE_TRASH`, administrators by default) removes an entry for good, rows and bytes - one, or every
+  one older than a number of days, after a preview. Nothing comes back after it.
+* **Every night at 03:30** entries older than `filemanagement.trash.retention-days` (30) are purged, at most
+  `purge-batch` (2000) a night, each on its own; `0` purges nothing by itself.
+* **Quotas** count what is in the bin against the folder it was deleted from until it is purged: deleting does not
+  free a personal folder's quota - purging does. Ask an administrator to purge, or wait the retention.
+* The fixed role USER gains `TRASH_PAGE` and `RESTORE_FROM_TRASH` at the start (every account: deleting without being
+  able to undo is the worse half); `PURGE_TRASH` is ADMIN's, and given to another role on the role page.
+
+Settings, all optional (`application.properties`, or the environment):
+
+```
+FILEMANAGEMENT_TRASH_RETENTION_DAYS=30
+FILEMANAGEMENT_TRASH_PURGE_BATCH=2000
+FILEMANAGEMENT_TRASH_PURGE_CRON=0 30 3 * * *
+```
+
+**The disk.** Deleted bytes stay until purged: budget for the retention's worth of deletions. The reports' quota
+figures count the bin as the quotas do; the totals and the storage snapshot do not count it.
+
+**Backups and the storage copy** are unchanged: the bin is rows and bytes like any others, copied and backed up
+with them, and a restore of the database brings the bin back with it.
+
+**Rollback to 2.17.2.** Put the 2.17.2 jar back; the migration stays (its table is unused there). The older code
+sees the bin's folder as a second folder of no parent: **its explorer then refuses to start** ("the folder tree must
+have exactly one root") - so a rollback is the jar **and** the pre-upgrade database backup, as for any migration.
+Whatever was deleted after the upgrade is in that backup's past; take a backup of 2.18.0's database first if it may
+be wanted. Only while the bin is empty (`SELECT count(*) FROM trash_entry` is 0) may the jar alone go back, after
+`DELETE FROM folder WHERE id = 0 AND NOT EXISTS (SELECT 1 FROM folder WHERE parent_id = 0);`.
+
 ### Upgrading from 2.17.1 to 2.17.2 — folders made while a class changes
 
 A jar swap, **no migration**. A change of a folder's class, a move and the rules applied below a folder now hold one

@@ -30,7 +30,10 @@ public interface FileHistoryRepository extends JpaRepository<FileHistory, Intege
             """)
     Slice<FileHistory> findByFile(@Param("externalId") String externalId, Pageable pageable);
 
-    /** Which of these external ids still name a file, and its number - for the history's links. */
-    @Query("SELECT f.externalId, f.id FROM FileInfo f WHERE f.externalId IN (:externalIds)")
+    /**
+     * Which of these external ids still name a file, and its number - for the history's links; not one in the recycle
+     * bin (roadmap 13.1), whose page answers nobody until it is restored.
+     */
+    @Query("SELECT f.externalId, f.id FROM FileInfo f WHERE f.externalId IN (:externalIds) AND f.folder.path NOT LIKE '/0/%'")
     List<Object[]> findLiveFiles(@Param("externalIds") Collection<String> externalIds);
 }

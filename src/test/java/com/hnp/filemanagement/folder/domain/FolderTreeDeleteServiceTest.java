@@ -19,6 +19,7 @@ import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import com.hnp.filemanagement.identity.persistence.RoleRepository;
 import com.hnp.filemanagement.folder.persistence.TagGroupRepository;
 import com.hnp.filemanagement.identity.persistence.UserRepository;
+import com.hnp.filemanagement.support.BinAssert;
 import com.hnp.filemanagement.support.FolderFixture;
 import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.ServiceIntegrationTest;
@@ -45,8 +46,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Deleting a folder with everything in it (roadmap 10.3): what goes, in what order, what is
- * refused, and what the disk looks like afterwards.
+ * Deleting a folder with everything in it (roadmap 10.3) - into the recycle bin since 2.18.0 (roadmap 13.1): what
+ * goes, what is refused, and that nothing is removed until a purge.
  *
  * <p>Folder access is on, because who may do this is half of the rule; the cap is three files
  * so that "too many" is reachable. The files are real uploads through {@link FileService}, so
@@ -61,6 +62,12 @@ class FolderTreeDeleteServiceTest extends DatabaseSupport {
 
     @Autowired
     private FolderTreeDeleteService underTest;
+    @Autowired
+    private com.hnp.filemanagement.trash.TrashPurge trashPurge;
+    @Autowired
+    private com.hnp.filemanagement.trash.TrashEntryRepository trashEntries;
+    @Autowired
+    private FolderAccessService folderAccessService;
     @Autowired
     private FileService fileService;
     @Autowired
@@ -100,7 +107,7 @@ class FolderTreeDeleteServiceTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("a three-level tree with files at each level goes whole: rows, tags, grants, versions, and every byte - the shards stay")
+    @DisplayName("a three-level tree with files at each level goes to the recycle bin whole: rows, tags, grants, versions and bytes kept")
     void deletesTheWholeTree() {
         // Cat / Sub / Tag, a file in each of Sub and Tag, and a second version of one of them.
         FileDetailsDTO inSub = upload("sub-report.txt", chain.subCategoryId());
@@ -113,10 +120,9 @@ class FolderTreeDeleteServiceTest extends DatabaseSupport {
 
         Path subDir = Paths.get(baseDir).resolve(StorageLayout.directoryFor(inSub.getFileInfoId()));
         Path tagDir = Paths.get(baseDir).resolve(StorageLayout.directoryFor(inTag.getFileInfoId()));
-        assertThat(subDir).exists();
-        assertThat(tagDir.resolve(Paths.get("rev", "v2"))).exists();
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM file_tag WHERE file_info_id IN (?, ?)", Integer.class,
-                inSub.getFileInfoId(), inTag.getFileInfoId())).isPositive();
+        int tags = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM file_tag WHERE file_info_id IN (?, ?)", Integer.class,
+                inSub.getFileInfoId(), inTag.getFileInfoId());
+        assertThat(tags).isPositive();
 
         FolderTreeDeleteService.DeletedTree deleted = underTest.deleteTree(chain.subCategoryId(), adminId);
         entityManager.flush();
@@ -124,68 +130,44 @@ class FolderTreeDeleteServiceTest extends DatabaseSupport {
 
         assertThat(deleted.folders()).as("Tag and Empty beneath Sub").isEqualTo(2);
         assertThat(deleted.files()).isEqualTo(2);
-        assertThat(folderRepository.findById(chain.subCategoryId())).isEmpty();
-        assertThat(folderRepository.findById(chain.tagId())).isEmpty();
-        assertThat(folderRepository.findById(deeper.getId())).isEmpty();
-        assertThat(folderRepository.findById(chain.categoryId())).as("the parent stays").isPresent();
-        assertThat(fileInfoRepository.findById(inSub.getFileInfoId())).isEmpty();
-        assertThat(fileInfoRepository.findById(inTag.getFileInfoId())).isEmpty();
-        assertThat(fileDetailsRepository.findByFileInfoIdIn(List.of(inSub.getFileInfoId(), inTag.getFileInfoId()))).isEmpty();
+        BinAssert.folderInBin(jdbcTemplate, chain.subCategoryId());
+        BinAssert.folderInBin(jdbcTemplate, chain.tagId());
+        BinAssert.folderInBin(jdbcTemplate, deeper.getId());
+        assertThat(folderRepository.findById(chain.categoryId()).orElseThrow().getPath()).as("the parent stays")
+                .doesNotStartWith(Bin.PATH);
+        BinAssert.fileInBin(jdbcTemplate, inSub.getFileInfoId());
+        BinAssert.fileInBin(jdbcTemplate, inTag.getFileInfoId());
+        assertThat(fileDetailsRepository.findByFileInfoIdIn(List.of(inSub.getFileInfoId(), inTag.getFileInfoId()))).hasSize(3);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM file_tag WHERE file_info_id IN (?, ?)", Integer.class,
-                inSub.getFileInfoId(), inTag.getFileInfoId())).isZero();
+                inSub.getFileInfoId(), inTag.getFileInfoId())).as("kept for a restore").isEqualTo(tags);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM user_folder WHERE folder_id = ?", Integer.class,
-                deeper.getId())).as("the grant cascaded").isZero();
+                deeper.getId())).as("the grant kept, covering nothing").isEqualTo(1);
+        assertThat(folderAccessService.accessFor(restrictedId).isEmpty()).isTrue();
 
-        assertThat(subDir).as("each file's own directory").doesNotExist();
-        assertThat(tagDir).doesNotExist();
-        assertThat(subDir.getParent()).as("the shard directory is shared and stays").exists();
+        assertThat(subDir).as("each file's bytes stay until purged").exists();
+        assertThat(tagDir.resolve(Paths.get("rev", "v2"))).exists();
 
         assertThat(actionHistoryService.getActionHistoriesOfEntity(chain.subCategoryId(), EntityEnum.Folder))
                 .extracting(h -> h.getDescription())
-                .anySatisfy(d -> assertThat(d).contains("2 folder(s)").contains("2 file(s)"));
-        assertThat(actionHistoryService.getActionHistoriesOfEntity(inTag.getFileInfoId(), EntityEnum.FileInfo))
-                .as("every file still gets its own audit row").isNotEmpty();
-    }
-
-    @Test
-    @DisplayName("a file stored under the old shared layout loses its own directory and its neighbour keeps theirs")
-    void anOldLayoutFileLeavesItsNeighbour() throws IOException {
-        FileDetailsDTO stored = upload("old-report.txt", chain.tagId());
-        Path shared = Paths.get(baseDir, "OldCat" + TestData.nextSequence(), "OldSub");
-        Path own = shared.resolve(Paths.get("old-report", "v1", "old-report.txt"));
-        Path neighbour = shared.resolve(Paths.get("other", "v1", "other.txt"));
-        Files.createDirectories(own.getParent());
-        Files.createDirectories(neighbour.getParent());
-        Files.writeString(own, "old");
-        Files.writeString(neighbour, "neighbour");
-        FileDetails revision = fileDetailsRepository.findById(stored.getId()).orElseThrow();
-        revision.setStorageKey(Paths.get(baseDir).relativize(own).toString().replace('\\', '/'));
-        fileDetailsRepository.saveAndFlush(revision);
-        entityManager.clear();
-
-        underTest.deleteTree(chain.tagId(), adminId);
-        entityManager.flush();
-
-        assertThat(own.getParent().getParent()).doesNotExist();
-        assertThat(neighbour).exists();
+                .anySatisfy(d -> assertThat(d).contains("2 folder(s)").contains("2 file(s)").contains("recycle bin"));
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM file_history WHERE event = 'FILE_DELETED' AND file_info_id IN (?, ?)", Integer.class,
+                inSub.getFileInfoId(), inTag.getFileInfoId())).as("every file's history says it went").isEqualTo(2);
     }
 
     /**
-     * The bytes never fail the delete. A file whose directory is already gone (lost in an
-     * earlier partial failure, a restore without base-dir) is nothing to remove; were it an
-     * error, the rows would roll back after the files before it had their bytes erased, and
-     * every retry would erase more. So: all rows go, the other files' bytes go, the audit row is
-     * written, and the missing one is logged.
+     * The bytes never fail a delete or a purge. A file whose directory is already gone (lost in an earlier partial
+     * failure, a restore without base-dir) goes to the bin with the others, and is purged with them: what a purge
+     * removes on disk it removes after its commit, each on its own, a missing one being nothing to remove
+     * ({@code TrashPurgeBytesTest}).
      */
     @Test
-    @DisplayName("a file whose bytes are already gone does not stop the tree: every row goes, every other file's bytes go")
+    @DisplayName("a file whose bytes are already gone does not stop the tree: it goes to the bin, and is purged, with the others")
     void aMissingDirectoryDoesNotStopTheTree() throws IOException {
         FileDetailsDTO kept = upload("kept.txt", chain.tagId());
         FileDetailsDTO lost = upload("lost.txt", chain.tagId());
         FileDetailsDTO alsoKept = upload("also-kept.txt", chain.subCategoryId());
         Path lostDir = Paths.get(baseDir).resolve(StorageLayout.directoryFor(lost.getFileInfoId()));
-        Path keptDir = Paths.get(baseDir).resolve(StorageLayout.directoryFor(kept.getFileInfoId()));
-        Path alsoKeptDir = Paths.get(baseDir).resolve(StorageLayout.directoryFor(alsoKept.getFileInfoId()));
         deleteRecursively(lostDir);
         assertThat(lostDir).doesNotExist();
         entityManager.flush();
@@ -194,21 +176,19 @@ class FolderTreeDeleteServiceTest extends DatabaseSupport {
         FolderTreeDeleteService.DeletedTree deleted = underTest.deleteTree(chain.subCategoryId(), adminId);
         entityManager.flush();
         entityManager.clear();
-
         assertThat(deleted.files()).isEqualTo(3);
+
+        trashPurge.purge(deleted.trashEntryId(), adminId);
+        entityManager.flush();
+        entityManager.clear();
         assertThat(fileInfoRepository.findById(lost.getFileInfoId())).isEmpty();
         assertThat(fileInfoRepository.findById(kept.getFileInfoId())).isEmpty();
         assertThat(fileInfoRepository.findById(alsoKept.getFileInfoId())).isEmpty();
         assertThat(folderRepository.findById(chain.subCategoryId())).isEmpty();
-        assertThat(keptDir).doesNotExist();
-        assertThat(alsoKeptDir).doesNotExist();
-        assertThat(actionHistoryService.getActionHistoriesOfEntity(chain.subCategoryId(), EntityEnum.Folder))
-                .extracting(h -> h.getDescription())
-                .anySatisfy(d -> assertThat(d).contains("3 file(s)").doesNotContain("could not be removed"));
     }
 
     @Test
-    @DisplayName("the same for a single file: one whose bytes are already gone is still deleted")
+    @DisplayName("the same for a single file: one whose bytes are already gone is still deleted, and purged")
     void aSingleFileWithMissingBytesIsStillDeleted() throws IOException {
         FileDetailsDTO lost = upload("single-lost.txt", chain.tagId());
         Path lostDir = Paths.get(baseDir).resolve(StorageLayout.directoryFor(lost.getFileInfoId()));
@@ -219,7 +199,11 @@ class FolderTreeDeleteServiceTest extends DatabaseSupport {
         fileService.deleteCompleteFileById(lost.getFileInfoId(), adminId);
         entityManager.flush();
         entityManager.clear();
+        BinAssert.fileInBin(jdbcTemplate, lost.getFileInfoId());
 
+        trashPurge.purge(trashEntries.findByFileInfoId(lost.getFileInfoId()).orElseThrow().getId(), adminId);
+        entityManager.flush();
+        entityManager.clear();
         assertThat(fileInfoRepository.findById(lost.getFileInfoId())).isEmpty();
     }
 
@@ -272,8 +256,8 @@ class FolderTreeDeleteServiceTest extends DatabaseSupport {
         underTest.deleteTree(chain.subCategoryId(), restrictedId);
         entityManager.flush();
         entityManager.clear();
-        assertThat(folderRepository.findById(chain.subCategoryId())).isEmpty();
-        assertThat(folderRepository.findById(chain.tagId())).isEmpty();
+        BinAssert.folderInBin(jdbcTemplate, chain.subCategoryId());
+        BinAssert.folderInBin(jdbcTemplate, chain.tagId());
     }
 
     // ---------------------------------------------------------------- helpers

@@ -139,6 +139,10 @@ class ContentPipelineTest extends DatabaseSupport {
     }
 
     @Autowired
+    private com.hnp.filemanagement.trash.TrashPurge trashPurge;
+    @Autowired
+    private com.hnp.filemanagement.trash.TrashEntryRepository trashEntries;
+    @Autowired
     private FileService fileService;
     @Autowired
     private UserRepository userRepository;
@@ -205,7 +209,7 @@ class ContentPipelineTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("an upload rolled back leaves no reading; a revision deleted takes its text with it")
+    @DisplayName("an upload rolled back leaves no reading; a file in the recycle bin keeps its text, a purge takes it")
     void theOutboxFollowsTheRevision() {
         AtomicInteger rolledBack = new AtomicInteger();
         transactions.executeWithoutResult(status -> {
@@ -218,6 +222,11 @@ class ContentPipelineTest extends DatabaseSupport {
         FileDetailsDTO uploaded = upload("kept.txt", "متن نگهداشته " + TestData.nextSequence());
         waitFor(() -> "DONE".equals(state(uploaded.getId())), "read");
         fileService.deleteCompleteFileById(uploaded.getFileInfoId(), ownerId);
+        // Kept for a restore, read again by nobody (roadmap 13.1); found by no search: the bin is in no reader's scope.
+        assertThat(state(uploaded.getId())).isEqualTo("DONE");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM file_content_page WHERE file_details_id = ?", Integer.class,
+                uploaded.getId())).isPositive();
+        trashPurge.purge(trashEntries.findByFileInfoId(uploaded.getFileInfoId()).orElseThrow().getId(), ownerId);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM file_content WHERE file_details_id = ?", Integer.class,
                 uploaded.getId())).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM file_content_page WHERE file_details_id = ?", Integer.class,

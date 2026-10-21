@@ -25,9 +25,10 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     /**
      * The single root. Declared as a list rather than an {@code Optional} because the schema cannot
      * enforce "only one row with a null parent" — a unique index treats nulls as distinct —
-     * so the caller checks rather than trusting a query that would throw somewhere unhelpful.
+     * so the caller checks rather than trusting a query that would throw somewhere unhelpful. The recycle bin
+     * has no parent either (roadmap 13.1) and is no root: it is outside the tree.
      */
-    @Query("SELECT f FROM Folder f WHERE f.parent IS NULL")
+    @Query("SELECT f FROM Folder f WHERE f.parent IS NULL AND f.kind = com.hnp.filemanagement.folder.domain.FolderKind.ROOT")
     List<Folder> findRoots();
 
     Optional<Folder> findByPath(String path);
@@ -249,19 +250,20 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
      * Sets every folder's key path to what the names above it make it, where it is not - as V3.9
      * first wrote them, in one statement, and touching no row that is right. What a start runs
      * ({@code KeyPathRepair}): a release before 2.12.0, run on this database after it - a rollback -
-     * renames and moves without keeping them, and V3.9 does not run twice.
+     * renames and moves without keeping them, and V3.9 does not run twice. From every folder of no parent: the root,
+     * whose children are buckets of no key path, and the recycle bin (roadmap 13.1), whose are not.
      *
      * @return the number of folders set
      */
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.transaction.annotation.Transactional
     @Query(nativeQuery = true, value = """
-            WITH RECURSIVE keyed (id, key_path) AS (
-                SELECT f.id, CAST('' AS VARCHAR(4000))
+            WITH RECURSIVE keyed (id, kind, key_path) AS (
+                SELECT f.id, f.kind, CAST('' AS VARCHAR(4000))
                 FROM folder f
-                JOIN folder r ON r.id = f.parent_id AND r.parent_id IS NULL
+                WHERE f.parent_id IS NULL
                 UNION ALL
-                SELECT c.id, CAST(k.key_path || c.name || '/' AS VARCHAR(4000))
+                SELECT c.id, c.kind, CAST(CASE WHEN k.kind = 'ROOT' THEN '' ELSE k.key_path || c.name || '/' END AS VARCHAR(4000))
                 FROM folder c
                 JOIN keyed k ON c.parent_id = k.id
             )
@@ -323,6 +325,32 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     int rewriteClassPaths(@Param("pathPrefix") String pathPrefix, @Param("newPrefix") String newPrefix,
                           @Param("oldLength") int oldLength);
 
+    /**
+     * Moves a subtree's paths, keys and depths in one statement - the folder at {@code oldPrefix} and everything beneath
+     * it: a path from {@code oldPrefix} to {@code newPrefix}, a key path from its first {@code oldKeyLength} characters
+     * to {@code newKeyPrefix}, a depth by {@code delta}. A move, a restore from the recycle bin. Its parent and the rest
+     * of the folder's own row are the caller's, written first.
+     */
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true)
+    @Query(nativeQuery = true, value = """
+            UPDATE folder
+            SET path = :newPrefix || substr(path, :oldLength + 1),
+                key_path = :newKeyPrefix || substr(key_path, :oldKeyLength + 1),
+                depth = depth + :delta
+            WHERE path LIKE :oldPrefix || '%'
+            """)
+    int rewriteSubtree(@Param("oldPrefix") String oldPrefix, @Param("newPrefix") String newPrefix,
+                       @Param("oldLength") int oldLength, @Param("newKeyPrefix") String newKeyPrefix,
+                       @Param("oldKeyLength") int oldKeyLength, @Param("delta") int delta);
+
+    /** Takes the tag group from every folder strictly beneath this path: only a top-level folder carries one. */
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true)
+    @Query(nativeQuery = true, value = """
+            UPDATE folder SET tag_group_id = NULL
+            WHERE path LIKE :pathPrefix || '%' AND path <> :pathPrefix AND tag_group_id IS NOT NULL
+            """)
+    int clearTagGroupsBelow(@Param("pathPrefix") String pathPrefix);
+
     /** A folder's class path as the database holds it - not as an entity read earlier remembers it. */
     @Query(nativeQuery = true, value = "SELECT class_path FROM folder WHERE id = :id")
     String classPathOf(@Param("id") int id);
@@ -366,7 +394,7 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     @Query("""
             SELECT new com.hnp.filemanagement.folder.persistence.GrantedPath(g.folder.path, g.permission)
             FROM UserFolderGrant g
-            WHERE g.user.id = :userId
+            WHERE g.user.id = :userId AND g.folder.path NOT LIKE '/0/%'
             """)
     List<GrantedPath> findGrantsDirectly(@Param("userId") int userId);
 
@@ -378,14 +406,15 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
      * folder is beneath one of these exactly when its class path holds the class and it lies within the scope -
      * the test the SQL asks ({@code GrantedFolderPath}). And a row of no path ({@code CLASS_GRANT}) for each class grant
      * held, whatever it covers: the statements of a reader without one stay as they were ({@code FolderReadScope}).
-     * One statement, as before class grants: a request resolves its access in two.
+     * One statement, as before class grants: a request resolves its access in two. Nothing in the recycle bin
+     * (roadmap 13.1): a deleted folder keeps its grants for a restore, and they cover nothing meanwhile.
      */
     @Query(nativeQuery = true, value = """
             SELECT f.path AS path, rf.permission AS permission, 'FOLDER' AS kind
             FROM user_role ur
             JOIN role_folder rf ON rf.role_id = ur.role_id
             JOIN folder f ON f.id = rf.folder_id
-            WHERE ur.user_id = :userId
+            WHERE ur.user_id = :userId AND f.path NOT LIKE '/0/%'
             UNION ALL
             SELECT CAST(NULL AS VARCHAR(1000)), g.permission, 'CLASS_GRANT'
             FROM user_role ur
@@ -397,13 +426,14 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
             JOIN role_class_grant g ON g.role_id = ur.role_id
             JOIN folder d ON d.class_id = g.class_id
             LEFT JOIN folder s ON s.id = g.scope_folder_id
-            WHERE ur.user_id = :userId AND (s.id IS NULL OR d.path LIKE s.path || '%')
+            WHERE ur.user_id = :userId AND d.path NOT LIKE '/0/%'
+              AND (s.id IS NULL OR (d.path LIKE s.path || '%' AND s.path NOT LIKE '/0/%'))
             UNION ALL
             SELECT s.path, g.permission, 'CLASS'
             FROM user_role ur
             JOIN role_class_grant g ON g.role_id = ur.role_id
             JOIN folder s ON s.id = g.scope_folder_id
-            WHERE ur.user_id = :userId AND s.class_path LIKE '%/' || g.class_id || '/%'
+            WHERE ur.user_id = :userId AND s.class_path LIKE '%/' || g.class_id || '/%' AND s.path NOT LIKE '/0/%'
             """)
     List<RoleGrantedPath> findGrantsThroughRoles(@Param("userId") int userId);
 
@@ -411,7 +441,7 @@ public interface FolderRepository extends JpaRepository<Folder, Integer> {
     @Query("""
             SELECT new com.hnp.filemanagement.folder.persistence.GrantedPath(g.folder.path, g.permission)
             FROM ApiKeyFolderGrant g
-            WHERE g.apiKey.id = :apiKeyId
+            WHERE g.apiKey.id = :apiKeyId AND g.folder.path NOT LIKE '/0/%'
             """)
     List<GrantedPath> findGrantsOfApiKey(@Param("apiKeyId") int apiKeyId);
 

@@ -157,7 +157,7 @@ class StorageKeyTest extends DatabaseSupport {
     }
 
     @Test
-    @DisplayName("deleting one version removes its directory and leaves the other's bytes")
+    @DisplayName("deleting one version moves it to the recycle bin and moves no byte - its key stays its own file's")
     void deletingByKeyRemovesTheRightObject() {
         FileDetailsDTO first = underTest.createNewFile(uploadRequest("report.txt"), principalId, 1);
         int fileInfoId = first.getFileInfoId();
@@ -167,9 +167,10 @@ class StorageKeyTest extends DatabaseSupport {
 
         underTest.deleteFileDetails(fileInfoId, first.getId(), principalId);
 
-        assertThat(fileDetailsRepository.findById(first.getId())).isEmpty();
-        assertThat(Paths.get(baseDir).resolve(firstKey)).doesNotExist();
-        assertThat(fileDirectory.resolve(Paths.get("rev", "v1"))).as("the emptied version directory").doesNotExist();
+        // What a purge removes of it - its object, by its key - is TrashPurgeBytesTest's.
+        assertThat(fileDetailsRepository.findById(first.getId()).orElseThrow().getStorageKey()).isEqualTo(firstKey);
+        assertThat(Paths.get(baseDir).resolve(firstKey)).exists();
+        assertThat(fileDirectory.resolve(Paths.get("rev", "v1"))).exists();
         assertThat(fileDetailsRepository.findAll().stream()
                 .filter(row -> row.getFileInfo().getId().equals(fileInfoId)))
                 .singleElement()

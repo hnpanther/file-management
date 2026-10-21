@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.web;
 
+import static com.hnp.filemanagement.support.BinAssert.*;
 import com.hnp.filemanagement.identity.domain.ApiKeyCreatedDTO;
 import com.hnp.filemanagement.identity.domain.ApiKeyDTO;
 import com.hnp.filemanagement.identity.domain.ApiKeyService;
@@ -191,7 +192,9 @@ class ApiKeyAttributionTest extends DatabaseSupport {
                 "SELECT api_key_id FROM action_history WHERE entity_name = 'FileInfo' AND entity_id = ? AND action = 'DELETE'",
                 Integer.class, fileId))
                 .as("the last version, and with it the file").containsExactly(key.id());
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM file_info WHERE id = ?", Integer.class, fileId)).isZero();
+        fileInBin(jdbcTemplate, fileId);
+        assertThat(jdbcTemplate.queryForObject("SELECT deleted_by_api_key_id FROM trash_entry WHERE file_info_id = ?",
+                Integer.class, fileId)).as("the bin records the key too").isEqualTo(key.id());
     }
 
     @Test

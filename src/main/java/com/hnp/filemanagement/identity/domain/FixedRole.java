@@ -51,6 +51,7 @@ public enum FixedRole {
             PermissionGroup.FILE_READ,
             PermissionGroup.FILE_WRITE,
             PermissionGroup.FILE_DELETE,
+            PermissionGroup.TRASH,
             PermissionGroup.FOLDER_MANAGE,
             PermissionGroup.SHARE_LINKS));
 

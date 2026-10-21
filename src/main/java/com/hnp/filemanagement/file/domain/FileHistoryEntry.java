@@ -23,8 +23,9 @@ public record FileHistoryEntry(int id, Instant occurredAt, FileEvent event,
         return "FileHistoryEntry[id=" + id + ", event=" + event + "]";
     }
 
-    /** A deletion - of a revision, or of the whole file - shown so. */
+    /** A deletion - of a revision, or of the whole file, into the recycle bin or out of it for good - shown so. */
     public boolean isDeletion() {
-        return event == FileEvent.FILE_DELETED || event == FileEvent.REVISION_DELETED;
+        return event == FileEvent.FILE_DELETED || event == FileEvent.REVISION_DELETED
+                || event == FileEvent.FILE_PURGED || event == FileEvent.REVISION_PURGED;
     }
 }

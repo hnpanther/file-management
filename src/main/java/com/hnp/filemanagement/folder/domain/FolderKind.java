@@ -34,5 +34,12 @@ public enum FolderKind {
      * named after the user and renamed with them, never by hand; moved by nobody; deleted only
      * with its user. Usually carries a {@code quotaBytes}.
      */
-    USER_HOME
+    USER_HOME,
+
+    /**
+     * The recycle bin ({@link Bin}, {@code V3.20}): one folder, outside the tree - no parent, id 0 - that what is
+     * deleted is moved beneath. No grant covers it, nobody lists, opens, renames, moves or deletes it, and nothing
+     * is filed into it by hand; the bin's own services alone write beneath it.
+     */
+    TRASH
 }

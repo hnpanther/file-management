@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.web;
 
+import static com.hnp.filemanagement.support.BinAssert.*;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
 import com.hnp.filemanagement.file.domain.FileUploadDTO;
 import com.hnp.filemanagement.file.domain.FileDetails;
@@ -61,6 +62,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
 class FileApiByIdTest extends DatabaseSupport {
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate binJdbc;
     @Autowired
     private MockMvc mockMvc;
     @Autowired
@@ -126,8 +129,8 @@ class FileApiByIdTest extends DatabaseSupport {
 
         entityManager.flush();
         entityManager.clear();
-        assertThat(fileDetailsRepository.findById(detailsId)).isEmpty();
-        assertThat(fileInfoRepository.findById(fileId)).as("the only version: the file goes with it").isEmpty();
+        revisionInBin(binJdbc, detailsId);
+        fileInBin(binJdbc, fileId);
 
         mockMvc.perform(delete("/api/v1/files/file-details/{d}", detailsExternalId)
                         .with(user(principal(adminId, PermissionEnum.API_DELETE_FILE_DETAILS)))
@@ -190,7 +193,7 @@ class FileApiByIdTest extends DatabaseSupport {
                 .andExpect(status().isOk());
         entityManager.flush();
         entityManager.clear();
-        assertThat(fileDetailsRepository.findById(v2DetailsId)).isEmpty();
+        revisionInBin(binJdbc, v2DetailsId);
         assertThat(fileDetailsRepository.findById(v1DetailsId)).isPresent();
         assertThat(fileInfoRepository.findById(fileId).orElseThrow().getLastVersion()).isEqualTo(1);
 

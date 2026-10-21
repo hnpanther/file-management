@@ -73,6 +73,10 @@ class S3BackendTest extends DatabaseSupport {
     }
 
     @Autowired
+    private com.hnp.filemanagement.trash.TrashPurge trashPurge;
+    @Autowired
+    private com.hnp.filemanagement.trash.TrashEntryRepository trashEntries;
+    @Autowired
     private MockMvc mockMvc;
     @Autowired
     private BlobStore blobStore;
@@ -137,11 +141,18 @@ class S3BackendTest extends DatabaseSupport {
                 .andExpect(status().isOk())
                 .andExpect(header().longValue(HttpHeaders.CONTENT_LENGTH, pdf.length));
 
-        // Its last revision: the file goes, and its bytes with it.
+        // Its last revision: the file goes to the recycle bin, its bytes kept - and a purge removes them, once committed.
         mockMvc.perform(delete("/api/v1/files/file-details/" + revision)
                         .with(user(principal(PermissionEnum.API_DELETE_FILE_DETAILS)))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
+        assertThat(s3.headObject(request -> request.bucket(TestObjectStores.BUCKET).key(PREFIX + "/" + storageKey))
+                .contentLength()).isEqualTo(pdf.length);
+        mockMvc.perform(get(download).with(user(principal(PermissionEnum.API_DOWNLOAD_FILE))))
+                .andExpect(status().isNotFound());
+        int fileId = fileDetailsRepository.findById(revisionId).orElseThrow().getFileInfo().getId();
+        com.hnp.filemanagement.trash.TrashEntry entry = trashEntries.findByFileInfoId(fileId).orElseThrow();
+        trashPurge.purge(entry.getId(), entry.getDeletedBy());
         assertThatThrownBy(() -> s3.headObject(request -> request.bucket(TestObjectStores.BUCKET)
                 .key(PREFIX + "/" + storageKey)))
                 .isInstanceOfAny(NoSuchKeyException.class, software.amazon.awssdk.services.s3.model.S3Exception.class);

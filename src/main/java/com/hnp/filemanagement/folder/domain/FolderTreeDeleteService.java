@@ -1,172 +1,68 @@
 package com.hnp.filemanagement.folder.domain;
 
-import com.hnp.filemanagement.audit.domain.ActionHistoryService;
-import com.hnp.filemanagement.file.domain.FileHistoryService;
-import com.hnp.filemanagement.file.domain.FileService;
-import com.hnp.filemanagement.audit.domain.ActionEnum;
-import com.hnp.filemanagement.audit.domain.EntityEnum;
+import com.hnp.filemanagement.shared.config.FileManagementProperties;
 import com.hnp.filemanagement.shared.exception.DependencyResourceException;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
-import com.hnp.filemanagement.file.persistence.FileInfoRepository;
-import com.hnp.filemanagement.folder.persistence.FolderRepository;
-import com.hnp.filemanagement.storage.BlobStore;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import com.hnp.filemanagement.shared.config.FileManagementProperties;
+import com.hnp.filemanagement.trash.Trash;
+import com.hnp.filemanagement.trash.TrashEntry;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 
 /**
- * Deletes a folder with everything in it - every folder beneath, every file, every stored byte
- * (roadmap 10.3).
+ * Deletes a folder - an empty one, or one with everything in it, every folder and file beneath (roadmap 10.3) - into
+ * the recycle bin (roadmap 13.1, {@link Trash#deleteFolder}): moved there whole, restored whole or purged later.
+ * Nothing is removed here; removing for good is the bin's purge, which is where the deletion of rows and bytes this
+ * class did until 2.18.0 now is.
  *
- * <p>{@link FolderService#delete} removes an empty folder and refuses a full one; this is the
- * other half, kept apart from it on purpose. It sits behind a permission of its own
- * ({@code REST_DELETE_FOLDER_TREE}), because the right to prune empty folders should not imply
- * the right to erase a subtree, and it is a class of its own because it needs
- * {@link FileService} for the files and {@code FileService} already needs {@code FolderService}.
+ * <p>The two deletes keep what they were: the empty one is refused while anything is inside (409); the one with
+ * everything sits behind a permission of its own ({@code REST_DELETE_FOLDER_TREE}), because the right to prune empty
+ * folders should not imply the right to take a subtree away, and is refused past
+ * {@code filemanagement.folders.max-delete-files} files (409, default 1000) - a larger tree is deleted in parts.
  *
- * <p><b>The order.</b> One transaction. The files' rows go first, through the same whole-file
- * delete a single file gets - so each writes its own {@code ActionHistory} row and answers the
- * same layout question about its directory - but their bytes are held back; then the folders,
- * deepest first, their grants cascading in the schema; then one {@code ActionHistory} row for
- * the tree with its totals; and only then, with every row gone and nothing left that could
- * still fail, the bytes. A database failure anywhere before that point rolls back with every
- * byte still on disk.
- *
- * <p><b>The bytes never fail the delete.</b> Once the rows are gone the decision is made, and a
- * directory that cannot be removed - locked by a scanner, or already missing - must not undo it:
- * an exception there would roll the rows back after the bytes of the files before it were
- * already erased, leaving rows without bytes and a subtree that can never be deleted. So each
- * directory is removed on its own, a missing one is nothing to remove, a failure is logged with
- * its address and counted, and the audit row names the count. What is left behind is an orphan
- * directory nothing refers to, harmless and removable by hand.
- *
- * <p><b>The cap.</b> {@code filemanagement.folders.max-delete-files} (default 1000) bounds one
- * request: a tree above it is refused with a 409 that names the count, so that one call cannot
- * hold a transaction over a million rows or spend minutes on disk. A larger tree is deleted in
- * parts, from the leaves.
- *
- * <p><b>Access.</b> Removing a folder is a write into its parent, exactly as for the empty
- * delete; and since grants are path prefixes, write on the parent is write on everything
- * beneath, so nothing inside the tree needs asking separately. The root, the Profiles folder
- * and a home are never deleted this way (a home goes only with its user).
+ * <p><b>Access.</b> Removing a folder is a write into its parent; since grants are path prefixes, write on the parent
+ * is write on everything beneath. The root, the Profiles folder, a home and the bin are never deleted.
  */
 @Service
 public class FolderTreeDeleteService {
 
-    private static final Logger logger = LoggerFactory.getLogger(FolderTreeDeleteService.class);
+    /** What one call put in the bin - the numbers the client gets. */
+    public record DeletedTree(int folderId, long folders, long files, int trashEntryId) {}
 
-    /** What one call removed - the numbers the audit row and the client get. */
-    public record DeletedTree(int folderId, long folders, long files) {}
-
-    private final FolderRepository folderRepository;
-    private final FileInfoRepository fileInfoRepository;
-    private final FileService fileService;
-    private final FolderAccessService folderAccessService;
-    private final BlobStore blobStore;
-    private final ActionHistoryService actionHistoryService;
-    private final FileHistoryService fileHistoryService;
-
+    private final Trash trash;
     private final long maxDeleteFiles;
 
-    public FolderTreeDeleteService(FolderRepository folderRepository, FileInfoRepository fileInfoRepository,
-                                   FileService fileService, FolderAccessService folderAccessService,
-                                   BlobStore blobStore, ActionHistoryService actionHistoryService,
-                                   FileHistoryService fileHistoryService,
-                                   FileManagementProperties properties) {
-        this.folderRepository = folderRepository;
-        this.fileInfoRepository = fileInfoRepository;
-        this.fileService = fileService;
-        this.folderAccessService = folderAccessService;
-        this.blobStore = blobStore;
-        this.actionHistoryService = actionHistoryService;
-        this.fileHistoryService = fileHistoryService;
+    public FolderTreeDeleteService(Trash trash, FileManagementProperties properties) {
+        this.trash = trash;
         this.maxDeleteFiles = properties.folders().maxDeleteFiles();
     }
 
-    /** The most files one call may remove; a tree holding more is refused. */
+    /** The most files one call may delete; a tree holding more is refused. */
     public long maxDeleteFiles() {
         return maxDeleteFiles;
     }
 
     /**
-     * Removes the folder and everything beneath it.
+     * Deletes the folder and everything beneath it, into the recycle bin.
      *
-     * @throws ResourceNotFoundException    no such folder (404)
-     * @throws InvalidDataException         the root or a home folder (400)
-     * @throws DependencyResourceException  more files than one call may remove (409)
+     * @throws ResourceNotFoundException    no such folder, or one in the bin (404)
+     * @throws InvalidDataException         the root, the Profiles folder, a home (400)
+     * @throws DependencyResourceException  more files than one call may delete (409)
      * @throws org.springframework.security.access.AccessDeniedException no write access on the parent (403)
      */
-    @Transactional
     public DeletedTree deleteTree(int folderId, int principalId) {
-        Folder folder = folderRepository.findById(folderId)
-                .orElseThrow(() -> new ResourceNotFoundException("folder not found, id=" + folderId));
-        if (FolderService.isSystemFolder(folder)) {
-            throw new InvalidDataException("a " + folder.getKind() + " folder cannot be deleted: id=" + folderId);
-        }
-        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), folder.getParent());
-
-        long files = fileInfoRepository.countBySubtree(folder.getPath());
-        if (files > maxDeleteFiles) {
-            throw new DependencyResourceException("folder id=" + folderId + " holds " + files
-                    + " file(s), more than the " + maxDeleteFiles + " one delete may remove; delete it in parts");
-        }
-
-        // The rows of every file, its bytes' address kept for the end. Each file's history says it
-        // went with this folder.
-        String deletedWith = fileHistoryService.titleOf(folder);
-        List<String> addresses = new ArrayList<>();
-        for (Integer fileInfoId : fileInfoRepository.findIdsBySubtree(folder.getPath())) {
-            addresses.addAll(fileService.deleteFileRows(fileInfoId, principalId, deletedWith));
-        }
-
-        // The folders, deepest first: a child before its parent, so no foreign key is ever
-        // pointed at a row that is already gone. The folder itself is the shallowest and goes last.
-        List<Folder> subtree = new ArrayList<>(folderRepository.findSubtree(folder.getPath()));
-        subtree.sort(Comparator.comparingInt(Folder::getDepth).reversed());
-        String name = folder.getName();
-        for (Folder each : subtree) {
-            folderRepository.delete(each);
-        }
-        folderRepository.flush();
-
-        // Last, once nothing can fail in the database any more - and nothing here fails it.
-        List<String> leftBehind = removeBytes(addresses);
-
-        long folders = subtree.size() - 1;
-        actionHistoryService.saveActionHistory(EntityEnum.Folder, folderId, ActionEnum.DELETE, principalId,
-                "DELETE FOLDER TREE", "DELETE folder id=" + folderId + " (" + name + ") with " + folders
-                        + " folder(s) and " + files + " file(s) beneath"
-                        + (leftBehind.isEmpty() ? "" : "; " + leftBehind.size() + " director(ies) could not be removed: " + leftBehind));
-        logger.info("deleted folder tree id={} ({}): {} folder(s), {} file(s), {} director(ies) left behind",
-                folderId, name, folders, files, leftBehind.size());
-        return new DeletedTree(folderId, folders, files);
+        TrashEntry entry = trash.deleteFolder(folderId, principalId, true, maxDeleteFiles);
+        return new DeletedTree(folderId, entry.getFolders() - 1L, entry.getFiles(), entry.getId());
     }
 
     /**
-     * Removes each file's directory on its own: a missing one is nothing to remove, a failure is
-     * logged and returned, never thrown.
+     * Deletes an empty folder, into the recycle bin: 409 while it still holds folders or files.
      *
-     * @return the addresses that could not be removed, relative to {@code base-dir}
+     * @throws ResourceNotFoundException    no such folder, or one in the bin (404)
+     * @throws InvalidDataException         the root, the Profiles folder, a home (400)
+     * @throws DependencyResourceException  it holds a folder or a file (409)
+     * @throws org.springframework.security.access.AccessDeniedException no write access on the parent (403)
      */
-    private List<String> removeBytes(List<String> addresses) {
-        List<String> leftBehind = new ArrayList<>();
-        for (String address : addresses) {
-            try {
-                blobStore.deleteDirectory(address);
-            } catch (ResourceNotFoundException alreadyGone) {
-                logger.info("tree delete: nothing on disk at {}", address);
-            } catch (RuntimeException e) {
-                logger.error("tree delete: could not remove {} - left behind, remove it by hand: {}", address, e.getMessage());
-                leftBehind.add(address);
-            }
-        }
-        return leftBehind;
+    public void deleteEmpty(int folderId, int principalId) {
+        trash.deleteFolder(folderId, principalId, false, 0);
     }
 }

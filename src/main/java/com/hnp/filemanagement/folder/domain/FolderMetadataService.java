@@ -119,11 +119,12 @@ public class FolderMetadataService {
     @Transactional(readOnly = true)
     public Slice<Undescribed> undescribedUnder(int folderId, int page, int size, int principalId) {
         Folder folder = folderAccessService.requireFolder(folderId);
+        FolderAccessService.requireOutsideBin(folder);
         FolderAccess access = folderAccessService.accessFor(principalId);
-        if (!access.unrestricted() && !access.visible(folder.getPath())) {
+        if (!access.visible(folder.getPath())) {
             throw new AccessDeniedException("no access to folder id=" + folderId);
         }
-        Optional<Set<Integer>> children = access.unrestricted() ? Optional.empty() : access.visibleChildIdsUnder(folder.getPath());
+        Optional<Set<Integer>> children = access.visibleChildIdsUnder(folder.getPath());
         PageRequest request = PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, MAX_PAGE)));
         if (children.isPresent() && children.get().isEmpty()) {
             return new org.springframework.data.domain.SliceImpl<>(List.of(), request, false);
@@ -219,7 +220,8 @@ public class FolderMetadataService {
     }
 
     private static void requireRead(FolderAccess access, Folder folder) {
-        if (!access.unrestricted() && !access.canRead(folder.getPath())) {
+        FolderAccessService.requireOutsideBin(folder);
+        if (!access.canRead(folder.getPath())) {
             throw new AccessDeniedException("no read access to folder id=" + folder.getId());
         }
     }

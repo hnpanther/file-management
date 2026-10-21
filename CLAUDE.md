@@ -118,6 +118,14 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
   Making a folder holds `FolderClassLock` shared and reads its parent after; rewriting class paths (a class set, a
   move, the rules applied) holds it exclusively - a new way to do either takes it, or a folder made meanwhile keeps
   a class path from before (`FolderClassLockTest`).
+* **A delete removes nothing; it goes to the recycle bin** (2.18.0, roadmap 13.1, package `trash`): a file, a
+  revision, a folder - every way - is moved under the bin's folder, **outside the tree** (`Bin`: id 0, path `/0/`), by
+  `Trash`; `TrashRestore` brings it back, and only `TrashPurge` removes rows and bytes (the bytes after its commit).
+  Nothing reaches the bin - no grant, no administrator: a new list for an unrestricted reader leaves out
+  `path NOT LIKE '/0/%'` (as `ReadScopeSql.readable` does), a new by-id read goes through `requireReadAccess` /
+  `requireOutsideBin` (a 404), a new grant source leaves out folders in the bin, and the root is found by
+  `kind = 'ROOT'`, never by `parent_id IS NULL` (the bin has no parent either). A new way to delete calls `Trash`; a
+  new way to move a folder calls `TrashEntryRepository.followOrigins`. `TrashExclusionTest` holds it.
 * **An S3 handler takes only the query parameters it understands** (`S3Controller.asksWhatIsNotServed`,
   issue 116): a sub-resource it ignored ran as the plain operation - `DELETE …?tagging` deleted the
   file. A new S3 operation names its parameters there; anything else stays a 501.

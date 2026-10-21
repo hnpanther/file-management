@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.19`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.20`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -786,6 +786,50 @@ _As of migration `V3.19`. Types and defaults are PostgreSQL's own; every table i
 * **foreign key** `fk_tag_group_updated_by_user` `updated_by` → `app_user` (`id`)
 * **index** `fk_tag_group_created_by_user` (`created_by`)
 * **index** `fk_tag_group_updated_by_user` (`updated_by`)
+
+### `trash_entry`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `integer` | no |  | identity |
+| `kind` | `varchar(10)` | no |  |  |
+| `holder_folder_id` | `integer` | no |  |  |
+| `file_info_id` | `integer` | yes |  |  |
+| `file_details_id` | `integer` | yes |  |  |
+| `folder_id` | `integer` | yes |  |  |
+| `original_file_info_id` | `integer` | yes |  |  |
+| `origin_folder_id` | `integer` | yes |  |  |
+| `origin_path` | `varchar(1000)` | no |  |  |
+| `origin_title` | `varchar(1000)` | yes |  |  |
+| `original_name` | `varchar(100)` | no |  |  |
+| `search_name` | `varchar(200)` | no |  |  |
+| `deleted_at` | `timestamptz(0)` | no |  |  |
+| `deleted_by` | `integer` | no |  |  |
+| `deleted_by_api_key_id` | `integer` | yes |  |  |
+| `bytes` | `bigint` | no |  |  |
+| `files` | `integer` | no |  |  |
+| `folders` | `integer` | no |  |  |
+
+* **primary key** `id`
+* **unique** `uq_trash_entry_holder` (`holder_folder_id`)
+* **foreign key** `fk_trash_entry_api_key` `deleted_by_api_key_id` → `api_key` (`id`)
+* **foreign key** `fk_trash_entry_deleted_by` `deleted_by` → `app_user` (`id`)
+* **foreign key** `fk_trash_entry_file` `file_info_id` → `file_info` (`id`)
+* **foreign key** `fk_trash_entry_folder` `folder_id` → `folder` (`id`)
+* **foreign key** `fk_trash_entry_holder` `holder_folder_id` → `folder` (`id`)
+* **foreign key** `fk_trash_entry_origin` `origin_folder_id` → `folder` (`id`), on delete set null
+* **foreign key** `fk_trash_entry_original_file` `original_file_info_id` → `file_info` (`id`), on delete set null
+* **foreign key** `fk_trash_entry_revision` `file_details_id` → `file_details` (`id`)
+* **index** `ix_trash_entry_api_key` (`deleted_by_api_key_id`, only where `(deleted_by_api_key_id IS NOT NULL)`)
+* **index** `ix_trash_entry_deleted_at` (`deleted_at`, `id`)
+* **index** `ix_trash_entry_deleted_by` (`deleted_by`, `deleted_at`)
+* **index** `ix_trash_entry_file` (`file_info_id`, only where `(file_info_id IS NOT NULL)`)
+* **index** `ix_trash_entry_folder` (`folder_id`, only where `(folder_id IS NOT NULL)`)
+* **index** `ix_trash_entry_origin` (`origin_folder_id`, only where `(origin_folder_id IS NOT NULL)`)
+* **index** `ix_trash_entry_origin_path` (`origin_path`, for prefix `LIKE` (`varchar_pattern_ops`))
+* **index** `ix_trash_entry_original_file` (`original_file_info_id`, only where `(original_file_info_id IS NOT NULL)`)
+* **index** `ix_trash_entry_revision` (`file_details_id`, only where `(file_details_id IS NOT NULL)`)
+* **index** `ix_trash_entry_search_name_trgm` (`replace(search_name, ' ', '')`, trigram GIN for `LIKE '%term%'` (`gin_trgm_ops`))
 
 ### `upload_policy`
 

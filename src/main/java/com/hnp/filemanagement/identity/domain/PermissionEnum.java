@@ -178,6 +178,16 @@ public enum PermissionEnum {
     //password), sign-out and ended or expired session - who, when, from which address and browser, and why a refusal
     SIGN_IN_HISTORY_PAGE,
 
+    // ------------------------------------------------------------------ TrashController - /files/trash (2.18.0)
+
+    //@GetMapping - the recycle bin: what was deleted from the folders the person may write in, newest first
+    TRASH_PAGE,
+    //@PostMapping("/{entryId}/restore") - bring an entry back, to where it was or to a folder chosen
+    RESTORE_FROM_TRASH,
+    //@PostMapping("/{entryId}/purge"), @PostMapping("/purge-older") - remove entries for good, one or every one older
+    //than a date the person may restore; nothing comes back after it
+    PURGE_TRASH,
+
     // ===================================================================================================
 
     // UserController @RequestMapping("/users")===========================================================

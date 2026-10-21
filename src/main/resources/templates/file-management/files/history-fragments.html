@@ -55,6 +55,12 @@
           th:text="#{fileHistory.detail.movedFrom(${e.detail()})}"></span>
     <span th:if="${e.detail() != null and e.event().name() == 'FILE_DELETED'}"
           th:text="#{fileHistory.detail.deletedWith(${e.detail()})}"></span>
+    <span th:if="${e.detail() != null and e.event().name() == 'FILE_RESTORED'}"
+          th:text="#{fileHistory.detail.restoredWith(${e.detail()})}"></span>
+    <span th:if="${e.detail() != null and e.event().name() == 'REVISION_RESTORED'}"
+          th:text="#{fileHistory.detail.restoredAs(${e.detail()})}"></span>
+    <span th:if="${e.detail() == 'AUTO' and (e.event().name() == 'FILE_PURGED' or e.event().name() == 'REVISION_PURGED')}"
+          th:text="#{fileHistory.detail.purgedAutomatically}"></span>
     <span th:if="${e.detail() != null and e.event().name() == 'DESCRIPTION_CHANGED'}" class="history-detail-text"
           th:text="#{fileHistory.detail.newDescription(${e.detail()})}"></span>
     <span th:if="${e.detail() != null and e.event().name() == 'SHARE_LINK_CREATED'}"
