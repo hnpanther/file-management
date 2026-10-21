@@ -246,7 +246,29 @@ Two ways out deliberately bypass folder access, each narrow:
 * **Public files** (`/files/public-files`): only revisions marked public, listed to signed-in people or to everyone, as the
   setting `public-files.anonymous` says.
 * **A share link**: one revision, behind its token - with its expiry, optional password and download cap - made only
-  by someone who may read it. Revoking it, or deleting the revision, closes it.
+  by someone who may read it. Revoking it closes it; while its file is in the recycle bin it answers nothing, and once
+  the file is restored it answers again (if it has not expired); a purge removes it.
+
+---
+
+## The recycle bin
+
+Since 2.18.0 every delete moves what was deleted into the bin (roadmap 13.1): **one folder outside the tree** - no
+parent, id 0, path `/0/` - each deletion in a folder of its own beneath it. Nothing in it is reached by anybody:
+
+* **No grant covers it.** Every grant names a folder under the root, so none is a prefix of `/0/` - not a grant on
+  the root, not a class grant of no scope (scoped to the root's path, not `/`). A deleted folder keeps its grants (a
+  restore brings them back), and `GrantedFolderPath`, the grant queries and `FolderAccess` leave out every grant whose
+  folder - or class grant's scope - is in the bin. A class grant does not reach a deleted folder of its class.
+* **An administrator does not reach it either.** `FolderAccess` refuses a path in the bin to every reader, unrestricted
+  ones included; `ReadScopeSql.readable` and `visible` are `path NOT LIKE '/0/%'` for them, and every list written for
+  them says so (`Bin`). A file or folder in the bin named by its id is a **404** (`FolderAccessService.requireOutsideBin`),
+  as an id nobody has - never a refusal that would say it exists.
+* **Who may restore an entry** is whoever may **write** where it was deleted from - as access stands now, folder and
+  class grants alike - and an administrator; the bin page lists exactly those entries, and the entry's origin path
+  follows its folder while that is in the tree (a move of it rewrites the entries). Restoring also needs write where
+  it goes. **Purging** needs `PURGE_TRASH` as well.
+* What is in the bin still counts against the **quotas** above where it was deleted from, until it is purged.
 
 ---
 
@@ -318,3 +340,8 @@ Until the access report (roadmap 13.7, planned in full there) exists:
    and an oracle written from the definitions, must still agree. Measure it with `-Pscale`: estimates decide plans.
 5. **Keys stay out of class grants**: a key's rows in `GrantedFolderPath` are its folder grants alone
    (`FolderClassAccessTest.keysHaveNoClassGrants`).
+6. **Nothing in the recycle bin** (2.18.0): a new list for an unrestricted reader leaves out `path LIKE '/0/%'` (or is
+   bounded by a path in the tree); a new way to read a file or folder by id calls `requireOutsideBin` or goes through
+   `requireReadAccess` / `requireWriteAccess`, which do; a new grant source leaves out folders in the bin. A new way
+   to delete goes to the bin (`Trash`), never removes - only `TrashPurge` does. `TrashExclusionTest` asks it of every
+   kind of grant.

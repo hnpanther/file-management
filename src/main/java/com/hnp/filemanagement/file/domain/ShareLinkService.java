@@ -7,6 +7,7 @@ import com.hnp.filemanagement.audit.domain.ActionEnum;
 import com.hnp.filemanagement.audit.domain.EntityEnum;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
 import com.hnp.filemanagement.shared.exception.ResourceNotFoundException;
+import com.hnp.filemanagement.folder.domain.Bin;
 import com.hnp.filemanagement.file.persistence.FileDetailsRepository;
 import com.hnp.filemanagement.file.persistence.FileShareLinkRepository;
 import com.hnp.filemanagement.identity.persistence.UserRepository;
@@ -221,7 +222,17 @@ public class ShareLinkService {
         Instant now = Instant.now(clock);
         return hashOf(token)
                 .flatMap(shareLinkRepository::findByTokenHash)
-                .filter(link -> link.isUsableAt(now));
+                .filter(link -> link.isUsableAt(now))
+                .filter(ShareLinkService::outsideBin);
+    }
+
+    /**
+     * Whether the link's file is out of the recycle bin (roadmap 13.1). A link to a file in the bin answers nothing,
+     * as an unknown one does - and answers again once the file is restored, if it has not expired meanwhile: it is
+     * not revoked by a delete, which a restore could not undo.
+     */
+    private static boolean outsideBin(FileShareLink link) {
+        return !Bin.holds(link.getFileDetails().getFileInfo().getFolder());
     }
 
     /** The hash to look a token up by, or empty for what cannot be a token at all. */
@@ -247,6 +258,7 @@ public class ShareLinkService {
         FileShareLink link = hashOf(token)
                 .flatMap(shareLinkRepository::findByTokenHashForUpdate)
                 .filter(candidate -> candidate.isUsableAt(now))
+                .filter(ShareLinkService::outsideBin)
                 .orElseThrow(() -> new ResourceNotFoundException("no such share link"));
 
         if (link.hasPassword()) {

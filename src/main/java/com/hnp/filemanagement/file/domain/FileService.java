@@ -15,6 +15,9 @@ import com.hnp.filemanagement.storage.BlobStore;
 import com.hnp.filemanagement.storage.StorageKey;
 import com.hnp.filemanagement.storage.StorageWriter;
 import com.hnp.filemanagement.content.ContentQueue;
+import com.hnp.filemanagement.trash.Trash;
+import com.hnp.filemanagement.folder.domain.Bin;
+import jakarta.persistence.EntityManager;
 import com.hnp.filemanagement.storage.StoredBlob;
 import com.hnp.filemanagement.audit.domain.ActionEnum;
 import com.hnp.filemanagement.audit.domain.EntityEnum;
@@ -146,6 +149,8 @@ public class FileService {
     private final FileHistoryService fileHistoryService;
     private final MetadataRules metadataRules;
     private final ContentQueue contentQueue;
+    private final Trash trash;
+    private final EntityManager entityManager;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileDetailsRepository fileDetailsRepository,
@@ -162,7 +167,9 @@ public class FileService {
                        ApiKeyRepository apiKeyRepository,
                        FileHistoryService fileHistoryService,
                        MetadataRules metadataRules,
-                       ContentQueue contentQueue) {
+                       ContentQueue contentQueue,
+                       Trash trash,
+                       EntityManager entityManager) {
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
         this.userRepository = userRepository;
@@ -179,6 +186,8 @@ public class FileService {
         this.fileHistoryService = fileHistoryService;
         this.metadataRules = metadataRules;
         this.contentQueue = contentQueue;
+        this.trash = trash;
+        this.entityManager = entityManager;
     }
 
     // ------------------------------------------------------------------ upload
@@ -630,36 +639,41 @@ public class FileService {
     }
 
     /**
-     * Removes the file, every version of it, and the directory holding the bytes. A directory
-     * that is already gone is nothing to remove: a file whose bytes were lost must still be
-     * deletable, or its rows stay forever (the same rule the tree delete follows).
+     * Deletes the file, every version of it: to the recycle bin (roadmap 13.1, {@link Trash}), from which it is
+     * restored or purged - nothing is removed here, not a row and not a byte. Every way a file is deleted comes
+     * here: the explorer, the file page, v1 and v2 (a file's last revision), an S3 client.
+     *
+     * @throws ResourceNotFoundException no such file, or one in the bin already
      */
     @Transactional
     public void deleteCompleteFileById(int id, int principalId) {
-        // Removing a file is a write into its folder (issue 90). The tree delete reaches the rows
-        // through deleteFileRows instead, having judged the folder it removes as a whole.
-        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), getFileInfo(id));
-        List<String> addresses = deleteFileRows(id, principalId);
-        // The rows go to the database before a byte is touched, so that anything the database
-        // would refuse - a foreign key, a deadlock - is refused while the file is still whole.
-        // What is left after this is the commit itself; the tree delete flushes for the same
-        // reason (roadmap 2.3, issue 3).
-        fileInfoRepository.flush();
-        for (String address : addresses) {
-            try {
-                blobStore.deleteDirectory(address);
-            } catch (ResourceNotFoundException alreadyGone) {
-                logger.warn("delete of file id={}: nothing on disk at {}", id, address);
-            }
-        }
+        FileInfo fileInfo = lockFile(id);
+        // Removing a file is a write into its folder (issue 90), asked of the file as it is now that it is locked.
+        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), fileInfo);
+        trash.binFile(fileInfo, principalId);
     }
 
     /**
-     * The database half of a whole-file delete: the file's rows, every version's, the tags, and
+     * The file, its row locked and read again, with its revisions: a delete of it, of one of its revisions, and a
+     * second delete of either are one after the other, and the second finds the file where the first left it - in
+     * the bin, a 404 - rather than as this transaction may have read it before.
+     */
+    private FileInfo lockFile(int id) {
+        String folderPath = fileInfoRepository.lockAndReadFolderPath(id)
+                .orElseThrow(() -> new ResourceNotFoundException("file info with id=" + id + " not exists"));
+        // As committed now, not as this transaction may have read it: in the bin, it is gone.
+        if (Bin.holds(folderPath)) {
+            throw new ResourceNotFoundException("file info with id=" + id + " not exists (in the recycle bin)");
+        }
+        return getFileInfoWithFileDetails(id);
+    }
+
+    /**
+     * The database half of removing a file for good: the file's rows, every version's, the tags, and
      * the audit row - and the answer to where its bytes are, for the caller to remove once it is
-     * ready to. {@link #deleteCompleteFileById} removes them at once; a tree delete
-     * ({@link FolderTreeDeleteService}) removes every file's rows and every folder first and the
-     * bytes of all of them last, so that a failure in the database leaves the disk untouched.
+     * ready to. Since 2.18.0 only a purge of the recycle bin does this ({@code TrashPurge}): it removes
+     * every file's rows and every folder first and the bytes of all of them last, so that a failure in
+     * the database leaves the disk untouched.
      *
      * @return the directories on disk that are this file's alone, relative to {@code base-dir} -
      *         one, or two for a file stored before 2.10.0 that has revisions since; empty for a file
@@ -682,8 +696,21 @@ public class FileService {
      */
     @Transactional
     public List<String> deleteFileRows(int id, int principalId, String deletedWith) {
-
         FileInfo fileInfo = getFileInfoWithFileDetails(id);
+        return deleteFileRows(fileInfo, principalId, FileEvent.FILE_DELETED, fileInfo.getFolder(), deletedWith);
+    }
+
+    /**
+     * {@link #deleteFileRows(int, int)}, recording {@code event} at {@code recordAt} - the purge's
+     * {@code FILE_PURGED}, at the folder the file was deleted from rather than the bin's.
+     */
+    @Transactional
+    public List<String> deleteFileRows(int id, int principalId, FileEvent event, Folder recordAt, String detail) {
+        return deleteFileRows(getFileInfoWithFileDetails(id), principalId, event, recordAt, detail);
+    }
+
+    private List<String> deleteFileRows(FileInfo fileInfo, int principalId, FileEvent event, Folder recordAt, String detail) {
+        int id = fileInfo.getId();
         // The directories on disk that are this file's alone, read off every revision's stored key -
         // never rebuilt from folder names, nor from the file's name, which may differ from what was
         // written. Under an id-based layout that is the id directory itself (files/.../{id}), so
@@ -699,7 +726,7 @@ public class FileService {
         FileDetails latest = fileInfo.getFileDetailsList().stream()
                 .max(java.util.Comparator.comparing(FileDetails::getVersion).thenComparing(FileDetails::getId))
                 .orElse(null);
-        fileHistoryService.record(FileEvent.FILE_DELETED, fileInfo, latest, fileInfo.getFolder(), deletedWith, principalId);
+        fileHistoryService.record(event, fileInfo, latest, recordAt, detail, principalId);
 
         // Share links to any of its revisions first (roadmap 10.5), then the file and its revisions.
         fileShareLinkRepository.deleteAll(fileShareLinkRepository.findByFileDetailsFileInfoId(id));
@@ -711,28 +738,14 @@ public class FileService {
     }
 
     /**
-     * Removes one stored revision. Removing the only one removes the whole file.
-     *
-     * <p>Two things happen here that did not before.
-     *
-     * <p>The version is removed from the parent's collection and nothing else: {@code orphanRemoval}
-     * on {@code FileInfo.fileDetailsList} turns that into the delete. The old code did both — it
-     * removed from the list <em>and</em> called {@code delete()} — which worked only because there
-     * was no orphan removal to disagree with.
-     *
-     * <p>{@code lastVersion} is then recomputed. Deleting the newest version used to leave it
-     * pointing at a version that no longer existed, so the next upload of that version number was
-     * rejected as "wrong version" and the number could never be reused.
+     * Deletes one stored revision - to the recycle bin (roadmap 13.1); deleting the only one deletes the
+     * whole file. The file's {@code lastVersion} is then the highest version it has left, as a delete always
+     * made it: its latest is the one before, and the next upload takes the number again - a revision
+     * restored later to a number taken meanwhile comes back as the next version ({@code TrashRestore}).
      */
     @Transactional
     public void deleteFileDetails(int fileInfoId, int fileDetailsId, int principalId) {
-
-        FileDetails fileDetails = fileDetailsRepository.findByIdWithFileInfo(fileDetailsId)
-                .filter(fd -> Objects.equals(fd.getFileInfo().getId(), fileInfoId))
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "fileDetails with id=" + fileDetailsId + " and fileInfoId=" + fileInfoId + " not exists"));
-
-        deleteFileDetails(fileDetails, principalId);
+        deleteRevision(fileInfoId, fileDetailsId, principalId);
     }
 
     /**
@@ -742,59 +755,30 @@ public class FileService {
      */
     @Transactional
     public void deleteFileDetails(int fileDetailsId, int principalId) {
-        FileDetails fileDetails = fileDetailsRepository.findByIdWithFileInfo(fileDetailsId)
+        int fileInfoId = fileDetailsRepository.findFileInfoIdOf(fileDetailsId)
                 .orElseThrow(() -> new ResourceNotFoundException("fileDetails with id=" + fileDetailsId + " not exists"));
-        deleteFileDetails(fileDetails, principalId);
+        deleteRevision(fileInfoId, fileDetailsId, principalId);
     }
 
-    private void deleteFileDetails(FileDetails fileDetails, int principalId) {
-        int fileDetailsId = fileDetails.getId();
-        int fileInfoId = fileDetails.getFileInfo().getId();
-        FileInfo fileInfo = getFileInfoWithFileDetails(fileInfoId);
-
+    private void deleteRevision(int fileInfoId, int fileDetailsId, int principalId) {
+        FileInfo fileInfo = lockFile(fileInfoId);
         // Removing a version is a write into the file's folder, judged like a new version is: on
         // the file's own folder_id, failing closed. The v1 delete used to skip this - with folder
         // access on, the endpoint permission alone let a caller remove any file in the system.
         folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), fileInfo);
+        // Found in the file as it is now that it is locked: a revision deleted meanwhile is not one of its own.
+        FileDetails fileDetails = fileInfo.getFileDetailsList().stream()
+                .filter(revision -> revision.getId() == fileDetailsId)
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "fileDetails with id=" + fileDetailsId + " and fileInfoId=" + fileInfoId + " not exists"));
 
         if (fileInfo.getFileDetailsList().size() == 1) {
-            // Joins the transaction this method already opened, so the two deletes commit together.
-            deleteCompleteFileById(fileInfoId, principalId);
+            // The last revision takes the file with it, as it always did.
+            trash.binFile(fileInfo, principalId);
             return;
         }
-
-        int version = fileDetails.getVersion();
-        boolean lastFormatOfItsVersion = fileDetailsRepository.countByFileInfoIdAndVersion(fileInfoId, version) == 1;
-        String storageKey = fileDetails.getStorageKey();
-        // Asked before any row changes: a key of no known layout is refused while the file is whole.
-        String versionDirectory = StorageLayout.versionDirectoryOf(storageKey, fileInfoId);
-
-        fileHistoryService.record(FileEvent.REVISION_DELETED, fileDetails, null, principalId);
-
-        // A share link to this revision goes with it - said here, not left to the schema's
-        // cascade, so that a link already in the persistence context cannot outlive its target.
-        fileShareLinkRepository.deleteAll(fileShareLinkRepository.findByFileDetailsId(fileDetailsId));
-
-        fileInfo.removeFileDetails(fileDetails);
-        fileInfoRepository.recalculateLastVersion(fileInfoId);
-
-        actionHistoryService.saveActionHistory(EntityEnum.FileDetails, fileDetailsId, ActionEnum.DELETE, principalId,
-                "DELETE FILE_DETAILS", "Delete version " + version + " of file id=" + fileInfoId);
-
-        // As in a whole-file delete: everything the database could refuse is sent before any
-        // byte is removed, so a refusal leaves the revision whole rather than rowed but empty.
-        fileDetailsRepository.flush();
-
-        // The last format of a version leaves an empty version directory behind; anything else is
-        // one file inside a directory that still holds others. (A version whose formats were stored
-        // in two layouts - one added after 2.10.0 to a version from before - has two directories;
-        // the first emptied stays, empty, until the whole file goes.)
-        if (lastFormatOfItsVersion) {
-            // The version directory holds the key, so this removes the file with it.
-            blobStore.deleteDirectory(versionDirectory);
-        } else {
-            blobStore.delete(StorageKey.of(storageKey));
-        }
+        trash.binRevision(fileInfo, fileDetails, principalId);
     }
 
     // ------------------------------------------------------------------ queries
@@ -816,6 +800,8 @@ public class FileService {
         FileDetails fileDetails = fileDetailsRepository.findByIdWithFileInfo(fileDetailsId).orElseThrow(
                 () -> new ResourceNotFoundException("fileDetails with id=" + fileDetailsId + " not exists")
         );
+        // ShareLinkService answers nothing for a link to a file in the recycle bin; said here too (roadmap 13.1).
+        FolderAccessService.requireOutsideBin(fileDetails.getFileInfo());
         return toDownload(fileDetails);
     }
 

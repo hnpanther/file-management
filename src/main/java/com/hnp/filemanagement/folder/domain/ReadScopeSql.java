@@ -41,11 +41,13 @@ public final class ReadScopeSql {
     /**
      * Whether the folder {@code alias} is readable in the scope: under one of the grants - and, for a class
      * grant (roadmap Phase 14), of its class or beneath a folder of it ({@code class_path}; a folder grant's
-     * key is empty, which every class path matches).
+     * key is empty, which every class path matches). For an unrestricted reader, every folder but those in the
+     * recycle bin ({@link Bin}) - a restricted one's grants never reach it.
      */
     public static String readable(FolderReadScope scope, String alias) {
         if (scope.unrestricted()) {
-            return "TRUE";
+            // Everything but the recycle bin (roadmap 13.1), which no grant reaches and an administrator does not either.
+            return "(" + Bin.notIn(alias) + ")";
         }
         // The class test only for a reader who holds a class grant (FolderReadScope.classes): every other reader's
         // statement is what it was. As strpos(...) > 0, not a second LIKE: a LIKE of an unknown pattern is estimated
@@ -93,7 +95,7 @@ public final class ReadScopeSql {
      */
     public static String visible(FolderReadScope scope, String alias) {
         if (scope.unrestricted()) {
-            return "TRUE";
+            return "(" + Bin.notIn(alias) + ")";
         }
         return "(" + readable(scope, alias) + " OR EXISTS (SELECT 1 FROM granted g WHERE g.class_id = 0 AND g.path LIKE "
                 + alias + ".path || '%' AND g.path <> " + alias + ".path)"

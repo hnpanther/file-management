@@ -15,6 +15,7 @@ import com.hnp.filemanagement.folder.domain.FolderClassRules;
 import com.hnp.filemanagement.folder.domain.FolderAccess;
 import com.hnp.filemanagement.folder.domain.FolderAccessService;
 import com.hnp.filemanagement.folder.domain.FolderService;
+import com.hnp.filemanagement.folder.domain.FolderTreeDeleteService;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import com.hnp.filemanagement.identity.domain.ApiKey;
 import com.hnp.filemanagement.shared.exception.InvalidDataException;
@@ -63,11 +64,12 @@ public class S3ObjectService {
     private final FolderService folderService;
     private final FileService fileService;
     private final S3ListingRepository listingRepository;
+    private final FolderTreeDeleteService folderDeleteService;
 
     public S3ObjectService(FolderRepository folderRepository, FileInfoRepository fileInfoRepository,
                            FileDetailsRepository fileDetailsRepository, FolderAccessService folderAccessService,
                            FolderService folderService, FileService fileService,
-                           S3ListingRepository listingRepository) {
+                           S3ListingRepository listingRepository, FolderTreeDeleteService folderDeleteService) {
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.fileDetailsRepository = fileDetailsRepository;
@@ -75,6 +77,7 @@ public class S3ObjectService {
         this.folderService = folderService;
         this.fileService = fileService;
         this.listingRepository = listingRepository;
+        this.folderDeleteService = folderDeleteService;
     }
 
     /** No such bucket, folder or file: {@code NoSuchBucket} or {@code NoSuchKey}. */
@@ -309,7 +312,8 @@ public class S3ObjectService {
             if (folderRepository.countSubtree(target.getPath()) > 1 || fileInfoRepository.existsByFolderId(target.getId())) {
                 throw new FolderNotEmpty("the folder is not empty: " + key);
             }
-            folderService.delete(target.getId(), principalId);
+            // Into the recycle bin (roadmap 13.1), as every delete; checked again there, under its lock.
+            folderDeleteService.deleteEmpty(target.getId(), principalId);
             return;
         }
         Optional<FileInfo> file = fileInfoRepository.findByFolderIdAndSearchNameWithDetails(folder.get().getId(),

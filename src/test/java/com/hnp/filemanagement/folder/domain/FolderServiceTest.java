@@ -51,6 +51,10 @@ class FolderServiceTest extends DatabaseSupport {
     @Autowired
     private FolderService underTest;
     @Autowired
+    private FolderTreeDeleteService folderDeleteService;
+    @Autowired
+    private FolderAccessService folderAccessService;
+    @Autowired
     private ActionHistoryService actionHistoryService;
     @Autowired
     private TagMirrorService tagMirrorService;
@@ -502,44 +506,49 @@ class FolderServiceTest extends DatabaseSupport {
     class Deleting {
 
         @Test
-        @DisplayName("only an empty folder goes: one holding a folder or a file is a 409, and nothing is removed")
+        @DisplayName("only an empty folder goes - to the recycle bin: one holding a folder or a file is a 409, and nothing moves")
         void onlyAnEmptyFolderIsDeleted() {
-            assertThatThrownBy(() -> underTest.delete(chain.subCategoryId(), adminId))
+            assertThatThrownBy(() -> folderDeleteService.deleteEmpty(chain.subCategoryId(), adminId))
                     .isInstanceOf(DependencyResourceException.class).hasMessageContaining("folder(s)");
 
             fileInfoRepository.saveAndFlush(TestData.fileInfo(admin, chain.tag(), "keep" + TestData.nextSequence()));
-            assertThatThrownBy(() -> underTest.delete(chain.tagId(), adminId))
+            assertThatThrownBy(() -> folderDeleteService.deleteEmpty(chain.tagId(), adminId))
                     .isInstanceOf(DependencyResourceException.class).hasMessageContaining("file(s)");
-            assertThat(folderRepository.findById(chain.tagId())).isPresent();
+            assertThat(folderRepository.findById(chain.tagId()).orElseThrow().getPath()).doesNotStartWith(Bin.PATH);
 
             Folder empty = FolderFixture.tag(folderRepository, chain.subCategory(), admin, "Empty" + TestData.nextSequence());
-            underTest.delete(empty.getId(), adminId);
+            folderDeleteService.deleteEmpty(empty.getId(), adminId);
             entityManager.flush();
-            assertThat(folderRepository.findById(empty.getId())).isEmpty();
+            entityManager.clear();
+            assertThat(folderRepository.findById(empty.getId()).orElseThrow().getPath()).startsWith(Bin.PATH);
             assertThat(actionHistoryService.getActionHistoriesOfEntity(empty.getId(), EntityEnum.Folder)).hasSize(1);
         }
 
         @Test
-        @DisplayName("deleting takes its grants with it, needs write access on the parent, and never touches the root")
+        @DisplayName("deleting keeps its grants but they cover nothing, needs write access on the parent, and never touches the root")
         void deletingTakesGrantsNeedsTheParentAndSparesTheRoot() {
             Folder empty = FolderFixture.tag(folderRepository, chain.subCategory(), admin, "Empty" + TestData.nextSequence());
             grant(restrictedId, empty.getId(), FolderPermission.WRITE);
-            assertThatThrownBy(() -> underTest.delete(empty.getId(), restrictedId))
+            assertThatThrownBy(() -> folderDeleteService.deleteEmpty(empty.getId(), restrictedId))
                     .as("write on the folder itself is not write on its parent")
                     .isInstanceOf(AccessDeniedException.class);
 
             grant(restrictedId, chain.subCategoryId(), FolderPermission.WRITE);
-            underTest.delete(empty.getId(), restrictedId);
+            folderDeleteService.deleteEmpty(empty.getId(), restrictedId);
             entityManager.flush();
             entityManager.clear();
-            assertThat(folderRepository.findById(empty.getId())).isEmpty();
+            String inBin = folderRepository.findById(empty.getId()).orElseThrow().getPath();
+            assertThat(inBin).startsWith(Bin.PATH);
+            // The grant is kept, for a restore to bring back - and reaches nothing while the folder is in the bin.
             assertThat(userRepository.findById(restrictedId).orElseThrow().getFolderGrants())
                     .extracting(g -> g.getFolder().getId())
-                    .doesNotContain(empty.getId());
+                    .contains(empty.getId());
+            assertThat(folderAccessService.accessFor(restrictedId).canRead(inBin)).isFalse();
+            assertThat(folderAccessService.accessFor(restrictedId).readablePaths()).noneMatch(Bin::holds);
 
-            assertThatThrownBy(() -> underTest.delete(rootId, adminId))
+            assertThatThrownBy(() -> folderDeleteService.deleteEmpty(rootId, adminId))
                     .isInstanceOf(InvalidDataException.class).hasMessageContaining("ROOT");
-            assertThatThrownBy(() -> underTest.delete(999_999, adminId))
+            assertThatThrownBy(() -> folderDeleteService.deleteEmpty(999_999, adminId))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
     }

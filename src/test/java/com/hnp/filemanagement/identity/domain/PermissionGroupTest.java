@@ -61,19 +61,21 @@ class PermissionGroupTest {
      * made of has to be made here as well - on purpose.
      */
     @Test
-    @DisplayName("USER reads, writes and deletes files, manages folders and makes share links - and administers nothing")
+    @DisplayName("USER reads, writes and deletes files, restores them from the bin, manages folders and makes share links - and administers nothing")
     void theUserRole() {
         assertThat(FixedRole.USER.groups()).containsExactly(
                 PermissionGroup.FILE_READ, PermissionGroup.FILE_WRITE, PermissionGroup.FILE_DELETE,
-                PermissionGroup.FOLDER_MANAGE, PermissionGroup.SHARE_LINKS);
+                PermissionGroup.TRASH, PermissionGroup.FOLDER_MANAGE, PermissionGroup.SHARE_LINKS);
         assertThat(FixedRole.USER_PERMISSIONS).contains(
                 PermissionEnum.FILE_EXPLORER_PAGE, PermissionEnum.REST_GET_FOLDER_CONTENT,
                 PermissionEnum.DOWNLOAD_FILE, PermissionEnum.SAVE_NEW_FILE, PermissionEnum.REST_DELETE_FILE_INFO,
-                PermissionEnum.REST_CREATE_FOLDER, PermissionEnum.CREATE_SHARE_LINK);
+                PermissionEnum.REST_CREATE_FOLDER, PermissionEnum.CREATE_SHARE_LINK,
+                PermissionEnum.TRASH_PAGE, PermissionEnum.RESTORE_FROM_TRASH);
 
         Set<PermissionEnum> administration = PermissionGroup.membersOf(PermissionGroup.USERS_ADMIN, PermissionGroup.ROLES_ADMIN,
                 PermissionGroup.SETTINGS_ADMIN, PermissionGroup.API_KEYS_ADMIN, PermissionGroup.API_V1,
-                PermissionGroup.FOLDER_DELETE_TREE, PermissionGroup.SHARE_LINKS_ADMIN, PermissionGroup.FILE_PUBLISH);
+                PermissionGroup.FOLDER_DELETE_TREE, PermissionGroup.SHARE_LINKS_ADMIN, PermissionGroup.FILE_PUBLISH,
+                PermissionGroup.TRASH_PURGE);
         assertThat(FixedRole.USER_PERMISSIONS).doesNotContainAnyElementsOf(administration)
                 .doesNotContain(PermissionEnum.ADMIN, PermissionEnum.API_KEY);
     }

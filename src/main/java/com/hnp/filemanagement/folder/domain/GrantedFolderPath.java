@@ -28,7 +28,7 @@ import org.hibernate.annotations.Synchronize;
  *               AND LOCATE(g.classKey, folder.classPath) > 0)
  * </pre>
  *
- * <p><b>A class grant is one row too</b> (roadmap Phase 14): its scope folder's path - {@code /}, everything,
+ * <p><b>A class grant is one row too</b> (roadmap Phase 14): its scope folder's path - the root's, everything,
  * without one - and its class as {@code classKey}, {@code /9/}, which a folder's {@code class_path} holds when
  * it is of the class or beneath a folder of it. A folder grant's {@code classKey} is empty, and an empty
  * string is found at position 1 of every class path - so one predicate serves both, and a role granted a class of
@@ -42,6 +42,10 @@ import org.hibernate.annotations.Synchronize;
  * and answers exactly what {@link FolderAccess#canRead} answers: a grant of either verb covers its
  * folder and everything beneath it ({@code path} ends in a slash, so {@code /1/5/} does not cover
  * {@code /1/50/}).
+ *
+ * <p><b>Nothing in the recycle bin</b> ({@link Bin}, roadmap 13.1). A deleted folder keeps its grants - a restore brings
+ * them back - so a grant whose folder, or whose class grant's scope, is in the bin is left out here; and a class grant
+ * of no scope is scoped to the root's path rather than {@code /}, which would be a prefix of the bin's too.
  */
 @Entity
 @Immutable
@@ -60,15 +64,21 @@ public class GrantedFolderPath {
         SELECT 'u' || uf.user_id || '-' || uf.folder_id AS id, uf.user_id AS user_id, 0 AS api_key_id, f.path AS path,
                CAST('' AS VARCHAR(20)) AS class_key, 0 AS class_id
         FROM user_folder uf JOIN folder f ON f.id = uf.folder_id
+        WHERE f.path NOT LIKE '/0/%'
         UNION ALL
         SELECT 'r' || ur.user_id || '-' || rf.role_id || '-' || rf.folder_id, ur.user_id, 0, f.path, '', 0
         FROM user_role ur JOIN role_folder rf ON rf.role_id = ur.role_id JOIN folder f ON f.id = rf.folder_id
+        WHERE f.path NOT LIKE '/0/%'
         UNION ALL
         SELECT 'k' || akf.api_key_id || '-' || akf.folder_id, 0, akf.api_key_id, f.path, '', 0
         FROM api_key_folder akf JOIN folder f ON f.id = akf.folder_id
+        WHERE f.path NOT LIKE '/0/%'
         UNION ALL
-        SELECT 'c' || ur.user_id || '-' || g.id, ur.user_id, 0, COALESCE(s.path, '/'), '/' || g.class_id || '/', g.class_id
+        SELECT 'c' || ur.user_id || '-' || g.id, ur.user_id, 0,
+               COALESCE(s.path, (SELECT r.path FROM folder r WHERE r.parent_id IS NULL AND r.kind = 'ROOT')),
+               '/' || g.class_id || '/', g.class_id
         FROM user_role ur JOIN role_class_grant g ON g.role_id = ur.role_id LEFT JOIN folder s ON s.id = g.scope_folder_id
+        WHERE s.id IS NULL OR s.path NOT LIKE '/0/%'
         """;
 
     @Id

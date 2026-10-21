@@ -155,6 +155,7 @@ public class FolderContentService {
         FileInfo file = fileInfoRepository.findById(fileId)
                 .orElseThrow(() -> new InvalidDataException("no file with id=" + fileId));
         Folder folder = file.getFolder();
+        FolderAccessService.requireOutsideBin(folder);
         FolderAccess access = folderAccessService.accessFor(principalId);
         if (!access.canRead(folder.getPath())) {
             throw new AccessDeniedException("no read access to the folder of file id=" + fileId);
@@ -292,6 +293,7 @@ public class FolderContentService {
         FolderAccess access = folderAccessService.accessFor(principalId);
         Folder folder = folderRepository.findByIdWithDetails(folderId)
                 .orElseThrow(() -> new InvalidDataException("folder not found, id=" + folderId));
+        FolderAccessService.requireOutsideBin(folder);
         if (folder.getKind() != FolderKind.ROOT && !access.visible(folder.getPath())) {
             throw new AccessDeniedException("no folder access to folder id=" + folderId);
         }
@@ -400,6 +402,7 @@ public class FolderContentService {
             return rootFolder();
         }
         Folder folder = folderAccessService.requireFolder(folderId);
+        FolderAccessService.requireOutsideBin(folder);
         if (folder.getKind() != FolderKind.ROOT && !access.visible(folder.getPath())) {
             throw new AccessDeniedException("no folder access to folder id=" + folderId);
         }

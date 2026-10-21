@@ -41,7 +41,8 @@ public enum EntityEnum {
     AppSetting("app_setting"),
     FileShareLink("file_share_link"),
     FolderClass("folder_class"),
-    RoleClassGrant("role_class_grant")
+    RoleClassGrant("role_class_grant"),
+    TrashEntry("trash_entry")
     ;
 
 

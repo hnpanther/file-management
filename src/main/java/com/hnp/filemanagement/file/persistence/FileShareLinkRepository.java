@@ -47,23 +47,27 @@ public interface FileShareLinkRepository extends JpaRepository<FileShareLink, In
             """)
     Optional<FileShareLink> findByIdWithDetails(@Param("id") int id);
 
-    /** A page of a person's own links, newest first, with the revision and its file. */
+    /**
+     * A page of a person's own links, newest first, with the revision and its file - but not those to a file in the
+     * recycle bin (roadmap 13.1), which answer nothing while it is there and come back with it.
+     */
     @Query("""
             SELECT l FROM FileShareLink l
             JOIN FETCH l.fileDetails fd
             JOIN FETCH fd.fileInfo fi
             JOIN FETCH l.createdBy
-            WHERE l.createdBy.id = :userId
+            WHERE l.createdBy.id = :userId AND fi.folder.path NOT LIKE '/0/%'
             ORDER BY l.id DESC
             """)
     Slice<FileShareLink> findPageByCreator(@Param("userId") int userId, Pageable pageable);
 
-    /** A page of every link, newest first - for whoever may revoke any and reads every folder. */
+    /** A page of every link, newest first - for whoever may revoke any and reads every folder; none in the bin. */
     @Query("""
             SELECT l FROM FileShareLink l
             JOIN FETCH l.fileDetails fd
             JOIN FETCH fd.fileInfo fi
             JOIN FETCH l.createdBy
+            WHERE fi.folder.path NOT LIKE '/0/%'
             ORDER BY l.id DESC
             """)
     Slice<FileShareLink> findPageOfAll(Pageable pageable);

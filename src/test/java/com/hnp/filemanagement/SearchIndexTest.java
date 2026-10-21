@@ -165,7 +165,8 @@ class SearchIndexTest extends DatabaseSupport {
                 "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname LIKE '%\\_trgm' AND tablename <> 'file_history'",
                 String.class);
 
-        assertThat(definitions).hasSize(6).allSatisfy(definition -> assertThat(definition)
+        // Six of files and folders, and the recycle bin's (2.18.0).
+        assertThat(definitions).hasSize(7).allSatisfy(definition -> assertThat(definition)
                 .contains("USING gin (replace(", "' '::text, ''::text) gin_trgm_ops)"));
         // The history stores its key already without spaces (FileHistory.searchName): the column itself.
         assertThat(jdbcTemplate.queryForObject(

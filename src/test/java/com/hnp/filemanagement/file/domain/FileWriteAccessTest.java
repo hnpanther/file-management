@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.domain;
 
+import static com.hnp.filemanagement.support.BinAssert.*;
 import com.hnp.filemanagement.folder.domain.FolderPermission;
 import com.hnp.filemanagement.identity.domain.User;
 import com.hnp.filemanagement.folder.domain.UserFolderGrant;
@@ -39,6 +40,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @TestPropertySource(properties = "filemanagement.folder-access.enabled=true")
 class FileWriteAccessTest extends DatabaseSupport {
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate binJdbc;
     @Autowired
     private FileService underTest;
     @Autowired
@@ -99,7 +102,7 @@ class FileWriteAccessTest extends DatabaseSupport {
 
         underTest.deleteCompleteFileById(file.getFileInfoId(), writerId);
         flushAndClear();
-        assertThat(fileInfoRepository.findById(file.getFileInfoId())).isEmpty();
+        fileInBin(binJdbc, file.getFileInfoId());
     }
 
     @Test
@@ -108,7 +111,7 @@ class FileWriteAccessTest extends DatabaseSupport {
         underTest.updateFileInfoDescription(file.getFileInfoId(), "by the admin", adminId);
         underTest.deleteCompleteFileById(file.getFileInfoId(), adminId);
         flushAndClear();
-        assertThat(fileInfoRepository.findById(file.getFileInfoId())).isEmpty();
+        fileInBin(binJdbc, file.getFileInfoId());
     }
 
     private void refusesAll(int principalId) {

@@ -33,7 +33,9 @@ public final class ContentReadingSql {
      * space either side, as it is put between the ends of text blocks, which drop their trailing spaces.
      */
     public static String reads(String alias) {
-        return " COALESCE((SELECT r.content_reading FROM rules r WHERE " + alias + ".path LIKE r.path || '%' "
-                + "ORDER BY r.depth DESC LIMIT 1), TRUE) ";
+        // Never in the recycle bin (roadmap 13.1), whatever a deleted folder said: what is waiting there is held
+        // back, and queued again by the restore's settling. What was read is kept, and found by nobody meanwhile.
+        return " (" + Bin.notIn(alias) + " AND COALESCE((SELECT r.content_reading FROM rules r WHERE " + alias
+                + ".path LIKE r.path || '%' ORDER BY r.depth DESC LIMIT 1), TRUE)) ";
     }
 }

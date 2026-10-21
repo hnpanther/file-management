@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.file.web;
 
+import static com.hnp.filemanagement.support.BinAssert.*;
 import com.hnp.filemanagement.storage.StorageLayout;
 import com.hnp.filemanagement.identity.security.UserDetailsImpl;
 import com.hnp.filemanagement.identity.domain.PermissionEnum;
@@ -105,11 +106,12 @@ class FileApiDeleteTest extends DatabaseSupport {
                 .andExpect(jsonPath("$.outcome").value("DELETED"))
                 .andExpect(jsonPath("$.id").value(fileDetailsId));
 
-        assertThat(fileInfoRepository.findById(fileInfoId)).isEmpty();
-        assertThat(fileDetailsRepository.findById(fileDetailsId)).isEmpty();
+        // To the recycle bin since 2.18.0: the file, its revision, its tags and its bytes, as they were.
+        fileInBin(jdbcTemplate, fileInfoId);
+        revisionInBin(jdbcTemplate, fileDetailsId);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM file_tag WHERE file_info_id = ?", Integer.class, fileInfoId))
-                .isZero();
-        assertThat(fileDirectory).as("the file's whole directory on disk is gone with it").doesNotExist();
+                .isEqualTo(3);
+        assertThat(fileDirectory).as("its bytes stay until it is purged").exists();
 
         mockMvc.perform(delete("/api/v1/files/file-info/{f}/file-details/{d}", fileExternalId, detailsExternalId)
                         .with(user(machine()))
@@ -145,11 +147,11 @@ class FileApiDeleteTest extends DatabaseSupport {
 
         assertThat(fileInfoRepository.findById(fileInfoId)).isPresent();
         assertThat(fileDetailsRepository.findById(first[1])).isPresent();
-        assertThat(fileDetailsRepository.findById(v2DetailsId)).isEmpty();
+        revisionInBin(jdbcTemplate, v2DetailsId);
         Path fileDirectory = Paths.get(baseDir).resolve(StorageLayout.directoryFor(fileInfoId));
         assertThat(Paths.get(baseDir).resolve(jdbcTemplate.queryForObject(
                 "SELECT storage_key FROM file_details WHERE id = ?", String.class, first[1]))).exists();
-        assertThat(fileDirectory.resolve(Paths.get("rev", "v2"))).doesNotExist();
+        assertThat(fileDirectory.resolve(Paths.get("rev", "v2"))).as("until it is purged").exists();
         assertThat(fileInfoRepository.findById(fileInfoId).orElseThrow().getLastVersion()).isEqualTo(1);
     }
 

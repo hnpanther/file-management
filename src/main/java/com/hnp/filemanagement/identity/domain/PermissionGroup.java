@@ -74,8 +74,17 @@ public enum PermissionGroup {
     /** A folder's class set, and the classes' rules applied below a folder, where the person may write (roadmap Phase 14). */
     FOLDER_CLASS_SET(SET_FOLDER_CLASS),
 
-    /** Deleting a file, or one of its versions. */
+    /** Deleting a file, or one of its versions - into the recycle bin since 2.18.0. */
     FILE_DELETE(REST_DELETE_FILE_INFO, REST_DELETE_FILE_DETAILS),
+
+    /**
+     * The recycle bin (2.18.0): what was deleted from where the person may write, and bringing it back - every
+     * account's, as deleting is: a delete one cannot undo is the worse half.
+     */
+    TRASH(TRASH_PAGE, RESTORE_FROM_TRASH),
+
+    /** Removing from the recycle bin for good - what the person may restore; kept apart: nothing comes back. */
+    TRASH_PURGE(PURGE_TRASH),
 
     /** Creating, renaming, moving and deleting empty folders. */
     FOLDER_MANAGE(REST_CREATE_FOLDER, REST_RENAME_FOLDER, REST_MOVE_FOLDER, REST_DELETE_FOLDER, REST_GET_TAG_GROUPS),

@@ -14,6 +14,7 @@ import com.hnp.filemanagement.folder.persistence.TagGroupRepository;
 import com.hnp.filemanagement.identity.persistence.UserRepository;
 import com.hnp.filemanagement.shared.util.SearchKey;
 import jakarta.persistence.EntityManager;
+import com.hnp.filemanagement.trash.TrashEntryRepository;
 import com.hnp.filemanagement.shared.validation.ValidationUtil;
 import com.hnp.filemanagement.shared.config.FileManagementProperties;
 import org.springframework.context.ApplicationEventPublisher;
@@ -57,9 +58,9 @@ import java.util.stream.Collectors;
  * folder it came from; a top-level folder moved beneath another loses its own, since only the top
  * level carries one.
  *
- * <p><b>Deleting</b> is refused while anything is inside: the foreign keys say so
- * ({@code RESTRICT}), and this says it first with a message. Deleting a folder <em>with</em>
- * what is inside is {@link FolderTreeDeleteService}, behind a permission of its own.
+ * <p><b>Deleting</b> is not here since 2.18.0: a folder deleted goes to the recycle bin
+ * ({@code trash.Trash#deleteFolder}, roadmap 13.1) - an empty one, or with what is inside
+ * ({@link FolderTreeDeleteService}, behind a permission of its own).
  *
  * <p><b>Access.</b> Creating or deleting a child is a write into the parent; renaming is a write
  * into the folder itself; moving is a write into both parents. Judged like an upload, on the
@@ -86,17 +87,20 @@ public class FolderService {
     private final ApplicationEventPublisher events;
     private final FolderClassLock folderClassLock;
     private final EntityManager entityManager;
+    private final TrashEntryRepository trashEntryRepository;
 
     public FolderService(FolderRepository folderRepository, FileInfoRepository fileInfoRepository,
                          TagGroupRepository tagGroupRepository, UserRepository userRepository,
                          FolderAccessService folderAccessService, TagMirrorService tagMirrorService,
                          ActionHistoryService actionHistoryService, FolderQuotaService folderQuotaService,
                          FileManagementProperties properties, ApplicationEventPublisher events,
-                         FolderClassLock folderClassLock, EntityManager entityManager) {
+                         FolderClassLock folderClassLock, EntityManager entityManager,
+                         TrashEntryRepository trashEntryRepository) {
         int maxDepth = properties.folders().maxDepth();
         this.events = events;
         this.folderClassLock = folderClassLock;
         this.entityManager = entityManager;
+        this.trashEntryRepository = trashEntryRepository;
         this.folderRepository = folderRepository;
         this.fileInfoRepository = fileInfoRepository;
         this.tagGroupRepository = tagGroupRepository;
@@ -139,10 +143,10 @@ public class FolderService {
         return folder.getFolderClass() != null && folder.getFolderClass().isContainerOnly();
     }
 
-    /** The kinds nobody renames, moves or deletes by hand: the root, the Profiles folder, a home. */
-    static boolean isSystemFolder(Folder folder) {
+    /** The kinds nobody renames, moves or deletes by hand: the root, the Profiles folder, a home, the recycle bin. */
+    public static boolean isSystemFolder(Folder folder) {
         return folder.getKind() == FolderKind.ROOT || folder.getKind() == FolderKind.PROFILES
-                || folder.getKind() == FolderKind.USER_HOME;
+                || folder.getKind() == FolderKind.USER_HOME || folder.getKind() == FolderKind.TRASH;
     }
 
     /** The root every folder descends from - a broken installation if there is not exactly one. */
@@ -454,6 +458,80 @@ public class FolderService {
         // that the tags can be re-derived without asking anyone which group they mean.
         TagGroup groupBefore = topOf(ancestryOf(folder)).getTagGroup();
 
+        int oldParentId = oldParent.getId();
+        Folder moved = relocate(folder, newParent, toTopLevel ? groupBefore : null, principalId);
+        actionHistoryService.saveActionHistory(EntityEnum.Folder, folderId, ActionEnum.UPDATE_VALUES, principalId,
+                "MOVE FOLDER", "MOVE folder id=" + folderId + " from folder id=" + oldParentId
+                        + " to folder id=" + newParentId);
+        return toDto(moved);
+    }
+
+    /**
+     * Brings a folder of the recycle bin back into the tree, with everything beneath it, under {@code newParent} as
+     * {@code name} (roadmap 13.1) - for {@code TrashRestore} alone, which found the folder in its entry and asked who
+     * may restore it. Asked of where it lands as a move is: write access, a parent that takes folders, the name free
+     * and allowed there by the parent's class, the depth limit, the quotas above; and, at the top level, the tag
+     * group it carried there before it was deleted - a folder that was never a top-level one has none, and is
+     * restored below one. Then rewritten as a move is: paths, key paths, depths, class paths, tags, the reading of
+     * its files, the entries deleted from beneath it.
+     *
+     * @param originPath the entry's origin path: a quota above it already counts the folder's bytes
+     * @throws InvalidDataException with a message code, for each refusal a person reads
+     */
+    @Transactional
+    public FolderDTO restoreFromBin(Folder folder, Folder newParent, String name, String originPath, int principalId) {
+        folderClassLock.exclusive();
+        entityManager.refresh(folder);
+        entityManager.refresh(newParent);
+        if (!Bin.holds(folder)) {
+            throw new IllegalStateException("folder id=" + folder.getId() + " is not in the recycle bin");
+        }
+        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), newParent);
+        boolean toTopLevel = newParent.getKind() == FolderKind.ROOT;
+        String directoryName = requireDirectoryName(name, toTopLevel);
+        if (!canHoldFolders(newParent)) {
+            throw new InvalidDataException("folder id=" + newParent.getId() + " takes no folders",
+                    "trash.restore.takesNoFolders");
+        }
+        TagGroup group = toTopLevel ? folder.getTagGroup() : null;
+        if (toTopLevel && group == null) {
+            throw new InvalidDataException("folder id=" + folder.getId() + " was not a top-level folder and has no tag group",
+                    "trash.restore.notTopLevel");
+        }
+        boolean taken = folderRepository.findByParentIdAndSearchName(newParent.getId(),
+                SearchKey.of(directoryName, SearchKey.NAME_LENGTH)).stream().anyMatch(sibling -> !sibling.getId().equals(folder.getId()));
+        if (taken) {
+            throw new InvalidDataException("a folder named " + directoryName + " is in folder id=" + newParent.getId(),
+                    "trash.restore.nameTaken", directoryName);
+        }
+        FolderClassRules.requireAllowedUnder(newParent.getFolderClass(), directoryName);
+        int delta = newParent.getDepth() + 1 - folder.getDepth();
+        Integer deepest = folderRepository.maxDepthUnder(folder.getPath());
+        int deepestAfter = (deepest == null ? folder.getDepth() : deepest) + delta;
+        if (deepestAfter > maxDepth) {
+            throw new InvalidDataException("restoring folder id=" + folder.getId() + " there would put a folder at depth "
+                    + deepestAfter + "; the limit is " + maxDepth, "trash.restore.tooDeep", maxDepth);
+        }
+        folderQuotaService.requireRoom(newParent, folderQuotaService.usageOf(folder), originPath);
+
+        folder.setName(directoryName);
+        int newParentId = newParent.getId();
+        Folder restored = relocate(folder, newParent, group, principalId);
+        actionHistoryService.saveActionHistory(EntityEnum.Folder, restored.getId(), ActionEnum.UPDATE_VALUES, principalId,
+                "RESTORE FOLDER", "RESTORE folder id=" + restored.getId() + " from the recycle bin to folder id="
+                        + newParentId + " as " + directoryName);
+        return toDto(restored);
+    }
+
+    /**
+     * Moves the folder, with its subtree, under {@code newParent}: its parent, and every path, key path, depth, class
+     * path and tag beneath it, the reading of its files and the bin's entries from beneath it. Its name is what the
+     * entity says now; {@code topLevelGroup} is the group it carries when it lands at the top level, null elsewhere.
+     *
+     * @return the folder, read again where it now is - every entity of the subtree held before is stale
+     */
+    private Folder relocate(Folder folder, Folder newParent, TagGroup topLevelGroup, int principalId) {
+        int delta = newParent.getDepth() + 1 - folder.getDepth();
         String oldPrefix = folder.getPath();
         String newPrefix = newParent.childPath(folder.getId());
         // The keys beneath change with the parent too (V3.9) - to a bucket's own "" when the folder
@@ -465,55 +543,30 @@ public class FolderService {
         String oldClassPrefix = folderRepository.classPathOf(folder.getId());
         String newClassPrefix = folderRepository.classPathOf(newParent.getId())
                 + (folder.getFolderClass() == null ? "" : folder.getFolderClass().getId() + "/");
-        List<Folder> subtree = folderRepository.findSubtree(oldPrefix);
-        for (Folder each : subtree) {
-            each.setPath(newPrefix + each.getPath().substring(oldPrefix.length()));
-            each.setKeyPath(newKeyPrefix + each.getKeyPath().substring(oldKeyPrefix.length()));
-            each.setDepth(each.getDepth() + delta);
-            if (each.getId().equals(folder.getId())) {
-                each.setParent(newParent);
-                each.setTagGroup(toTopLevel ? groupBefore : null);
-                each.setUpdatedBy(userRepository.getReferenceById(principalId));
-            } else if (each.getTagGroup() != null) {
-                each.setTagGroup(null);
-            }
-        }
-        folderRepository.saveAllAndFlush(subtree);
+        // The folder's own row through the entity - its parent, its group, who moved it, a name a restore gave it -
+        // and the paths, keys and depths of the whole subtree by statements: a subtree of twenty thousand folders is
+        // three statements, not twenty thousand rows read and written back. Every folder of it this transaction
+        // holds is stale after, and forgotten; the folder is read again.
+        int folderId = folder.getId();
+        folder.setParent(newParent);
+        folder.setTagGroup(topLevelGroup);
+        folder.setUpdatedBy(userRepository.getReferenceById(principalId));
+        folderRepository.flush();
+        folderRepository.rewriteSubtree(oldPrefix, newPrefix, oldPrefix.length(), newKeyPrefix, oldKeyPrefix.length(), delta);
+        // Only a top-level folder carries a group: none beneath the one moved.
+        folderRepository.clearTagGroupsBelow(newPrefix);
         folderRepository.rewriteClassPaths(newPrefix, newClassPrefix, oldClassPrefix.length());
+        entityManager.clear();
+        Folder moved = folderRepository.findById(folderId).orElseThrow();
 
-        tagMirrorService.retagFilesUnder(folder);
+        tagMirrorService.retagFilesUnder(moved);
+        // What was deleted from the subtree into the recycle bin follows it (roadmap 13.1): who may restore it, and
+        // the quotas that count it, are those of where its folder is now.
+        trashEntryRepository.followOrigins(newPrefix);
         // Whether the subtree's files are read for the search follows the folders above it (2.16.0): the
         // queue settles them under the new parent's setting - in this transaction, the paths written.
-        events.publishEvent(new FolderMoved(folder.getId(), newPrefix));
-        actionHistoryService.saveActionHistory(EntityEnum.Folder, folder.getId(), ActionEnum.UPDATE_VALUES, principalId,
-                "MOVE FOLDER", "MOVE folder id=" + folderId + " from folder id=" + oldParent.getId()
-                        + " to folder id=" + newParentId);
-        return toDto(folder);
-    }
-
-    /** Deletes an empty folder. Grants on it go with it (the schema cascades); files and children refuse it. */
-    @Transactional
-    public void delete(int folderId, int principalId) {
-        Folder folder = requireExisting(folderId);
-        if (isSystemFolder(folder)) {
-            throw new InvalidDataException("a " + folder.getKind() + " folder cannot be deleted: id=" + folderId);
-        }
-        folderAccessService.requireWriteAccess(folderAccessService.accessFor(principalId), folder.getParent());
-
-        long children = folderRepository.countChildFoldersByParent(List.of(folderId)).stream()
-                .mapToLong(count -> count.total()).sum();
-        if (children > 0) {
-            throw new DependencyResourceException("folder id=" + folderId + " still holds " + children + " folder(s)");
-        }
-        long files = fileInfoRepository.countByFolderId(folderId);
-        if (files > 0) {
-            throw new DependencyResourceException("folder id=" + folderId + " still holds " + files + " file(s)");
-        }
-
-        String name = folder.getName();
-        folderRepository.delete(folder);
-        actionHistoryService.saveActionHistory(EntityEnum.Folder, folderId, ActionEnum.DELETE, principalId,
-                "DELETE FOLDER", "DELETE folder id=" + folderId + " (" + name + ")");
+        events.publishEvent(new FolderMoved(folderId, newPrefix));
+        return moved;
     }
 
     // ------------------------------------------------------------------ pieces

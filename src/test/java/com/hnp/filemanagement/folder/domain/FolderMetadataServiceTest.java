@@ -123,7 +123,7 @@ class FolderMetadataServiceTest extends DatabaseSupport {
     @Test
     @DisplayName("the root and Profiles take none; a home only from its user or an administrator")
     void kinds() {
-        int root = jdbc.queryForObject("SELECT id FROM folder WHERE parent_id IS NULL", Integer.class);
+        int root = jdbc.queryForObject("SELECT id FROM folder WHERE parent_id IS NULL AND kind = 'ROOT'", Integer.class);
         assertThatThrownBy(() -> underTest.replace(root, "{\"a\":1}", MetadataPrecondition.NONE, adminId))
                 .isInstanceOf(InvalidDataException.class);
         int profiles = userHomeService.profiles().getId();

@@ -196,7 +196,7 @@ class MetadataPagesTest extends DatabaseSupport {
                 .with(user(person(reader.getId(), PermissionEnum.FILE_EXPLORER_PAGE)))).andReturn().getResponse().getStatus())
                 .isEqualTo(403);
 
-        int root = jdbc.queryForObject("SELECT id FROM folder WHERE parent_id IS NULL", Integer.class);
+        int root = jdbc.queryForObject("SELECT id FROM folder WHERE parent_id IS NULL AND kind = 'ROOT'", Integer.class);
         assertThat(page(mockMvc.perform(save("/files/folders/" + root + "/metadata", "{\"x\":\"1\"}", null)), 200))
                 .contains("این پوشه متادیتا نمی‌گیرد");
     }

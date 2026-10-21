@@ -4520,7 +4520,35 @@ content reading already has), 13.7 and 13.8; then Phase 8 - controlled documents
 part of them. 13.10 - 13.13 as asked; 13.14 and 13.15 soon after 13.1 (small, and much risk removed for their
 size); 13.16 and 13.17 with the operators.
 
-### 13.1 A recycle bin — planned in full for 2.18.0 (2026-10-18)
+### 13.1 A recycle bin — written in 2.18.0 (2026-10-21; planned 2026-10-18)
+
+**As built, where it differs from the plan below** (the plan is kept as it was agreed):
+
+* **The bin is outside the tree** - a folder of no parent, id 0, path `/0/` - not a system folder under the root. A
+  grant on the root, or a class grant of no scope, would have covered a bin under the root; outside it no grant can,
+  and lists bounded by the root's path leave it out by themselves. The root is now found by `kind = 'ROOT'`.
+* **Each deletion has a folder of its own in the bin** (its holder, named by a UUID), so that two deleted files or
+  folders of one name never meet; a revision deleted alone is held by a file made in it.
+* **The history keeps `FILE_DELETED` and `REVISION_DELETED`** for the move into the bin (the deletions report counts
+  them as before), and adds `FILE_RESTORED`, `REVISION_RESTORED`, `FILE_PURGED`, `REVISION_PURGED`.
+* **Share links are not revoked by a delete**: a link to a file in the bin answers nothing, and answers again once it
+  is restored, if it has not expired - a revocation a restore could not undo would have been a loss.
+* **A revision goes back to its own file only** - its bytes are stored under that file's id, which no other file may
+  own - under its number, or as the file's next version when the number was taken meanwhile; a file purged takes the
+  bin's revisions of it with it. "Restore a revision as a new file" is not offered.
+* **An entry's origin path follows its folder** while that is in the tree (a move rewrites it), so who may restore
+  it and the quotas that count it are those of where the folder is now.
+* **Permissions**: `TRASH_PAGE` and `RESTORE_FROM_TRASH` (USER holds both), `PURGE_TRASH` (ADMIN). "Empty what is
+  older than" offers 7 - 180 days, with a preview.
+* **Not built yet**: the upload page's warning that a file of that name was deleted from the folder, and opening a
+  folder's entry to restore one file of it alone.
+* **Found at size** (`TrashScaleTest`, a bin of 100,000 beside a level of 20,000): a folder's delete recorded each
+  file's history with a statement for each folder's title, and a restore - as any move - re-derived each file's tags
+  with several statements a file; each statement flushed everything the transaction held, so 20,000 files took hours.
+  The titles are now worked out a batch at a time (`FileHistoryService.titlesOf`) and the tags of a subtree from the
+  folders and the group's tags read once (`TagMirrorService.retagFilesUnder`) - which a move of a large folder gains
+  too.
+
 
 **Today.** Every delete removes the rows and then the bytes: a file (`FileService.deleteCompleteFileById`), one
 revision (`deleteFileDetails` - the last one takes the file with it), an empty folder (`FolderService.delete`), a

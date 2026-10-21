@@ -97,7 +97,7 @@ class UserHomeServiceTest extends DatabaseSupport {
                 .isInstanceOf(InvalidDataException.class);
         assertThatThrownBy(() -> folderService.rename(profiles.getId(), "People", null, null, adminId))
                 .isInstanceOf(InvalidDataException.class).hasMessageContaining("PROFILES");
-        assertThatThrownBy(() -> folderService.delete(profiles.getId(), adminId))
+        assertThatThrownBy(() -> folderTreeDeleteService.deleteEmpty(profiles.getId(), adminId))
                 .isInstanceOf(InvalidDataException.class).hasMessageContaining("PROFILES");
         assertThatThrownBy(() -> folderTreeDeleteService.deleteTree(profiles.getId(), adminId))
                 .isInstanceOf(InvalidDataException.class).hasMessageContaining("PROFILES");
@@ -162,7 +162,7 @@ class UserHomeServiceTest extends DatabaseSupport {
                 .isInstanceOf(InvalidDataException.class).hasMessageContaining("USER_HOME");
         assertThatThrownBy(() -> folderService.move(home.getId(), FolderFixture.root(folderRepository).getId(), adminId))
                 .isInstanceOf(InvalidDataException.class).hasMessageContaining("USER_HOME");
-        assertThatThrownBy(() -> folderService.delete(home.getId(), adminId))
+        assertThatThrownBy(() -> folderTreeDeleteService.deleteEmpty(home.getId(), adminId))
                 .isInstanceOf(InvalidDataException.class).hasMessageContaining("USER_HOME");
         assertThatThrownBy(() -> folderTreeDeleteService.deleteTree(home.getId(), adminId))
                 .isInstanceOf(InvalidDataException.class).hasMessageContaining("USER_HOME");

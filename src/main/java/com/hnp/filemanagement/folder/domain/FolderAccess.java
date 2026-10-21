@@ -108,7 +108,12 @@ public final class FolderAccess {
         return reduced;
     }
 
-    /** True for an administrator, or with enforcement off: nothing is checked and no grant is read. */
+    /**
+     * True for an administrator, or with enforcement off: no grant is read, and everything in the tree may be reached
+     * - never the recycle bin ({@link Bin}), which {@link #canRead}, {@link #canWrite} and {@link #visible} refuse to
+     * every reader. A caller that answers yes on this alone, without asking about the path, has to leave the bin out
+     * itself.
+     */
     public boolean unrestricted() {
         return unrestricted;
     }
@@ -128,7 +133,7 @@ public final class FolderAccess {
      * beneath one.
      */
     public boolean canRead(String path) {
-        return unrestricted || covered(readable, path);
+        return !Bin.holds(path) && (unrestricted || covered(readable, path));
     }
 
     /**
@@ -140,7 +145,7 @@ public final class FolderAccess {
      * leaf on a tree whose leaves are where documents actually go.
      */
     public boolean canWrite(String path) {
-        return unrestricted || covered(writable, path);
+        return !Bin.holds(path) && (unrestricted || covered(writable, path));
     }
 
     /**
@@ -167,6 +172,9 @@ public final class FolderAccess {
      * paths beneath this one follow it in sorted order, so the first after it says.
      */
     public boolean isOnPathTo(String path) {
+        if (Bin.holds(path)) {
+            return false;
+        }
         if (unrestricted) {
             return true;
         }
@@ -186,6 +194,9 @@ public final class FolderAccess {
      * is readable only if it is itself a grant, and then it is on that set too.
      */
     public Optional<Set<Integer>> visibleChildIdsUnder(String parentPath) {
+        if (Bin.holds(parentPath)) {
+            return Optional.of(Set.of());
+        }
         if (canRead(parentPath)) {
             return Optional.empty();
         }

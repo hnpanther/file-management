@@ -30,12 +30,12 @@ import java.util.Optional;
  */
 public interface FileDetailsRepository extends JpaRepository<FileDetails, Integer> {
 
-    /** One publicly visible version: both it and its parent must be active. */
+    /** One publicly visible version: both it and its parent must be active, and not in the recycle bin (13.1). */
     @Query("""
             SELECT fd FROM FileDetails fd
             JOIN FETCH fd.fileInfo fi
             JOIN FETCH fi.folder t
-            WHERE fd.id = :id AND fd.state = 0 AND fi.state = 0
+            WHERE fd.id = :id AND fd.state = 0 AND fi.state = 0 AND t.path NOT LIKE '/0/%'
             """)
     Optional<FileDetails> findPublicFile(@Param("id") int id);
 
@@ -68,11 +68,11 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
             SELECT fd FROM FileDetails fd
             JOIN FETCH fd.fileInfo fi
             JOIN FETCH fi.folder t
-            WHERE fd.state = 0 AND fi.state = 0
+            WHERE fd.state = 0 AND fi.state = 0 AND t.path NOT LIKE '/0/%'
             """,
             countQuery = """
             SELECT COUNT(fd) FROM FileDetails fd
-            WHERE fd.state = 0 AND fd.fileInfo.state = 0
+            WHERE fd.state = 0 AND fd.fileInfo.state = 0 AND fd.fileInfo.folder.path NOT LIKE '/0/%'
             """)
     Page<FileDetails> findPublicFiles(Pageable pageable);
 
@@ -89,7 +89,7 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
             SELECT fd FROM FileDetails fd
             JOIN FETCH fd.fileInfo fi
             JOIN FETCH fi.folder t
-            WHERE fd.state = 0 AND fi.state = 0
+            WHERE fd.state = 0 AND fi.state = 0 AND t.path NOT LIKE '/0/%'
               AND fd.id IN (SELECT e.id FROM FileDetails e
                             WHERE REPLACE(e.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                             UNION
@@ -103,7 +103,7 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
             """,
             countQuery = """
             SELECT COUNT(fd) FROM FileDetails fd
-            WHERE fd.state = 0 AND fd.fileInfo.state = 0
+            WHERE fd.state = 0 AND fd.fileInfo.state = 0 AND fd.fileInfo.folder.path NOT LIKE '/0/%'
               AND fd.id IN (SELECT e.id FROM FileDetails e
                             WHERE REPLACE(e.searchName, ' ', '') LIKE CONCAT('%', :search, '%') ESCAPE '\\'
                             UNION
@@ -146,6 +146,29 @@ public interface FileDetailsRepository extends JpaRepository<FileDetails, Intege
     /** The number of the revision a client named by its external id ({@code external_id}, V2.16). */
     @Query("SELECT fd.id FROM FileDetails fd WHERE fd.externalId = :externalId")
     Optional<Integer> findIdByExternalId(@Param("externalId") String externalId);
+
+    /** The file a revision is of, by the revision's number - without loading either. */
+    @Query("SELECT fd.fileInfo.id FROM FileDetails fd WHERE fd.id = :id")
+    Optional<Integer> findFileInfoIdOf(@Param("id") int id);
+
+    /**
+     * Gives a revision to another file - the recycle bin's file that holds it, or its own file again (roadmap 13.1).
+     * A statement rather than the two files' collections: {@code orphanRemoval} on {@code FileInfo.fileDetailsList}
+     * deletes a revision taken out of one. Whatever this transaction holds is written first, and the persistence
+     * context is cleared after: every file and revision read before is stale.
+     */
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(nativeQuery = true, value = "UPDATE file_details SET file_info_id = :fileInfoId WHERE id = :id")
+    int moveToFile(@Param("id") int id, @Param("fileInfoId") int fileInfoId);
+
+    /**
+     * Gives a revision another version number - a revision restored from the recycle bin to a number its file has
+     * taken in its format since (roadmap 13.1): it comes back as the file's next version. Its stored key keeps the
+     * number it was written under; keys are never rebuilt.
+     */
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(nativeQuery = true, value = "UPDATE file_details SET version = :version, version_name = :versionName WHERE id = :id")
+    int renumber(@Param("id") int id, @Param("version") int version, @Param("versionName") String versionName);
 
     /**
      * The next revisions {@code ChecksumBackfill} has to read: no checksum yet, id above the last

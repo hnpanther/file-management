@@ -139,7 +139,7 @@ class MigrationTest {
             flyway(dataSource).target("3.8").load().migrate();
 
             JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-            int root = jdbc.queryForObject("SELECT id FROM folder WHERE parent_id IS NULL", Integer.class);
+            int root = jdbc.queryForObject("SELECT id FROM folder WHERE parent_id IS NULL AND kind = 'ROOT'", Integer.class);
             int group = jdbc.queryForObject("""
                     INSERT INTO tag_group (name, title, enabled, created_at) VALUES ('erp', 'ERP', 1, now()) RETURNING id
                     """, Integer.class);

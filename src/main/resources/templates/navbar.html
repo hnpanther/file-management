@@ -142,7 +142,7 @@
                 </li>
             </ul>
 
-            <section sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('CREATE_FILE_PAGE') || hasAuthority('FILE_TREE_PAGE') || hasAuthority('SHARE_LINKS_PAGE') || hasAuthority('FILE_HISTORY_PAGE') || hasAuthority('FILE_DOWNLOADS_PAGE') || hasAuthority('SEARCH_FILE_CONTENTS') || hasAuthority('REPORTS_PAGE') || hasAuthority('ADMIN')"
+            <section sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('CREATE_FILE_PAGE') || hasAuthority('FILE_TREE_PAGE') || hasAuthority('SHARE_LINKS_PAGE') || hasAuthority('TRASH_PAGE') || hasAuthority('FILE_HISTORY_PAGE') || hasAuthority('FILE_DOWNLOADS_PAGE') || hasAuthority('SEARCH_FILE_CONTENTS') || hasAuthority('REPORTS_PAGE') || hasAuthority('ADMIN')"
                      class="flex flex-col gap-0.5">
                 <h3 class="app-nav-heading" th:text="#{nav.section.files}">مدیریت فایل‌ها</h3>
                 <a sec:authorize="hasAuthority('GET_ALL_FILE_INFO_PAGE') || hasAuthority('ADMIN')"
@@ -170,6 +170,11 @@
                    th:href="@{/files/share-links}" class="app-nav-link">
                     <i class="bi bi-link-45deg app-nav-icon" aria-hidden="true"></i>
                     <span th:text="#{nav.files.shareLinks}">لینک‌های موقت</span>
+                </a>
+                <a sec:authorize="hasAuthority('TRASH_PAGE') || hasAuthority('ADMIN')"
+                   th:href="@{/files/trash}" class="app-nav-link">
+                    <i class="bi bi-trash3 app-nav-icon" aria-hidden="true"></i>
+                    <span th:text="#{nav.files.trash}">سطل زباله</span>
                 </a>
                 <a sec:authorize="hasAuthority('FILE_HISTORY_PAGE') || hasAuthority('ADMIN')"
                    th:href="@{/files/history}" class="app-nav-link">

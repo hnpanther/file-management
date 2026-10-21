@@ -1,6 +1,7 @@
 package com.hnp.filemanagement.report;
 
 import com.hnp.filemanagement.folder.domain.FolderReadScope;
+import com.hnp.filemanagement.folder.domain.Bin;
 import com.hnp.filemanagement.folder.domain.ReadScopeSql;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -82,8 +83,8 @@ public class ReportRepository {
                        count(d.id) AS revisions, coalesce(sum(d.file_size), 0) AS bytes,
                        coalesce(sum(d.file_size) FILTER (WHERE d.version = fi.last_version), 0) AS latest_bytes,
                        (SELECT count(*) FROM folder f WHERE f.kind <> 'ROOT' AND %s) AS folders
-                """.formatted(readable(scope, "f2"), readable(scope, "f"))
-                + REVISIONS.formatted(readable(scope, "fo"));
+                """.formatted(current(scope, "f2"), current(scope, "f"))
+                + REVISIONS.formatted(current(scope, "fo"));
         return jdbc.queryForObject(sql, ReadScopeSql.parameters(scope), (rs, n) -> new Totals(rs.getLong("files"),
                 rs.getLong("revisions"), rs.getLong("bytes"), rs.getLong("latest_bytes"), rs.getLong("folders")));
     }
@@ -146,7 +147,7 @@ public class ReportRepository {
         String sql = with(scope, "") + """
                 SELECT width_bucket(d.created_at, (SELECT CAST(:bounds AS timestamptz[]))) AS bucket, count(*) AS revisions,
                        coalesce(sum(d.file_size), 0) AS bytes
-                """ + REVISIONS.formatted(readable(scope, "fo")) + "\nGROUP BY 1";
+                """ + REVISIONS.formatted(current(scope, "fo")) + "\nGROUP BY 1";
         return jdbc.query(sql, ReadScopeSql.parameters(scope).addValue("bounds", array(bounds)),
                 (rs, n) -> new Arrivals(rs.getInt("bucket"), rs.getLong("revisions"), rs.getLong("bytes")));
     }
@@ -158,7 +159,7 @@ public class ReportRepository {
                 FROM file_info fi
                 JOIN folder fo ON fo.id = fi.folder_id
                 WHERE fi.created_at >= :from AND %s
-                GROUP BY 1""".formatted(readable(scope, "fo"));
+                GROUP BY 1""".formatted(current(scope, "fo"));
         return jdbc.query(sql, ReadScopeSql.parameters(scope).addValue("bounds", array(bounds))
                         .addValue("from", Timestamp.from(bounds.getFirst())),
                 (rs, n) -> new long[]{rs.getInt("bucket"), rs.getLong("files")});
@@ -215,7 +216,7 @@ public class ReportRepository {
                 SELECT lower(d.file_extension) AS kind, count(*) FILTER (WHERE d.version = fi.last_version) AS latest,
                        count(*) AS revisions,
                        sum(d.file_size) AS bytes, count(*) OVER () AS kinds
-                """ + REVISIONS.formatted(readable(scope, "fo")) + """
+                """ + REVISIONS.formatted(current(scope, "fo")) + """
 
                 GROUP BY 1
                 ORDER BY bytes DESC, kind
@@ -231,7 +232,7 @@ public class ReportRepository {
     public List<RevisionRow> largestRevisions(FolderReadScope scope, int limit) {
         String sql = with(scope, "") + """
                 SELECT fi.id AS file_id, fi.file_name, d.version, d.file_extension, d.file_size, d.created_at, fo.path
-                """ + REVISIONS.formatted(readable(scope, "fo")) + """
+                """ + REVISIONS.formatted(current(scope, "fo")) + """
 
                 ORDER BY d.file_size DESC, d.id DESC
                 LIMIT :limit""";
@@ -248,7 +249,7 @@ public class ReportRepository {
         String sql = with(scope, "") + """
                 SELECT t.id, f.path, t.bytes, (SELECT count(*) FROM file_info x WHERE x.folder_id = t.id) AS files
                 FROM (SELECT fi.folder_id AS id, sum(d.file_size) AS bytes
-                      """ + REVISIONS.formatted(readable(scope, "fo")) + """
+                      """ + REVISIONS.formatted(current(scope, "fo")) + """
 
                       GROUP BY fi.folder_id
                       ORDER BY bytes DESC, fi.folder_id
@@ -271,7 +272,7 @@ public class ReportRepository {
                        coalesce(sum(d.file_size) FILTER (WHERE d.version < fi.last_version), 0) AS older_bytes,
                        count(*) OVER () AS versioned_files,
                        sum(coalesce(sum(d.file_size) FILTER (WHERE d.version < fi.last_version), 0)) OVER () AS all_older
-                """ + REVISIONS.formatted(readable(scope, "fo")) + """
+                """ + REVISIONS.formatted(current(scope, "fo")) + """
 
                 GROUP BY fi.id, fi.file_name, fo.path
                 HAVING count(DISTINCT d.version) > 1
@@ -294,7 +295,7 @@ public class ReportRepository {
     }
 
     public List<UploaderRow> uploaders(FolderReadScope scope, Instant from, int limit) {
-        String readable = readable(scope, "fo");
+        String readable = current(scope, "fo");
         String more = """
                 revisions AS (
                     SELECT d.created_by AS user_id, d.created_by_api_key_id AS key_id, count(*) AS revisions,
@@ -337,7 +338,7 @@ public class ReportRepository {
                 JOIN file_info fi ON fi.id = d.file_info_id
                 JOIN folder fo ON fo.id = fi.folder_id
                 WHERE d.created_at >= :from AND %s
-                GROUP BY 1, 2""".formatted(readable(scope, "fo"));
+                GROUP BY 1, 2""".formatted(current(scope, "fo"));
         return jdbc.query(sql, ReadScopeSql.parameters(scope).addValue("bounds", array(bounds))
                         .addValue("from", Timestamp.from(bounds.getFirst())),
                 (rs, n) -> new ShareRow(rs.getInt("bucket"), rs.getBoolean("by_key"), rs.getLong("revisions"), rs.getLong("bytes")));
@@ -380,7 +381,7 @@ public class ReportRepository {
                       LIMIT :limit) t
                 LEFT JOIN file_info fi ON fi.id = t.file_info_id
                 LEFT JOIN folder fo ON fo.id = fi.folder_id
-                ORDER BY t.downloads DESC, t.file_info_id""".formatted(readable(scope, "fo"),
+                ORDER BY t.downloads DESC, t.file_info_id""".formatted(current(scope, "fo"),
                 readable(scope, "dfo"));
         return jdbc.query(sql, ReadScopeSql.parameters(scope).addValue("from", Timestamp.from(from)).addValue("limit", limit),
                 (rs, n) -> {
@@ -401,7 +402,7 @@ public class ReportRepository {
         String sql = with(scope, "") + """
                 SELECT fi.id AS file_id, fi.file_name, fo.path, fi.created_at, sum(d.file_size) AS bytes,
                        count(*) OVER () AS cold_files, sum(sum(d.file_size)) OVER () AS cold_bytes
-                """ + REVISIONS.formatted(readable(scope, "fo")) + """
+                """ + REVISIONS.formatted(current(scope, "fo")) + """
 
                   AND fi.created_at < :since
                   AND NOT EXISTS (SELECT 1 FROM file_download dl WHERE dl.file_info_id = fi.id AND dl.occurred_at >= :since)
@@ -429,7 +430,7 @@ public class ReportRepository {
                 FROM (SELECT d.checksum_sha256, count(*) AS copies, count(DISTINCT fi.id) AS files, max(d.file_size) AS size,
                              (count(*) - 1) * max(d.file_size) AS wasted, min(d.id) AS example,
                              count(*) OVER () AS groups, sum((count(*) - 1) * max(d.file_size)) OVER () AS all_wasted
-                      """ + REVISIONS.formatted(readable(scope, "fo")) + """
+                      """ + REVISIONS.formatted(current(scope, "fo")) + """
 
                         AND d.checksum_sha256 IS NOT NULL
                       GROUP BY d.checksum_sha256
@@ -449,8 +450,8 @@ public class ReportRepository {
     // ------------------------------------------------------------------ quotas, coverage, integrity
 
     /**
-     * A folder with a quota the reader may read, and what is beneath it - every revision, as the quota
-     * counts ({@code FolderQuotaService}); the fullest first, with how many there are and how many are
+     * A folder with a quota the reader may read, and what is beneath it - every revision, and what was deleted
+     * from beneath it into the recycle bin, as the quota counts ({@code FolderQuotaService}); the fullest first, with how many there are and how many are
      * past {@code nearlyFull}.
      */
     public record QuotaRow(int folderId, String folderPath, long quota, long used, long quotas, long nearlyFullCount) {
@@ -463,12 +464,14 @@ public class ReportRepository {
                     FROM file_details d JOIN file_info fi ON fi.id = d.file_info_id
                     GROUP BY fi.folder_id),
                 used AS (
-                    SELECT q.id, q.path, q.quota_bytes, coalesce(sum(pf.bytes), 0) AS used
+                    SELECT q.id, q.path, q.quota_bytes, coalesce(sum(pf.bytes), 0)
+                           + (SELECT coalesce(sum(e.bytes), 0) FROM trash_entry e
+                              WHERE e.origin_path ~>=~ q.path AND e.origin_path ~<~ (q.path || ':')) AS used
                     FROM folder q
                     JOIN folder fo ON fo.path ~>=~ q.path AND fo.path ~<~ (q.path || ':')
                     LEFT JOIN per_folder pf ON pf.folder_id = fo.id
                     WHERE q.quota_bytes IS NOT NULL AND q.quota_bytes > 0 AND %s
-                    GROUP BY q.id, q.path, q.quota_bytes)""".formatted(readable(scope, "q"));
+                    GROUP BY q.id, q.path, q.quota_bytes)""".formatted(current(scope, "q"));
         String sql = with(scope, more) + """
                 SELECT u.id, u.path, u.quota_bytes, u.used, count(*) OVER () AS quotas,
                        count(*) FILTER (WHERE u.used >= u.quota_bytes * :nearlyFull) OVER () AS nearly_full
@@ -491,8 +494,8 @@ public class ReportRepository {
                        count(*) FILTER (WHERE d.version = fi.last_version AND d.metadata IS NOT NULL) AS described,
                        (SELECT count(*) FROM folder f WHERE f.kind <> 'ROOT' AND %s) AS folders,
                        (SELECT count(*) FROM folder f WHERE f.kind <> 'ROOT' AND f.metadata IS NOT NULL AND %s) AS described_folders
-                """.formatted(readable(scope, "f"), readable(scope, "f"))
-                + REVISIONS.formatted(readable(scope, "fo"));
+                """.formatted(current(scope, "f"), current(scope, "f"))
+                + REVISIONS.formatted(current(scope, "fo"));
         return jdbc.queryForObject(sql, ReadScopeSql.parameters(scope), (rs, n) -> new MetadataCoverage(rs.getLong("revisions"),
                 rs.getLong("latest"), rs.getLong("described"), rs.getLong("folders"), rs.getLong("described_folders")));
     }
@@ -564,9 +567,21 @@ public class ReportRepository {
         return ReadScopeSql.with(scope, more.isEmpty() ? seen : seen + ",\n" + more);
     }
 
-    /** Whether the folder {@code alias} (an {@code id}) is readable: one of {@code seen}. */
+    /**
+     * Whether the folder {@code alias} (an {@code id}) is readable: one of {@code seen}. For what was recorded - a
+     * deletion, a download, a day's snapshot - whose folder may be gone: an unrestricted reader counts every row.
+     */
     private static String readable(FolderReadScope scope, String alias) {
         return scope.unrestricted() ? "TRUE" : alias + ".id IN (SELECT id FROM seen)";
+    }
+
+    /**
+     * {@link #readable}, for what is stored now - files, revisions, folders: never what is in the recycle bin
+     * (roadmap 13.1), which an unrestricted reader's statements leave out by its path ({@link Bin}) and a restricted
+     * one's grants never reach.
+     */
+    private static String current(FolderReadScope scope, String alias) {
+        return scope.unrestricted() ? "(" + Bin.notIn(alias) + ")" : readable(scope, alias);
     }
 
     /** {@code {"2026-09-22T20:30:00Z",...}} - a text array PostgreSQL casts to {@code timestamptz[]}. */

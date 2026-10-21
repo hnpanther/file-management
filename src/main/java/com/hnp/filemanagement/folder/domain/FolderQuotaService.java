@@ -1,5 +1,6 @@
 package com.hnp.filemanagement.folder.domain;
 
+import com.hnp.filemanagement.trash.TrashEntryRepository;
 import com.hnp.filemanagement.file.persistence.FileDetailsRepository;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import org.slf4j.Logger;
@@ -31,15 +32,26 @@ public class FolderQuotaService {
 
     private final FolderRepository folderRepository;
     private final FileDetailsRepository fileDetailsRepository;
+    private final TrashEntryRepository trashEntryRepository;
 
-    public FolderQuotaService(FolderRepository folderRepository, FileDetailsRepository fileDetailsRepository) {
+    public FolderQuotaService(FolderRepository folderRepository, FileDetailsRepository fileDetailsRepository,
+                              TrashEntryRepository trashEntryRepository) {
         this.folderRepository = folderRepository;
         this.fileDetailsRepository = fileDetailsRepository;
+        this.trashEntryRepository = trashEntryRepository;
     }
 
-    /** The bytes stored beneath a folder, itself included. */
+    /**
+     * The bytes stored beneath a folder, itself included - and those deleted from beneath it that are in the recycle
+     * bin (roadmap 13.1): they are still on the disk until purged, and a delete must not be a way round a quota.
+     */
     public long usageOf(Folder folder) {
-        return fileDetailsRepository.sumSizeUnder(folder.getPath());
+        return fileDetailsRepository.sumSizeUnder(folder.getPath()) + inBin(folder);
+    }
+
+    /** The bytes deleted from beneath a folder that are in the recycle bin - the part of {@link #usageOf} a purge frees. */
+    public long inBin(Folder folder) {
+        return trashEntryRepository.bytesFrom(folder.getPath());
     }
 
     /**

@@ -219,21 +219,21 @@ public class FolderResource {
         return folderService.move(folderId, body.parentId(), userDetails.getId());
     }
 
-    /** Deletes an empty folder: 409 while it still holds folders or files. */
+    /** Deletes an empty folder, into the recycle bin (roadmap 13.1): 409 while it still holds folders or files. */
     //REST_DELETE_FOLDER
     @PreAuthorize("hasAuthority('REST_DELETE_FOLDER') || hasAuthority('ADMIN')")
     @DeleteMapping("{folderId}")
     public ApiResult deleteFolder(@AuthenticationPrincipal UserDetailsImpl userDetails,
                                   @PathVariable("folderId") int folderId) {
         globalGeneralLogging.detail("delete folder id=" + folderId);
-        folderService.delete(folderId, userDetails.getId());
+        folderTreeDeleteService.deleteEmpty(folderId, userDetails.getId());
         return ApiResult.deleted("folder", folderId);
     }
 
     /**
-     * Deletes a folder with everything beneath it - folders, files, bytes. A permission of its
-     * own, separate from the empty delete's: 409 when the tree holds more files than one call may
-     * remove ({@code filemanagement.folders.max-delete-files}), 400 for the root or a home.
+     * Deletes a folder with everything beneath it - folders and files - into the recycle bin (roadmap 13.1). A
+     * permission of its own, separate from the empty delete's: 409 when the tree holds more files than one call may
+     * delete ({@code filemanagement.folders.max-delete-files}), 400 for the root or a home.
      */
     //REST_DELETE_FOLDER_TREE
     @PreAuthorize("hasAuthority('REST_DELETE_FOLDER_TREE') || hasAuthority('ADMIN')")
