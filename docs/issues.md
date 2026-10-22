@@ -2416,3 +2416,20 @@ file page's latest events and downloads; a class's preview and failures; the rea
 **To do**: the online users paged (a page of accounts, newest request first, the counts above unchanged) with a
 search by name; a file's revisions the newest 20 with "older revisions" paged below, the current one always shown.
 Each with a case in `ListQueryCountTest` or its own size test.
+
+## Found while fixing the tests after 2.18.0 (2026-10-22)
+
+### 128. The file search's folder-name branch reads every matching folder, the bin's included — **S3**
+
+`FileInfoRepository.search` (and `searchWithinFolders`) find a file by a name, a description, or **the name of any
+folder above it**: `folder d, folder a WHERE a.depth > 0 AND d.path LIKE a.path || '%'` with `a` matching the term.
+The cost grows with how many folders match - each brings the subtree beneath it - and the folders in the recycle bin
+are among them: a deleted folder keeps its name, and its holder is depth 1. Their files are left out afterwards by the
+outer `path NOT LIKE '/0/%'`, so the answer is right; the work is not. Seen in `TrashScaleTest`: a hundred thousand
+holders whose names matched the term made the search's count run for more than eight minutes (the test now names its
+holders so they do not match).
+
+In production a holder is named by a UUID, so a term matches the bin only through deleted folders' own names - few,
+for now. Fix, when the bin or the tree is large: `a.path NOT LIKE '/0/%'` in the folder-name branch (the bin is never
+a place to search), and a test in `SearchIndexTest` that the branch stays on its index with many matching folders.
+Not changed while fixing the tests: it is a change to the search, and each search has a plan test to keep.

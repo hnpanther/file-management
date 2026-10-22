@@ -100,7 +100,7 @@ class TrashScaleTest extends DatabaseSupport {
         entityManager.flush();
 
         long started = System.nanoTime();
-        generate();
+        generate("h" + n + "-");
         System.out.printf("[13.1] generated %,d folders with a file each, and a bin of %,d entries, in %,d ms%n",
                 FOLDERS, ENTRIES, (System.nanoTime() - started) / 1_000_000);
 
@@ -176,8 +176,14 @@ class TrashScaleTest extends DatabaseSupport {
     /**
      * As the application would write them: the level with a file each; and the bin - a holder each, a file in it, its
      * revision and its entry, deleted from the level's folders in turn, oldest first.
+     *
+     * <p>This test's holders are named with {@code holders} and picked by it, never as "every folder in the bin": the
+     * database is shared by the fork, and the tests that commit a delete leave their own holders there, each with its
+     * file, revision and entry - taken for this test's, they failed the revisions' unique key. The prefix must match
+     * none of the terms searched below ({@code scale}, {@code L-1}): a folder whose name matches brings every file
+     * beneath it into a search, and a hundred thousand holders called {@code scale…} made its count run for minutes.
      */
-    private void generate() {
+    private void generate(String holders) {
         Folder parent = folderRepository.findById(big).orElseThrow();
         jdbc.update("""
                 INSERT INTO folder (id, parent_id, name, search_name, display_name, search_display_name, path, key_path, depth,
@@ -216,16 +222,16 @@ class TrashScaleTest extends DatabaseSupport {
         jdbc.update("""
                 INSERT INTO folder (id, parent_id, name, search_name, display_name, search_display_name, path, key_path, depth,
                                     class_path, kind, enabled, state, created_at)
-                SELECT n.id, 0, 'h' || n.id, 'H' || n.id, 'h' || n.id, 'H' || n.id, '/0/' || n.id || '/', 'h' || n.id || '/', 1,
+                SELECT n.id, 0, ? || n.id, upper(?) || n.id, ? || n.id, upper(?) || n.id, '/0/' || n.id || '/', ? || n.id || '/', 1,
                        '/', 'FOLDER', 1, 0, now()
                 FROM (SELECT nextval(pg_get_serial_sequence('folder', 'id')) AS id, g FROM generate_series(1, ?) g) n
-                """, ENTRIES);
+                """, holders, holders, holders, holders, holders, ENTRIES);
         jdbc.update("""
                 INSERT INTO file_info (external_id, file_name, search_name, code_name, file_name_description, last_version,
                                        folder_id, enabled, state, created_at, created_by)
                 SELECT gen_random_uuid()::text, 'scale-binned-' || f.id, 'SCALE-BINNED-' || f.id, 'c', 'c', 1, f.id, 1, 0, now(), ?
-                FROM folder f WHERE f.parent_id = 0
-                """, adminId);
+                FROM folder f WHERE f.parent_id = 0 AND f.name LIKE ? || '%'
+                """, adminId, holders);
         jdbc.update("""
                 INSERT INTO file_details (file_info_id, external_id, file_name, search_name, file_extension, content_type,
                                           version, version_name, description, search_description, storage_key, file_size,
@@ -233,18 +239,19 @@ class TrashScaleTest extends DatabaseSupport {
                 SELECT fi.id, gen_random_uuid()::text, fi.file_name || '.pdf', fi.search_name, 'pdf', 'application/pdf', 1, 'v1',
                        '', '', 'files/s000/' || fi.id || '/rev/v1/x.pdf', 1, 1, 0, now(), ?
                 FROM file_info fi JOIN folder f ON f.id = fi.folder_id
-                WHERE f.parent_id = 0 OR f.parent_id = ?
-                """, adminId, big);
+                WHERE (f.parent_id = 0 AND f.name LIKE ? || '%') OR f.parent_id = ?
+                """, adminId, holders, big);
         jdbc.update("""
                 WITH origins AS (SELECT row_number() OVER (ORDER BY id) - 1 AS k, id, path FROM folder WHERE parent_id = ?),
                      binned AS (SELECT row_number() OVER (ORDER BY fi.id) - 1 AS k, fi.id AS file_id, f.id AS holder
-                                FROM file_info fi JOIN folder f ON f.id = fi.folder_id WHERE f.parent_id = 0)
+                                FROM file_info fi JOIN folder f ON f.id = fi.folder_id
+                                WHERE f.parent_id = 0 AND f.name LIKE ? || '%')
                 INSERT INTO trash_entry (kind, holder_folder_id, file_info_id, origin_folder_id, origin_path, origin_title,
                                          original_name, search_name, deleted_at, deleted_by, bytes, files, folders)
                 SELECT 'FILE', b.holder, b.file_id, o.id, o.path, 'Big / L', 'binned-' || b.k, 'BINNED-' || b.k,
                        now() - (b.k || ' seconds')::interval, ?, 1, 1, 0
                 FROM binned b JOIN origins o ON o.k = b.k % ?
-                """, big, adminId, FOLDERS);
+                """, big, holders, adminId, FOLDERS);
         jdbc.execute("ANALYZE folder");
         jdbc.execute("ANALYZE file_info");
         jdbc.execute("ANALYZE file_details");
