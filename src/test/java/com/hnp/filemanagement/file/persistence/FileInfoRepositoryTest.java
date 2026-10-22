@@ -6,6 +6,7 @@ import com.hnp.filemanagement.file.domain.FileInfo;
 import com.hnp.filemanagement.identity.domain.User;
 import com.hnp.filemanagement.support.DatabaseSupport;
 import com.hnp.filemanagement.support.TestData;
+import com.hnp.filemanagement.folder.domain.Bin;
 import com.hnp.filemanagement.folder.persistence.FolderRepository;
 import com.hnp.filemanagement.folder.persistence.TagGroupRepository;
 import com.hnp.filemanagement.support.FolderFixture;
@@ -113,13 +114,19 @@ class FileInfoRepositoryTest extends DatabaseSupport {
      * "Everything" is measured against the table, not assumed to be the one row this test made. The
      * container is shared by the whole run, and the web tests that exercise the v2 API commit real
      * {@code file_info} rows — so a fixed count passes or fails depending on which class ran first.
+     *
+     * <p>Everything outside the recycle bin (2.18.0): the search leaves out what is in it, and the tests
+     * that commit a delete leave files there - counted against the whole table, this failed whenever one
+     * of them ran first in the same fork (297 rows, 11 of them in the bin, 286 found).
      */
     @Test
-    @DisplayName("an empty search term matches everything; a null one matches nothing")
+    @DisplayName("an empty search term matches every file outside the bin; a null one matches nothing")
     void anEmptyTermMatchesEverything() {
         var everything = underTest.search("", PageRequest.of(0, Integer.MAX_VALUE));
 
-        assertThat(everything.getTotalElements()).isEqualTo(underTest.count());
+        long outsideTheBin = entityManager.createQuery(
+                "SELECT COUNT(f) FROM FileInfo f WHERE " + Bin.notIn("f.folder"), Long.class).getSingleResult();
+        assertThat(everything.getTotalElements()).isEqualTo(outsideTheBin);
         assertThat(everything.getContent()).extracting(FileInfo::getId).contains(fileInfoId);
 
         // Null is the value PostgreSQL cannot type in this query (issue 87); here it finds nothing,
