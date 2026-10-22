@@ -24,13 +24,18 @@ RUN apt-get update \
 # /tika-extras/ is on the server's classpath (the image's entrypoint), and the forked parsing JVMs
 # inherit it. Pinned by its SHA-256 - Maven Central's SHA-1 of it, fc2179dc...e40660, agrees.
 #
-# The directory is made first: ADD's --chmod gives a directory it creates the file's 644, and one
-# without its execute bit hides the jar from the server's user.
+# The directory is made first, 755: one without its execute bit hides the jar from the server's
+# user. The checksum and the mode are a RUN's, not ADD's --checksum and --chmod: those need BuildKit,
+# and the test suite builds this file through Testcontainers, which uses the classic builder (it
+# failed with "the --chmod option requires BuildKit"). sha256sum -c fails the build on any other
+# file, as --checksum did; ADD writes a downloaded file 600, so the RUN makes it 644, readable by all.
 ARG JPEG2000_VERSION=1.4.0
+ARG JPEG2000_SHA256=07fb6e3a3040122b846c5e52520033175c3251e2ec8830df82f87cb21f388bb1
 RUN install --directory --mode=755 /tika-extras
-ADD --checksum=sha256:07fb6e3a3040122b846c5e52520033175c3251e2ec8830df82f87cb21f388bb1 --chmod=644 \
-    https://repo1.maven.org/maven2/com/github/jai-imageio/jai-imageio-jpeg2000/${JPEG2000_VERSION}/jai-imageio-jpeg2000-${JPEG2000_VERSION}.jar \
+ADD https://repo1.maven.org/maven2/com/github/jai-imageio/jai-imageio-jpeg2000/${JPEG2000_VERSION}/jai-imageio-jpeg2000-${JPEG2000_VERSION}.jar \
     /tika-extras/jai-imageio-jpeg2000-${JPEG2000_VERSION}.jar
+RUN echo "${JPEG2000_SHA256}  /tika-extras/jai-imageio-jpeg2000-${JPEG2000_VERSION}.jar" | sha256sum --check --strict - \
+    && chmod 644 /tika-extras/jai-imageio-jpeg2000-${JPEG2000_VERSION}.jar
 
 # Back to the official image's own unprivileged user - and the jar checked as that user reads it.
 USER 35002:35002
