@@ -2031,6 +2031,40 @@ model, and "draft → review → approve → publish" uses almost none of it. Ke
 separate from the versioned definition is what leaves the door open: that shape translates to BPMN
 later if the need ever arrives.
 
+#### Editing the workflow from the UI (added 2026-10-28)
+
+The state machine is **data, not code**: a workflow definition is rows - its states, its transitions, who may take
+each - so a person with the right permission changes it on a page, without a release. What that page can and cannot
+do:
+
+| From the UI, as data | Built once in code, chosen in the UI |
+|---|---|
+| **States**: added, removed, renamed ("draft, technical review, legal review, approved, published") | **What an action does besides moving the state** - render the PDF, publish into a folder, set the file's metadata, call a webhook (13.18), send a notification (13.3): a closed set of *effect types*, each written, tested and named once, then picked and configured per transition. A new kind is a development |
+| **Transitions**: from which state, by which button, to which state ("legal review → reject → draft") | **Guards beyond the simple ones** - anything that would need an expression language is a new guard type, not a field to type code into |
+| **Who may take a transition**: a role, or a folder or class grant - the access model of [access.md](access.md), not a third one (8.7) | |
+| **Simple guards**: a comment required, an attachment required, two approvals required | |
+| **Notifications**: who is told, on which transition | |
+
+**What a state machine does not do, and would bring an engine** (8.6's table): parallel branches, timers and
+escalation ("not approved in three days: to the manager"), sub-processes. If they are asked for, the definition
+translates to BPMN and an engine (Flowable) takes over - which is why the instance is kept apart from the definition.
+
+**The rules that make editing safe** - with 8.5's second decision, an instance pins its definition's version:
+
+* **A published version is never changed.** Saving an edit makes a **new version**; the page shows the versions and
+  which is current.
+* **Cases in flight finish on the version they began with**; only new ones take the new version. Removing a state
+  from a version that a case is in would strand it - so it is never done to a published version.
+* **A version is checked before it is published**: one start state; at least one end state; every state reachable
+  from the start; no state without a way out but an end; every transition with someone allowed to take it. Refused,
+  each with its message, otherwise.
+* **Moving cases to a newer version** is an administrator's, by hand and chosen: the old states mapped to the new,
+  each case moved recorded in its history - never automatic.
+* Every edit, publication and case moved in `action_history`; a case's history says which version it ran on.
+
+**The page**: the definition as a table of states and of transitions (and a diagram drawn from it, read-only - a
+graphical editor like bpmn-js is the engine's, not this one's); a draft version edited, checked, published.
+
 ### 8.7 Authorization: do not invent a third model
 
 The two questions from [Phase 6](#phase-6--two-tier-authorization-endpoint-permissions-and-folder-access)
