@@ -4513,12 +4513,13 @@ needs underneath it, and are cheaper built first than inside it.
 | 13.15 | **A recovery plan**: RPO and RTO agreed, a copy off the server, a restore rehearsed (below) | the backup is one half; knowing how long the way back takes is the other | none | with 13.2 |
 | 13.16 | **The audit trail out** to the organisation's log system (below) | the records survive the server, and are read beside the network's | none | 2-3 days |
 | 13.17 | **Encryption at rest**, the operators' (below) | a disk taken is a disk read | none | the operators' |
+| 13.18 | **Webhooks**: a call to n8n or the ERP when a file is uploaded, deleted, restored or moved beneath a folder, as S3's event notifications (below) | asked for: n8n lists folders over and over to find what changed | `webhook`, `webhook_delivery` | 4-6 days |
 
 **The proposed order**: 13.1 (the most risk removed for the least work), 13.2 with the rest of Phase 4,
 then 13.3 and 13.4 (Phase 8 stands on them), 13.9 and 13.6 (both the queue-and-worker shape the
 content reading already has), 13.7 and 13.8; then Phase 8 - controlled documents first, with 13.5 as
 part of them. 13.10 - 13.13 as asked; 13.14 and 13.15 soon after 13.1 (small, and much risk removed for their
-size); 13.16 and 13.17 with the operators.
+size); 13.16 and 13.17 with the operators; 13.18 once 2.18.0 is deployed - it sends the bin's events too.
 
 ### 13.1 A recycle bin — written in 2.18.0 (2026-10-21; planned 2026-10-18)
 
@@ -4819,6 +4820,129 @@ Already recorded elsewhere, and part of the same picture: CI ([issue 38](issues.
 the git history (13.10, [issue 11](issues.md#11-credentials-and-infrastructure-details-are-committed--s1)), an API
 key refused is not a sign-in event ([issue 126](issues.md#126-an-api-key-presented-and-refused-is-not-recorded-as-an-authentication-decision--s3)),
 the JIT's cost ([issue 125](issues.md#125-a-statement-whose-estimate-is-high-is-compiled-by-postgresqls-jit-which-can-cost-more-than-running-it--s3)).
+
+### 13.18 Webhooks: a call to another system when something happens in a folder — planned (2026-10-28)
+
+**What it is.** What S3 calls *event notifications* (MinIO: *bucket notifications*): a subscription on a part of a
+bucket - "everything under `mybucket/folder1/`, uploads only, `.pdf` only" - and every time such a thing happens
+there, the store POSTs a JSON describing it to an address. AWS sends it to a queue (SQS, SNS) or a function (Lambda);
+MinIO straight to a webhook. Whoever receives it - n8n, the ERP - knows at once, rather than listing the folder over
+and over to find what changed.
+
+**Why it belongs in the application, not in the store.** The keys the store holds (`files/s000/123/rev/v1/….pdf`)
+name nothing a person sees, and an upload by the form or v1 never touches an S3 surface at all; SeaweedFS's own
+notifications would speak of objects no one recognises. The application has what a notification needs, already in
+one place: **every change to a file, by any way - the form, v1, v2, S3, the recycle bin - records a `file_history`
+event through `FileHistoryService.record`, in the transaction of the change.** That is where a notification is
+born; and the outbox it needs is a pattern this application already runs (the content reading's queue, the download
+records).
+
+#### A subscription (`webhook`)
+
+| Field | What |
+|---|---|
+| name | for the page |
+| url | the address POSTed to - refused unless its host is allowed (below) |
+| scope | **a folder, and everything beneath it at any depth** - as a grant covers. Or a **folder class** (Phase 14), optionally within a folder: "every contract's Documents" |
+| only this folder | off by default; on, only what happens directly in the scope folder, not beneath it |
+| events | which of the events below |
+| suffix | optional: `.pdf`, `.docx` - the file's extension, without case |
+| signing secret | made by the application, shown once (as an API key's is), stored encrypted - see "Two secrets" |
+| destination auth | optional: a header of the receiver's own (`X-API-Key: …`) or Basic credentials - stored encrypted |
+| enabled | a subscription paused keeps its deliveries waiting, sends none |
+
+**What a scope covers, worked through** (subscription on `mybucket/folder1`, the default):
+
+* `mybucket/folder1/file.txt` uploaded - yes; `mybucket/folder1/folder2/folder3/file.txt` - **yes, any depth**, as an
+  S3 prefix filter matches every key beginning with it; with "only this folder", only the first.
+* **`folder1` renamed or moved later: the subscription follows it.** It names the folder by its id, not by text -
+  where an S3 prefix filter, being text, stops matching after a rename. The event's key is the folder's key as it
+  is when the event happens.
+* A file **moved in** from elsewhere is no upload: it is `fm:ObjectMoved`, sent to a subscription on where it went
+  (and to one on where it left, as "moved out") if that event is chosen.
+* Something in the **recycle bin** matches nothing: it is outside every folder. Its delete, restore and purge are
+  events of where it was.
+
+#### The events
+
+| Event | Name in the payload | From |
+|---|---|---|
+| a new file, a new version, a new format | `s3:ObjectCreated:Put` | `FILE_UPLOADED`, `VERSION_ADDED`, `FORMAT_ADDED` |
+| a file deleted (to the bin), a revision deleted | `s3:ObjectRemoved:Delete` | `FILE_DELETED`, `REVISION_DELETED` |
+| restored from the bin | `fm:ObjectRestored` | `FILE_RESTORED`, `REVISION_RESTORED` |
+| purged for good | `fm:ObjectPurged` | `FILE_PURGED`, `REVISION_PURGED` |
+| moved | `fm:ObjectMoved` (from and to) | `FILE_MOVED` |
+| metadata changed | `fm:MetadataChanged` | `METADATA_CHANGED` |
+
+The names a client of S3 knows where S3 has one, `fm:` where it has none. Folder events (made, renamed, moved,
+deleted) are a second step: they are in `action_history`, not `file_history`.
+
+#### The payload
+
+The shape of an S3 event, so that n8n and any S3 tooling read it as one - `Records[0].eventName`, `eventTime`,
+`s3.bucket.name` (the top-level folder), `s3.object.key` (its key path and the file's name), `size`, `versionId` (the
+revision's external id), `sequencer` - and the application's own beside it: the file's and the revision's external
+ids, the folder's readable trail, who did it, with which API key. **Never** the file's content, and **never a
+metadata value**: a document may be personal (the rule of `MetadataRules`); a receiver that needs it asks v1 for it,
+with a key of its own.
+
+#### Delivery: an outbox, and a worker
+
+* **The outbox** (`webhook_delivery`): a row per subscription an event matches, written by `FileHistoryService.record`
+  **in the transaction of the change**. An upload that rolls back sends nothing; one that commits is delivered -
+  at least once, never lost to a crash between the commit and the call.
+* **Matching costs an upload nothing measurable**: the subscriptions are few, held in memory (refreshed when one
+  changes), and matched on the event's folder path (a prefix test, as grants are) and, for a class scope, its
+  `class_path`.
+* **The worker** sends, on threads of its own, never in a request's way: a POST, a 10-second timeout, no redirect
+  followed. A failure is tried again after 1 minute, 5, 30, 2 hours, then every 6 hours to 24 hours after the event;
+  then it is `FAILED`, kept, and sent again from the page by hand.
+* **Headers**: `X-FM-Event-Id` (the same on every retry - a receiver drops a second copy by it), `X-FM-Event`,
+  `X-FM-Signature`, and the destination's own auth if set.
+* **Order is not promised** between events (a retry overtakes); `eventTime` and `sequencer` say which came first.
+* Deliveries are kept `filemanagement.webhooks.retention-days` (30), and removed every night.
+
+#### Two secrets - which is whose
+
+* **The signing secret is the application's**: made when the subscription is made, shown once, given to the receiver.
+  Every request is signed with it - `X-FM-Signature: t=<time>,v1=<HMAC-SHA256 of time.body>` - so that a receiver can
+  tell a call is really from here and not from someone who found its address; the time in it stops a recorded call
+  being played again. Checking it is **the receiver's choice**: a receiver that does not check still receives.
+* **The destination's auth is the receiver's**: when the receiver itself asks for credentials - n8n's webhook node set
+  to *Header Auth* or *Basic Auth*, an API gateway's key - they are typed into the subscription and sent with every
+  call. For n8n inside the network this is the simplest: a key in n8n's Header Auth, the same key in the
+  subscription; checking the HMAC in n8n takes a Code or Crypto node more.
+* Both stored encrypted, as the S3 keys' secrets are (AES-256-GCM, the master key); neither ever logged, nor shown
+  again; the signing secret replaced by a button, with the old one valid an hour more.
+
+#### Security
+
+* **Not a way out to anywhere** (SSRF): a URL's host must be in `filemanagement.webhooks.allowed-hosts`; `https`
+  only, but for hosts allowed with `http` there (n8n inside the network); no redirect followed; the address resolved
+  and checked again at each call.
+* **Who**: subscriptions are made and seen with a permission of their own (`WEBHOOKS_ADMIN`), administrators' by
+  default - a subscription sends the names of a folder's files out, whoever may read the folder.
+* Every change to a subscription in `action_history`; the payload and the secrets never in the log.
+
+#### The page (`/settings/webhooks`)
+
+The subscriptions; one made or changed, its folder chosen with the folder chooser, a class from the classes; **send a
+test event**; its deliveries newest first, a page at a time - event, status, the receiver's answer code, attempts,
+next attempt - and a failed one sent again; a subscription paused and resumed.
+
+#### Steps (one release, after 2.18.0 is verified and deployed)
+
+1. `V3.x`: `webhook`, `webhook_delivery` (indexes: due deliveries by `next_attempt_at`; a subscription's by time).
+2. The subscriptions, the matching in memory, the outbox row from `FileHistoryService.record` - and the test that a
+   rollback leaves none.
+3. The worker: the POST, the signature, the destination's auth, the retries, `FAILED`, the nightly removal.
+4. The page, `WEBHOOKS_ADMIN`, the messages, the test event.
+5. Tests: every event by every way (form, v1, v2, S3, the bin); a scope's depth, "only this folder", a suffix, a class
+   scope, a folder renamed and moved; the signature checked against a receiver in the test (a local HTTP server);
+   retries and `FAILED`; a host not allowed refused; nothing of a metadata value in a payload; and at size - ten
+   thousand uploads matched against a hundred subscriptions without the uploads slowing.
+
+**Size**: 4 - 6 days.
 
 ---
 
