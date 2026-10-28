@@ -4514,12 +4514,13 @@ needs underneath it, and are cheaper built first than inside it.
 | 13.16 | **The audit trail out** to the organisation's log system (below) | the records survive the server, and are read beside the network's | none | 2-3 days |
 | 13.17 | **Encryption at rest**, the operators' (below) | a disk taken is a disk read | none | the operators' |
 | 13.18 | **Webhooks**: a call to n8n or the ERP when a file is uploaded, deleted, restored or moved beneath a folder, as S3's event notifications (below) | asked for: n8n lists folders over and over to find what changed | `webhook`, `webhook_delivery` | 4-6 days |
+| 13.19 | **The folders as a drive in Windows Explorer** (WebDAV): browse, open, save as a new version, drag in and out, delete to the bin - as the person, with their access (below) | asked for; nothing to install on a computer | a lock, a scratch area | 6-9 days |
 
 **The proposed order**: 13.1 (the most risk removed for the least work), 13.2 with the rest of Phase 4,
 then 13.3 and 13.4 (Phase 8 stands on them), 13.9 and 13.6 (both the queue-and-worker shape the
 content reading already has), 13.7 and 13.8; then Phase 8 - controlled documents first, with 13.5 as
 part of them. 13.10 - 13.13 as asked; 13.14 and 13.15 soon after 13.1 (small, and much risk removed for their
-size); 13.16 and 13.17 with the operators; 13.18 once 2.18.0 is deployed - it sends the bin's events too.
+size); 13.16 and 13.17 with the operators; 13.18 once 2.18.0 is deployed - it sends the bin's events too. 13.19 with 13.4 (Office will not edit without a lock).
 
 ### 13.1 A recycle bin — written in 2.18.0 (2026-10-21; planned 2026-10-18)
 
@@ -4943,6 +4944,85 @@ next attempt - and a failed one sent again; a subscription paused and resumed.
    thousand uploads matched against a hundred subscriptions without the uploads slowing.
 
 **Size**: 4 - 6 days.
+
+### 13.19 The folders as a drive in Windows Explorer (WebDAV) — planned (2026-10-28)
+
+**What is asked.** What document stores of this kind offer: the folders seen in Windows Explorer as a drive - opened,
+a file dragged in, one dragged out, one deleted, a Word document opened and saved where it is - without the web page.
+
+**How others do it, and which fits here.**
+
+| Way | What it is | Here |
+|---|---|---|
+| **WebDAV** | HTTP with a few more methods (`PROPFIND` lists, `PUT` stores, `MKCOL` makes a folder, `MOVE`, `COPY`, `DELETE`, `LOCK`). Windows has a client built in: Explorer → *Map network drive* → `https://files.example/dav/` is a drive `Z:`; Office opens and saves on it. Nextcloud, SharePoint (of old), Alfresco do this | **chosen**: nothing to install, and every rule of the application stays in its way |
+| SMB (`\\server\share`) | a Windows file share | no: it would read the disk, where files are stored by their ids - and every rule (folder access, classes, versions, the bin, the history) would be bypassed |
+| A sync client (OneDrive, Nextcloud Desktop) | a program on each computer showing the folders in Explorer, files fetched when opened | the best to use and a product of its own to build; not now |
+| A drive over the S3 surface (rclone, Mountain Duck, S3 Browser) | a program on the computer mounting the S3 surface as a drive | works today, but with an S3 key - an integration's credential, with the key's own grants, not a person's: for an administrator or one or two people, not for everyone (a note below) |
+
+#### What it is to a person
+
+* The drive's root lists the top-level folders the person may see; a folder lists its folders and files - exactly
+  what the explorer shows them: their folder grants, their roles' and class grants, the signposts on the way.
+* **Signed in as themselves**: their username and password, local or Active Directory, as on the sign-in form - every
+  sign-in and refusal a `sign_in_event` (channel `DAV`), locked out by the same counter. A permission of its own,
+  `WEBDAV_ACCESS`, besides the file permissions each operation already asks.
+* **A file is its latest version**: `report.pdf` is the newest revision of `report` in that format; a file with two
+  formats is two names, `report.pdf` and `report.docx`.
+* **Saving over a file is a new version** - never an overwrite: the S3 surface's rule (roadmap 9.10.5), the same code.
+* **Deleting is to the recycle bin**; a folder deleted with everything beneath it needs `REST_DELETE_FOLDER_TREE`, as
+  on the page.
+* **Moving and renaming** are the explorer's moves (`FolderService.move`, `FileService.moveFile`) - class rules,
+  quotas, write on both sides; copying a file is a new file.
+* Everything else as by every other way: the upload policy, the quotas, the history (who, from where, `DAV`), the
+  download records (channel `DAV`), the content queue, the metadata kept on a new version.
+
+#### What makes it work with Windows and Office - the hard part
+
+* **The Windows client's limits**, written in the operators' guide with how to change them: it sends credentials only
+  over HTTPS (the proxy holds the certificate, as now); it refuses a file above 50 MB unless
+  `HKLM\SYSTEM\CurrentControlSet\Services\WebClient\Parameters\FileSizeLimitInBytes` is raised (to the upload
+  policy's cap); it is slow when "Automatically detect settings" is on in the proxy settings; the `WebClient` service
+  must be running.
+* **How Office saves** - a lock file `~$report.docx`, a temporary `~WRL1234.tmp` written whole, the original renamed
+  away and the temporary renamed to it - must be **one new version** of `report.docx`, not a deleted file and a new
+  one: the history and the external ids stay the file's. The temporary and lock files live in a scratch area of the
+  person's, outside the tree (as the bin is), never listed to anyone else, removed after a day; a `MOVE` of a
+  temporary onto a file is a new version of it.
+* **`LOCK` / `UNLOCK`**: Office will not edit without them. A lock is a token with a timeout, held in the database (a
+  restart keeps it), refused to anyone else while it lasts - which is what roadmap 13.4's check-out is: one lock,
+  shown on the file page, released by its holder or an administrator. Built together, or 13.4 first.
+* **`PROPFIND` of depth 1 only** - `infinity` refused, as servers do - and a level of tens of thousands (the ERP's
+  folder per person) is listed whole by the protocol, which cannot page: past
+  `filemanagement.webdav.max-listing` (5,000) a level answers with the first ones and a note file saying so, and a
+  drive is better mapped deeper (`/dav/ERP/PartyCompany/1234/`).
+* `PROPPATCH` (Windows sets times on a file) answered and ignored; `OPTIONS` names the methods and `DAV: 1, 2`.
+
+#### How it is built
+
+* **Its own small server, as the S3 surface is** (`/dav/**`, a controller of the methods above, a `PROPFIND`
+  multistatus written by hand) - not a library from outside: the few that exist are old, and none would know the
+  folder access, the versions or the bin. Where the S3 surface already answers the same question (a key to a file
+  and format, a `PUT` that is a new version, a listing in the reader's scope), the code is shared, with a person's
+  access in place of a key's.
+* **Security**: HTTP Basic over HTTPS only; no session, no cookie (so no CSRF to guard); never anonymous; the
+  password never logged; `/dav` refused with 403 on plain HTTP from anywhere but the proxy.
+
+#### Steps
+
+1. The read half: sign-in, `OPTIONS`, `PROPFIND`, `GET`, `HEAD` - a drive to browse and copy from. Shippable alone.
+2. The write half: `PUT` (new file, new version), `MKCOL`, `DELETE` (to the bin), `MOVE`, `COPY`.
+3. Office: the scratch area, `LOCK` / `UNLOCK` (with 13.4), the save sequence as one version.
+4. The page: on the user's profile, how to map the drive, the address to type, the registry setting for files over
+   50 MB; `WEBDAV_ACCESS` on the role page; the operators' section in `deployment.md`.
+5. Tests: the `litmus` WebDAV suite against it (in a container, as Tika is); every method against folder access as a
+   person, a class grant, a read-only grant; Office's save sequence replayed from a recording; a level of 20,000
+   (`LargeTreeTest`'s); the history, the download records, the bin. And by hand on Windows 10 and 11 and with Word and
+   Excel, before the release - written as a checklist.
+
+**Size**: 6 - 9 days; step 1 alone 2 - 3.
+
+**Meanwhile, for one or two people**: the S3 surface mounted as a drive (rclone `mount`, Mountain Duck) with an S3
+key granted the folders they need - written up in `docs/api-s3.md` when asked; never a key per person for everyone.
 
 ---
 
