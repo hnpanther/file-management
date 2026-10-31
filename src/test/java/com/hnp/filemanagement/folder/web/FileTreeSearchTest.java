@@ -76,21 +76,27 @@ class FileTreeSearchTest extends DatabaseSupport {
         fileInfo = fileInfoRepository.save(TestData.fileInfo(creator, chain.tag(), "WI-HSE-SA" + TestData.nextSequence()));
     }
 
+    /**
+     * The hit is picked out by its id, not taken to be the only one: the id's digits are also a
+     * fragment of any name that holds them, and the database is shared by the fork - the
+     * {@code scale-0} .. {@code scale-9999} that {@code WebhookScaleTest} leaves behind were a second
+     * hit for an id below 10,000, depending on which class ran first.
+     */
     @Test
     @DisplayName("a search by exact id finds the file and reports its real path")
     void findsByExactId() throws Exception {
+        String hit = "$[?(@.fileId == " + fileInfo.getId() + ")]";
         mockMvc.perform(get("/resource/files/tree/search")
                         .param("query", String.valueOf(fileInfo.getId()))
                         .with(user(principal(PermissionEnum.REST_SEARCH_FILE_TREE)))
                         .header("X-Requested-With", "XMLHttpRequest")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)))
-                .andExpect(jsonPath("$[0].fileId").value(fileInfo.getId()))
-                .andExpect(jsonPath("$[0].folderIds[0]").value(chain.categoryId()))
-                .andExpect(jsonPath("$[0].folderIds[1]").value(chain.subCategoryId()))
-                .andExpect(jsonPath("$[0].folderIds[2]").value(chain.tagId()))
-                .andExpect(jsonPath("$[0].folderTitles[2]").value(chain.tag().getDisplayName()));
+                .andExpect(jsonPath(hit, org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath(hit + ".folderIds[0]").value(chain.categoryId()))
+                .andExpect(jsonPath(hit + ".folderIds[1]").value(chain.subCategoryId()))
+                .andExpect(jsonPath(hit + ".folderIds[2]").value(chain.tagId()))
+                .andExpect(jsonPath(hit + ".folderTitles[2]").value(chain.tag().getDisplayName()));
     }
 
     @Test

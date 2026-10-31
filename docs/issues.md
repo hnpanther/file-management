@@ -2433,3 +2433,21 @@ In production a holder is named by a UUID, so a term matches the bin only throug
 for now. Fix, when the bin or the tree is large: `a.path NOT LIKE '/0/%'` in the folder-name branch (the bin is never
 a place to search), and a test in `SearchIndexTest` that the branch stays on its index with many matching folders.
 Not changed while fixing the tests: it is a change to the search, and each search has a plan test to keep.
+
+### 129. A file found by its id is sorted among the files whose names hold its digits, and can fall off the page — **S3**
+
+The two file searches that accept an id - the explorer's (`FolderContentService.search`, through
+`FileInfoRepository.searchFilesUnder` / `searchFilesUnderReadable`) and the tree's (`FileTreeService.search`,
+`searchForTree`) - match `f.id = :id` **or** the digits as a fragment of the name or the description, and order
+the lot by file name. Typing `1578` finds file 1578 and every `scale-1578`, `INV-15780`, `1578-contract`; the
+file the person asked for by number is wherever its name sorts. The tree answers 20 rows and no more, so with
+twenty names that hold the digits and sort first, the file typed by its id is not shown at all; the explorer
+pages, and it may be on the second page. The folder hits already put the one typed by number first (issue 123).
+
+Seen while fixing the tests (2026-10-31): `FileTreeSearchTest.findsByExactId` expected exactly one hit, and the
+`scale-<n>` files that `WebhookScaleTest` leaves in the fork's database were a second one. The test now picks its
+hit out by id; the behaviour is unchanged.
+
+**Fix**: the exact-id row first (`ORDER BY (f.id = :id) DESC, f.fileName, f.id`, or the id looked up on its own
+and put ahead of the page), with a case in `FolderContentServiceTest` and `FileTreeSearchTest` of an id whose
+digits are in more names than a page holds, and the search's plan test (`SearchIndexTest`) kept on its index.

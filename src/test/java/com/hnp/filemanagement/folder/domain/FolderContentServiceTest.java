@@ -359,10 +359,37 @@ class FolderContentServiceTest extends DatabaseSupport {
                 .satisfies(hit -> assertThat(hit.file().id()).isEqualTo(fileId));
     }
 
+    /**
+     * Asked inside this test's own folder, and of what the term may <em>not</em> find rather than of
+     * an empty result: the database is shared by the fork, and a term folded to {@code 1578} found
+     * {@code scale-1578}, which {@code WebhookScaleTest} leaves behind - searched everywhere, this
+     * passed or failed by which class ran first.
+     */
     @Test
     @DisplayName("a Persian-numeral query is text, not an id that fails to parse")
     void persianDigitsAreTreatedAsText() {
-        assertThat(folderContentService.search("۱۵۷۸", null, 0, 25, adminId).hits()).isEmpty();
+        User creator = userRepository.findById(adminId).orElseThrow();
+        Folder scope = folderRepository.findById(otherSubCategoryId).orElseThrow();
+        int plainId = fileInfoRepository.save(TestData.fileInfo(creator, scope, "plain")).getId();
+        int scannedId = fileInfoRepository.save(TestData.fileInfo(creator, scope, "scan-1578")).getId();
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(folderContentService.search(persianDigitsOf(plainId), otherSubCategoryId, 0, 25, adminId).hits())
+                .as("not the file whose id the digits spell")
+                .extracting(hit -> hit.file().id())
+                .doesNotContain(plainId);
+        assertThat(folderContentService.search("۱۵۷۸", otherSubCategoryId, 0, 25, adminId).hits())
+                .as("the name holding the same digits in ASCII")
+                .extracting(hit -> hit.file().id())
+                .containsExactly(scannedId);
+    }
+
+    private static String persianDigitsOf(int number) {
+        return String.valueOf(number).chars()
+                .map(c -> '۰' + (c - '0'))
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                .toString();
     }
 
     @Test
