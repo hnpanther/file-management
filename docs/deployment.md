@@ -788,6 +788,88 @@ database restored without it has S3 keys nobody can use. Lost or changed, every 
 again and its new secret given to its client: there is no re-encryption yet. The same value on a
 restored or a copied installation makes its S3 keys work there too.
 
+### Upgrading from 2.18.0 to 2.19.0 — webhooks
+
+A jar swap with **one migration**, `V3.21`: two empty tables, `webhook` (the subscriptions) and `webhook_delivery`
+(what is to be sent, and what was). Nothing that exists changes. **Take the database backup first**, as for every
+migration. **Webhooks ship switched off**: until the steps below, nothing is queued and nothing is sent - an upload
+costs exactly what it cost.
+
+What it is: a subscription on a folder - and everything below it, that folder alone, or the folders of a class -
+says which events of its files to send where; each matching change is `POST`ed there afterwards, signed, as JSON
+shaped like an S3 event notification. The receiver's manual is [webhooks.md](webhooks.md).
+
+**Turning it on**, in this order:
+
+1. **The hosts a subscription may call** - nothing else is accepted, now or at each send, so that a subscription is no
+   way into the rest of the network:
+
+   ```
+   FILEMANAGEMENT_WEBHOOKS_ALLOWED_HOSTS=n8n.internal.example,erp-gw.internal.example:8443
+   ```
+
+   Each entry `host` (any port), `host:port`, or `*.domain` (any host below it). `http` is accepted as well as
+   `https` (n8n inside the network); the body is signed either way. Redirects are never followed.
+2. **The master key** of the S3 keys (`FILEMANAGEMENT_S3_SECRET_ENCRYPTION_KEY`, [above](#the-s3-keys-master-key-290))
+   must be set: a subscription's secrets are kept encrypted under it. Without it the page says so and makes none.
+3. **The switch**, and a restart:
+
+   ```
+   FILEMANAGEMENT_WEBHOOKS_ENABLED=true
+   ```
+
+   The log says `webhooks started: 4 sender(s), 2 allowed host(s)`.
+4. **One test subscription first**: Settings → وب‌هوک‌ها, a folder of little traffic, the receiver's test address;
+   **رویداد آزمایشی** must say it arrived (a status 2xx). For n8n: a Webhook node, POST, Header Auth with a key of its
+   own - the same key in the subscription's credential (a header, e.g. `X-Api-Key`) - and copy the signing secret
+   shown once if the workflow checks it ([webhooks.md](webhooks.md#checking-it-is-genuine)). Upload a file there and
+   see it arrive; then the real subscriptions.
+5. **A receiver that writes back** into the folder it listens to (n8n storing a converted file): put its API key in
+   the subscription's "not the events of these API keys", or it is sent its own uploads.
+
+Settings, all optional:
+
+```
+FILEMANAGEMENT_WEBHOOKS_ENABLED=false
+FILEMANAGEMENT_WEBHOOKS_ALLOWED_HOSTS=
+FILEMANAGEMENT_WEBHOOKS_RETENTION_DAYS=30
+FILEMANAGEMENT_WEBHOOKS_THREADS=4
+FILEMANAGEMENT_WEBHOOKS_TIMEOUT_SECONDS=10
+FILEMANAGEMENT_WEBHOOKS_RATE_PER_MINUTE=60
+FILEMANAGEMENT_WEBHOOKS_CONCURRENCY=2
+FILEMANAGEMENT_WEBHOOKS_PAUSE_AFTER=20
+```
+
+* **`retention-days`**: how long a delivery is kept once it is finished - delivered, or given up - for its page, the
+  log of what was sent; removed every night at 03:20. A delivery still waiting after that long (its subscription
+  paused a month, its receiver gone) is given up and removed with them. `0` keeps them for ever. It says nothing about
+  the files.
+* `threads`: deliveries sent at once over every subscription; `0` sends none (they wait).
+* `timeout-seconds`: how long a receiver has to answer.
+* `rate-per-minute`, `concurrency`, `pause-after`: what a new subscription is offered; each has its own.
+
+What the application does with them:
+
+* A failure is tried again after 1 minute, 5, 30, 2 hours, then every 6 hours: eight attempts within a day; a
+  `410 Gone` ends it at once. Then `FAILED`, sent again from the page by hand.
+* A subscription that fails `pause-after` times in a row pauses itself (`AUTO` on the page, a warning in the log);
+  what happens meanwhile waits. **Resume** sends it.
+* Several instances of the application share the queue safely (`FOR UPDATE SKIP LOCKED`); a subscription changed on
+  one is read by the others within a minute.
+* Never logged: a body, a secret, a credential. The log says a delivery's id, its subscription's and why it failed.
+
+**The permissions**: `WEBHOOKS_PAGE`, `SAVE_WEBHOOK`, `DELETE_WEBHOOK` (the role page's group "وب‌هوک‌ها") -
+ADMIN's from the start, nobody else's. A subscription sends the names of a folder's files out, whoever may read the
+folder; give them to a role with that in mind.
+
+**The disk**: a delivery is its body (a kilobyte or two) and a row - a thousand uploads a day to two subscriptions
+is about 2,000 rows a day, 60,000 at the default retention.
+
+**Backups** take the two tables with the rest; the subscriptions' secrets in them open only with the master key.
+
+**Rollback to 2.18.0.** Put the 2.18.0 jar back; the tables stay unused, and nothing is sent. What was waiting is sent
+when 2.19.0 is back, unless it has been longer than the retention.
+
 ### Upgrading from 2.17.2 to 2.18.0 — the recycle bin
 
 A jar swap with **one migration**, `V3.20`: a folder of its own for the bin - id 0, `/0/`, outside the tree - and an

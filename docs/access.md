@@ -224,6 +224,7 @@ union.
 | Set a folder's class, apply the rules below it | `SET_FOLDER_CLASS` | `WRITE` on the folder |
 | Make a share link | `CREATE_SHARE_LINK` | `READ` on the revision's folder |
 | Define classes; edit roles, their grants and class grants; users; keys | the settings permissions | - (administration, not files) |
+| See, make, change, delete webhooks (2.19.0) | `WEBHOOKS_PAGE`, `SAVE_WEBHOOK`, `DELETE_WEBHOOK` | **none** - see "Webhooks" below |
 
 ---
 
@@ -269,6 +270,17 @@ parent, id 0, path `/0/` - each deletion in a folder of its own beneath it. Noth
   follows its folder while that is in the tree (a move of it rewrites the entries). Restoring also needs write where
   it goes. **Purging** needs `PURGE_TRASH` as well.
 * What is in the bin still counts against the **quotas** above where it was deleted from, until it is purged.
+
+## Webhooks: names sent out, whoever may read the folder
+
+A webhook (2.19.0, roadmap 13.18) sends what happens to the files of a folder - their names, keys, sizes, ids, the
+folder's title, who did it - to an address outside the application. **Folder access does not apply to it**: a
+subscription is not a reader, and it is sent every matching change beneath its folder, whatever its maker may read.
+That is why its permissions (`WEBHOOKS_PAGE`, `SAVE_WEBHOOK`, `DELETE_WEBHOOK`, the group "وب‌هوک‌ها") are ADMIN's
+alone at the start, kept out of USER (`PermissionGroupTest`), and given to another role only knowingly. What bounds a
+subscription instead: the hosts it may call (`filemanagement.webhooks.allowed-hosts`, checked at every send), the bin
+(nothing in it is sent), and what a body never carries - a file's bytes, its text, a metadata value. Every change to a
+subscription is in the action history, without its secrets.
 
 ---
 

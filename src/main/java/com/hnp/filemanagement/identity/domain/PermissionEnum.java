@@ -188,6 +188,17 @@ public enum PermissionEnum {
     //than a date the person may restore; nothing comes back after it
     PURGE_TRASH,
 
+    // ------------------------------------------------------------------ WebhookController - /settings/webhooks (2.19.0)
+
+    //@GetMapping, @GetMapping("/{id}"), @GetMapping("/{id}/deliveries") - the subscriptions, one of them, its deliveries
+    WEBHOOKS_PAGE,
+    //@PostMapping, @PostMapping("/{id}"), @PostMapping("/{id}/rotate-secret"), @PostMapping("/{id}/pause"),
+    //@PostMapping("/{id}/resume"), @PostMapping("/{id}/test"), @PostMapping("/{id}/retry") - make, change, rotate the
+    //secret of, pause, resume, test a subscription and send a given-up delivery again
+    SAVE_WEBHOOK,
+    //@PostMapping("/{id}/delete") - a subscription, with every delivery of it
+    DELETE_WEBHOOK,
+
     // ===================================================================================================
 
     // UserController @RequestMapping("/users")===========================================================

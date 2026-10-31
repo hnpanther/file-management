@@ -42,7 +42,8 @@ public enum EntityEnum {
     FileShareLink("file_share_link"),
     FolderClass("folder_class"),
     RoleClassGrant("role_class_grant"),
-    TrashEntry("trash_entry")
+    TrashEntry("trash_entry"),
+    Webhook("webhook")
     ;
 
 

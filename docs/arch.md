@@ -48,6 +48,8 @@ com.hnp.filemanagement
 ├── report/     the reports on the files (2.16.0): their statements, the daily count, the pages, CSV
 ├── settings/   the general settings page and its app_setting rows
 ├── storage/    the BlobStore port, its filesystem adapter, the storage write journal and sweeper
+├── trash/      the recycle bin (2.18.0): into it, back out, purged, its page
+├── webhook/    webhooks (2.19.0): the subscriptions, the matching in memory, the outbox, the sender, the page
 └── shared/     config/, domain/ (AbstractEntity), exception/, util/ (SearchKey, SearchTerms),
                 validation/, web/ (the logging interceptor, the exception advice, ApiResult,
                 PageResponse)
@@ -341,6 +343,26 @@ Tika (deploy/tika, a host of its own) and searched page by page (roadmap Phase 1
   reads (`contentRead`). Measured at 20,000 folders and 100,000 revisions (`FolderReadingScaleTest`): 2.5 s to
   switch off, 2.7 s on again (the uploads wait that long at most), 7 ms an upload's decision. `/actuator/health` has `contentExtraction`, always
   `UP`, a `warning` when reading cannot run, Tika is lost or an upload has waited a day.
+
+### Webhooks (2.19.0)
+
+A subscription (`webhook`, roadmap 13.18, package `webhook`) names a place - a folder and what is below it, the
+folder alone, or a class - the events it wants, an address and its pace; each matching change to a file is `POST`ed
+there as S3-shaped JSON, signed (the receiver's side: [webhooks.md](webhooks.md)).
+
+* **Born in the one funnel.** Every change to a file, by any way, records a `file_history` event through
+  `FileHistoryService.record`; at its end `WebhookOutbox.queue` matches the event against the subscriptions held in
+  memory (`WebhookRuleCache`, `WebhookRules`: the folder's materialised path and class path as text, no statement) and
+  inserts a `webhook_delivery` row per match **in the change's transaction** - rolled back with it, or committed with
+  it. Off (`filemanagement.webhooks.enabled`), or with no subscription, it returns before any work.
+* **Sent off the request.** `WebhookDispatcher` (a `SmartLifecycle`, only while on) takes due rows under
+  `FOR UPDATE SKIP LOCKED`, each subscription at its own rate and concurrency, and hands them to a fixed pool of
+  senders; `WebhookSender` posts with `HttpClient` - no redirect, a timeout, the allowlist checked again, the HMAC
+  signature, the receiver's credential - and the outcome is written in a short transaction of its own: delivered,
+  tried again later (1 min to 6 h, eight attempts within a day), or `FAILED`; a run of failures pauses the
+  subscription (`AUTO`). Leases let a killed sender's rows go; `WebhookRetention` removes finished rows nightly.
+* **Secrets** (`WebhookSecrets`): the signing secret made here and shown once, the receiver's credential typed by a
+  person - both AES-GCM under the S3 keys' master key, sealed to their subscription and use.
 
 ### Reports on the files (2.16.0)
 

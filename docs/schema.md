@@ -112,7 +112,7 @@ written by Hibernate in the JVM's zone; `created_by` / `updated_by` are foreign 
 the magic-number columns described in [arch.md](arch.md#magic-number-columns).
 
 <!-- generated from information_schema by SchemaDocumentationTest: do not edit below this line -->
-_As of migration `V3.20`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
+_As of migration `V3.21`. Types and defaults are PostgreSQL's own; every table is in the `public` schema of a `UTF8` database with ICU's root collation ([deployment.md](deployment.md#creating-the-database-and-its-account))._
 
 ### `action_history`
 
@@ -893,5 +893,77 @@ _As of migration `V3.20`. Types and defaults are PostgreSQL's own; every table i
 * **foreign key** `fk_user_role_role_id` `role_id` → `role` (`id`)
 * **foreign key** `fk_user_role_user_id` `user_id` → `app_user` (`id`)
 * **index** `fk_user_role_role_id` (`role_id`)
+
+### `webhook`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `integer` | no |  | identity |
+| `name` | `varchar(100)` | no |  |  |
+| `url` | `varchar(2000)` | no |  |  |
+| `scope` | `varchar(10)` | no |  |  |
+| `folder_id` | `integer` | yes |  |  |
+| `class_id` | `integer` | yes |  |  |
+| `events` | `varchar(400)` | no |  |  |
+| `extensions` | `varchar(300)` | no | `` |  |
+| `name_pattern` | `varchar(200)` | no | `` |  |
+| `actors` | `varchar(10)` | no | `ALL` |  |
+| `excluded_key_ids` | `varchar(500)` | no | `` |  |
+| `signing_secret` | `varchar(300)` | no |  |  |
+| `previous_signing_secret` | `varchar(300)` | yes |  |  |
+| `previous_secret_until` | `timestamptz(0)` | yes |  |  |
+| `auth_kind` | `varchar(10)` | no | `NONE` |  |
+| `auth_name` | `varchar(200)` | yes |  |  |
+| `auth_secret` | `varchar(1000)` | yes |  |  |
+| `rate_per_minute` | `integer` | no |  |  |
+| `concurrency` | `integer` | no |  |  |
+| `pause_after` | `integer` | no |  |  |
+| `enabled` | `boolean` | no | `true` |  |
+| `paused_reason` | `varchar(10)` | yes |  |  |
+| `paused_at` | `timestamptz(0)` | yes |  |  |
+| `consecutive_failures` | `integer` | no | `0` |  |
+| `created_at` | `timestamptz(0)` | no |  |  |
+| `created_by` | `integer` | no |  |  |
+| `updated_at` | `timestamptz(0)` | yes |  |  |
+| `updated_by` | `integer` | yes |  |  |
+
+* **primary key** `id`
+* **unique** `uq_webhook_name` (`upper(name)`)
+* **foreign key** `fk_webhook_class` `class_id` → `folder_class` (`id`), on delete set null
+* **foreign key** `fk_webhook_created_by` `created_by` → `app_user` (`id`)
+* **foreign key** `fk_webhook_folder` `folder_id` → `folder` (`id`), on delete set null
+* **foreign key** `fk_webhook_updated_by` `updated_by` → `app_user` (`id`)
+* **index** `ix_webhook_class` (`class_id`, only where `(class_id IS NOT NULL)`)
+* **index** `ix_webhook_created_by` (`created_by`)
+* **index** `ix_webhook_folder` (`folder_id`, only where `(folder_id IS NOT NULL)`)
+* **index** `ix_webhook_updated_by` (`updated_by`, only where `(updated_by IS NOT NULL)`)
+
+### `webhook_delivery`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `bigint` | no |  | identity |
+| `webhook_id` | `integer` | no |  |  |
+| `event_id` | `uuid` | no |  |  |
+| `event` | `varchar(40)` | no |  |  |
+| `file_info_id` | `integer` | yes |  |  |
+| `file_name` | `varchar(250)` | yes |  |  |
+| `occurred_at` | `timestamptz(3)` | no |  |  |
+| `payload` | `jsonb` | no |  |  |
+| `state` | `varchar(10)` | no |  |  |
+| `attempts` | `integer` | no | `0` |  |
+| `next_attempt_at` | `timestamptz(3)` | no |  |  |
+| `lease_until` | `timestamptz(3)` | yes |  |  |
+| `last_attempt_at` | `timestamptz(3)` | yes |  |  |
+| `last_status` | `integer` | yes |  |  |
+| `last_error` | `varchar(500)` | yes |  |  |
+| `delivered_at` | `timestamptz(3)` | yes |  |  |
+
+* **primary key** `id`
+* **foreign key** `fk_webhook_delivery_webhook` `webhook_id` → `webhook` (`id`), on delete cascade
+* **index** `ix_webhook_delivery_due` (`webhook_id`, `next_attempt_at`, `id`, only where `((state)::text = 'PENDING'::text)`)
+* **index** `ix_webhook_delivery_finished` (`occurred_at`, only where `((state)::text = ANY ((ARRAY['DELIVERED'::character varying, 'FAILED'::character varying])::text[]))`)
+* **index** `ix_webhook_delivery_lease` (`lease_until`, only where `((state)::text = 'SENDING'::text)`)
+* **index** `ix_webhook_delivery_page` (`webhook_id`, `occurred_at`, `id`)
 
 <!-- end of generated section -->

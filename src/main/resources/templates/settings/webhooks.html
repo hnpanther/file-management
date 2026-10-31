@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{webhook.pageTitle}">وب‌هوک‌ها | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  Webhooks (roadmap 13.18, 2.19.0): WebhookController, over WebhookService. The form makes a subscription or
+  changes the one chosen - where it listens (a folder and what is below it, the folder alone, or a class), what it is
+  sent, where, with which credential and at what pace - and the list shows each with whether it sends, what waits and
+  what was given up. A secret is never on this page: the signing secret is shown once, on the page that made it, and
+  the receiver's credential only as "kept".
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{uploadPolicy.kicker}">تنظیمات</div>
+        <h1 th:text="#{webhook.heading}">وب‌هوک‌ها</h1>
+        <p class="page-description" th:text="#{webhook.description}">
+            آنچه برای فایل‌های یک پوشه رخ می‌دهد به سامانه‌ای دیگر فرستاده می‌شود.
+        </p>
+    </header>
+
+    <div th:unless="${webhooksOn}" class="alert alert-warning mb-5" role="alert" id="webhooks-off"
+         th:text="#{webhook.off}">وب‌هوک‌ها خاموش‌اند.</div>
+    <div th:unless="${secretsKept}" class="alert alert-warning mb-5" role="alert" id="webhooks-no-key"
+         th:text="#{webhook.invalid.noMasterKey}">کلید اصلی تنظیم نشده است.</div>
+    <p class="mb-5 text-sm text-ink-500" id="webhooks-allowed-hosts">
+        <span th:text="#{webhook.allowedHosts}">نشانی‌های مجاز:</span>
+        <span th:if="${#lists.isEmpty(allowedHosts)}" th:text="#{webhook.allowedHosts.none}">هیچ</span>
+        <span th:each="h, s : ${allowedHosts}"><span class="technical" dir="ltr" th:text="${h}"></span><span th:unless="${s.last}">، </span></span>
+    </p>
+    <div th:if="${saved != null}" class="alert alert-success mb-5" role="status" id="success_message" th:text="${saved}"></div>
+    <div th:if="${refused != null}" class="alert alert-warning mb-5" role="alert" id="warning_message" th:text="${refused}"></div>
+
+    <section class="card mb-5" aria-labelledby="form-title"
+             sec:authorize="hasAuthority('SAVE_WEBHOOK') || hasAuthority('ADMIN')">
+        <div class="card-body">
+            <h2 id="form-title" class="mb-4 text-base font-semibold"
+                th:text="${form.id() == null} ? #{webhook.add.title} : #{webhook.edit.title}">افزودن وب‌هوک</h2>
+            <form th:action="${form.id() == null} ? @{/settings/webhooks} : @{/settings/webhooks/{id}(id=${form.id()})}"
+                  method="post" id="webhookForm" x-data="{ scope: $el.dataset.scope, authKind: $el.dataset.authKind }"
+                  th:data-scope="${form.scope()}" th:data-auth-kind="${form.authKind()}">
+                <div class="grid gap-5 lg:grid-cols-2">
+                    <div class="form-group">
+                        <label for="name" th:text="#{webhook.field.name}">نام</label>
+                        <input id="name" name="name" th:value="${form.name()}" class="form-control" type="text" required maxlength="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="url" th:text="#{webhook.field.url}">نشانی گیرنده</label>
+                        <input id="url" name="url" th:value="${form.url()}" class="form-control technical" dir="ltr"
+                               type="url" required maxlength="2000" placeholder="https://n8n.example.com/webhook/...">
+                    </div>
+                </div>
+
+                <h3 class="mt-4 mb-2 text-sm font-semibold" th:text="#{webhook.field.where}">کجا</h3>
+                <div class="grid gap-5 lg:grid-cols-3">
+                    <div class="form-group">
+                        <label for="scope" th:text="#{webhook.field.scope}">محدوده</label>
+                        <select id="scope" name="scope" class="form-control" x-model="scope">
+                            <option value="SUBTREE" th:selected="${form.scope() == 'SUBTREE'}" th:text="#{webhook.scope.SUBTREE}">این پوشه و همهٔ زیرپوشه‌ها</option>
+                            <option value="FOLDER" th:selected="${form.scope() == 'FOLDER'}" th:text="#{webhook.scope.FOLDER}">فقط خود این پوشه</option>
+                            <option value="CLASS" th:selected="${form.scope() == 'CLASS'}" th:text="#{webhook.scope.CLASS}">پوشه‌های یک طبقه</option>
+                        </select>
+                    </div>
+                    <div class="form-group" x-show="scope === 'CLASS'" x-cloak>
+                        <label for="classId" th:text="#{webhook.field.class}">طبقه</label>
+                        <select id="classId" name="classId" class="form-control">
+                            <option value="" th:text="#{folderClass.choose}">انتخاب کنید</option>
+                            <option th:each="c : ${classes}" th:value="${c.id()}" th:text="${c.title()}"
+                                    th:selected="${form.classId() != null and form.classId() == c.id()}">طبقه</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group destination-section"
+                     th:attr="data-initial-id=${form.folderId()},data-initial-title=${form.folderTitle()}"
+                     x-data="folderChooser({
+                        url: $el.dataset.foldersUrl,
+                        initialId: $el.dataset.initialId ? Number($el.dataset.initialId) : null,
+                        initialPath: $el.dataset.initialTitle ? [{ id: Number($el.dataset.initialId), title: $el.dataset.initialTitle }] : [],
+                        rootTitle: $el.dataset.rootTitle,
+                        selectRoot: true,
+                        copy: { loadFailed: $el.dataset.loadFailed, more: $el.dataset.more }
+                     })"
+                     th:data-folders-url="@{/resource/folders/children}"
+                     th:data-root-title="#{explorer.root}"
+                     th:data-load-failed="#{explorer.loadFailed}"
+                     th:data-more="#{explorer.tree.more}">
+                    <label th:text="#{webhook.field.folder}">پوشه</label>
+                    <input type="hidden" name="folderId" :value="chosen ? chosen.id : ''">
+                    <div th:replace="~{fragments.html :: folder-chooser}"></div>
+                    <p class="form-text" th:text="#{webhook.field.folderHint}">برای طبقه اختیاری است.</p>
+                </div>
+
+                <h3 class="mt-4 mb-2 text-sm font-semibold" th:text="#{webhook.field.what}">چه چیزی</h3>
+                <div class="form-group">
+                    <div class="flex flex-wrap gap-4">
+                        <label th:each="e : ${events}" class="flex items-center gap-1.5">
+                            <input type="checkbox" name="event" th:value="${e.name()}" th:checked="${form.events().contains(e)}">
+                            <span th:text="#{'webhook.event.' + ${e.name()}}">رویداد</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="grid gap-5 lg:grid-cols-3">
+                    <div class="form-group">
+                        <label for="extensions" th:text="#{webhook.field.extensions}">پسوندها</label>
+                        <input id="extensions" name="extensions" th:value="${form.extensions()}" class="form-control technical"
+                               dir="ltr" type="text" maxlength="300" placeholder="pdf, docx">
+                        <p class="form-text" th:text="#{webhook.field.extensionsHint}">خالی: همه</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="namePattern" th:text="#{webhook.field.namePattern}">الگوی نام</label>
+                        <input id="namePattern" name="namePattern" th:value="${form.namePattern()}" class="form-control technical"
+                               dir="ltr" type="text" maxlength="200" placeholder="invoice-*.pdf">
+                        <p class="form-text" th:text="#{webhook.field.namePatternHint}">* و ?</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="actors" th:text="#{webhook.field.actors}">انجام‌دهنده</label>
+                        <select id="actors" name="actors" class="form-control">
+                            <option value="ALL" th:selected="${form.actors() == 'ALL'}" th:text="#{webhook.actors.ALL}">همه</option>
+                            <option value="PEOPLE" th:selected="${form.actors() == 'PEOPLE'}" th:text="#{webhook.actors.PEOPLE}">فقط اشخاص</option>
+                            <option value="KEYS" th:selected="${form.actors() == 'KEYS'}" th:text="#{webhook.actors.KEYS}">فقط کلیدهای API</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" th:unless="${#lists.isEmpty(keys)}">
+                    <label for="excludedKeyId" th:text="#{webhook.field.excludedKeys}">به‌جز کلیدهای API</label>
+                    <select id="excludedKeyId" name="excludedKeyId" class="form-control" multiple size="4">
+                        <option th:each="k : ${keys}" th:value="${k.id()}" th:text="|${k.title()} (#${k.id()})|"
+                                th:selected="${form.excludedKeyIds().contains(k.id())}">کلید</option>
+                    </select>
+                    <p class="form-text" th:text="#{webhook.field.excludedKeysHint}">جلوی چرخه را می‌گیرد.</p>
+                </div>
+
+                <h3 class="mt-4 mb-2 text-sm font-semibold" th:text="#{webhook.field.auth}">احراز هویت نزد گیرنده</h3>
+                <div class="grid gap-5 lg:grid-cols-3">
+                    <div class="form-group">
+                        <label for="authKind" th:text="#{webhook.field.authKind}">نوع</label>
+                        <select id="authKind" name="authKind" class="form-control" x-model="authKind">
+                            <option value="NONE" th:selected="${form.authKind() == 'NONE'}" th:text="#{webhook.auth.NONE}">هیچ</option>
+                            <option value="HEADER" th:selected="${form.authKind() == 'HEADER'}" th:text="#{webhook.auth.HEADER}">سرآیند</option>
+                            <option value="BASIC" th:selected="${form.authKind() == 'BASIC'}" th:text="#{webhook.auth.BASIC}">Basic</option>
+                        </select>
+                    </div>
+                    <div class="form-group" x-show="authKind !== 'NONE'" x-cloak>
+                        <label for="authName" x-text="authKind === 'BASIC' ? $el.dataset.user : $el.dataset.header"
+                               th:data-user="#{webhook.field.authUser}" th:data-header="#{webhook.field.authHeader}"
+                               th:text="#{webhook.field.authHeader}">نام سرآیند</label>
+                        <input id="authName" name="authName" th:value="${form.authName()}" class="form-control technical"
+                               dir="ltr" type="text" maxlength="200" autocomplete="off">
+                    </div>
+                    <div class="form-group" x-show="authKind !== 'NONE'" x-cloak>
+                        <label for="authSecret" th:text="#{webhook.field.authSecret}">مقدار / گذرواژه</label>
+                        <input id="authSecret" name="authSecret" class="form-control technical" dir="ltr" type="password"
+                               maxlength="500" autocomplete="new-password">
+                        <p class="form-text" th:if="${form.hasAuthSecret()}" th:text="#{webhook.field.authSecretKept}">نگه داشته شده است؛ خالی بگذارید تا بماند.</p>
+                    </div>
+                </div>
+
+                <h3 class="mt-4 mb-2 text-sm font-semibold" th:text="#{webhook.field.pace}">آهنگ ارسال</h3>
+                <div class="grid gap-5 lg:grid-cols-3">
+                    <div class="form-group">
+                        <label for="ratePerMinute" th:text="#{webhook.field.rate}">در دقیقه</label>
+                        <input id="ratePerMinute" name="ratePerMinute" th:value="${form.ratePerMinute()}" class="form-control"
+                               type="number" min="1" max="6000" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="concurrency" th:text="#{webhook.field.concurrency}">هم‌زمان</label>
+                        <input id="concurrency" name="concurrency" th:value="${form.concurrency()}" class="form-control"
+                               type="number" min="1" max="16" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="pauseAfter" th:text="#{webhook.field.pauseAfter}">توقف خودکار پس از چند خطای پیاپی</label>
+                        <input id="pauseAfter" name="pauseAfter" th:value="${form.pauseAfter()}" class="form-control"
+                               type="number" min="1" max="10000" required>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check2" aria-hidden="true"></i>
+                        <span th:text="#{action.save}">ذخیره</span>
+                    </button>
+                    <a th:if="${form.id() != null}" th:href="@{/settings/webhooks}" class="btn btn-outline-secondary"
+                       th:text="#{explorer.manage.cancel}">انصراف</a>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="list-title">
+        <div class="card-body">
+            <h2 id="list-title" class="text-base font-semibold" th:text="#{webhook.list.title}">وب‌هوک‌ها</h2>
+            <div th:if="${#lists.isEmpty(webhooks)}" class="empty-state" th:text="#{webhook.list.empty}">هنوز وب‌هوکی تعریف نشده است.</div>
+            <div th:unless="${#lists.isEmpty(webhooks)}" class="overflow-x-auto">
+                <table class="table" id="webhooks">
+                    <thead>
+                    <tr>
+                        <th th:text="#{webhook.field.name}">نام</th>
+                        <th th:text="#{webhook.field.where}">کجا</th>
+                        <th th:text="#{webhook.field.what}">چه چیزی</th>
+                        <th th:text="#{webhook.field.url}">نشانی</th>
+                        <th th:text="#{webhook.column.state}">وضعیت</th>
+                        <th th:text="#{webhook.column.waiting}">در انتظار / ناموفق</th>
+                        <th th:text="#{apiKey.column.actions}">عملیات</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="w : ${webhooks}" th:id="|webhook-${w.id()}|">
+                        <td class="font-semibold" th:text="${w.name()}"></td>
+                        <td>
+                            <div th:text="#{'webhook.scope.' + ${w.scope().name()}}"></div>
+                            <div th:if="${w.classTitle() != null}" class="text-sm" th:text="${w.classTitle()}"></div>
+                            <div th:if="${w.folderId() != null}" class="text-sm text-ink-500"
+                                 th:text="${w.folderTitle() != null ? w.folderTitle() : #messages.msg('webhook.folderGone')}"></div>
+                        </td>
+                        <td>
+                            <div class="text-sm">
+                                <span th:each="e, s : ${w.events()}"><span th:text="#{'webhook.event.' + ${e.name()}}"></span><span th:unless="${s.last}">، </span></span>
+                            </div>
+                            <div th:if="${!#strings.isEmpty(w.extensions())}" class="technical text-sm" dir="ltr" th:text="${w.extensions()}"></div>
+                            <div th:if="${!#strings.isEmpty(w.namePattern())}" class="technical text-sm" dir="ltr" th:text="${w.namePattern()}"></div>
+                            <div th:if="${w.actors().name() != 'ALL'}" class="text-sm" th:text="#{'webhook.actors.' + ${w.actors().name()}}"></div>
+                        </td>
+                        <td class="technical text-sm" dir="ltr" th:text="${w.url()}"></td>
+                        <td>
+                            <span th:if="${w.enabled()}" class="badge badge-success" th:text="#{webhook.state.sending}">در حال ارسال</span>
+                            <span th:unless="${w.enabled()}" class="badge badge-warning"
+                                  th:text="#{'webhook.state.paused.' + ${w.pausedReason() != null ? w.pausedReason() : 'MANUAL'}}">متوقف</span>
+                            <div th:if="${w.consecutiveFailures() > 0}" class="text-sm text-ink-500"
+                                 th:text="#{webhook.failuresInARow(${w.consecutiveFailures()}, ${w.pauseAfter()})}"></div>
+                            <div th:if="${w.previousSecretUntil() != null}" class="text-sm text-ink-500"
+                                 th:text="#{webhook.previousSecretUntil(${@jalali.format(w.previousSecretUntil())})}"></div>
+                        </td>
+                        <td class="text-nowrap">
+                            <span th:text="${w.pending()}">0</span> / <span th:text="${w.failed()}">0</span>
+                        </td>
+                        <td>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <a th:href="@{/settings/webhooks/{id}/deliveries(id=${w.id()})}" class="btn btn-outline-secondary btn-sm">
+                                    <i class="bi bi-list-ul" aria-hidden="true"></i>
+                                    <span th:text="#{webhook.action.deliveries}">ارسال‌ها</span>
+                                </a>
+                                <a sec:authorize="hasAuthority('SAVE_WEBHOOK') || hasAuthority('ADMIN')"
+                                   th:href="@{/settings/webhooks/{id}(id=${w.id()})}" class="btn btn-outline-secondary btn-sm">
+                                    <i class="bi bi-pencil" aria-hidden="true"></i>
+                                    <span th:text="#{action.edit}">ویرایش</span>
+                                </a>
+                                <form sec:authorize="hasAuthority('SAVE_WEBHOOK') || hasAuthority('ADMIN')"
+                                      th:action="@{/settings/webhooks/{id}/test(id=${w.id()})}" method="post" class="inline">
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm">
+                                        <i class="bi bi-send" aria-hidden="true"></i>
+                                        <span th:text="#{webhook.action.test}">آزمایش</span>
+                                    </button>
+                                </form>
+                                <form th:if="${w.enabled()}" sec:authorize="hasAuthority('SAVE_WEBHOOK') || hasAuthority('ADMIN')"
+                                      th:action="@{/settings/webhooks/{id}/pause(id=${w.id()})}" method="post" class="inline">
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm">
+                                        <i class="bi bi-pause" aria-hidden="true"></i>
+                                        <span th:text="#{webhook.action.pause}">توقف</span>
+                                    </button>
+                                </form>
+                                <form th:unless="${w.enabled()}" sec:authorize="hasAuthority('SAVE_WEBHOOK') || hasAuthority('ADMIN')"
+                                      th:action="@{/settings/webhooks/{id}/resume(id=${w.id()})}" method="post" class="inline">
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm">
+                                        <i class="bi bi-play" aria-hidden="true"></i>
+                                        <span th:text="#{webhook.action.resume}">ادامه</span>
+                                    </button>
+                                </form>
+                                <form sec:authorize="hasAuthority('SAVE_WEBHOOK') || hasAuthority('ADMIN')"
+                                      th:action="@{/settings/webhooks/{id}/rotate-secret(id=${w.id()})}" method="post" class="inline">
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm"
+                                            th:attr="onclick=|return confirm('${#messages.msg('webhook.rotateConfirm')}')|">
+                                        <i class="bi bi-key" aria-hidden="true"></i>
+                                        <span th:text="#{webhook.action.rotate}">رمز تازه</span>
+                                    </button>
+                                </form>
+                                <form sec:authorize="hasAuthority('DELETE_WEBHOOK') || hasAuthority('ADMIN')"
+                                      th:action="@{/settings/webhooks/{id}/delete(id=${w.id()})}" method="post" class="inline">
+                                    <button type="submit" class="btn btn-danger btn-sm"
+                                            th:attr="onclick=|return confirm('${#messages.msg('webhook.deleteConfirm')}')|">
+                                        <i class="bi bi-trash" aria-hidden="true"></i>
+                                        <span th:text="#{action.delete}">حذف</span>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

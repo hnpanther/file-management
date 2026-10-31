@@ -595,7 +595,7 @@ public class FileService {
 
         actionHistoryService.saveActionHistory(EntityEnum.FileInfo, fileInfoId, ActionEnum.UPDATE_VALUES, principalId,
                 "MOVE FILE_INFO", "MOVE file id=" + fileInfoId + " from folder id=" + from + " to folder id=" + targetFolderId);
-        fileHistoryService.record(FileEvent.FILE_MOVED, fileInfo, null, target, sourceTitle, principalId);
+        fileHistoryService.recordMove(fileInfo, target, source, sourceTitle, principalId);
     }
 
     @Transactional

@@ -550,7 +550,8 @@ public class S3ObjectService {
                 .orElseThrow(() -> new NotFound(true, "no such bucket: " + bucket));
     }
 
-    static String bucketName(String name) {
+    /** A top-level folder's name as its bucket's: lower case, {@code _} as {@code -} - also what a webhook says. */
+    public static String bucketName(String name) {
         return name.toLowerCase(Locale.ROOT).replace('_', '-');
     }
 
