@@ -195,6 +195,13 @@ follow it. This file adds only the points worth repeating for an AI assistant wo
 * **Every change to a file records a `file_history` event** (2.5.0): `fileHistoryService.record`
   in the transaction of the change, as `FileService` does - and a search term goes through
   `SearchTerms.escapeLike` with `ESCAPE '\'` on its `LIKE` (issue 96).
+* **A webhook learns of a change only through `FileHistoryService.record`** (2.19.0, roadmap 13.18, package
+  `webhook`): `WebhookOutbox.queue` runs at its end, in the change's transaction - a new change to a file that records
+  its event is sent by itself, one that skips the history is never sent. A new history event that is a webhook event
+  is named in `WebhookEvent`; a new way to move a file records with `recordMove` (the folder it left). The
+  subscriptions are read by a statement (`WebhookRuleCache`), never through the entities; nothing is sent in a
+  request but the page's test event; a body never carries a metadata value, content or a secret, and neither a body,
+  a signing secret nor a receiver's credential is ever logged or put in the action history.
 * **Every way bytes leave records the download** (2.7.0): `downloadAudit.served(download, channel)`
   in the handler once it has decided to send them; `DownloadRecorder` writes it off the request, so
   never write `file_download` in a request's transaction.

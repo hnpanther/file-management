@@ -86,6 +86,12 @@ public enum PermissionGroup {
     /** Removing from the recycle bin for good - what the person may restore; kept apart: nothing comes back. */
     TRASH_PURGE(PURGE_TRASH),
 
+    /**
+     * Webhooks (2.19.0): the subscriptions that send what happens to files to another system - every file under
+     * their folder, whatever the subscriber may read; an administrator's.
+     */
+    WEBHOOKS_ADMIN(WEBHOOKS_PAGE, SAVE_WEBHOOK, DELETE_WEBHOOK),
+
     /** Creating, renaming, moving and deleting empty folders. */
     FOLDER_MANAGE(REST_CREATE_FOLDER, REST_RENAME_FOLDER, REST_MOVE_FOLDER, REST_DELETE_FOLDER, REST_GET_TAG_GROUPS),
 

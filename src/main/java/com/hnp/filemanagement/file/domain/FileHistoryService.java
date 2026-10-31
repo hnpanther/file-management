@@ -10,6 +10,7 @@ import com.hnp.filemanagement.identity.persistence.ApiKeyRepository;
 import com.hnp.filemanagement.identity.persistence.UserRepository;
 import com.hnp.filemanagement.identity.security.ActingApiKey;
 import com.hnp.filemanagement.shared.util.SearchKey;
+import com.hnp.filemanagement.webhook.WebhookOutbox;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
@@ -37,7 +38,8 @@ import java.util.stream.Collectors;
  * person will read is copied in then: the name, the revision's version, format and size, the
  * folders above the file as one line, the username, the API key the request came with
  * ({@code ActingApiKey}). A tree delete records one event per file it removes, and asks for each
- * folder's title once per transaction, not once per file.
+ * folder's title once per transaction, not once per file. Every event goes to {@code WebhookOutbox} as it
+ * is recorded (2.19.0): the one place a webhook learns of a change, whichever way it was made.
  *
  * <p><b>Reading.</b> A page is a {@link Slice}: never a count of a history that only grows. An
  * event is shown to a reader whose folder access reaches the folder the file was in; an
@@ -57,17 +59,20 @@ public class FileHistoryService {
     private final ApiKeyRepository apiKeyRepository;
     private final FolderService folderService;
     private final FolderAccessService folderAccessService;
+    private final WebhookOutbox webhookOutbox;
     private final Clock clock;
 
     public FileHistoryService(FileHistoryRepository fileHistoryRepository, FileHistorySearch fileHistorySearch,
                               UserRepository userRepository, ApiKeyRepository apiKeyRepository,
-                              FolderService folderService, FolderAccessService folderAccessService, Clock clock) {
+                              FolderService folderService, FolderAccessService folderAccessService,
+                              WebhookOutbox webhookOutbox, Clock clock) {
         this.fileHistoryRepository = fileHistoryRepository;
         this.fileHistorySearch = fileHistorySearch;
         this.userRepository = userRepository;
         this.apiKeyRepository = apiKeyRepository;
         this.folderService = folderService;
         this.folderAccessService = folderAccessService;
+        this.webhookOutbox = webhookOutbox;
         this.clock = clock;
     }
 
@@ -83,7 +88,17 @@ public class FileHistoryService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void record(FileEvent event, FileInfo file, FileDetails revision, Folder folder, String detail, int principalId) {
-        record(event, file, revision, folder, detail, null, null, principalId);
+        record(event, file, revision, folder, null, detail, null, null, principalId);
+    }
+
+    /**
+     * {@link FileEvent#FILE_MOVED}: at the folder the file went to, with {@code sourceTitle} - where it was, as a
+     * person read it - for its detail, and the folder it came from for the webhooks (2.19.0), which a subscription
+     * on either side is sent.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordMove(FileInfo file, Folder target, Folder source, String sourceTitle, int principalId) {
+        record(FileEvent.FILE_MOVED, file, null, target, source, sourceTitle, null, null, principalId);
     }
 
     /**
@@ -94,11 +109,11 @@ public class FileHistoryService {
     public void recordWithMetadata(FileEvent event, FileDetails revision, String detail, String metadataBefore,
                                    String metadataAfter, int principalId) {
         FileInfo file = revision.getFileInfo();
-        record(event, file, revision, file.getFolder(), detail, metadataBefore, metadataAfter, principalId);
+        record(event, file, revision, file.getFolder(), null, detail, metadataBefore, metadataAfter, principalId);
     }
 
-    private void record(FileEvent event, FileInfo file, FileDetails revision, Folder folder, String detail,
-                        String metadataBefore, String metadataAfter, int principalId) {
+    private void record(FileEvent event, FileInfo file, FileDetails revision, Folder folder, Folder movedFrom,
+                        String detail, String metadataBefore, String metadataAfter, int principalId) {
         FileHistory history = new FileHistory();
         history.setMetadataBefore(metadataBefore);
         history.setMetadataAfter(metadataAfter);
@@ -126,6 +141,8 @@ public class FileHistoryService {
         Integer apiKeyId = ActingApiKey.currentId();
         history.setApiKey(apiKeyId == null ? null : apiKeyRepository.getReferenceById(apiKeyId));
         fileHistoryRepository.save(history);
+        // What a subscription is sent of it (2.19.0), queued with it: rolled back with it, or sent once it commits.
+        webhookOutbox.queue(history, file, revision, folder, movedFrom);
     }
 
     /** {@link #record} for the file as a whole, in the folder it is in. */

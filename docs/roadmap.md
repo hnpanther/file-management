@@ -52,6 +52,13 @@ deployment guide. The one-off page of 2.16.1 is gone. Alongside: watch `/setting
 host, and once the backfill is done measure the tables and look at the failures - what decides whether 11.4 (the
 lexicon gate) is wanted.
 
+2.19.0 is written: **webhooks** (13.18, `V3.21`) - a subscription on a folder (and what is below it, the folder
+alone, or a class) is sent each change to its files - an upload, a version, a delete into the bin, a restore, a purge,
+a move, metadata - by any way, as an S3-shaped JSON `POST`, signed, at its own pace, tried again for a day, paused by
+itself when its receiver is gone; `/settings/webhooks` (`WEBHOOKS_PAGE`). **Off until switched on**, with the hosts it
+may call named ([deployment.md](deployment.md#upgrading-from-2180-to-2190--webhooks)); the receiver's manual is
+[webhooks.md](webhooks.md).
+
 2.17.2 is written: **a review before production.** A folder made while a class is changed above it - n8n
 uploading while an administrator classes the tree - could keep its parent's class path as read before the change,
 and with it access a class should no longer give: class changes, moves and the rules applied now hold one advisory
@@ -4547,7 +4554,7 @@ needs underneath it, and are cheaper built first than inside it.
 | 13.15 | **A recovery plan**: RPO and RTO agreed, a copy off the server, a restore rehearsed (below) | the backup is one half; knowing how long the way back takes is the other | none | with 13.2 |
 | 13.16 | **The audit trail out** to the organisation's log system (below) | the records survive the server, and are read beside the network's | none | 2-3 days |
 | 13.17 | **Encryption at rest**, the operators' (below) | a disk taken is a disk read | none | the operators' |
-| 13.18 | **Webhooks**: a call to n8n or the ERP when a file is uploaded, deleted, restored or moved beneath a folder, as S3's event notifications (below) | asked for: n8n lists folders over and over to find what changed | `webhook`, `webhook_delivery` | 4-6 days |
+| 13.18 | **Webhooks**: a call to n8n or the ERP when a file is uploaded, deleted, restored or moved beneath a folder, as S3's event notifications (below) - **written in 2.19.0** | asked for: n8n lists folders over and over to find what changed | `webhook`, `webhook_delivery` (`V3.21`) | 4-6 days |
 | 13.19 | **The folders as a drive in Windows Explorer** (WebDAV): browse, open, save as a new version, drag in and out, delete to the bin - as the person, with their access (below) | asked for; nothing to install on a computer | a lock, a scratch area | 6-9 days |
 
 **The proposed order**: 13.1 (the most risk removed for the least work), 13.2 with the rest of Phase 4,
@@ -4856,7 +4863,7 @@ the git history (13.10, [issue 11](issues.md#11-credentials-and-infrastructure-d
 key refused is not a sign-in event ([issue 126](issues.md#126-an-api-key-presented-and-refused-is-not-recorded-as-an-authentication-decision--s3)),
 the JIT's cost ([issue 125](issues.md#125-a-statement-whose-estimate-is-high-is-compiled-by-postgresqls-jit-which-can-cost-more-than-running-it--s3)).
 
-### 13.18 Webhooks: a call to another system when something happens in a folder — planned (2026-10-28)
+### 13.18 Webhooks: a call to another system when something happens in a folder — written in 2.19.0 (2026-10-31; planned 2026-10-28)
 
 **What it is.** What S3 calls *event notifications* (MinIO: *bucket notifications*): a subscription on a part of a
 bucket - "everything under `mybucket/folder1/`, uploads only, `.pdf` only" - and every time such a thing happens
@@ -4978,6 +4985,70 @@ next attempt - and a failed one sent again; a subscription paused and resumed.
    thousand uploads matched against a hundred subscriptions without the uploads slowing.
 
 **Size**: 4 - 6 days.
+
+#### As written (2.19.0, 2026-10-31)
+
+The plan above, with what the owner decided and what writing it found. The receiver's manual is
+[webhooks.md](webhooks.md); turning it on, [deployment.md](deployment.md#upgrading-from-2180-to-2190--webhooks).
+
+* **`http` as well as `https`** - the owner's decision: the receivers are inside the network. The allowlist is what
+  keeps a subscription from being a way out (or in) to anywhere; the body is signed either way. Redirects are never
+  followed, and the host is checked again at every send - one taken off the list is called no more.
+* **The settings a subscription has** (asked for when the steps were agreed): the scope - `SUBTREE` (the folder and
+  everything below, the default), `FOLDER` (that folder alone), `CLASS` (the folders of a class, anywhere or below a
+  folder); the events; extensions; **a name pattern** (`*`, `?`, without case); **people only or API keys only**;
+  **API keys whose events are never sent** - the loop guard; the receiver's credential (a header, or Basic); and **its
+  own pace** - at most so many a minute (a bucket of ten seconds' worth), so many at once, and **paused by itself**
+  after so many failures in a row (`AUTO`), what follows waiting for a person to resume it.
+* **A switch, off by default** (`filemanagement.webhooks.enabled`): off, nothing is queued - the outbox returns before
+  any work - and nothing is sent; subscriptions can still be made, and the page says it is off. The dispatcher's
+  threads exist only while it is on. The outbox costs nothing either while no subscription exists.
+* **The outbox** is `WebhookOutbox.queue`, called at the end of `FileHistoryService.record` - the one funnel; a move
+  is recorded with where it came from (`recordMove`) so that a subscription on the folder it left hears of it. The
+  subscriptions are read into memory **by a statement**, not through the entities (a transaction's persistence
+  context may hold an older row), read again at the first use after a change commits and every minute (another
+  instance's change); the matching tests a folder's materialised path and class path as text - a million events
+  against a hundred subscriptions in memory, no statement. A delivery is inserted only while its subscription
+  exists: a cache a minute behind another instance's delete never fails an upload.
+* **One record per object**: an event about a revision has one; one about the whole file - deleted, restored,
+  purged, moved - one per format, each at its latest version, as S3 would send one per key.
+* **The bin**: nothing in it matches - also a purge recorded at a folder that has since gone to the bin itself.
+* **Retries**: 1 min, 5 min, 30 min, 2 h, 6 h, 6 h, 6 h - eight attempts, all within a day; `410 Gone` at once; then
+  `FAILED`, sent again from the page, one or all. A test event is one attempt, and no failure of the subscription.
+* **`retention-days`** (30): how long a **finished** delivery is kept for its page; one still waiting that long is given
+  up with them. It says nothing about files.
+* **Folder events** stay a second step, as planned. Renaming or moving a folder changes the keys of everything below
+  it **without an event**: a receiver names a file by `fm.file.externalId`, never by its key ([webhooks.md](webhooks.md)).
+
+**The risks, and what answers each** (the review of 2026-10-30):
+
+| Risk | Answered by |
+|---|---|
+| A loop: the receiver writes back where it listens, and is sent its own write | the excluded API keys (and the extension and name filters); said on the page and in webhooks.md |
+| A flood: a folder of 20,000 files deleted at once is 20,000 deliveries | each subscription's own pace and concurrency; the senders a fixed pool; a slow receiver holds only its own sends |
+| A dead receiver: retries for ever, a queue that only grows | eight attempts within a day, then `FAILED`; paused by itself after a run of failures; finished rows removed after the retention, waiting ones given up |
+| Duplicates and order | at least once by design: `X-FM-Event-Id` to drop a repeat, `historyId` / `sequencer` to order |
+| A way into the network (SSRF), or out of it | the allowlist at save and at send, no redirect followed, no user in a URL, a port in the allowlist when wanted |
+| A leak: secrets, metadata, the log | both secrets AES-GCM under the master key, sealed to their subscription and column, shown once, never logged nor in the action history; no metadata value nor content in a body; the action history drops a URL's query |
+| A bug in the shared funnel fails every upload | the outbox returns at once while off or unsubscribed; matching in memory; a delivery for a deleted subscription is skipped, not an error; a sender's failure is the delivery's, never the change's |
+| Load on the application | a connection only for the claim and the outcome, none while a receiver answers; `SKIP LOCKED` across instances; the scale test (`WebhookScaleTest`) |
+| A key changes on a rename | no event, documented: name a file by its external id |
+
+**Tests** (`webhook` package, 51, and the scale one): the matching (`WebhookRulesTest`: the three scopes at any
+depth, the bin, a move from either side, the filters, the allowlist, the signature); every event by its way, the
+bin's included, the scopes on the real tree, a folder renamed and moved, a class, the filters and the loop guard, a
+paused subscription, one deleted behind the cache (`WebhookOutboxTest`); sending to a real HTTP server here - the
+signature checked as a receiver checks it, both credentials, the retry schedule to `FAILED`, `410`, a day's limit, the
+pause by itself, a redirect, a timeout, a closed port, a host off the allowlist, a test event, a rotated secret, a
+retry by hand, a lease run out, the retention (`WebhookDeliveryTest`); a rollback queues nothing and the real
+dispatcher sends what commits, at its pace (`WebhookCommitTest`); every refusal by its code, the secrets encrypted,
+the action history (`WebhookServiceTest`); the pages (`WebhookPagesTest`); switched off (`WebhooksOffTest`).
+`WebhookScaleTest` (`-Pscale`), measured 2026-10-31: a hundred subscriptions, two matching - a million events matched
+in memory in 12.5 s (12 µs an event); **ten thousand uploads, each committed on its own, 48 ms each against 57 ms for a
+thousand with no subscription** (the baseline ran first, cold: the outbox costs an upload nothing measurable); the
+20,000 deliveries sent one after another to a receiver on the same machine in 136 s; over 200,000 rows the newest page
+5 ms, a page after a cursor 2 ms, the counts 36 ms, a claim 3 ms. A test that held its subscriptions uncommitted in one
+long transaction lost them to the every-minute refresh after a minute - the test, not the code: subscriptions commit.
 
 ### 13.19 The folders as a drive in Windows Explorer (WebDAV) — planned (2026-10-28)
 

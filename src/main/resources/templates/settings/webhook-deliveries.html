@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <th:block th:replace="~{fragments.html :: head-assets}"></th:block>
+    <title th:text="#{webhook.deliveries.pageTitle}">ارسال‌های وب‌هوک | سامانه مدیریت اسناد</title>
+</head>
+<!--
+  A webhook's deliveries, newest first, a page of fifty after a cursor (the last row's time and id) - never a count of
+  a table that grows with every change: what each said, how it went, when it is tried again. What was given up can be
+  sent again from here, one or every one. The body sent is not shown: it is in the database for the sender alone.
+-->
+<body>
+<div th:replace="~{navbar.html :: navbar}"></div>
+
+<main class="container-fluid app-content">
+    <header class="page-header">
+        <div class="page-kicker" th:text="#{webhook.heading}">وب‌هوک‌ها</div>
+        <h1 th:text="#{webhook.deliveries.heading(${webhook.name()})}">ارسال‌ها</h1>
+        <p class="page-description technical" dir="ltr" th:text="${webhook.url()}"></p>
+    </header>
+
+    <div th:if="${saved != null}" class="alert alert-success mb-5" role="status" id="success_message" th:text="${saved}"></div>
+    <div th:if="${refused != null}" class="alert alert-warning mb-5" role="alert" id="warning_message" th:text="${refused}"></div>
+
+    <section class="card">
+        <div class="card-body">
+            <div class="mb-4 flex flex-wrap items-center gap-2">
+                <a th:href="@{/settings/webhooks}" class="btn btn-outline-secondary btn-sm" th:text="#{webhook.deliveries.back}">بازگشت</a>
+                <form th:if="${webhook.failed() > 0}" sec:authorize="hasAuthority('SAVE_WEBHOOK') || hasAuthority('ADMIN')"
+                      th:action="@{/settings/webhooks/{id}/retry(id=${webhook.id()})}" method="post" class="inline">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                        <span th:text="#{webhook.deliveries.retryAll(${webhook.failed()})}">ارسال دوبارهٔ همهٔ ناموفق‌ها</span>
+                    </button>
+                </form>
+            </div>
+            <div th:if="${#lists.isEmpty(rows)}" class="empty-state" th:text="#{webhook.deliveries.empty}">ارسالی نیست.</div>
+            <div th:unless="${#lists.isEmpty(rows)}" class="overflow-x-auto">
+                <table class="table" id="webhook-deliveries">
+                    <thead>
+                    <tr>
+                        <th th:text="#{webhook.deliveries.when}">زمان</th>
+                        <th th:text="#{webhook.deliveries.event}">رویداد</th>
+                        <th th:text="#{webhook.deliveries.file}">فایل</th>
+                        <th th:text="#{webhook.deliveries.state}">وضعیت</th>
+                        <th th:text="#{webhook.deliveries.attempts}">تلاش</th>
+                        <th th:text="#{webhook.deliveries.last}">آخرین پاسخ</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="r : ${rows}" th:id="|delivery-${r.id()}|">
+                        <td class="technical text-nowrap" dir="ltr" th:text="${@jalali.format(r.occurredAt())}"></td>
+                        <td th:text="${r.event() == 'TEST'} ? #{webhook.event.TEST} : #{'webhook.event.' + ${r.event()}}"></td>
+                        <td th:text="${r.fileName()}"></td>
+                        <td>
+                            <span class="badge"
+                                  th:classappend="${r.state() == 'DELIVERED'} ? 'badge-success' : (${r.state() == 'FAILED'} ? 'badge-danger' : 'badge-secondary')"
+                                  th:text="#{'webhook.deliveries.state.' + ${r.state()}}"></span>
+                            <div th:if="${r.state() == 'PENDING' and r.attempts() > 0}" class="text-sm text-ink-500"
+                                 th:text="#{webhook.deliveries.nextAt(${@jalali.format(r.nextAttemptAt())})}"></div>
+                        </td>
+                        <td th:text="${r.attempts()}">0</td>
+                        <td class="text-sm">
+                            <span th:if="${r.lastStatus() != null}" class="technical" dir="ltr" th:text="${r.lastStatus()}"></span>
+                            <span th:if="${r.lastError() != null}" class="technical" dir="ltr" th:text="${r.lastError()}"></span>
+                        </td>
+                        <td>
+                            <form th:if="${r.state() == 'FAILED'}" sec:authorize="hasAuthority('SAVE_WEBHOOK') || hasAuthority('ADMIN')"
+                                  th:action="@{/settings/webhooks/{id}/retry(id=${webhook.id()})}" method="post" class="inline">
+                                <input type="hidden" name="deliveryId" th:value="${r.id()}">
+                                <button type="submit" class="btn btn-outline-secondary btn-sm" th:text="#{webhook.deliveries.retry}">ارسال دوباره</button>
+                            </form>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4 flex gap-2">
+                <a th:unless="${first}" th:href="@{/settings/webhooks/{id}/deliveries(id=${webhook.id()})}"
+                   class="btn btn-outline-secondary btn-sm" th:text="#{webhook.deliveries.newest}">جدیدترین‌ها</a>
+                <a th:if="${next != null}" th:href="@{/settings/webhooks/{id}/deliveries(id=${webhook.id()},before=${next})}"
+                   class="btn btn-outline-secondary btn-sm" th:text="#{webhook.deliveries.older}">قدیمی‌تر</a>
+            </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments.html :: scripts}"></th:block>
+</body>
+</html>

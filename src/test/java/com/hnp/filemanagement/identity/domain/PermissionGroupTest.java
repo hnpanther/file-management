@@ -75,7 +75,7 @@ class PermissionGroupTest {
         Set<PermissionEnum> administration = PermissionGroup.membersOf(PermissionGroup.USERS_ADMIN, PermissionGroup.ROLES_ADMIN,
                 PermissionGroup.SETTINGS_ADMIN, PermissionGroup.API_KEYS_ADMIN, PermissionGroup.API_V1,
                 PermissionGroup.FOLDER_DELETE_TREE, PermissionGroup.SHARE_LINKS_ADMIN, PermissionGroup.FILE_PUBLISH,
-                PermissionGroup.TRASH_PURGE);
+                PermissionGroup.TRASH_PURGE, PermissionGroup.WEBHOOKS_ADMIN);
         assertThat(FixedRole.USER_PERMISSIONS).doesNotContainAnyElementsOf(administration)
                 .doesNotContain(PermissionEnum.ADMIN, PermissionEnum.API_KEY);
     }
