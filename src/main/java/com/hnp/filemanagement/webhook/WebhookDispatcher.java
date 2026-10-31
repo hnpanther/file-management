@@ -12,9 +12,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -71,6 +73,8 @@ public class WebhookDispatcher implements SmartLifecycle {
     private final Map<Integer, AtomicInteger> inFlight = new ConcurrentHashMap<>();
     private final AtomicInteger totalInFlight = new AtomicInteger();
     private final Map<Integer, RateLimit> limits = new ConcurrentHashMap<>();
+    /** A permit each time a send finishes: the dispatcher, waiting for room, takes the next at once. */
+    private final Semaphore wakeUps = new Semaphore(0);
     private Thread dispatcher;
     private ExecutorService senders;
 
@@ -147,7 +151,9 @@ public class WebhookDispatcher implements SmartLifecycle {
         while (running.get()) {
             try {
                 if (dispatch() == 0) {
-                    Thread.sleep(IDLE);
+                    // Nothing started: wait for a send to finish - room again - or a second at most.
+                    wakeUps.tryAcquire(IDLE.toMillis(), TimeUnit.MILLISECONDS);
+                    wakeUps.drainPermits();
                 }
                 if (loopFailing.getAndSet(false)) {
                     logger.info("webhooks: the dispatcher's loop runs again");
@@ -179,8 +185,12 @@ public class WebhookDispatcher implements SmartLifecycle {
         Instant now = Instant.now(clock);
         releaseExpiredLeases(now);
         int started = 0;
+        Set<Integer> due = deliveries.withDue(now);
+        if (due.isEmpty()) {
+            return 0;
+        }
         for (WebhookRules.Rule rule : ruleCache.current().all()) {
-            if (!rule.enabled()) {
+            if (!rule.enabled() || !due.contains(rule.webhookId())) {
                 continue;
             }
             AtomicInteger own = inFlight.computeIfAbsent(rule.webhookId(), id -> new AtomicInteger());
@@ -205,6 +215,7 @@ public class WebhookDispatcher implements SmartLifecycle {
                     } finally {
                         own.decrementAndGet();
                         totalInFlight.decrementAndGet();
+                        wakeUps.release();
                     }
                 });
             }

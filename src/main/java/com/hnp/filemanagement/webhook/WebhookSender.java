@@ -100,7 +100,17 @@ public class WebhookSender {
             }
         }
         try {
-            HttpResponse<String> response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+            HttpRequest built = request.build();
+            HttpResponse<String> response;
+            try {
+                response = client.send(built, HttpResponse.BodyHandlers.ofString());
+            } catch (HttpTimeoutException e) {
+                throw e;
+            } catch (IOException e) {
+                // No answer at all - most often a kept-alive connection the receiver closed while it sat idle in the
+                // pool: once more, at once, on a new one. Had the receiver taken the first, the event id says so.
+                response = client.send(built, HttpResponse.BodyHandlers.ofString());
+            }
             int status = response.statusCode();
             if (status >= 200 && status < 300) {
                 return new Outcome(true, status, null);

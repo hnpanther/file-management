@@ -118,6 +118,26 @@ class WebhookCommitTest extends DatabaseSupport {
                 Integer.class, hook.id())).isEqualTo(2);
     }
 
+    @Test
+    @DisplayName("a burst at a high pace goes as fast as its concurrency allows - the dispatcher wakes when a send ends, not a second later")
+    void throughput() {
+        WebhookService.WithSecret hook = subscribe("/burst", 6000);
+        receiver.answer("/burst", 200, Duration.ofMillis(20), null);
+        transactions.executeWithoutResult(status -> {
+            for (int i = 0; i < 40; i++) {
+                upload("burst" + i + ".txt");
+            }
+        });
+        long started = System.nanoTime();
+        waitFor(() -> receiver.receivedAt("/burst").size() == 40, Duration.ofSeconds(15));
+        long ms = (System.nanoTime() - started) / 1_000_000;
+        System.out.printf("[13.18] 40 deliveries, two at a time, 20 ms a receiver: %,d ms%n", ms);
+        // Two at a time for 40 is twenty rounds of ~20 ms; a second's sleep between rounds would be twenty seconds.
+        assertThat(ms).isLessThan(5_000);
+        waitFor(() -> jdbc.queryForObject("SELECT count(*) FROM webhook_delivery WHERE webhook_id = ? AND state = 'DELIVERED'",
+                Integer.class, hook.id()) == 40, Duration.ofSeconds(5));
+    }
+
     // ------------------------------------------------------------------ pieces
 
     private WebhookService.WithSecret subscribe(String path, int ratePerMinute) {

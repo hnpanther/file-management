@@ -355,10 +355,10 @@ there as S3-shaped JSON, signed (the receiver's side: [webhooks.md](webhooks.md)
   memory (`WebhookRuleCache`, `WebhookRules`: the folder's materialised path and class path as text, no statement) and
   inserts a `webhook_delivery` row per match **in the change's transaction** - rolled back with it, or committed with
   it. Off (`filemanagement.webhooks.enabled`), or with no subscription, it returns before any work.
-* **Sent off the request.** `WebhookDispatcher` (a `SmartLifecycle`, only while on) takes due rows under
-  `FOR UPDATE SKIP LOCKED`, each subscription at its own rate and concurrency, and hands them to a fixed pool of
-  senders; `WebhookSender` posts with `HttpClient` - no redirect, a timeout, the allowlist checked again, the HMAC
-  signature, the receiver's credential - and the outcome is written in a short transaction of its own: delivered,
+* **Sent off the request.** `WebhookDispatcher` (a `SmartLifecycle`, only while on) asks which subscriptions have a
+  delivery due (one statement), takes their due rows under `FOR UPDATE SKIP LOCKED`, each subscription at its own rate
+  and concurrency, and hands them to a fixed pool of senders, waking again as each send ends; `WebhookSender` posts with `HttpClient` - no redirect, a timeout, the allowlist checked again, the HMAC
+  signature, the receiver's credential, once more at once when a connection gave no answer at all - and the outcome is written in a short transaction of its own: delivered,
   tried again later (1 min to 6 h, eight attempts within a day), or `FAILED`; a run of failures pauses the
   subscription (`AUTO`). Leases let a killed sender's rows go; `WebhookRetention` removes finished rows nightly.
 * **Secrets** (`WebhookSecrets`): the signing secret made here and shown once, the receiver's credential typed by a
