@@ -5034,7 +5034,7 @@ The plan above, with what the owner decided and what writing it found. The recei
 | Load on the application | a connection only for the claim and the outcome, none while a receiver answers; `SKIP LOCKED` across instances; the scale test (`WebhookScaleTest`) |
 | A key changes on a rename | no event, documented: name a file by its external id |
 
-**Tests** (`webhook` package, 51, and the scale one): the matching (`WebhookRulesTest`: the three scopes at any
+**Tests** (`webhook` package, 54, and the scale one): the matching (`WebhookRulesTest`: the three scopes at any
 depth, the bin, a move from either side, the filters, the allowlist, the signature); every event by its way, the
 bin's included, the scopes on the real tree, a folder renamed and moved, a class, the filters and the loop guard, a
 paused subscription, one deleted behind the cache (`WebhookOutboxTest`); sending to a real HTTP server here - the
@@ -5049,6 +5049,27 @@ thousand with no subscription** (the baseline ran first, cold: the outbox costs 
 20,000 deliveries sent one after another to a receiver on the same machine in 136 s; over 200,000 rows the newest page
 5 ms, a page after a cursor 2 ms, the counts 36 ms, a claim 3 ms. A test that held its subscriptions uncommitted in one
 long transaction lost them to the every-minute refresh after a minute - the test, not the code: subscriptions commit.
+
+**The real test** (2026-10-31): the jar against a PostgreSQL of its own, a receiver on the machine checking every
+signature, five subscriptions made on the page (a folder and below, a folder alone, by extension, one failing, one on
+moves; a header `Authorization: Bearer ...`, Basic). Uploads by v1, a move, metadata, a delete, a restore and a purge
+from the bin page: each subscription sent exactly its events, every signature valid, both credentials as typed, no
+metadata value in a body, nothing secret in the log; the failing one paused itself after three, was changed and
+resumed on the page, and sent what had waited. 700 uploads eight at a time: an upload as fast with subscriptions
+matching as without (p50 247 against 255 ms - HTTP Basic's password hash is most of it). Two things it found, both
+fixed, each with a test:
+
+* **The dispatcher slept a second whenever every send a subscription may have at once was in flight**, so a
+  subscription sent its `concurrency` a second, not its `rate_per_minute` (2.3 a second at 600 a minute). It now wakes
+  when a send ends, and asks one statement which subscriptions have anything due (`withDue`) before claiming - an idle
+  queue costs one statement a second, whatever the number of subscriptions (`WebhookCommitTest.throughput`: forty in
+  1.1 s, not twenty).
+* **A kept-alive connection the receiver had closed** failed three deliveries in 1,400 with no answer at all; their
+  retry came a minute later. A send that gets no answer - not a timeout - is now made once more at once, on a new
+  connection (`WebhookSenderTest`). Again 700 uploads: 1,400 delivered, none retried, none twice, the last 31 s after
+  its upload - the pace of 600 a minute, as set.
+* A receiver slower than the timeout: given up after it, said on the page ("no answer within 5 s"), not tried twice at
+  once.
 
 ### 13.19 The folders as a drive in Windows Explorer (WebDAV) — planned (2026-10-28)
 

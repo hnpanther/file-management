@@ -9,8 +9,10 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -88,6 +90,16 @@ public class WebhookDeliveryRepository {
         jdbc.update("""
                 UPDATE webhook_delivery SET state = 'PENDING', lease_until = NULL, attempts = greatest(attempts - 1, 0)
                 WHERE id = :id AND state = 'SENDING'""", new MapSqlParameterSource("id", id));
+    }
+
+    /**
+     * The subscriptions with a delivery due now - one statement over the due index, whatever the number of
+     * subscriptions: the dispatcher claims only for these, and an idle queue costs it this and nothing more.
+     */
+    public Set<Integer> withDue(Instant now) {
+        return new HashSet<>(jdbc.queryForList("""
+                SELECT DISTINCT webhook_id FROM webhook_delivery WHERE state = 'PENDING' AND next_attempt_at <= :now""",
+                new MapSqlParameterSource("now", Timestamp.from(now)), Integer.class));
     }
 
     /**
