@@ -343,7 +343,7 @@ per-feature mappers and issue 88 were done in 2.1.0.)
    Phase 4 has a compose file of its own, `deploy/seaweedfs`.
 4. **CI.** `.github/workflows/build.yml` ran `./mvnw verify` on JDK 21 **and** 25 and added
    `dependency-review-action` on pull requests; `.github/dependabot.yml` scheduled weekly updates.
-   **Both are gone** - removed by commit `d07fa86` and never replaced, so nothing builds or scans
+   **Both are gone** - removed by commit `07b0318` and never replaced, so nothing builds or scans
    on push today ([issue 83](issues.md#83-the-docs-describe-a-ci-workflow-that-was-removed--s3)).
    Restoring a workflow is one JDK's worth of work now that the build targets 25 only.
 5. **Footguns deleted.** `schema-db/` (issue 32) and `FileDAO` (issue 5).

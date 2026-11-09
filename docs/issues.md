@@ -572,7 +572,7 @@ already does.
 line, and every handler in `resource/` and `api/` now uses it. The Thymeleaf controllers still carry
 the long form; converting them is worth doing with the aspect, not before it.
 
-> **Fixed** in roadmap 2.1 (`cfb96ba`), without the aspect: `LoggingInterceptor` is the one writer
+> **Fixed** in roadmap 2.1 (`525821a`), without the aspect: `LoggingInterceptor` is the one writer
 > of the request line, and `controllerLogging` is gone - every handler calls
 > `GlobalGeneralLogging.detail(...)` with only what the interceptor cannot know.
 
@@ -736,7 +736,7 @@ Fix: Testcontainers for PostgreSQL, `@TempDir` for the filesystem, MinIO in a co
 
 > **Resolved in Phase 0**, then **undone**: `.github/workflows/build.yml` built and tested on JDK
 > 21 and 25, with `dependency-review-action` on pull requests and `.github/dependabot.yml` for
-> weekly updates - all removed by commit `d07fa86` and not replaced. This issue is open again;
+> weekly updates - all removed by commit `07b0318` and not replaced. This issue is open again;
 > see [issue 83](#83-the-docs-describe-a-ci-workflow-that-was-removed--s3).
 
 No `.github/workflows`, no pipeline of any kind. Nothing builds, tests, or scans dependencies on
@@ -1432,7 +1432,7 @@ until the drag-and-drop of Phase 5.2 decides which page it lives on, then remove
 ### 83. The docs describe a CI workflow that was removed — **S3**
 
 `README.md` (the layout tree), `docs/roadmap.md` (Phase 0 item 4) and issue 38's resolution said
-`.github/workflows/build.yml` runs `./mvnw verify` on JDK 21 and 25. Commit `d07fa86` removed the
+`.github/workflows/build.yml` runs `./mvnw verify` on JDK 21 and 25. Commit `07b0318` removed the
 workflow and nothing replaced it; and since 1.4.0 the build targets Java 25 only.
 
 > **The documentation is fixed** (1.5.0): the README's tree no longer lists a workflow directory,
@@ -1972,7 +1972,7 @@ requests at once.
 
 ### 103. A local object store's settings, secret included, were committed as the defaults — **S1**
 
-Commit `634ed10` (a documentation commit, pushed to `origin/redesign-arch`) changed the shipped
+Commit `1727a23` (a documentation commit, pushed to `origin/redesign-arch`) changed the shipped
 `application.properties` to `filemanagement.storage.backend=${FILEMANAGEMENT_STORAGE_BACKEND:s3}`
 with a developer machine's endpoint, bucket, access key and **secret key** as the defaults. Two
 consequences: a production start without `FILEMANAGEMENT_STORAGE_BACKEND` would have looked for an
